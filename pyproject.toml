@@ -1,0 +1,32 @@
+[project]
+name = "issuekit"
+version = "0.1.0"
+description = "Shared local issue tracker CLI and encoding guard for docs/issues conventions"
+authors = [
+    { name = "jj", email = "jfidpabn0hjmk903@gmail.com" },
+]
+readme = "README.md"
+requires-python = ">=3.12,<4"
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.2,<9",
+]
+
+[project.scripts]
+issuekit = "issuekit.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["issuekit"]
+
+# Per-repo overrides for the issue tracker. All keys are optional; defaults
+# match the mine-js-monorepo reference implementation.
+[tool.issuekit]
+# recent_count = 30
+# ascii_id_threshold = 0        # issue ids >= this value must be ASCII-only
+# issues_dir = "docs/issues"
