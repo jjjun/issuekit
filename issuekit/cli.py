@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 from collections.abc import Sequence
 
-from issuekit.commands import check_encoding, complete, generate_indexes, info, validate
+from issuekit.commands import check_encoding, complete, generate_indexes, info, init, validate
 
 
 COMMANDS = (
@@ -82,7 +82,12 @@ def build_parser() -> argparse.ArgumentParser:
         "init",
         help="Install docs/issues tracker templates in the current repository.",
     )
-    init_parser.set_defaults(func=_not_implemented("init"))
+    init_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Overwrite existing templated files.",
+    )
+    init_parser.set_defaults(func=init.run)
 
     return parser
 

@@ -1,0 +1,8 @@
+repos:
+  - repo: local
+    hooks:
+      - id: issuekit-check-encoding
+        name: issuekit check-encoding
+        entry: issuekit check-encoding
+        language: system
+        pass_filenames: false

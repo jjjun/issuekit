@@ -1,0 +1,24 @@
+# Normalize line endings to LF on commit; never store CRLF in the repository.
+# This lets a Windows working tree use CRLF locally without polluting diffs.
+* text=auto eol=lf
+
+# Explicit LF for source and config text files.
+*.py    text eol=lf
+*.toml  text eol=lf
+*.cfg   text eol=lf
+*.ini   text eol=lf
+*.md    text eol=lf
+*.txt   text eol=lf
+*.json  text eol=lf
+*.yml   text eol=lf
+*.yaml  text eol=lf
+
+# Treat common binary assets as binary so git never touches their bytes.
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.webp  binary
+*.ico   binary
+*.zip   binary
+*.pdf   binary

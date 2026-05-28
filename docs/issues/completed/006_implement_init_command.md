@@ -1,11 +1,12 @@
 ---
 id: 6
-status: active
+status: completed
 priority: medium
 created: 2026-05-28
-completed:
+completed: 2026-05-29
 title: Implement init command to scaffold a repo
 ---
+
 
 # Issue #6: Implement init command to scaffold a repo
 
@@ -79,3 +80,10 @@ would fail validation on every legacy issue under the default.
 - `docs/issues/README.md`, `.gitattributes`, `.editorconfig` (templates to mirror)
 - `AGENTS.md` "Encoding rules (required)" (the rules this command operationalizes)
 - Depends on Issue #4 (generate-indexes).
+
+**Completed**: 2026-05-29
+
+## Completion Notes
+
+- Implemented init scaffolding with templates, idempotent writes, pre-commit guidance, and legacy ASCII threshold handling.
+- Verification: `uv run pytest; uv run issuekit validate; uv run issuekit check-encoding --json`
