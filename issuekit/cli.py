@@ -5,6 +5,8 @@ from __future__ import annotations
 import argparse
 from collections.abc import Sequence
 
+from issuekit.commands import info, validate
+
 
 COMMANDS = (
     "info",
@@ -37,13 +39,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     info_parser = subparsers.add_parser("info", help="Show issue tracker status.")
     info_parser.add_argument("--json", action="store_true", help="Print JSON output.")
-    info_parser.set_defaults(func=_not_implemented("info"))
+    info_parser.set_defaults(func=info.run)
 
     validate_parser = subparsers.add_parser(
         "validate",
         help="Validate issue files and generated indexes.",
     )
-    validate_parser.set_defaults(func=_not_implemented("validate"))
+    validate_parser.set_defaults(func=validate.run)
 
     generate_indexes_parser = subparsers.add_parser(
         "generate-indexes",

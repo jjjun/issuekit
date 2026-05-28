@@ -1,9 +1,9 @@
 ---
 id: 3
-status: active
+status: completed
 priority: high
 created: 2026-05-28
-completed:
+completed: 2026-05-29
 title: Implement info and validate commands
 ---
 
@@ -52,3 +52,13 @@ and `../mine-js-monorepo/scripts/issues-validate.mjs`.
 - `../mine-js-monorepo/scripts/issues-info.mjs`
 - `../mine-js-monorepo/scripts/issues-validate.mjs`
 - Depends on Issue #2.
+
+## Completion Notes
+
+Summary: Implemented the `info` and `validate` command handlers, wired them
+into the CLI dispatcher, and added command-level tests.
+
+Verification:
+
+- `uv run pytest tests/test_info.py tests/test_validate.py tests/test_cli.py`
+- `uv run issuekit info --json`
