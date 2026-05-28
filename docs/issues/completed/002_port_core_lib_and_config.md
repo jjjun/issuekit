@@ -1,9 +1,9 @@
 ---
 id: 2
-status: active
+status: completed
 priority: high
 created: 2026-05-28
-completed:
+completed: 2026-05-29
 title: Port core issue library and tool config
 ---
 
@@ -58,3 +58,12 @@ optional `[tool.issuekit]` overrides from the consuming repo's `pyproject.toml`.
 
 - `../mine-js-monorepo/scripts/issues-lib.mjs`
 - `docs/issues/README.md` (frontmatter and index spec)
+
+## Completion Notes
+
+Summary: Ported the shared issue model, frontmatter parser/formatter, index
+builder, mojibake detection, and `[tool.issuekit]` config loading.
+
+Verification:
+
+- `uv run pytest tests/test_core.py tests/test_cli.py`
