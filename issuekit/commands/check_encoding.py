@@ -39,34 +39,50 @@ def run(args) -> int:
     source_files = [file for file in tracked_files if _has_source_extension(file)]
     bom_files: list[str] = []
     mojibake_files: list[str] = []
+    fixed_files: list[str] = []
 
     for file in source_files:
         path = Path(file)
         try:
             if _starts_with_bom(path):
                 bom_files.append(file)
+                if args.fix:
+                    _strip_bom(path)
+                    fixed_files.append(file)
             if not args.no_mojibake and has_mojibake(path.read_text(encoding="utf-8-sig", errors="ignore")):
                 mojibake_files.append(file)
         except OSError:
             continue
 
-    payload = {"bom_files": bom_files, "mojibake_files": mojibake_files}
+    remaining_bom_files = [] if args.fix else bom_files
+    payload = {
+        "bom_files": remaining_bom_files,
+        "mojibake_files": mojibake_files,
+        "fixed": fixed_files,
+    }
     if args.json:
         print(json.dumps(payload, indent=2))
 
-    if not bom_files and not mojibake_files:
+    if not remaining_bom_files and not mojibake_files:
         if not args.json:
-            print("Encoding check passed: no UTF-8 BOM or likely mojibake in tracked source files.")
+            for file in fixed_files:
+                print(f"Fixed BOM: {file}")
+            if fixed_files:
+                print("Encoding check passed after fixing UTF-8 BOM files.")
+            else:
+                print("Encoding check passed: no UTF-8 BOM or likely mojibake in tracked source files.")
         return 0
 
     if not args.json:
-        if bom_files:
+        for file in fixed_files:
+            print(f"Fixed BOM: {file}")
+        if remaining_bom_files:
             print(
-                f"Encoding check failed: {len(bom_files)} file(s) start with a UTF-8 BOM.",
+                f"Encoding check failed: {len(remaining_bom_files)} file(s) start with a UTF-8 BOM.",
                 file=sys.stderr,
             )
             print("Re-save these files as UTF-8 without a BOM:", file=sys.stderr)
-            for file in bom_files:
+            for file in remaining_bom_files:
                 print(f"  {file}", file=sys.stderr)
             print(
                 "\nTip: a BOM is invisible to ripgrep; verify with `head -c 3 <file> | xxd`.",
@@ -95,3 +111,9 @@ def _has_source_extension(file: str) -> bool:
 def _starts_with_bom(path: Path) -> bool:
     with path.open("rb") as handle:
         return handle.read(3) == BOM
+
+
+def _strip_bom(path: Path) -> None:
+    content = path.read_bytes()
+    if content.startswith(BOM):
+        path.write_bytes(content[len(BOM) :])

@@ -69,7 +69,7 @@ def test_check_encoding_json_shape(tmp_path: Path, monkeypatch, capsys) -> None:
     payload = json.loads(capsys.readouterr().out)
 
     assert exit_code == 1
-    assert payload == {"bom_files": ["bom.py"], "mojibake_files": ["bad.md"]}
+    assert payload == {"bom_files": ["bom.py"], "mojibake_files": ["bad.md"], "fixed": []}
 
 
 def test_check_encoding_no_mojibake_toggle(tmp_path: Path, monkeypatch) -> None:
@@ -78,3 +78,64 @@ def test_check_encoding_no_mojibake_toggle(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
 
     assert cli.main(["check-encoding", "--no-mojibake"]) == 0
+
+
+def test_check_encoding_fix_strips_bom_and_preserves_remaining_bytes(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    init_git_repo(tmp_path)
+    payload = "print('ok')\r\n# \u3042\r\n".encode("utf-8")
+    add_tracked(tmp_path, "bom.py", b"\xef\xbb\xbf" + payload)
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = cli.main(["check-encoding", "--fix"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "Fixed BOM: bom.py" in captured.out
+    assert (tmp_path / "bom.py").read_bytes() == payload
+
+
+def test_check_encoding_fix_does_not_modify_mojibake_files(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    init_git_repo(tmp_path)
+    original = "\u7e67\r\n".encode("utf-8")
+    add_tracked(tmp_path, "bad.md", original)
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = cli.main(["check-encoding", "--fix"])
+
+    assert exit_code == 1
+    assert "bad.md" in capsys.readouterr().err
+    assert (tmp_path / "bad.md").read_bytes() == original
+
+
+def test_check_encoding_fix_json_reports_fixed_files(tmp_path: Path, monkeypatch, capsys) -> None:
+    init_git_repo(tmp_path)
+    add_tracked(tmp_path, "bom.py", b"\xef\xbb\xbfprint('ok')\n")
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = cli.main(["check-encoding", "--fix", "--json"])
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert payload == {"bom_files": [], "mojibake_files": [], "fixed": ["bom.py"]}
+    assert (tmp_path / "bom.py").read_bytes() == b"print('ok')\n"
+
+
+def test_check_encoding_fix_exits_nonzero_when_mojibake_remains(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    init_git_repo(tmp_path)
+    add_tracked(tmp_path, "bom.py", b"\xef\xbb\xbfprint('ok')\n")
+    add_tracked(tmp_path, "bad.md", "\u7e67\n".encode("utf-8"))
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["check-encoding", "--fix"]) == 1
+    assert (tmp_path / "bom.py").read_bytes() == b"print('ok')\n"

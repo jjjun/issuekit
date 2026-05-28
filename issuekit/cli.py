@@ -76,6 +76,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Disable likely mojibake text scanning.",
     )
+    check_encoding_parser.add_argument(
+        "--fix",
+        action="store_true",
+        help="Strip leading UTF-8 BOM bytes from tracked source files.",
+    )
     check_encoding_parser.set_defaults(func=check_encoding.run)
 
     init_parser = subparsers.add_parser(

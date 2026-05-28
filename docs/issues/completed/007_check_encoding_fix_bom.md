@@ -1,11 +1,12 @@
 ---
 id: 7
-status: active
+status: completed
 priority: high
 created: 2026-05-29
-completed:
+completed: 2026-05-29
 title: Add --fix to check-encoding to strip BOMs
 ---
+
 
 # Issue #7: Add --fix to check-encoding to strip BOMs
 
@@ -65,3 +66,10 @@ of the file.
 
 - `issuekit/commands/check_encoding.py` (Issue #5)
 - Depends on Issue #5.
+
+**Completed**: 2026-05-29
+
+## Completion Notes
+
+- Added --fix to strip leading UTF-8 BOM bytes while preserving the rest of each file exactly.
+- Verification: `uv run pytest; uv run issuekit validate; uv run issuekit check-encoding --json`
