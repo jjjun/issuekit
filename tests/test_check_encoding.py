@@ -42,7 +42,7 @@ def test_check_encoding_bom_fails(tmp_path: Path, monkeypatch, capsys) -> None:
 
 def test_check_encoding_mojibake_fails(tmp_path: Path, monkeypatch, capsys) -> None:
     init_git_repo(tmp_path)
-    add_tracked(tmp_path, "bad.md", "\u90e2\uff67\n".encode("utf-8"))
+    add_tracked(tmp_path, "bad.md", "\u7e67\n".encode("utf-8"))
     monkeypatch.chdir(tmp_path)
 
     exit_code = cli.main(["check-encoding"])
@@ -62,7 +62,7 @@ def test_check_encoding_ignores_non_source_extensions(tmp_path: Path, monkeypatc
 def test_check_encoding_json_shape(tmp_path: Path, monkeypatch, capsys) -> None:
     init_git_repo(tmp_path)
     add_tracked(tmp_path, "bom.py", b"\xef\xbb\xbfprint('bad')\n")
-    add_tracked(tmp_path, "bad.md", "\u90e2\uff67\n".encode("utf-8"))
+    add_tracked(tmp_path, "bad.md", "\u7e67\n".encode("utf-8"))
     monkeypatch.chdir(tmp_path)
 
     exit_code = cli.main(["check-encoding", "--json"])
@@ -74,7 +74,7 @@ def test_check_encoding_json_shape(tmp_path: Path, monkeypatch, capsys) -> None:
 
 def test_check_encoding_no_mojibake_toggle(tmp_path: Path, monkeypatch) -> None:
     init_git_repo(tmp_path)
-    add_tracked(tmp_path, "bad.md", "\u90e2\uff67\n".encode("utf-8"))
+    add_tracked(tmp_path, "bad.md", "\u7e67\n".encode("utf-8"))
     monkeypatch.chdir(tmp_path)
 
     assert cli.main(["check-encoding", "--no-mojibake"]) == 0
