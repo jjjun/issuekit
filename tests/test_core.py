@@ -67,7 +67,7 @@ def test_build_index_files(tmp_path: Path) -> None:
 
 
 def test_mojibake_detection() -> None:
-    assert core.has_mojibake("郢ｧ")
+    assert core.has_mojibake("\u90e2\uff67")
     assert not core.has_mojibake("plain ascii")
 
 

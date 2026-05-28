@@ -1,11 +1,12 @@
 ---
 id: 5
-status: active
+status: completed
 priority: high
 created: 2026-05-28
-completed:
+completed: 2026-05-29
 title: Implement check-encoding command with mojibake scan
 ---
+
 
 # Issue #5: Implement check-encoding command with mojibake scan
 
@@ -50,3 +51,10 @@ Japanese text.
 
 - `../mine-js-monorepo/scripts/check-encoding.mjs`
 - Mojibake pattern from Issue #2 `core.py`.
+
+**Completed**: 2026-05-29
+
+## Completion Notes
+
+- Implemented check-encoding with BOM and mojibake scans.
+- Verification: `uv run pytest tests/test_check_encoding.py tests/test_core.py tests/test_cli.py; uv run issuekit check-encoding --json`

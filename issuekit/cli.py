@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 from collections.abc import Sequence
 
-from issuekit.commands import complete, generate_indexes, info, validate
+from issuekit.commands import check_encoding, complete, generate_indexes, info, validate
 
 
 COMMANDS = (
@@ -71,7 +71,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Print JSON output.",
     )
-    check_encoding_parser.set_defaults(func=_not_implemented("check-encoding"))
+    check_encoding_parser.add_argument(
+        "--no-mojibake",
+        action="store_true",
+        help="Disable likely mojibake text scanning.",
+    )
+    check_encoding_parser.set_defaults(func=check_encoding.run)
 
     init_parser = subparsers.add_parser(
         "init",
