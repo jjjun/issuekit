@@ -155,3 +155,8 @@ Describe the proposed solution.
 - frontmatter has `created` and `title`
 - completed issues use `status: completed`; active issues do not
 - issue files contain only ASCII characters
+- issue files are valid UTF-8
+
+`issuekit check-encoding` checks tracked source files for BOM and mojibake
+patterns. `issuekit validate` owns issue tracker structure and issue file
+decodability.
