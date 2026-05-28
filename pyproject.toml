@@ -3,7 +3,7 @@ name = "issuekit"
 version = "0.1.0"
 description = "Shared local issue tracker CLI and encoding guard for docs/issues conventions"
 authors = [
-    { name = "jj", email = "jfidpabn0hjmk903@gmail.com" },
+    { name = "jj", email = "11153631+jjjun@users.noreply.github.com" },
 ]
 readme = "README.md"
 requires-python = ">=3.12,<4"
