@@ -1,9 +1,9 @@
 ---
 id: 1
-status: active
+status: completed
 priority: high
 created: 2026-05-28
-completed:
+completed: 2026-05-29
 title: Bootstrap package layout and CLI dispatcher
 ---
 
@@ -53,3 +53,15 @@ every subcommand. Each subcommand handler is a stub that raises
 - `AGENTS.md` (target architecture)
 - Dispatcher pattern reference: `../mine-js-monorepo/scripts/issues-*.mjs`
   (sibling checkout) each map to one subcommand.
+
+## Completion Notes
+
+Summary: Added the package CLI dispatcher, command package skeleton, and focused
+CLI tests for the bootstrap command surface.
+
+Verification:
+
+- `uv run pytest`
+- `uv run pytest tests/test_cli.py`
+- `uv run issuekit --help`
+- `uv run issuekit complete`
