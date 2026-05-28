@@ -38,6 +38,7 @@ class Issue:
     priority: str
     content: str
     frontmatter: Frontmatter
+    decode_error: bool = False
 
 
 def parse_issue_id(file_name: str) -> int | None:
@@ -114,7 +115,12 @@ def read_issues(issues_dir: Path | str, directory_status: str) -> list[Issue]:
             continue
         file_name = file_path.name
         file_name_id = parse_issue_id(file_name)
-        content = file_path.read_text(encoding="utf-8-sig")
+        try:
+            content = file_path.read_bytes().decode("utf-8-sig")
+            decode_error = False
+        except UnicodeDecodeError:
+            content = ""
+            decode_error = True
         frontmatter = parse_issue_frontmatter(content)
         metadata = frontmatter.data
         issue_id = parse_frontmatter_id(metadata.get("id")) or file_name_id
@@ -141,6 +147,7 @@ def read_issues(issues_dir: Path | str, directory_status: str) -> list[Issue]:
                 priority=_normalize(metadata.get("priority")),
                 content=content,
                 frontmatter=frontmatter,
+                decode_error=decode_error,
             )
         )
 

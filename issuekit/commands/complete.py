@@ -31,6 +31,9 @@ def run(args) -> int:
     if issue is None:
         print(f"Active issue #{issue_id} was not found.", file=sys.stderr)
         return 1
+    if issue.decode_error:
+        print(f"Active issue #{issue_id} is not valid UTF-8: {issue.relative_path}", file=sys.stderr)
+        return 1
 
     completed_date = date.today().isoformat()
     frontmatter = parse_issue_frontmatter(issue.content)

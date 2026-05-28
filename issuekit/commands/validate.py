@@ -29,6 +29,10 @@ def run(_args) -> int:
     warnings: list[str] = []
 
     for issue in issues:
+        if issue.decode_error:
+            errors.append(f"Issue file is not valid UTF-8: {issue.relative_path}")
+            continue
+
         if issue.id is None:
             errors.append(f"Issue file does not start with a numeric id: {issue.relative_path}")
 

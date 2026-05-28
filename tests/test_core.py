@@ -37,6 +37,24 @@ def test_read_issues_and_next_id(tmp_path: Path) -> None:
     assert core.group_issues_by_id(all_issues)[1][0].relative_path == "active/001_first.md"
 
 
+def test_read_issues_returns_decode_error_issue_for_non_utf8_file(tmp_path: Path) -> None:
+    issues_dir = tmp_path / "docs" / "issues"
+    bad_issue = issues_dir / "active" / "003_cp932.md"
+    bad_issue.parent.mkdir(parents=True, exist_ok=True)
+    bad_issue.write_bytes(b"# Issue #3: \x83e\x83X\x83g\n")
+
+    issues = core.read_issues(issues_dir, "active")
+
+    assert len(issues) == 1
+    assert issues[0].id == 3
+    assert issues[0].file_name_id == 3
+    assert issues[0].title == "cp932"
+    assert issues[0].relative_path == "active/003_cp932.md"
+    assert issues[0].content == ""
+    assert issues[0].frontmatter == core.Frontmatter(data={}, body="", has_frontmatter=False)
+    assert issues[0].decode_error is True
+
+
 def test_build_index_files(tmp_path: Path) -> None:
     issues_dir = tmp_path / "docs" / "issues"
     write_issue(

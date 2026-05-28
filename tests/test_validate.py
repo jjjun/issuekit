@@ -63,3 +63,22 @@ def test_validate_non_ascii_over_threshold_fails(tmp_path: Path, monkeypatch, ca
 
     assert exit_code == 1
     assert "ASCII-only" in capsys.readouterr().err
+
+
+def test_validate_non_utf8_issue_file_fails_without_traceback(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    issues_dir = make_issue_tree(tmp_path)
+    bad_issue = issues_dir / "active" / "003_cp932.md"
+    bad_issue.write_bytes(b"# Issue #3: \x83e\x83X\x83g\n")
+    write_indexes(issues_dir)
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = cli.main(["validate"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "Issue file is not valid UTF-8: active/003_cp932.md" in captured.err
+    assert "Traceback" not in captured.err

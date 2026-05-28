@@ -69,3 +69,23 @@ def test_complete_writes_without_bom_or_crlf(tmp_path: Path, monkeypatch) -> Non
     content = (issues_dir / "completed" / "001_first.md").read_bytes()
     assert not content.startswith(b"\xef\xbb\xbf")
     assert b"\r\n" not in content
+
+
+def test_complete_rejects_non_utf8_issue_without_modifying_it(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    issues_dir = tmp_path / "docs" / "issues"
+    bad_issue = issues_dir / "active" / "001_cp932.md"
+    bad_issue.parent.mkdir(parents=True, exist_ok=True)
+    raw_content = b"# Issue #1: \x83e\x83X\x83g\n"
+    bad_issue.write_bytes(raw_content)
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = cli.main(["complete", "1"])
+
+    assert exit_code == 1
+    assert "Active issue #1 is not valid UTF-8: active/001_cp932.md" in capsys.readouterr().err
+    assert bad_issue.read_bytes() == raw_content
+    assert not (issues_dir / "completed" / "001_cp932.md").exists()
