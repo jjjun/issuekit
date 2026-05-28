@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 from collections.abc import Sequence
 
-from issuekit.commands import info, validate
+from issuekit.commands import complete, generate_indexes, info, validate
 
 
 COMMANDS = (
@@ -51,7 +51,7 @@ def build_parser() -> argparse.ArgumentParser:
         "generate-indexes",
         help="Generate docs/issues index files.",
     )
-    generate_indexes_parser.set_defaults(func=_not_implemented("generate-indexes"))
+    generate_indexes_parser.set_defaults(func=generate_indexes.run)
 
     complete_parser = subparsers.add_parser(
         "complete",
@@ -60,7 +60,7 @@ def build_parser() -> argparse.ArgumentParser:
     complete_parser.add_argument("id", help="Issue id to complete.")
     complete_parser.add_argument("--summary", help="Completion summary.")
     complete_parser.add_argument("--verification", help="Verification notes.")
-    complete_parser.set_defaults(func=_not_implemented("complete"))
+    complete_parser.set_defaults(func=complete.run)
 
     check_encoding_parser = subparsers.add_parser(
         "check-encoding",

@@ -1,0 +1,71 @@
+from pathlib import Path
+
+from issuekit import cli
+
+from tests.issue_helpers import issue_text, make_issue_tree, write_issue
+
+
+def test_complete_moves_issue_updates_frontmatter_and_regenerates_indexes(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    issues_dir = make_issue_tree(tmp_path)
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = cli.main(
+        [
+            "complete",
+            "1",
+            "--summary",
+            "Implemented the command.",
+            "--verification",
+            "uv run pytest",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    completed = issues_dir / "completed" / "001_first.md"
+    assert exit_code == 0
+    assert "Completed issue #1" in captured.out
+    assert not (issues_dir / "active" / "001_first.md").exists()
+    assert completed.exists()
+    content = completed.read_text(encoding="utf-8")
+    assert "status: completed" in content
+    assert "completed:" in content
+    assert "- Implemented the command." in content
+    assert "- Verification: `uv run pytest`" in content
+    assert (issues_dir / "indexes" / "active.md").exists()
+    assert cli.main(["validate"]) == 0
+
+
+def test_complete_missing_issue_fails(tmp_path: Path, monkeypatch, capsys) -> None:
+    make_issue_tree(tmp_path)
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = cli.main(["complete", "999"])
+
+    assert exit_code == 1
+    assert "Active issue #999 was not found" in capsys.readouterr().err
+
+
+def test_complete_rejects_non_ascii_summary(tmp_path: Path, monkeypatch, capsys) -> None:
+    make_issue_tree(tmp_path)
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = cli.main(["complete", "1", "--summary", "\u3042"])
+
+    assert exit_code == 1
+    assert "ASCII-only" in capsys.readouterr().err
+
+
+def test_complete_writes_without_bom_or_crlf(tmp_path: Path, monkeypatch) -> None:
+    issues_dir = tmp_path / "docs" / "issues"
+    write_issue(issues_dir / "active" / "001_first.md", issue_text(1, "First"))
+    monkeypatch.chdir(tmp_path)
+
+    cli.main(["complete", "1"])
+
+    content = (issues_dir / "completed" / "001_first.md").read_bytes()
+    assert not content.startswith(b"\xef\xbb\xbf")
+    assert b"\r\n" not in content

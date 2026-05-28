@@ -1,11 +1,12 @@
 ---
 id: 4
-status: active
+status: completed
 priority: high
 created: 2026-05-28
-completed:
+completed: 2026-05-29
 title: Implement generate-indexes and complete commands
 ---
+
 
 # Issue #4: Implement generate-indexes and complete commands
 
@@ -52,3 +53,10 @@ Port `../mine-js-monorepo/scripts/issues-generate-indexes.mjs` and
 - `../mine-js-monorepo/scripts/issues-generate-indexes.mjs`
 - `../mine-js-monorepo/scripts/issues-complete.mjs`
 - Depends on Issue #2 and Issue #3 (validate).
+
+**Completed**: 2026-05-29
+
+## Completion Notes
+
+- Implemented generate-indexes and complete commands.
+- Verification: `uv run pytest tests/test_generate_indexes.py tests/test_complete.py tests/test_validate.py tests/test_cli.py`
