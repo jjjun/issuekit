@@ -1,11 +1,12 @@
 ---
 id: 9
-status: active
+status: completed
 priority: low
 created: 2026-05-29
-completed:
+completed: 2026-05-29
 title: Use a noreply author email in pyproject for public release
 ---
+
 
 # Issue #9: Use a noreply author email in pyproject for public release
 
@@ -43,3 +44,10 @@ the author name.
 
 - `pyproject.toml`
 - Context: issuekit going public (only repo names + this email are exposed; no secrets).
+
+**Completed**: 2026-05-29
+
+## Completion Notes
+
+- Replaced the package author email with the GitHub noreply address.
+- Verification: `uv build; git grep old author email`
