@@ -1,11 +1,12 @@
 ---
 id: 8
-status: active
+status: completed
 priority: high
 created: 2026-05-29
-completed:
+completed: 2026-05-29
 title: Handle non-UTF-8 issue files gracefully in core
 ---
+
 
 # Issue #8: Handle non-UTF-8 issue files gracefully in core
 
@@ -63,3 +64,10 @@ other commands must continue without a traceback.
 
 - `issuekit/core.py` `read_issues` (line that calls `read_text("utf-8-sig")`)
 - `issuekit/commands/check_encoding.py` (uses `errors="ignore"`, for comparison)
+
+**Completed**: 2026-05-29
+
+## Completion Notes
+
+- Handled undecodable issue files without traceback.
+- Verification: `uv run pytest tests/test_core.py tests/test_validate.py tests/test_info.py tests/test_generate_indexes.py tests/test_complete.py`
