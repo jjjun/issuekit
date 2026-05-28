@@ -40,9 +40,29 @@ tests/          # pytest
 
 - `uv sync` / `uv run pytest` で開発する。
 - 純標準ライブラリで実装する (PyYAML 等の追加依存は避け、frontmatter は移植元と同じ簡易パーサで処理する)。
-- ファイルは UTF-8 (BOM なし) / LF で書く。BOM (`EF BB BF`) を絶対に入れない。
-- BOM は ripgrep からは不可視なので、バイトレベルで確認する (`head -c 3 <file> | xxd`)。
+
+## Encoding rules (required)
+
+文字化けには2種類ある。両方を防ぐこと。
+
+A. 形式破損: BOM 付与 / CRLF / 誤エンコーディング保存。
+B. 転記ミス: 既存の非ASCII文字を読んで別の文字に化けさせて書き出す
+   (実例: `core.py` の MOJIBAKE_PATTERN を移植した際、元の CJK 文字が
+   別コードページ経由で取り込まれ、全く別のコードポイントに化けた)。
+   B はファイルが妥当な ASCII/UTF-8 のままなので BOM 検査をすり抜ける。
+
+ルール:
+
+- 全ファイルを UTF-8 (BOM なし) / LF で書く。BOM (`EF BB BF`) を絶対に入れない。
+  BOM は ripgrep から不可視なので、バイトレベルで確認する (`head -c 3 <file> | xxd`)。
+- **ソース内の非ASCII文字列リテラルは `\uXXXX` エスケープで書く** (生の CJK を置かない)。
+  これが A と B の両方を根本的に防ぐ最重要ルール。
+- **既存の非ASCII文字を手で打ち直さない**。元のコードポイントをそのまま使う
+  (例: 移植時は元ファイルのコードポイントを確認してからエスケープに変換する)。
+- 非ASCIIを含むロジック (mojibake 検出など) は、本物の文字を assert する単体テストを必ず書く。
+  化けた値で緑になるテストは無意味。
 - `docs/issues/` 配下は英語 ASCII のみで書く (規約は `docs/issues/README.md` を参照)。
+- 作業完了前に `uv run issuekit check-encoding` を通す (pre-commit でも強制される)。
 
 ## Build & Test
 
