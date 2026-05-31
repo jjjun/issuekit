@@ -13,9 +13,13 @@ dependencies = []
 dev = [
     "pytest>=8.3.2,<9",
 ]
+mcp = [
+    "mcp>=1.0",
+]
 
 [project.scripts]
 issuekit = "issuekit.cli:main"
+issuekit-mcp = "issuekit.mcp.server:main"
 
 [build-system]
 requires = ["hatchling"]

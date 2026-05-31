@@ -25,6 +25,17 @@ uv sync
 uv run issuekit --help
 ```
 
+## MCP server
+
+Install the optional MCP group and start the stdio server with:
+
+```powershell
+uv run --group mcp issuekit-mcp
+```
+
+The server exposes the same handoff workflow as the CLI: codex claims and
+submits tasks for review, and claude reviews, requests changes, or approves.
+
 ## コマンド
 
 | コマンド | 役割 |

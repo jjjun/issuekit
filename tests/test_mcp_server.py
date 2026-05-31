@@ -1,0 +1,113 @@
+import asyncio
+import json
+from pathlib import Path
+from typing import Any
+
+import pytest
+
+pytest.importorskip("mcp")
+
+from issuekit import cli
+from issuekit.mcp.server import create_server
+
+from tests.issue_helpers import issue_text, write_indexes, write_issue
+
+
+def _call(server, name: str, arguments: dict[str, Any]) -> Any:
+    async def run() -> Any:
+        result = await server.call_tool(name, arguments)
+        if isinstance(result, tuple):
+            content, structured = result
+            if isinstance(structured, dict) and set(structured) == {"result"}:
+                return structured["result"]
+            return structured if structured is not None else json.loads(content[0].text)
+        return json.loads(result[0].text)
+
+    return asyncio.run(run())
+
+
+def _tool_names(server) -> set[str]:
+    async def run() -> set[str]:
+        return {tool.name for tool in await server.list_tools()}
+
+    return asyncio.run(run())
+
+
+def test_importing_cli_does_not_import_mcp() -> None:
+    assert cli.main(["--help"]) == 0
+
+
+def test_server_registers_expected_tools(tmp_path: Path) -> None:
+    server = create_server(tmp_path)
+
+    assert _tool_names(server) == {
+        "claim_next_task",
+        "submit_for_review",
+        "next_review",
+        "request_changes",
+        "approve",
+        "get_issue",
+        "list_queue",
+    }
+
+
+def test_claim_next_task_claims_only_once(tmp_path: Path) -> None:
+    issues_dir = tmp_path / "docs" / "issues"
+    write_issue(issues_dir / "active" / "001_first.md", issue_text(1, "First"))
+    write_indexes(issues_dir)
+    server = create_server(tmp_path)
+
+    first = _call(server, "claim_next_task", {"assignee": "codex"})
+    second = _call(server, "claim_next_task", {"assignee": "codex"})
+
+    assert first["id"] == 1
+    assert first["assignee"] == "codex"
+    assert first["stage"] == "implementing"
+    assert "body" in first
+    assert second["status"] == "none"
+
+
+def test_review_round_trip_and_approve(tmp_path: Path) -> None:
+    issues_dir = tmp_path / "docs" / "issues"
+    write_issue(
+        issues_dir / "active" / "001_first.md",
+        issue_text(1, "First", status="in_progress", assignee="codex", stage="implementing"),
+    )
+    write_indexes(issues_dir)
+    server = create_server(tmp_path)
+
+    submitted = _call(
+        server,
+        "submit_for_review",
+        {"id": 1, "summary": "Implemented.", "branch": "codex/test", "commit": "abc123"},
+    )
+    review = _call(server, "next_review", {})
+    approved = _call(server, "approve", {"id": 1, "verification": "uv run pytest"})
+
+    assert submitted["assignee"] == "claude"
+    assert submitted["stage"] == "review"
+    assert review["id"] == 1
+    assert "body" in review
+    assert approved["status"] == "completed"
+    assert approved["stage"] == "done"
+    assert (issues_dir / "completed" / "001_first.md").exists()
+
+
+def test_request_changes_returns_issue_to_codex(tmp_path: Path) -> None:
+    issues_dir = tmp_path / "docs" / "issues"
+    write_issue(
+        issues_dir / "active" / "001_first.md",
+        issue_text(1, "First", status="in_progress", assignee="claude", stage="review"),
+    )
+    write_indexes(issues_dir)
+    server = create_server(tmp_path)
+
+    returned = _call(server, "request_changes", {"id": 1, "notes": "Add tests."})
+    queue = _call(server, "list_queue", {"assignee": "codex", "stage": "changes_requested"})
+    issue = _call(server, "get_issue", {"id": 1})
+
+    assert returned["assignee"] == "codex"
+    assert returned["stage"] == "changes_requested"
+    assert [item["id"] for item in queue] == [1]
+    assert issue["id"] == 1
+    assert "body" in issue
