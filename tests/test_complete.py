@@ -32,6 +32,8 @@ def test_complete_moves_issue_updates_frontmatter_and_regenerates_indexes(
     assert completed.exists()
     content = completed.read_text(encoding="utf-8")
     assert "status: completed" in content
+    assert "stage: done" in content
+    assert "assignee:" not in content
     assert "completed:" in content
     assert "- Implemented the command." in content
     assert "- Verification: `uv run pytest`" in content

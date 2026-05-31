@@ -5,7 +5,17 @@ from __future__ import annotations
 import argparse
 from collections.abc import Sequence
 
-from issuekit.commands import check_encoding, complete, generate_indexes, info, init, validate
+from issuekit.commands import (
+    check_encoding,
+    claim,
+    complete,
+    generate_indexes,
+    handoff,
+    info,
+    init,
+    queue,
+    validate,
+)
 
 
 COMMANDS = (
@@ -13,6 +23,10 @@ COMMANDS = (
     "validate",
     "generate-indexes",
     "complete",
+    "claim",
+    "submit-review",
+    "request-changes",
+    "queue",
     "check-encoding",
     "init",
 )
@@ -61,6 +75,40 @@ def build_parser() -> argparse.ArgumentParser:
     complete_parser.add_argument("--summary", help="Completion summary.")
     complete_parser.add_argument("--verification", help="Verification notes.")
     complete_parser.set_defaults(func=complete.run)
+
+    claim_parser = subparsers.add_parser(
+        "claim",
+        help="Claim the next issue for an assignee.",
+    )
+    claim_parser.add_argument("--assignee", required=True, help="Assignee to claim for.")
+    claim_parser.add_argument("--priority", choices=("high", "medium", "low"), help="Priority filter.")
+    claim_parser.set_defaults(func=claim.run)
+
+    submit_review_parser = subparsers.add_parser(
+        "submit-review",
+        help="Submit an issue for review.",
+    )
+    submit_review_parser.add_argument("id", help="Issue id to submit.")
+    submit_review_parser.add_argument("--summary", required=True, help="ASCII handoff summary.")
+    submit_review_parser.add_argument("--branch", help="Branch containing the implementation.")
+    submit_review_parser.add_argument("--commit", help="Commit containing the implementation.")
+    submit_review_parser.set_defaults(func=handoff.run_submit_review)
+
+    request_changes_parser = subparsers.add_parser(
+        "request-changes",
+        help="Return an issue to codex with requested changes.",
+    )
+    request_changes_parser.add_argument("id", help="Issue id to return.")
+    request_changes_parser.add_argument("--notes", required=True, help="ASCII review feedback.")
+    request_changes_parser.set_defaults(func=handoff.run_request_changes)
+
+    queue_parser = subparsers.add_parser(
+        "queue",
+        help="List active issues for an assignee.",
+    )
+    queue_parser.add_argument("--assignee", required=True, help="Assignee to list.")
+    queue_parser.add_argument("--stage", help="Workflow stage filter.")
+    queue_parser.set_defaults(func=queue.run)
 
     check_encoding_parser = subparsers.add_parser(
         "check-encoding",

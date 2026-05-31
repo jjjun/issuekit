@@ -10,6 +10,10 @@ EXPECTED_COMMANDS = {
     "validate",
     "generate-indexes",
     "complete",
+    "claim",
+    "submit-review",
+    "request-changes",
+    "queue",
     "check-encoding",
     "init",
 }
@@ -62,7 +66,18 @@ def test_complete_requires_id(capsys: pytest.CaptureFixture[str]) -> None:
 
 @pytest.mark.parametrize("command", sorted(EXPECTED_COMMANDS))
 def test_handlers_are_stubs(command: str) -> None:
-    if command in {"check-encoding", "complete", "generate-indexes", "info", "init", "validate"}:
+    if command in {
+        "check-encoding",
+        "claim",
+        "complete",
+        "generate-indexes",
+        "info",
+        "init",
+        "queue",
+        "request-changes",
+        "submit-review",
+        "validate",
+    }:
         pytest.skip(f"{command} is implemented")
 
     argv = [command]
