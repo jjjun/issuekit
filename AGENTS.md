@@ -1,5 +1,21 @@
 # issuekit - Agent Guidelines
 
+## Handoff protocol (codex)
+
+Codex implements issuekit tasks from `docs/issues/active/`.
+
+1. Call the issuekit MCP tool `claim_next_task(assignee="codex")`.
+2. Implement the claimed issue on a branch and make focused commits.
+3. Run the relevant tests and `uv run issuekit check-encoding`.
+4. Call `submit_for_review(id, summary, branch, commit)` with an ASCII summary,
+   the branch name, and the implementation commit.
+5. If Claude returns the issue with `stage=changes_requested`, call
+   `claim_next_task(assignee="codex")` again, address the feedback, commit, and
+   submit for review again.
+
+Codex owns implementation. Claude owns proposals, codex-ready issues, and
+review.
+
 ## 概要
 
 `issuekit` は `docs/issues/` ローカル issue トラッカー規約を複数リポジトリで共有するための

@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "issuekit": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--group",
+        "mcp",
+        "issuekit-mcp"
+      ],
+      "cwd": "${workspaceFolder}"
+    }
+  }
+}

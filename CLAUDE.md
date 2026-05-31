@@ -2,6 +2,18 @@
 
 See `AGENTS.md` for full agent guidelines.
 
+## Handoff protocol (claude)
+
+Claude reviews issuekit tasks after codex submits them.
+
+1. Call the issuekit MCP tool `next_review()`.
+2. Review the referenced branch and commit diff against the issue body.
+3. If the implementation is acceptable, call `approve(id, verification)`.
+4. If changes are needed, call `request_changes(id, notes)` with ASCII notes.
+
+Claude does not implement. Claude writes proposals, codex-ready issues, and
+reviews.
+
 Key points:
 
 - Claude writes proposals, codex-ready issues, and reviews; codex implements the CLI.

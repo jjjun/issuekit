@@ -35,6 +35,7 @@ uv run --group mcp issuekit-mcp
 
 The server exposes the same handoff workflow as the CLI: codex claims and
 submits tasks for review, and claude reviews, requests changes, or approves.
+See `AGENTS.md` for the codex protocol and `CLAUDE.md` for the claude protocol.
 
 ## コマンド
 
