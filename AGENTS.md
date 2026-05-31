@@ -4,14 +4,24 @@
 
 Codex implements issuekit tasks from `docs/issues/active/`.
 
-1. Call the issuekit MCP tool `claim_next_task(assignee="codex")`.
-2. Implement the claimed issue on a branch and make focused commits.
-3. Run the relevant tests and `uv run issuekit check-encoding`.
-4. Call `submit_for_review(id, summary, branch, commit)` with an ASCII summary,
+When the user asks codex to work on an issue in open-ended terms (for example
+"issue の対応をお願いします", "handle the next issue", "take the queue"), do not
+wait for explicit commands. Run this protocol end to end:
+
+1. Call the issuekit MCP tool `claim_next_task(assignee="codex")`. The returned
+   payload includes the issue body, which is the spec to implement. If it
+   returns no issue, report that the queue is empty and stop.
+2. Read the claimed issue (Problem, Implementation Plan, Test Plan) and lay out
+   a short plan: the files to change and the order of steps. Confirm the plan
+   matches the issue scope before writing code; do not expand beyond it.
+3. Implement the claimed issue on a branch and make focused commits.
+4. Run the relevant tests and `uv run issuekit check-encoding`.
+5. Call `submit_for_review(id, summary, branch, commit)` with an ASCII summary,
    the branch name, and the implementation commit.
-5. If Claude returns the issue with `stage=changes_requested`, call
-   `claim_next_task(assignee="codex")` again, address the feedback, commit, and
-   submit for review again.
+6. If Claude returns the issue with `stage=changes_requested`, call
+   `claim_next_task(assignee="codex")` again, read the "## Review Feedback"
+   note, re-plan for just that feedback, address it, commit, and submit for
+   review again.
 
 Codex owns implementation. Claude owns proposals, codex-ready issues, and
 review.
