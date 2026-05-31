@@ -16,7 +16,14 @@ def issue_text(
     priority: str = "medium",
     created: str = "2026-01-01",
     completed: str = "",
+    assignee: str = "",
+    stage: str = "",
 ) -> str:
+    workflow_lines = ""
+    if assignee:
+        workflow_lines += f"assignee: {assignee}\n"
+    if stage:
+        workflow_lines += f"stage: {stage}\n"
     return (
         "---\n"
         f"id: {issue_id}\n"
@@ -24,6 +31,7 @@ def issue_text(
         f"priority: {priority}\n"
         f"created: {created}\n"
         f"completed: {completed}\n"
+        f"{workflow_lines}"
         f"title: {title}\n"
         "---\n\n"
         f"# Issue #{issue_id}: {title}\n"

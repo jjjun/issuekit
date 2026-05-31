@@ -15,6 +15,7 @@ from issuekit.core import (
     group_issues_by_id,
     has_mojibake,
     has_non_ascii,
+    is_valid_workflow_token,
     parse_frontmatter_id,
     read_all_issues,
     read_index_files,
@@ -69,6 +70,31 @@ def run(_args) -> int:
                     f"Issue frontmatter has invalid priority \"{metadata.get('priority', '')}\": "
                     f"{issue.relative_path}"
                 )
+
+            assignee = metadata.get("assignee", "")
+            if assignee:
+                if not is_valid_workflow_token(assignee):
+                    errors.append(
+                        f"Issue frontmatter has invalid assignee token \"{assignee}\": "
+                        f"{issue.relative_path}"
+                    )
+                if assignee not in config.assignees:
+                    errors.append(
+                        f"Issue frontmatter has unknown assignee \"{assignee}\": "
+                        f"{issue.relative_path}"
+                    )
+
+            stage = metadata.get("stage", "")
+            if stage:
+                if not is_valid_workflow_token(stage):
+                    errors.append(
+                        f"Issue frontmatter has invalid stage token \"{stage}\": "
+                        f"{issue.relative_path}"
+                    )
+                if stage not in config.stages:
+                    errors.append(
+                        f"Issue frontmatter has unknown stage \"{stage}\": {issue.relative_path}"
+                    )
 
             if issue.status == "completed" and metadata.get("status") != "completed":
                 errors.append(

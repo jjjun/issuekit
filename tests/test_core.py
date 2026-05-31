@@ -102,5 +102,7 @@ def test_load_config_reads_tool_issuekit(tmp_path: Path) -> None:
         recent_count=5,
         ascii_id_threshold=100,
         issues_dir="custom/issues",
+        assignees=IssuekitConfig.assignees,
+        stages=IssuekitConfig.stages,
     )
     assert config.issues_path(tmp_path) == tmp_path / "custom" / "issues"
