@@ -242,6 +242,11 @@ name = "issuekit"
 version = "0.1.0"
 source = { editable = "." }
 
+[package.optional-dependencies]
+mcp = [
+    { name = "mcp" },
+]
+
 [package.dev-dependencies]
 dev = [
     { name = "pytest" },
@@ -251,6 +256,8 @@ mcp = [
 ]
 
 [package.metadata]
+requires-dist = [{ name = "mcp", marker = "extra == 'mcp'", specifier = ">=1.0" }]
+provides-extras = ["mcp"]
 
 [package.metadata.requires-dev]
 dev = [{ name = "pytest", specifier = ">=8.3.2,<9" }]

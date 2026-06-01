@@ -27,7 +27,18 @@ uv run issuekit --help
 
 ## MCP server
 
-Install the optional MCP group and start the stdio server with:
+Install the MCP server once as a global tool:
+
+```powershell
+uv tool install "issuekit[mcp] @ git+https://github.com/jjjun/issuekit.git"
+```
+
+Then register `issuekit-mcp` with your MCP client for each repo that uses
+issuekit. The server resolves `docs/issues/` from the client's working
+directory, so the same global binary works across repos.
+
+For local development, install the optional MCP group and start the stdio server
+from a checkout with:
 
 ```powershell
 uv run --group mcp issuekit-mcp
