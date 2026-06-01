@@ -5,6 +5,11 @@ from issuekit import cli
 from tests.issue_helpers import issue_text, write_indexes, write_issue
 
 
+def assert_single_frontmatter_body_gap(content: str) -> None:
+    assert "\n---\n\n# Issue" in content
+    assert "\n---\n\n\n" not in content
+
+
 def test_claim_command_claims_issue_and_updates_indexes(
     tmp_path: Path,
     monkeypatch,
@@ -22,6 +27,9 @@ def test_claim_command_claims_issue_and_updates_indexes(
     assert "id=1" in captured.out
     assert "assignee=codex stage=implementing" in captured.out
     assert "in_progress" in (issues_dir / "indexes" / "active.md").read_text(encoding="utf-8")
+    assert_single_frontmatter_body_gap(
+        (issues_dir / "active" / "001_first.md").read_text(encoding="utf-8")
+    )
     assert cli.main(["validate"]) == 0
 
 
@@ -54,6 +62,7 @@ def test_handoff_commands_round_trip_issue(tmp_path: Path, monkeypatch, capsys) 
     assert request_exit == 0
     assert "assignee=claude stage=review" in captured.out
     assert "assignee=codex stage=changes_requested" in captured.out
+    assert_single_frontmatter_body_gap(content)
     assert "## Handoff" in content
     assert "## Review Feedback" in content
     assert cli.main(["validate"]) == 0

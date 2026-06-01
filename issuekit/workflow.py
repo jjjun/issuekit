@@ -227,7 +227,7 @@ def _write_active_issue(
         "stage": issue.stage if stage is None else stage,
         "title": issue.title,
     }
-    body = frontmatter.body.rstrip()
+    body = frontmatter.body.strip("\n")
     if extra_body:
         body = f"{body}\n{extra_body.rstrip()}"
     write_issue_atomic(issue.file_path, f"{format_issue_frontmatter(data)}{body}\n")

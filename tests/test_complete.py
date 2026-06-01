@@ -5,6 +5,11 @@ from issuekit import cli
 from tests.issue_helpers import issue_text, make_issue_tree, write_issue
 
 
+def assert_single_frontmatter_body_gap(content: str) -> None:
+    assert "\n---\n\n# Issue" in content
+    assert "\n---\n\n\n" not in content
+
+
 def test_complete_moves_issue_updates_frontmatter_and_regenerates_indexes(
     tmp_path: Path,
     monkeypatch,
@@ -34,6 +39,7 @@ def test_complete_moves_issue_updates_frontmatter_and_regenerates_indexes(
     assert "status: completed" in content
     assert "stage: done" in content
     assert "assignee:" not in content
+    assert_single_frontmatter_body_gap(content)
     assert "completed:" in content
     assert "- Implemented the command." in content
     assert "- Verification: `uv run pytest`" in content
@@ -71,6 +77,25 @@ def test_complete_writes_without_bom_or_crlf(tmp_path: Path, monkeypatch) -> Non
     content = (issues_dir / "completed" / "001_first.md").read_bytes()
     assert not content.startswith(b"\xef\xbb\xbf")
     assert b"\r\n" not in content
+
+
+def test_complete_normalizes_accumulated_frontmatter_body_gap(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    issues_dir = tmp_path / "docs" / "issues"
+    write_issue(
+        issues_dir / "active" / "001_first.md",
+        issue_text(1, "First").replace("---\n\n# Issue", "---\n\n\n\n# Issue"),
+    )
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = cli.main(["complete", "1", "--summary", "Approved."])
+
+    content = (issues_dir / "completed" / "001_first.md").read_text(encoding="utf-8")
+    assert exit_code == 0
+    assert_single_frontmatter_body_gap(content)
+    assert "- Approved." in content
 
 
 def test_complete_rejects_non_utf8_issue_without_modifying_it(

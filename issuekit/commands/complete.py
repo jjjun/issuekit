@@ -88,7 +88,7 @@ def complete_issue(
         "title": issue.title,
     }
     next_content = format_issue_frontmatter(data) + _append_completion_note(
-        frontmatter.body,
+        frontmatter.body.strip("\n"),
         summary=summary,
         verification=verification,
         completed_date=completed_date,
