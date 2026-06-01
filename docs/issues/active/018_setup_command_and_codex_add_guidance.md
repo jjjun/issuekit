@@ -29,6 +29,14 @@ that bit us during rollout:
   `.codex/config.toml`, but if a user relies on the global `~/.codex/config.toml`
   or the `codex mcp` store, they need `codex mcp add issuekit -- issuekit-mcp`.
   There is no guidance telling them when that is needed.
+- Reinstalling or upgrading the global tool invalidates the MCP connections of
+  agent sessions that are already running. An agent (codex or Claude Code)
+  spawns the `issuekit-mcp` server once at session start and holds that stdio
+  connection; if the binary is killed or replaced underneath it, the next tool
+  call fails with a closed-transport error (observed: "MCP transport closed,
+  claim failed; falling back to issuekit claim --assignee codex"). The CLI keeps
+  working because each CLI invocation is a fresh short-lived process. There is no
+  note telling users to restart their agent sessions after a global reinstall.
 
 There is no single command that checks these preconditions and reports what is
 wrong, so each new repo rediscovers the same traps.
@@ -70,7 +78,10 @@ command never kills processes and never edits files outside the repo.
      clients hold `issuekit-mcp.exe`), then
      `uv tool install --reinstall "issuekit[mcp] @ <absolute-path-or-url>"`.
      Recommend an absolute path, never a bare `.`, to avoid the cwd-dependent
-     install we observed.
+     install we observed. State that after any reinstall or upgrade, running
+     agent sessions (codex, Claude Code) must be restarted, because they hold a
+     stdio connection to the old server process and will otherwise hit a
+     closed-transport error on the next tool call.
    - Returns 0 when the repo-side scaffold is in place even if optional global
      steps remain; returns non-zero only on a real failure (for example cannot
      write the repo files).

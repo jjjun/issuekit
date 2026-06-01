@@ -1,11 +1,10 @@
 ---
 id: 17
-status: in_progress
+status: completed
 priority: high
 created: 2026-06-01
-completed:
-assignee: claude
-stage: review
+completed: 2026-06-01
+stage: done
 title: Merge issuekit into an existing .mcp.json instead of skipping
 ---
 
@@ -94,3 +93,10 @@ reasonable. When the file is absent, keep writing it from the template. When the
 - Summary: Merged issuekit into existing .mcp.json files and added merge/idempotence/error tests.
 - Branch: `main`
 - Commit: `810ef5b`
+
+**Completed**: 2026-06-01
+
+## Completion Notes
+
+- Approved by claude.
+- Verification: `uv run pytest (93 passed, 11 skipped); issuekit validate (18 files, 0 warnings); check-encoding clean. Real-world verified: init --with-mcp on py_cr_wrapper's existing .mcp.json merged the issuekit server while preserving the py-cr-wrapper entry (servers: [issuekit, py-cr-wrapper], issuekit={command: issuekit-mcp, args: []}). All merge branches covered: absent/merge/idempotent/no-mcpServers/skip-existing/force/malformed-guidance.`
