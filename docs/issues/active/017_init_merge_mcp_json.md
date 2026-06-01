@@ -4,8 +4,8 @@ status: in_progress
 priority: high
 created: 2026-06-01
 completed:
-assignee: codex
-stage: implementing
+assignee: claude
+stage: review
 title: Merge issuekit into an existing .mcp.json instead of skipping
 ---
 
@@ -88,3 +88,9 @@ reasonable. When the file is absent, keep writing it from the template. When the
 - `issuekit/templates/mcp.json` (issuekit entry shape)
 - Issue #16 (added `--with-mcp`; this fixes its `.mcp.json` skip limitation)
 - Verified gap: `py_cr_wrapper/.mcp.json` (existing server, issuekit skipped)
+
+## Handoff
+
+- Summary: Merged issuekit into existing .mcp.json files and added merge/idempotence/error tests.
+- Branch: `main`
+- Commit: `810ef5b`
