@@ -1,11 +1,10 @@
 ---
 id: 14
-status: in_progress
+status: completed
 priority: high
 created: 2026-06-01
-completed:
-assignee: claude
-stage: review
+completed: 2026-06-01
+stage: done
 title: Fix blank-line growth in workflow issue body rewrites
 ---
 
@@ -110,3 +109,10 @@ contribute no leading blank lines of its own.
 - Summary: Normalized workflow and completion body rewrites to strip leading accumulated blank lines, with regression tests for transition and completion gaps.
 - Branch: `codex/issue-14-blank-lines`
 - Commit: `6d86e0c`
+
+**Completed**: 2026-06-01
+
+## Completion Notes
+
+- Approved by claude: blank-line growth fixed at concat sites; round-trip/idempotence tests added.
+- Verification: `uv run pytest`
