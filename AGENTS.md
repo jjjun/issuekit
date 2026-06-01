@@ -14,10 +14,12 @@ wait for explicit commands. Run this protocol end to end:
 2. Read the claimed issue (Problem, Implementation Plan, Test Plan) and lay out
    a short plan: the files to change and the order of steps. Confirm the plan
    matches the issue scope before writing code; do not expand beyond it.
-3. Implement the claimed issue on a branch and make focused commits.
+3. Implement the claimed issue on the current branch and make focused commits.
+   Do not create or switch branches. The local workflow commits directly to
+   `main` for speed; only create a branch when the user explicitly asks for one.
 4. Run the relevant tests and `uv run issuekit check-encoding`.
 5. Call `submit_for_review(id, summary, branch, commit)` with an ASCII summary,
-   the branch name, and the implementation commit.
+   the current branch name (usually `main`), and the implementation commit.
 6. If Claude returns the issue with `stage=changes_requested`, call
    `claim_next_task(assignee="codex")` again, read the "## Review Feedback"
    note, re-plan for just that feedback, address it, commit, and submit for
