@@ -24,6 +24,18 @@ shipping a new issuekit version updates every repo at once. Each repo should
 only carry a thin, stable reference that does not change when the protocol text
 changes.
 
+Confirmed codex behavior (verified 2026-06-01 with codex CLI 0.133.0, see issue
+#13 follow-up): codex merges MCP server registrations from the global
+`~/.codex/config.toml` and the project-local `.codex/config.toml`, resolved
+against the working directory codex is launched from. The earlier registration
+used `command = "uv", args = ["run", "--group", "mcp", "issuekit-mcp"]`, which
+only resolves when codex is launched from this checkout (so `uv run` can find
+the project) and silently fails to start the server everywhere else; codex then
+reports that no issuekit MCP tools are available. The fix is to register the
+global `issuekit-mcp` binary (PATH, cwd-independent) from issue #15, so the
+server starts regardless of how or where the repo is opened. `issuekit init`
+must scaffold that cwd-independent form, not the `uv run` form.
+
 ## Proposed Solution
 
 Make issuekit the single source of truth for the handoff protocol text, exposed
@@ -72,14 +84,21 @@ edits are required.
      "args": [] } } }`. Do not hardcode an absolute `cwd`; the server resolves
      the target repo from its working directory.
    - `codex_config.toml`: the `[mcp_servers.issuekit]` block with
-     `command = "issuekit-mcp"`, `args = []`.
+     `command = "issuekit-mcp"`, `args = []`. Do NOT emit the `uv run --group
+     mcp issuekit-mcp` form: it only works when codex launches from the
+     issuekit checkout and fails elsewhere (the bug this issue fixes). The
+     server resolves the target repo from its working directory, so codex must
+     be launched from the consuming repo's root; document that in the reference
+     block (step 4 `handoff_reference.md`).
    - `handoff_reference.md`: a short, protocol-version-independent block, for
      example: "## Handoff protocol\n\nThis repo uses the issuekit two-agent
      handoff. For the current steps run `issuekit protocol --agent codex`
      (codex) or `issuekit protocol --agent claude` (claude), or read the
      issuekit MCP server instructions / `get_protocol` tool. Do not copy the
-     steps here; issuekit is the source of truth." The reference text must not
-     restate the steps, so it never needs updating when the protocol changes.
+     steps here; issuekit is the source of truth." Also state that codex/Claude
+     Code must be launched from the repo root so the MCP server resolves the
+     correct `docs/issues/`. The reference text must not restate the steps, so
+     it never needs updating when the protocol changes.
 5. Add `--with-mcp` to the `init` subparser (default off; current behavior
    unchanged). When set, `init_repo` writes, using the existing idempotent
    no-overwrite-unless-force logic:
@@ -116,6 +135,15 @@ edits are required.
   preserved.
 - Default off: `init_repo(tmp)` writes none of the MCP files.
 - All written files are ASCII-only with no BOM/CRLF.
+- The scaffolded `.codex/config.toml` and `.mcp.json` use `command =
+  "issuekit-mcp"` and never the `uv run` form (assert by string match).
+- Manual end-to-end (the check that issue #13 skipped and let the `uv run`
+  regression through): with `issuekit[mcp]` installed globally and a repo
+  scaffolded via `init --with-mcp`, start the issuekit MCP server and drive an
+  `initialize` + `tools/list` handshake (line-delimited JSON over stdio); assert
+  the seven tools appear: `claim_next_task`, `submit_for_review`, `next_review`,
+  `request_changes`, `approve`, `get_issue`, `list_queue`. Then confirm `codex
+  mcp get issuekit` resolves to `command: issuekit-mcp`.
 - Run full `uv run pytest` and `uv run issuekit validate`.
 
 ## Related Resources
