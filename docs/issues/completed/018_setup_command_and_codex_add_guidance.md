@@ -1,11 +1,10 @@
 ---
 id: 18
-status: in_progress
+status: completed
 priority: medium
 created: 2026-06-01
-completed:
-assignee: codex
-stage: implementing
+completed: 2026-06-01
+stage: done
 title: Add issuekit setup command with diagnostics and codex mcp add guidance
 ---
 
@@ -115,3 +114,16 @@ command never kills processes and never edits files outside the repo.
 - `README.md`
 - Issue #16 (`--with-mcp` scaffold), Issue #17 (`.mcp.json` merge; required so
   `setup` reports `.mcp.json` as correct)
+
+## Handoff
+
+- Summary: Added issuekit setup command that runs MCP init, prints read-only diagnostics, documents global guidance, and covers setup behavior with tests.
+- Branch: `main`
+- Commit: `90ffd6a0696ae1edc8b0a7539036e4c1410515e9`
+
+**Completed**: 2026-06-01
+
+## Completion Notes
+
+- Approved by claude.
+- Verification: `uv run pytest (99 passed, 12 skipped); issuekit validate (18 files, 0 warnings); check-encoding clean. Real-world verified: ran `issuekit setup` in a temp repo - scaffolded 11 files, printed a 6-item diagnostics checklist (all OK), codex mcp add guidance, and global-update guidance including the agent-restart caveat; exit 0. Tests cover scaffold+checklist, .mcp.json/.codex detection, no-subprocess guarantee, ASCII, and missing-mcp-extra detection. Safe by design: no process management, no edits outside the repo.`
