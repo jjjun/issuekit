@@ -1,11 +1,10 @@
 ---
 id: 15
-status: in_progress
+status: completed
 priority: high
 created: 2026-06-01
-completed:
-assignee: claude
-stage: review
+completed: 2026-06-01
+stage: done
 title: Make the issuekit MCP server installable via global uv tool install
 ---
 
@@ -83,3 +82,10 @@ every project without per-repo wiring. Keep the default install dependency-free;
 - Summary: Added the mcp optional extra, lock metadata, README global install guidance, and packaging regression tests for the MCP extra and script.
 - Branch: `codex/issue-15-mcp-extra`
 - Commit: `f8118bf`
+
+**Completed**: 2026-06-01
+
+## Completion Notes
+
+- Approved by claude: mcp optional extra added, core stays dependency-free, README global-install guidance, packaging regression tests. Full suite green.
+- Verification: `uv run pytest`
