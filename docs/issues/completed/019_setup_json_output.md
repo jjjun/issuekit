@@ -1,11 +1,10 @@
 ---
 id: 19
-status: in_progress
+status: completed
 priority: medium
 created: 2026-06-01
-completed:
-assignee: codex
-stage: implementing
+completed: 2026-06-01
+stage: done
 title: Add machine-readable --json output to issuekit setup
 ---
 
@@ -91,3 +90,16 @@ new diagnostic logic.
 - `issuekit/cli.py` (`setup` subparser)
 - Issue #18 (added `setup` and the diagnostics)
 - infra-toolkit #67 (the rollout orchestrator that consumes this JSON)
+
+## Handoff
+
+- Summary: Added setup --json output with stable scaffold and diagnostic payload, README automation guidance, and JSON contract tests.
+- Branch: `main`
+- Commit: `d6884196569a97ef13378b300e3597af232e00f6`
+
+**Completed**: 2026-06-01
+
+## Completion Notes
+
+- Approved by claude.
+- Verification: `uv run pytest (104 passed, 12 skipped); issuekit validate (19 files, 0 warnings); check-encoding clean. Real-world verified: `issuekit setup --json` in a temp repo emits valid JSON (keys: ok/scaffold/diagnostics), ok=true, scaffold.written includes .mcp.json, all diagnostics OK, ASCII-only; default `setup` (no --json) still prints the human checklist. Single source: build_json_payload reuses collect_diagnostics, and a test asserts the JSON entries equal collect_diagnostics so they cannot drift. ok=true iff no ACTION; exit code stays 0.`
