@@ -1,12 +1,13 @@
 ---
 id: 17
-status: active
+status: in_progress
 priority: high
 created: 2026-06-01
 completed:
+assignee: codex
+stage: implementing
 title: Merge issuekit into an existing .mcp.json instead of skipping
 ---
-
 
 # Issue #17: Merge issuekit into an existing .mcp.json instead of skipping
 

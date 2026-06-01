@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from importlib import resources
+import json
 from pathlib import Path
 
 from issuekit.commands.generate_indexes import write_index_files
@@ -96,10 +97,51 @@ def _write_pre_commit(cwd: Path, force: bool, result: InitResult) -> None:
 
 
 def _write_mcp_scaffold(cwd: Path, force: bool, result: InitResult) -> None:
-    _write_template(cwd, cwd / ".mcp.json", "mcp.json", force, result)
+    _write_mcp_json(cwd, force, result)
     _write_codex_config(cwd, force, result)
     _write_handoff_reference(cwd, cwd / "AGENTS.md", result)
     _write_handoff_reference(cwd, cwd / "CLAUDE.md", result)
+
+
+def _write_mcp_json(cwd: Path, force: bool, result: InitResult) -> None:
+    path = cwd / ".mcp.json"
+    if not path.exists() or force:
+        _write_template(cwd, path, "mcp.json", force, result)
+        return
+
+    template = json.loads(_template_text("mcp.json"))
+    issuekit_server = template["mcpServers"]["issuekit"]
+    content = path.read_text(encoding="utf-8-sig", errors="ignore")
+    try:
+        data = json.loads(content)
+    except json.JSONDecodeError:
+        _add_mcp_json_guidance(result)
+        return
+
+    if not isinstance(data, dict):
+        _add_mcp_json_guidance(result)
+        return
+
+    mcp_servers = data.setdefault("mcpServers", {})
+    if not isinstance(mcp_servers, dict):
+        _add_mcp_json_guidance(result)
+        return
+
+    if "issuekit" in mcp_servers:
+        result.skipped.append(".mcp.json")
+        return
+
+    mcp_servers["issuekit"] = issuekit_server
+    path.write_text(f"{json.dumps(data, indent=2)}\n", encoding="utf-8", newline="\n")
+    result.written.append(".mcp.json")
+
+
+def _add_mcp_json_guidance(result: InitResult) -> None:
+    result.skipped.append(".mcp.json")
+    result.guidance.append(
+        "Could not merge .mcp.json automatically. Add this issuekit server manually:\n\n"
+        f"{_template_text('mcp.json').rstrip()}"
+    )
 
 
 def _write_codex_config(cwd: Path, force: bool, result: InitResult) -> None:
