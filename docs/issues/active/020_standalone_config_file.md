@@ -1,12 +1,13 @@
 ---
 id: 20
-status: active
+status: in_progress
 priority: medium
 created: 2026-06-01
 completed:
+assignee: codex
+stage: implementing
 title: Read issuekit config from a standalone issuekit.toml for non-Python repos
 ---
-
 
 # Issue #20: Read issuekit config from a standalone issuekit.toml for non-Python repos
 

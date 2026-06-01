@@ -112,6 +112,34 @@ copying the steps.
 
 The issue file specification lives in `docs/issues/README.md`.
 
+## Configuration
+
+Python repositories can configure issuekit in `pyproject.toml`:
+
+```toml
+[tool.issuekit]
+issues_dir = "docs/issues"
+ascii_id_threshold = 407
+recent_count = 30
+assignees = ["codex", "claude"]
+stages = ["todo", "implementing", "review", "changes_requested", "done"]
+```
+
+Non-Python repositories can use a standalone `issuekit.toml` at the repo root
+with the same keys at the top level:
+
+```toml
+issues_dir = "docs/issues"
+ascii_id_threshold = 407
+recent_count = 30
+assignees = ["codex", "claude"]
+stages = ["todo", "implementing", "review", "changes_requested", "done"]
+```
+
+When both files exist, `[tool.issuekit]` in `pyproject.toml` takes precedence.
+If `pyproject.toml` exists without `[tool.issuekit]`, issuekit falls back to
+`issuekit.toml`.
+
 ## Development
 
 This repo dogfoods issuekit. Implementation tasks live in `docs/issues/active/`

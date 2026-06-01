@@ -23,12 +23,7 @@ class IssuekitConfig:
 
 
 def load_config(cwd: Path | str = ".") -> IssuekitConfig:
-    pyproject_path = Path(cwd) / "pyproject.toml"
-    if not pyproject_path.exists():
-        return IssuekitConfig()
-
-    data = tomllib.loads(pyproject_path.read_text(encoding="utf-8-sig"))
-    raw_config = data.get("tool", {}).get("issuekit", {})
+    raw_config = _load_raw_config(Path(cwd))
     return IssuekitConfig(
         recent_count=int(raw_config.get("recent_count", IssuekitConfig.recent_count)),
         ascii_id_threshold=int(
@@ -38,6 +33,26 @@ def load_config(cwd: Path | str = ".") -> IssuekitConfig:
         assignees=_string_tuple(raw_config.get("assignees", IssuekitConfig.assignees)),
         stages=_string_tuple(raw_config.get("stages", IssuekitConfig.stages)),
     )
+
+
+def _load_raw_config(cwd: Path) -> dict[str, object]:
+    pyproject_path = cwd / "pyproject.toml"
+    if pyproject_path.exists():
+        data = tomllib.loads(pyproject_path.read_text(encoding="utf-8-sig"))
+        raw_config = data.get("tool", {}).get("issuekit")
+        if raw_config is not None:
+            # pyproject's [tool.issuekit] wins when present so Python repos keep
+            # their existing behavior even if a standalone config also exists.
+            return dict(raw_config)
+
+    issuekit_path = cwd / "issuekit.toml"
+    if issuekit_path.exists():
+        try:
+            return dict(tomllib.loads(issuekit_path.read_text(encoding="utf-8-sig")))
+        except tomllib.TOMLDecodeError as exc:
+            raise ValueError(f"Failed to parse {issuekit_path}: {exc}") from exc
+
+    return {}
 
 
 def _string_tuple(value: object) -> tuple[str, ...]:
