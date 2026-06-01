@@ -27,9 +27,32 @@ class Diagnostic:
 def run(args) -> int:
     cwd = Path.cwd()
     result = init_repo(cwd, force=args.force, with_mcp=True)
+    if args.json:
+        print(json.dumps(build_json_payload(cwd, result), indent=2))
+        return 0
     _print_init_result(result)
     _print_diagnostics(cwd)
     return 0
+
+
+def build_json_payload(cwd: Path, result: InitResult) -> dict[str, object]:
+    diagnostics = collect_diagnostics(cwd)
+    return {
+        "ok": all(diagnostic.status != "ACTION" for diagnostic in diagnostics),
+        "scaffold": {
+            "written": result.written,
+            "skipped": result.skipped,
+            "guidance": result.guidance,
+        },
+        "diagnostics": [
+            {
+                "status": diagnostic.status,
+                "label": diagnostic.label,
+                "details": list(diagnostic.details),
+            }
+            for diagnostic in diagnostics
+        ],
+    }
 
 
 def collect_diagnostics(cwd: Path) -> list[Diagnostic]:

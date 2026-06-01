@@ -1,12 +1,13 @@
 ---
 id: 19
-status: active
+status: in_progress
 priority: medium
 created: 2026-06-01
 completed:
+assignee: codex
+stage: implementing
 title: Add machine-readable --json output to issuekit setup
 ---
-
 
 # Issue #19: Add machine-readable --json output to issuekit setup
 

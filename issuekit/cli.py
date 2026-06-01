@@ -171,6 +171,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Overwrite existing templated files.",
     )
+    setup_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Print JSON output.",
+    )
     setup_parser.set_defaults(func=setup.run)
 
     return parser

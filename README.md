@@ -59,6 +59,17 @@ That global command is unnecessary when codex reads the repo's
 the global codex store. `issuekit setup` only edits files inside the current
 repo. It never kills processes and never edits global codex config.
 
+Automation should use the stable JSON contract:
+
+```powershell
+issuekit setup --json
+```
+
+This still scaffolds the repo, but prints one JSON object with `ok`, `scaffold`,
+and `diagnostics` fields instead of the human checklist. `ok: false` means at
+least one diagnostic still needs action, often an optional global install or
+configuration step; the command still exits 0 when repo scaffolding succeeds.
+
 The repo scaffold writes `.mcp.json`, appends `.codex/config.toml` when needed,
 and adds thin handoff references to `AGENTS.md` and `CLAUDE.md`. The generated
 MCP entries run the global `issuekit-mcp` binary; they do not use `uv run`, so
@@ -97,7 +108,7 @@ copying the steps.
 | `issuekit check-encoding [--json]` | Check tracked source files for leading BOM bytes and likely mojibake. |
 | `issuekit protocol [--agent codex\|claude]` | Print the canonical handoff protocol. |
 | `issuekit init [--with-mcp]` | Install tracker templates, encoding hooks, and optional MCP handoff scaffolding. |
-| `issuekit setup [--force]` | Run per-repo MCP handoff scaffolding and setup diagnostics. |
+| `issuekit setup [--force] [--json]` | Run per-repo MCP handoff scaffolding and setup diagnostics. |
 
 The issue file specification lives in `docs/issues/README.md`.
 

@@ -3,6 +3,7 @@ import json
 import subprocess
 
 from issuekit import cli
+from issuekit.commands.init import init_repo
 from issuekit.commands import setup
 
 
@@ -130,3 +131,83 @@ def test_setup_reports_missing_mcp_extra(monkeypatch) -> None:
         _diagnostic_status(diagnostics, "issuekit MCP server dependencies are not importable.")
         == "ACTION"
     )
+
+
+def test_setup_json_empty_repo_prints_valid_payload(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    _force_mcp_available(monkeypatch)
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = cli.main(["setup", "--json"])
+
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert exit_code == 0
+    assert isinstance(payload["ok"], bool)
+    assert ".mcp.json" in payload["scaffold"]["written"]
+    assert isinstance(payload["diagnostics"], list)
+    assert payload["diagnostics"]
+    assert all({"status", "label", "details"} == set(item) for item in payload["diagnostics"])
+
+
+def test_setup_json_ok_true_when_all_diagnostics_ok(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    _force_mcp_available(monkeypatch)
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = cli.main(["setup", "--json"])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert payload["ok"] is True
+    assert {item["status"] for item in payload["diagnostics"]} == {"OK"}
+
+
+def test_setup_json_ok_false_when_diagnostic_needs_action(tmp_path: Path, monkeypatch) -> None:
+    init_result = init_repo(tmp_path, with_mcp=True)
+    codex_config = tmp_path / ".codex" / "config.toml"
+    codex_config.unlink()
+    _force_mcp_available(monkeypatch)
+
+    payload = setup.build_json_payload(tmp_path, init_result)
+
+    assert payload["ok"] is False
+    assert any(item["status"] == "ACTION" for item in payload["diagnostics"])
+
+
+def test_setup_json_diagnostics_match_collect_diagnostics(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    _force_mcp_available(monkeypatch)
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = cli.main(["setup", "--json"])
+
+    payload = json.loads(capsys.readouterr().out)
+    diagnostics = setup.collect_diagnostics(tmp_path)
+    assert exit_code == 0
+    assert [
+        (item["status"], item["label"], item["details"]) for item in payload["diagnostics"]
+    ] == [
+        (diagnostic.status, diagnostic.label, list(diagnostic.details))
+        for diagnostic in diagnostics
+    ]
+
+
+def test_setup_json_output_is_ascii(tmp_path: Path, monkeypatch, capsys) -> None:
+    _force_mcp_available(monkeypatch)
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = cli.main(["setup", "--json"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    captured.out.encode("ascii")
