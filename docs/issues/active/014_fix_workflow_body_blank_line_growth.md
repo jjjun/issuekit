@@ -1,11 +1,13 @@
 ---
 id: 14
-status: active
+status: in_progress
 priority: high
 created: 2026-06-01
+completed:
+assignee: claude
+stage: review
 title: Fix blank-line growth in workflow issue body rewrites
 ---
-
 
 # Issue #14: Fix blank-line growth in workflow issue body rewrites
 
@@ -102,3 +104,9 @@ contribute no leading blank lines of its own.
 - Issue #11 (introduced the workflow rewrite path)
 - Issue #10 (Test Plan called for byte-for-byte round-trip; this adds the
   missing coverage)
+
+## Handoff
+
+- Summary: Normalized workflow and completion body rewrites to strip leading accumulated blank lines, with regression tests for transition and completion gaps.
+- Branch: `codex/issue-14-blank-lines`
+- Commit: `6d86e0c`
