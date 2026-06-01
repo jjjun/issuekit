@@ -4,8 +4,8 @@ status: in_progress
 priority: medium
 created: 2026-06-01
 completed:
-assignee: codex
-stage: implementing
+assignee: claude
+stage: review
 title: Read issuekit config from a standalone issuekit.toml for non-Python repos
 ---
 
@@ -84,3 +84,9 @@ the same keys, but at the top level (no `[tool.issuekit]` table nesting).
 - `README.md`
 - mine-js-monorepo migration (the JS monorepo that needs this; it will ship an
   `issuekit.toml` with a high `ascii_id_threshold` after archiving legacy issues)
+
+## Handoff
+
+- Summary: Implemented standalone issuekit.toml config loading with pyproject precedence, added config tests, and documented the standalone config file.
+- Branch: `main`
+- Commit: `1ffd2e6`
