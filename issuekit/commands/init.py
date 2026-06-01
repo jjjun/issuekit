@@ -12,6 +12,8 @@ from issuekit.core import has_non_ascii, read_all_issues
 
 
 ISSUEKIT_BLOCK_HEADER = "[tool.issuekit]"
+CODEX_MCP_HEADER = "[mcp_servers.issuekit]"
+HANDOFF_HEADER = "## Handoff protocol"
 PRE_COMMIT_GUIDANCE = """Add this hook to .pre-commit-config.yaml:
 
 repos:
@@ -33,7 +35,7 @@ class InitResult:
 
 
 def run(args) -> int:
-    result = init_repo(Path.cwd(), force=args.force)
+    result = init_repo(Path.cwd(), force=args.force, with_mcp=args.with_mcp)
     for path in result.written:
         print(f"Wrote: {path}")
     for path in result.skipped:
@@ -43,7 +45,7 @@ def run(args) -> int:
     return 0
 
 
-def init_repo(cwd: Path, *, force: bool = False) -> InitResult:
+def init_repo(cwd: Path, *, force: bool = False, with_mcp: bool = False) -> InitResult:
     result = InitResult(written=[], skipped=[], guidance=[])
     config = load_config(cwd)
     issues_dir = config.issues_path(cwd)
@@ -55,6 +57,8 @@ def init_repo(cwd: Path, *, force: bool = False) -> InitResult:
     _write_template(cwd, cwd / ".editorconfig", "editorconfig", force, result)
     _write_template(cwd, issues_dir / "README.md", "issues_README.md", force, result)
     _write_pre_commit(cwd, force, result)
+    if with_mcp:
+        _write_mcp_scaffold(cwd, force, result)
     _handle_ascii_threshold(cwd, issues_dir, result)
 
     config = load_config(cwd)
@@ -89,6 +93,51 @@ def _write_pre_commit(cwd: Path, force: bool, result: InitResult) -> None:
         return
     path.write_text(_template_text("pre-commit-config.yaml"), encoding="utf-8", newline="\n")
     result.written.append(".pre-commit-config.yaml")
+
+
+def _write_mcp_scaffold(cwd: Path, force: bool, result: InitResult) -> None:
+    _write_template(cwd, cwd / ".mcp.json", "mcp.json", force, result)
+    _write_codex_config(cwd, force, result)
+    _write_handoff_reference(cwd, cwd / "AGENTS.md", result)
+    _write_handoff_reference(cwd, cwd / "CLAUDE.md", result)
+
+
+def _write_codex_config(cwd: Path, force: bool, result: InitResult) -> None:
+    path = cwd / ".codex" / "config.toml"
+    block = _template_text("codex_config.toml").rstrip()
+    if not path.exists() or force:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(f"{block}\n", encoding="utf-8", newline="\n")
+        result.written.append(_display_path(cwd, path))
+        return
+
+    content = path.read_text(encoding="utf-8-sig", errors="ignore")
+    if CODEX_MCP_HEADER in content:
+        result.skipped.append(_display_path(cwd, path))
+        return
+
+    prefix = "\n" if content.endswith("\n") else "\n\n"
+    with path.open("a", encoding="utf-8", newline="\n") as handle:
+        handle.write(f"{prefix}{block}\n")
+    result.written.append(_display_path(cwd, path))
+
+
+def _write_handoff_reference(cwd: Path, path: Path, result: InitResult) -> None:
+    reference = _template_text("handoff_reference.md").rstrip()
+    if not path.exists():
+        path.write_text(f"# {path.name}\n\n{reference}\n", encoding="utf-8", newline="\n")
+        result.written.append(_display_path(cwd, path))
+        return
+
+    content = path.read_text(encoding="utf-8-sig", errors="ignore")
+    if HANDOFF_HEADER in content:
+        result.skipped.append(_display_path(cwd, path))
+        return
+
+    prefix = "\n" if content.endswith("\n") else "\n\n"
+    with path.open("a", encoding="utf-8", newline="\n") as handle:
+        handle.write(f"{prefix}{reference}\n")
+    result.written.append(_display_path(cwd, path))
 
 
 def _handle_ascii_threshold(cwd: Path, issues_dir: Path, result: InitResult) -> None:

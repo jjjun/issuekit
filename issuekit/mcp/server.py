@@ -12,6 +12,7 @@ from issuekit.commands.complete import complete_issue
 from issuekit.commands.generate_indexes import write_index_files
 from issuekit.config import load_config
 from issuekit.core import Issue, read_all_issues
+from issuekit.protocol import render_protocol
 from issuekit.workflow import (
     claim_next,
     find_for,
@@ -21,8 +22,12 @@ from issuekit.workflow import (
 
 
 def create_server(cwd: Path | str | None = None) -> FastMCP:
-    server = FastMCP("issuekit")
+    server = FastMCP("issuekit", instructions=render_protocol(None))
     root = Path.cwd() if cwd is None else Path(cwd)
+
+    @server.tool(description="Read the current issuekit handoff protocol.")
+    def get_protocol(agent: str | None = None) -> str:
+        return render_protocol(agent)
 
     @server.tool(
         description=(

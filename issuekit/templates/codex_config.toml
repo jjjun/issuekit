@@ -1,0 +1,3 @@
+[mcp_servers.issuekit]
+command = "issuekit-mcp"
+args = []

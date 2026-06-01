@@ -15,6 +15,7 @@ EXPECTED_COMMANDS = {
     "request-changes",
     "queue",
     "check-encoding",
+    "protocol",
     "init",
 }
 
@@ -74,6 +75,7 @@ def test_handlers_are_stubs(command: str) -> None:
         "info",
         "init",
         "queue",
+        "protocol",
         "request-changes",
         "submit-review",
         "validate",

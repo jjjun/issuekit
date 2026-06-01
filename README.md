@@ -1,24 +1,17 @@
 # issuekit
 
-`docs/issues/` ローカル issue トラッカー規約を、複数リポジトリで共有するための言語非依存 CLI です。
+`issuekit` is a language-neutral CLI for sharing the `docs/issues/` local issue
+tracker convention across repositories. It consolidates the original
+mine-js-monorepo Node scripts into a Python package that can be installed once
+and reused from each repo.
 
-mine-js-monorepo の Node 実装 (`scripts/issues-*.mjs`, `scripts/check-encoding.mjs`)
-を Python に集約し、`uv tool install` で各リポジトリから同じツールを呼べるようにします。
-
-対象リポジトリ (2026-05-28 時点):
-
-- mine-js-monorepo (JS)
-- py_cr_wrapper / infra-toolkit / mine-py / fast-domain / repom (Python)
-
-設計の経緯は mine-js-monorepo の `docs/proposals/022_issuekit_shared_issue_cli.md` を参照してください。
-
-## インストール
+## Install
 
 ```powershell
 uv tool install --from git+https://github.com/jjjun/issuekit.git issuekit
 ```
 
-ローカル開発時:
+For local development:
 
 ```powershell
 uv sync
@@ -33,9 +26,17 @@ Install the MCP server once as a global tool:
 uv tool install "issuekit[mcp] @ git+https://github.com/jjjun/issuekit.git"
 ```
 
-Then register `issuekit-mcp` with your MCP client for each repo that uses
-issuekit. The server resolves `docs/issues/` from the client's working
-directory, so the same global binary works across repos.
+Then scaffold each repository that uses issuekit:
+
+```powershell
+issuekit init --with-mcp
+```
+
+This writes `.mcp.json`, appends `.codex/config.toml` when needed, and adds thin
+handoff references to `AGENTS.md` and `CLAUDE.md`. The generated MCP entries run
+the global `issuekit-mcp` binary; they do not use `uv run`, so they work outside
+the issuekit checkout. Launch codex or Claude Code from the target repo root so
+the server resolves the correct `docs/issues/` directory.
 
 For local development, install the optional MCP group and start the stdio server
 from a checkout with:
@@ -44,24 +45,35 @@ from a checkout with:
 uv run --group mcp issuekit-mcp
 ```
 
-The server exposes the same handoff workflow as the CLI: codex claims and
-submits tasks for review, and claude reviews, requests changes, or approves.
-See `AGENTS.md` for the codex protocol and `CLAUDE.md` for the claude protocol.
+## Handoff protocol
 
-## コマンド
+The two-agent protocol is centralized in issuekit:
 
-| コマンド | 役割 |
-|----------|------|
-| `issuekit info [--json]` | 状態サマリと次の issue id (read-only) |
-| `issuekit validate` | ファイル名 / id 重複 / frontmatter / index 整合 / mojibake / ASCII を検査 |
-| `issuekit generate-indexes` | `docs/issues/indexes/*` を再生成 |
-| `issuekit complete <id> --summary "..." --verification "..."` | active -> completed 移動 + index 再生成 + validate |
-| `issuekit check-encoding [--json]` | tracked source の先頭 BOM / mojibake を検査 |
-| `issuekit init` | 規約ディレクトリ / README / `.gitattributes` / pre-commit を未導入 repo に配る |
+```powershell
+issuekit protocol
+issuekit protocol --agent codex
+issuekit protocol --agent claude
+```
 
-規約 (issue ファイル形式、status / priority、ASCII ルール) は `docs/issues/README.md` を正とします。
+The MCP server exposes the same text as its instructions and through the
+`get_protocol` tool. Consuming repos should reference this command instead of
+copying the steps.
 
-## 開発状況
+## Commands
 
-CLI 本体は未実装です。実装タスクは `docs/issues/active/` に codex-ready issue として用意しています。
-このリポジトリは issuekit 自身の issue トラッカーをドッグフードします。
+| Command | Purpose |
+|---------|---------|
+| `issuekit info [--json]` | Show tracker status and the next issue id. |
+| `issuekit validate` | Check filenames, ids, frontmatter, indexes, mojibake, and ASCII rules. |
+| `issuekit generate-indexes` | Regenerate `docs/issues/indexes/*`. |
+| `issuekit complete <id> --summary "..." --verification "..."` | Move active issue to completed, regenerate indexes, and validate. |
+| `issuekit check-encoding [--json]` | Check tracked source files for leading BOM bytes and likely mojibake. |
+| `issuekit protocol [--agent codex\|claude]` | Print the canonical handoff protocol. |
+| `issuekit init [--with-mcp]` | Install tracker templates, encoding hooks, and optional MCP handoff scaffolding. |
+
+The issue file specification lives in `docs/issues/README.md`.
+
+## Development
+
+This repo dogfoods issuekit. Implementation tasks live in `docs/issues/active/`
+as codex-ready issues.

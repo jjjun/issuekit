@@ -1,11 +1,13 @@
 ---
 id: 16
-status: active
+status: in_progress
 priority: high
 created: 2026-06-01
+completed:
+assignee: codex
+stage: implementing
 title: Centralize handoff protocol and scaffold thin references from init
 ---
-
 
 # Issue #16: Centralize handoff protocol and scaffold thin references from init
 

@@ -41,6 +41,7 @@ def test_server_registers_expected_tools(tmp_path: Path) -> None:
     server = create_server(tmp_path)
 
     assert _tool_names(server) == {
+        "get_protocol",
         "claim_next_task",
         "submit_for_review",
         "next_review",
@@ -49,6 +50,15 @@ def test_server_registers_expected_tools(tmp_path: Path) -> None:
         "get_issue",
         "list_queue",
     }
+
+
+def test_get_protocol_matches_canonical_text(tmp_path: Path) -> None:
+    from issuekit.protocol import render_protocol
+
+    server = create_server(tmp_path)
+
+    assert _call(server, "get_protocol", {"agent": "codex"}) == render_protocol("codex")
+    assert _call(server, "get_protocol", {}) == render_protocol(None)
 
 
 def test_claim_next_task_claims_only_once(tmp_path: Path) -> None:

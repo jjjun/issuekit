@@ -13,6 +13,7 @@ from issuekit.commands import (
     handoff,
     info,
     init,
+    protocol,
     queue,
     validate,
 )
@@ -28,6 +29,7 @@ COMMANDS = (
     "request-changes",
     "queue",
     "check-encoding",
+    "protocol",
     "init",
 )
 
@@ -131,6 +133,17 @@ def build_parser() -> argparse.ArgumentParser:
     )
     check_encoding_parser.set_defaults(func=check_encoding.run)
 
+    protocol_parser = subparsers.add_parser(
+        "protocol",
+        help="Print the current two-agent handoff protocol.",
+    )
+    protocol_parser.add_argument(
+        "--agent",
+        choices=("codex", "claude"),
+        help="Print the protocol for one agent role.",
+    )
+    protocol_parser.set_defaults(func=protocol.run)
+
     init_parser = subparsers.add_parser(
         "init",
         help="Install docs/issues tracker templates in the current repository.",
@@ -139,6 +152,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--force",
         action="store_true",
         help="Overwrite existing templated files.",
+    )
+    init_parser.add_argument(
+        "--with-mcp",
+        action="store_true",
+        help="Also scaffold MCP registration and thin agent protocol references.",
     )
     init_parser.set_defaults(func=init.run)
 
