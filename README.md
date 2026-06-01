@@ -8,8 +8,11 @@ and reused from each repo.
 ## Install
 
 ```powershell
-uv tool install --from git+https://github.com/jjjun/issuekit.git issuekit
+uv tool install "issuekit[mcp] @ git+https://github.com/jjjun/issuekit.git"
 ```
+
+Install with the `mcp` extra when codex or Claude Code will use the handoff MCP
+server. Without the extra, `issuekit-mcp` cannot start.
 
 For local development:
 
@@ -20,23 +23,47 @@ uv run issuekit --help
 
 ## MCP server
 
-Install the MCP server once as a global tool:
+Install or upgrade the MCP server once as a global tool:
 
 ```powershell
 uv tool install "issuekit[mcp] @ git+https://github.com/jjjun/issuekit.git"
 ```
 
+When upgrading a global tool, stop running issuekit MCP servers first. MCP
+clients hold `issuekit-mcp.exe` while the session is running, so replacing the
+tool underneath them can leave the install half-removed. Prefer:
+
+```powershell
+uv tool install --reinstall "issuekit[mcp] @ <absolute-path-or-url>"
+```
+
+Use an absolute path or URL, not a bare `.`, to avoid cwd-dependent installs.
+After any reinstall or upgrade, restart running codex and Claude Code sessions;
+they keep a stdio connection to the old server process.
+
 Then scaffold each repository that uses issuekit:
 
 ```powershell
-issuekit init --with-mcp
+issuekit setup
 ```
 
-This writes `.mcp.json`, appends `.codex/config.toml` when needed, and adds thin
-handoff references to `AGENTS.md` and `CLAUDE.md`. The generated MCP entries run
-the global `issuekit-mcp` binary; they do not use `uv run`, so they work outside
-the issuekit checkout. Launch codex or Claude Code from the target repo root so
-the server resolves the correct `docs/issues/` directory.
+This runs `init --with-mcp`, prints setup diagnostics, and shows the optional
+global codex MCP-store command:
+
+```powershell
+codex mcp add issuekit -- issuekit-mcp
+```
+
+That global command is unnecessary when codex reads the repo's
+`.codex/config.toml`, but it is useful for users who manage MCP servers through
+the global codex store. `issuekit setup` only edits files inside the current
+repo. It never kills processes and never edits global codex config.
+
+The repo scaffold writes `.mcp.json`, appends `.codex/config.toml` when needed,
+and adds thin handoff references to `AGENTS.md` and `CLAUDE.md`. The generated
+MCP entries run the global `issuekit-mcp` binary; they do not use `uv run`, so
+they work outside the issuekit checkout. Launch codex or Claude Code from the
+target repo root so the server resolves the correct `docs/issues/` directory.
 
 For local development, install the optional MCP group and start the stdio server
 from a checkout with:
@@ -70,6 +97,7 @@ copying the steps.
 | `issuekit check-encoding [--json]` | Check tracked source files for leading BOM bytes and likely mojibake. |
 | `issuekit protocol [--agent codex\|claude]` | Print the canonical handoff protocol. |
 | `issuekit init [--with-mcp]` | Install tracker templates, encoding hooks, and optional MCP handoff scaffolding. |
+| `issuekit setup [--force]` | Run per-repo MCP handoff scaffolding and setup diagnostics. |
 
 The issue file specification lives in `docs/issues/README.md`.
 

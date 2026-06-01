@@ -15,6 +15,7 @@ from issuekit.commands import (
     init,
     protocol,
     queue,
+    setup,
     validate,
 )
 
@@ -31,6 +32,7 @@ COMMANDS = (
     "check-encoding",
     "protocol",
     "init",
+    "setup",
 )
 
 
@@ -159,6 +161,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="Also scaffold MCP registration and thin agent protocol references.",
     )
     init_parser.set_defaults(func=init.run)
+
+    setup_parser = subparsers.add_parser(
+        "setup",
+        help="Initialize repo MCP handoff scaffolding and print setup diagnostics.",
+    )
+    setup_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Overwrite existing templated files.",
+    )
+    setup_parser.set_defaults(func=setup.run)
 
     return parser
 

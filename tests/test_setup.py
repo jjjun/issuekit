@@ -1,0 +1,132 @@
+from pathlib import Path
+import json
+import subprocess
+
+from issuekit import cli
+from issuekit.commands import setup
+
+
+def _force_mcp_available(monkeypatch) -> None:
+    monkeypatch.setattr(setup.shutil, "which", lambda _name: "C:/tools/issuekit-mcp.exe")
+    monkeypatch.setattr(setup, "import_module", lambda _name: object())
+
+
+def _diagnostic_status(diagnostics: list[setup.Diagnostic], label: str) -> str:
+    for diagnostic in diagnostics:
+        if diagnostic.label == label:
+            return diagnostic.status
+    raise AssertionError(f"missing diagnostic: {label}")
+
+
+def test_setup_empty_repo_scaffolds_mcp_and_prints_checklist(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    _force_mcp_available(monkeypatch)
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = cli.main(["setup"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "Wrote: .mcp.json" in captured.out
+    assert "Setup diagnostics:" in captured.out
+    assert "[OK] .mcp.json contains an issuekit MCP server." in captured.out
+    assert "[OK] .codex/config.toml contains [mcp_servers.issuekit]." in captured.out
+    assert (tmp_path / ".mcp.json").exists()
+    assert (tmp_path / ".codex" / "config.toml").exists()
+    assert (tmp_path / "AGENTS.md").exists()
+    assert (tmp_path / "CLAUDE.md").exists()
+    assert (tmp_path / "docs" / "issues" / "indexes" / "active.md").exists()
+    assert cli.main(["validate"]) == 0
+
+
+def test_setup_reports_missing_and_present_mcp_json_issuekit_server(tmp_path: Path) -> None:
+    (tmp_path / ".mcp.json").write_text(
+        json.dumps({"mcpServers": {"other": {"command": "x"}}}) + "\n",
+        encoding="utf-8",
+    )
+
+    diagnostics = setup.collect_diagnostics(tmp_path)
+
+    assert (
+        _diagnostic_status(diagnostics, ".mcp.json does not contain an issuekit MCP server.")
+        == "ACTION"
+    )
+
+    (tmp_path / ".mcp.json").write_text(
+        json.dumps({"mcpServers": {"issuekit": {"command": "issuekit-mcp", "args": []}}})
+        + "\n",
+        encoding="utf-8",
+    )
+
+    diagnostics = setup.collect_diagnostics(tmp_path)
+
+    assert _diagnostic_status(diagnostics, ".mcp.json contains an issuekit MCP server.") == "OK"
+
+
+def test_setup_reports_present_and_absent_codex_config(tmp_path: Path) -> None:
+    diagnostics = setup.collect_diagnostics(tmp_path)
+
+    assert _diagnostic_status(diagnostics, ".codex/config.toml is missing.") == "ACTION"
+
+    codex_config = tmp_path / ".codex" / "config.toml"
+    codex_config.parent.mkdir()
+    codex_config.write_text(
+        "[mcp_servers.issuekit]\ncommand = \"issuekit-mcp\"\nargs = []\n",
+        encoding="utf-8",
+    )
+
+    diagnostics = setup.collect_diagnostics(tmp_path)
+
+    assert _diagnostic_status(diagnostics, ".codex/config.toml contains [mcp_servers.issuekit].") == "OK"
+
+
+def test_setup_prints_codex_mcp_add_guidance_without_running_process(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    _force_mcp_available(monkeypatch)
+    monkeypatch.chdir(tmp_path)
+
+    def fail_process(*_args, **_kwargs):
+        raise AssertionError("setup must not run subprocesses")
+
+    monkeypatch.setattr(subprocess, "run", fail_process)
+    monkeypatch.setattr(subprocess, "Popen", fail_process)
+
+    exit_code = cli.main(["setup"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "codex mcp add issuekit -- issuekit-mcp" in captured.out
+
+
+def test_setup_output_is_ascii(tmp_path: Path, monkeypatch, capsys) -> None:
+    _force_mcp_available(monkeypatch)
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = cli.main(["setup"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    captured.out.encode("ascii")
+
+
+def test_setup_reports_missing_mcp_extra(monkeypatch) -> None:
+    monkeypatch.setattr(setup.shutil, "which", lambda _name: None)
+
+    def fail_import(_name: str):
+        raise ModuleNotFoundError("No module named 'mcp'")
+
+    monkeypatch.setattr(setup, "import_module", fail_import)
+
+    diagnostics = setup.collect_diagnostics(Path.cwd())
+
+    assert _diagnostic_status(diagnostics, "issuekit-mcp command is not on PATH.") == "ACTION"
+    assert (
+        _diagnostic_status(diagnostics, "issuekit MCP server dependencies are not importable.")
+        == "ACTION"
+    )
