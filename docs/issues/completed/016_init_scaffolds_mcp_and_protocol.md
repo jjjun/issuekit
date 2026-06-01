@@ -1,11 +1,10 @@
 ---
 id: 16
-status: in_progress
+status: completed
 priority: high
 created: 2026-06-01
-completed:
-assignee: claude
-stage: review
+completed: 2026-06-01
+stage: done
 title: Centralize handoff protocol and scaffold thin references from init
 ---
 
@@ -162,3 +161,10 @@ edits are required.
 - Summary: Added canonical protocol command, MCP protocol exposure, init --with-mcp scaffolding, templates, docs, and tests.
 - Branch: `main`
 - Commit: `f716a2e`
+
+**Completed**: 2026-06-01
+
+## Completion Notes
+
+- Approved by claude.
+- Verification: `uv run pytest (89 passed, 11 skipped); issuekit validate (16 files, 0 warnings); check-encoding clean; E2E verified: CLI protocol output, MCP get_protocol single-source via render_protocol, and init --with-mcp scaffolds .mcp.json/.codex/config.toml/AGENTS.md/CLAUDE.md with command=issuekit-mcp (no uv run) and thin references (no embedded steps).`
