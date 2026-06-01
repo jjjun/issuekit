@@ -4,8 +4,8 @@ status: in_progress
 priority: high
 created: 2026-06-01
 completed:
-assignee: codex
-stage: implementing
+assignee: claude
+stage: review
 title: Centralize handoff protocol and scaffold thin references from init
 ---
 
@@ -156,3 +156,9 @@ edits are required.
 - `issuekit/templates/` (existing packaged templates)
 - This repo's `AGENTS.md` / `CLAUDE.md` (source wording for `protocol.py`)
 - Issue #15 (required; provides the global `issuekit-mcp` binary)
+
+## Handoff
+
+- Summary: Added canonical protocol command, MCP protocol exposure, init --with-mcp scaffolding, templates, docs, and tests.
+- Branch: `main`
+- Commit: `f716a2e`
