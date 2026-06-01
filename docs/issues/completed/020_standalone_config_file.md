@@ -1,11 +1,10 @@
 ---
 id: 20
-status: in_progress
+status: completed
 priority: medium
 created: 2026-06-01
-completed:
-assignee: claude
-stage: review
+completed: 2026-06-01
+stage: done
 title: Read issuekit config from a standalone issuekit.toml for non-Python repos
 ---
 
@@ -90,3 +89,10 @@ the same keys, but at the top level (no `[tool.issuekit]` table nesting).
 - Summary: Implemented standalone issuekit.toml config loading with pyproject precedence, added config tests, and documented the standalone config file.
 - Branch: `main`
 - Commit: `1ffd2e6`
+
+**Completed**: 2026-06-01
+
+## Completion Notes
+
+- Approved by claude.
+- Verification: `uv run pytest (110 passed, 12 skipped); issuekit validate (20 files, 0 warnings); check-encoding clean. Real-world verified: a JS-repo scenario (no pyproject.toml, only issuekit.toml with ascii_id_threshold=442/issues_dir/recent_count) loads correctly via load_config. Precedence implemented: pyproject [tool.issuekit] table wins when present, else issuekit.toml, else defaults; malformed issuekit.toml raises ValueError naming the file; utf-8-sig read; IssuekitConfig/load_config signatures unchanged. Tests cover all 6 plan cases.`
