@@ -143,6 +143,7 @@ def _issue_dict(issue: Issue, *, include_body: bool = False) -> dict[str, Any]:
         "status": issue.issue_status,
         "assignee": issue.assignee,
         "stage": issue.stage,
+        "implementer": issue.implementer,
         "file": issue.relative_path,
     }
     if include_body:

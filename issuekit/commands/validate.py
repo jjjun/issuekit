@@ -84,6 +84,19 @@ def run(_args) -> int:
                         f"{issue.relative_path}"
                     )
 
+            implementer = metadata.get("implementer", "")
+            if implementer:
+                if not is_valid_workflow_token(implementer):
+                    errors.append(
+                        f"Issue frontmatter has invalid implementer token \"{implementer}\": "
+                        f"{issue.relative_path}"
+                    )
+                if implementer not in config.assignees:
+                    errors.append(
+                        f"Issue frontmatter has unknown implementer \"{implementer}\": "
+                        f"{issue.relative_path}"
+                    )
+
             stage = metadata.get("stage", "")
             if stage:
                 if not is_valid_workflow_token(stage):

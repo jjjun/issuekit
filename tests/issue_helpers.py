@@ -18,12 +18,15 @@ def issue_text(
     completed: str = "",
     assignee: str = "",
     stage: str = "",
+    implementer: str = "",
 ) -> str:
     workflow_lines = ""
     if assignee:
         workflow_lines += f"assignee: {assignee}\n"
     if stage:
         workflow_lines += f"stage: {stage}\n"
+    if implementer:
+        workflow_lines += f"implementer: {implementer}\n"
     return (
         "---\n"
         f"id: {issue_id}\n"

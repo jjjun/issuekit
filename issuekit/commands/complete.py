@@ -85,6 +85,7 @@ def complete_issue(
         "completed": completed_date,
         "assignee": "",
         "stage": "done",
+        "implementer": "",
         "title": issue.title,
     }
     next_content = format_issue_frontmatter(data) + _append_completion_note(

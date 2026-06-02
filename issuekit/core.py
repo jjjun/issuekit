@@ -41,6 +41,7 @@ class Issue:
     priority: str
     assignee: str
     stage: str
+    implementer: str
     content: str
     frontmatter: Frontmatter
     decode_error: bool = False
@@ -88,11 +89,12 @@ def format_issue_frontmatter(data: dict[str, object]) -> str:
         ("completed", data.get("completed") or ""),
         ("assignee", data.get("assignee") or ""),
         ("stage", data.get("stage") or ""),
+        ("implementer", data.get("implementer") or ""),
         ("title", data.get("title")),
     ]
     lines = []
     for key, value in fields:
-        if key in {"assignee", "stage"} and not value:
+        if key in {"assignee", "stage", "implementer"} and not value:
             continue
         lines.append(f"{key}: {'' if value is None else value}")
     body = "\n".join(lines)
@@ -175,6 +177,7 @@ def read_issues(issues_dir: Path | str, directory_status: str) -> list[Issue]:
                 priority=_normalize(metadata.get("priority")),
                 assignee=_normalize(metadata.get("assignee")),
                 stage=_normalize(metadata.get("stage")),
+                implementer=_normalize(metadata.get("implementer")),
                 content=content,
                 frontmatter=frontmatter,
                 decode_error=decode_error,

@@ -36,6 +36,7 @@ def test_claim_next_picks_highest_priority_then_lowest_id(tmp_path: Path) -> Non
     assert issue.issue_status == "in_progress"
     assert issue.assignee == "codex"
     assert issue.stage == "implementing"
+    assert issue.implementer == "codex"
     assert_single_frontmatter_body_gap(issue.file_path.read_text(encoding="utf-8"))
 
 
@@ -77,7 +78,14 @@ def test_submit_for_review_flips_to_reviewer_and_appends_note(tmp_path: Path) ->
     issues_dir = tmp_path / "docs" / "issues"
     write_issue(
         issues_dir / "active" / "001_first.md",
-        issue_text(1, "First", status="in_progress", assignee="codex", stage="implementing"),
+        issue_text(
+            1,
+            "First",
+            status="in_progress",
+            assignee="codex",
+            stage="implementing",
+            implementer="codex",
+        ),
     )
 
     issue = submit_for_review(
@@ -91,7 +99,9 @@ def test_submit_for_review_flips_to_reviewer_and_appends_note(tmp_path: Path) ->
     content = issue.file_path.read_text(encoding="utf-8")
     assert issue.assignee == "claude"
     assert issue.stage == "review"
+    assert issue.implementer == "codex"
     assert_single_frontmatter_body_gap(content)
+    assert "implementer: codex" in content
     assert "## Handoff" in content
     assert "- Branch: `codex/workflow`" in content
     assert "- Commit: `abc123`" in content
@@ -108,11 +118,36 @@ def test_submit_for_review_rejects_wrong_assignee(tmp_path: Path) -> None:
         submit_for_review(issues_dir, 1, summary="Done.")
 
 
+def test_submit_for_review_rejects_self_review(tmp_path: Path) -> None:
+    issues_dir = tmp_path / "docs" / "issues"
+    write_issue(
+        issues_dir / "active" / "001_first.md",
+        issue_text(
+            1,
+            "First",
+            status="in_progress",
+            assignee="codex",
+            stage="implementing",
+            implementer="codex",
+        ),
+    )
+
+    with pytest.raises(WorkflowError, match="self-review is not allowed"):
+        submit_for_review(issues_dir, 1, summary="Done.", reviewer="codex")
+
+
 def test_request_changes_returns_issue_to_codex_and_can_be_reclaimed(tmp_path: Path) -> None:
     issues_dir = tmp_path / "docs" / "issues"
     write_issue(
         issues_dir / "active" / "001_first.md",
-        issue_text(1, "First", status="in_progress", assignee="claude", stage="review"),
+        issue_text(
+            1,
+            "First",
+            status="in_progress",
+            assignee="claude",
+            stage="review",
+            implementer="codex",
+        ),
     )
 
     issue = request_changes(issues_dir, 1, notes="Please add tests.")
@@ -120,10 +155,12 @@ def test_request_changes_returns_issue_to_codex_and_can_be_reclaimed(tmp_path: P
 
     assert issue.assignee == "codex"
     assert issue.stage == "changes_requested"
+    assert issue.implementer == "codex"
     assert "## Review Feedback" in issue.file_path.read_text(encoding="utf-8")
     assert reclaimed is not None
     assert reclaimed.id == 1
     assert reclaimed.stage == "implementing"
+    assert reclaimed.implementer == "codex"
     assert_single_frontmatter_body_gap(reclaimed.file_path.read_text(encoding="utf-8"))
 
 
@@ -135,6 +172,7 @@ def test_workflow_transitions_do_not_grow_frontmatter_body_gap(tmp_path: Path) -
     assert claimed is not None
     after_claim = claimed.file_path.read_text(encoding="utf-8")
     assert_single_frontmatter_body_gap(after_claim)
+    assert "implementer: codex" in after_claim
 
     submitted = submit_for_review(
         issues_dir,
@@ -145,10 +183,12 @@ def test_workflow_transitions_do_not_grow_frontmatter_body_gap(tmp_path: Path) -
     )
     after_submit = submitted.file_path.read_text(encoding="utf-8")
     assert_single_frontmatter_body_gap(after_submit)
+    assert submitted.implementer == "codex"
 
     requested = request_changes(issues_dir, 1, notes="Please add tests.")
     after_request = requested.file_path.read_text(encoding="utf-8")
     assert_single_frontmatter_body_gap(after_request)
+    assert requested.implementer == "codex"
 
     resubmitted = submit_for_review(
         issues_dir,
@@ -159,6 +199,7 @@ def test_workflow_transitions_do_not_grow_frontmatter_body_gap(tmp_path: Path) -
     )
     after_resubmit = resubmitted.file_path.read_text(encoding="utf-8")
     assert_single_frontmatter_body_gap(after_resubmit)
+    assert resubmitted.implementer == "codex"
 
     assert "## Handoff" in after_resubmit
     assert "## Review Feedback" in after_resubmit
@@ -182,7 +223,14 @@ def test_complete_issue_sets_done_stage_and_clears_assignee(tmp_path: Path) -> N
     issues_dir = tmp_path / "docs" / "issues"
     write_issue(
         issues_dir / "active" / "001_first.md",
-        issue_text(1, "First", status="in_progress", assignee="claude", stage="review"),
+        issue_text(
+            1,
+            "First",
+            status="in_progress",
+            assignee="claude",
+            stage="review",
+            implementer="codex",
+        ),
     )
 
     issue = complete_issue(issues_dir, 1, summary="Approved.", verification="pytest")
@@ -191,9 +239,11 @@ def test_complete_issue_sets_done_stage_and_clears_assignee(tmp_path: Path) -> N
     assert issue.status == "completed"
     assert issue.stage == "done"
     assert issue.assignee == ""
+    assert issue.implementer == ""
     assert_single_frontmatter_body_gap(content)
     assert "stage: done" in content
     assert "assignee:" not in content
+    assert "implementer:" not in content
 
 
 def test_workflow_rejects_invalid_tokens_and_non_ascii_text(tmp_path: Path) -> None:

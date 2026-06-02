@@ -10,7 +10,7 @@ def test_read_issues_reads_optional_workflow_fields(tmp_path: Path) -> None:
     issues_dir = tmp_path / "docs" / "issues"
     write_issue(
         issues_dir / "active" / "001_first.md",
-        issue_text(1, "First", assignee="codex", stage="implementing"),
+        issue_text(1, "First", assignee="codex", stage="implementing", implementer="codex"),
     )
     write_issue(issues_dir / "active" / "002_second.md", issue_text(2, "Second"))
 
@@ -18,8 +18,10 @@ def test_read_issues_reads_optional_workflow_fields(tmp_path: Path) -> None:
 
     assert issues[0].assignee == "codex"
     assert issues[0].stage == "implementing"
+    assert issues[0].implementer == "codex"
     assert issues[1].assignee == ""
     assert issues[1].stage == ""
+    assert issues[1].implementer == ""
 
 
 def test_format_issue_frontmatter_omits_empty_workflow_fields() -> None:
@@ -53,10 +55,11 @@ def test_format_issue_frontmatter_orders_workflow_fields() -> None:
         "completed": "",
         "assignee": "codex",
         "stage": "implementing",
+        "implementer": "codex",
         "title": "First",
     }
 
-    assert core.format_issue_frontmatter(data).splitlines()[:9] == [
+    assert core.format_issue_frontmatter(data).splitlines()[:10] == [
         "---",
         "id: 1",
         "status: in_progress",
@@ -65,6 +68,7 @@ def test_format_issue_frontmatter_orders_workflow_fields() -> None:
         "completed: ",
         "assignee: codex",
         "stage: implementing",
+        "implementer: codex",
         "title: First",
     ]
 
@@ -82,7 +86,11 @@ def test_validate_rejects_unknown_workflow_values(tmp_path: Path, monkeypatch, c
     issues_dir = tmp_path / "docs" / "issues"
     write_issue(
         issues_dir / "active" / "001_bad.md",
-        issue_text(1, "Bad", assignee="bob", stage="foo"),
+        issue_text(1, "Bad", assignee="bob", stage="foo", implementer="bob"),
+    )
+    write_issue(
+        issues_dir / "active" / "002_bad_implementer.md",
+        issue_text(2, "Bad Implementer", implementer="bad value"),
     )
     write_indexes(issues_dir)
     monkeypatch.chdir(tmp_path)
@@ -92,6 +100,8 @@ def test_validate_rejects_unknown_workflow_values(tmp_path: Path, monkeypatch, c
     assert exit_code == 1
     err = capsys.readouterr().err
     assert "unknown assignee" in err
+    assert "invalid implementer token" in err
+    assert "unknown implementer" in err
     assert "unknown stage" in err
 
 

@@ -1,12 +1,14 @@
 ---
 id: 21
-status: active
+status: in_progress
 priority: medium
 created: 2026-06-01
-completed:
+completed: 
+assignee: codex
+stage: implementing
+implementer: codex
 title: Record the implementer and block self-review in workflow transitions
 ---
-
 
 # Issue #21: Record the implementer and block self-review in workflow transitions
 

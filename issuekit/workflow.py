@@ -112,6 +112,7 @@ def claim_next(
             status="in_progress",
             assignee=assignee,
             stage="implementing",
+            implementer=assignee,
         )
 
 
@@ -142,6 +143,7 @@ def submit_for_review(
             raise WorkflowError(
                 f"Issue #{issue_id} is assigned to {issue.assignee or 'no one'}, not {assignee}."
             )
+        ensure_not_self_review(issue, reviewer)
         note = _handoff_note(summary=summary, branch=branch or "", commit=commit or "")
         return _write_active_issue(
             issues_path,
@@ -214,6 +216,7 @@ def _write_active_issue(
     status: str | None = None,
     assignee: str | None = None,
     stage: str | None = None,
+    implementer: str | None = None,
     extra_body: str = "",
 ) -> Issue:
     frontmatter = parse_issue_frontmatter(issue.content)
@@ -225,6 +228,7 @@ def _write_active_issue(
         "completed": issue.completed,
         "assignee": issue.assignee if assignee is None else assignee,
         "stage": issue.stage if stage is None else stage,
+        "implementer": issue.implementer if implementer is None else implementer,
         "title": issue.title,
     }
     body = frontmatter.body.strip("\n")
@@ -241,6 +245,13 @@ def _find_active_issue(issues_dir: Path, issue_id: int) -> Issue:
     if issue.decode_error:
         raise WorkflowError(f"Active issue #{issue_id} is not valid UTF-8: {issue.relative_path}")
     return issue
+
+
+def ensure_not_self_review(issue: Issue, reviewer: str) -> None:
+    if issue.implementer and issue.implementer == reviewer:
+        raise WorkflowError(
+            f"Issue #{issue.id} was implemented by {issue.implementer}; self-review is not allowed."
+        )
 
 
 def _validate_assignee(value: str, config: IssuekitConfig) -> None:

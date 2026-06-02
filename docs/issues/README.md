@@ -73,6 +73,10 @@ Allowed `status` values: `active`, `planned`, `investigating`, `in_progress`,
 
 Allowed `priority` values: `high`, `medium`, `low`.
 
+Workflow tools may add optional `assignee`, `stage`, and `implementer` fields.
+`implementer` records the agent that claimed the implementation so review can
+reject self-review. Agents should not hand-edit these tool-managed fields.
+
 ## Issue Lifecycle
 
 ```text
