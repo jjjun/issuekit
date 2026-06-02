@@ -1,12 +1,10 @@
 ---
 id: 24
-status: in_progress
+status: completed
 priority: medium
 created: 2026-06-03
-completed: 
-assignee: codex
-stage: review
-implementer: codex
+completed: 2026-06-03
+stage: done
 title: Add CRLF detection to check-encoding
 ---
 
@@ -145,3 +143,10 @@ no backward-compatibility shim is required.
 - Summary: Implemented index-based CRLF detection for check-encoding, added --no-crlf, updated JSON/output reporting, covered CRLF/mixed/attribute/binary/path cases, and updated tracker docs.
 - Branch: `main`
 - Commit: `92a0706bb09e34e4bccb955e65029e6d8c819e6b`
+
+**Completed**: 2026-06-03
+
+## Completion Notes
+
+- Approved by claude.
+- Verification: `uv run pytest tests/test_check_encoding.py (17 passed); uv run pytest (137 passed, 12 skipped); uv run issuekit validate; uv run issuekit check-encoding. Reviewed diff: index-based CRLF detection via git ls-files --eol -z, TAB-delimited path parse, i/ token check, crlf/mixed flagged, eol=crlf and binary excluded (tested), --no-crlf flag, crlf_files JSON key, --fix leaves CRLF untouched, README updated.`
