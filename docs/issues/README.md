@@ -161,6 +161,6 @@ Describe the proposed solution.
 - issue files contain only ASCII characters
 - issue files are valid UTF-8
 
-`issuekit check-encoding` checks tracked source files for BOM and mojibake
-patterns. `issuekit validate` owns issue tracker structure and issue file
-decodability.
+`issuekit check-encoding` checks tracked files for BOM, mojibake patterns, and
+CRLF line endings. `issuekit validate` owns issue tracker structure and issue
+file decodability.

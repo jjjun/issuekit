@@ -40,6 +40,7 @@ def run(args) -> int:
     bom_files: list[str] = []
     mojibake_files: list[str] = []
     fixed_files: list[str] = []
+    crlf_files = [] if args.no_crlf else list_crlf_files(Path.cwd())
 
     for file in source_files:
         path = Path(file)
@@ -58,19 +59,20 @@ def run(args) -> int:
     payload = {
         "bom_files": remaining_bom_files,
         "mojibake_files": mojibake_files,
+        "crlf_files": crlf_files,
         "fixed": fixed_files,
     }
     if args.json:
         print(json.dumps(payload, indent=2))
 
-    if not remaining_bom_files and not mojibake_files:
+    if not remaining_bom_files and not mojibake_files and not crlf_files:
         if not args.json:
             for file in fixed_files:
                 print(f"Fixed BOM: {file}")
             if fixed_files:
-                print("Encoding check passed after fixing UTF-8 BOM files.")
+                print("Encoding check passed after fixing UTF-8 BOM files; no mojibake or CRLF found.")
             else:
-                print("Encoding check passed: no UTF-8 BOM or likely mojibake in tracked source files.")
+                print("Encoding check passed: no UTF-8 BOM, likely mojibake, or CRLF in tracked files.")
         return 0
 
     if not args.json:
@@ -95,12 +97,45 @@ def run(args) -> int:
             )
             for file in mojibake_files:
                 print(f"  {file}", file=sys.stderr)
+        if crlf_files:
+            print(
+                f"Encoding check failed: {len(crlf_files)} tracked file(s) have CRLF or mixed line endings.",
+                file=sys.stderr,
+            )
+            for file in crlf_files:
+                print(f"  {file}", file=sys.stderr)
+            print(
+                "\nTip: normalize tracked line endings with `git add --renormalize .`.",
+                file=sys.stderr,
+            )
     return 1
 
 
 def list_tracked_files(cwd: Path) -> list[str]:
     output = subprocess.check_output(["git", "ls-files", "-z"], cwd=cwd)
     return [item for item in output.decode("utf-8").split("\0") if item]
+
+
+def list_crlf_files(cwd: Path) -> list[str]:
+    output = subprocess.check_output(["git", "ls-files", "--eol", "-z"], cwd=cwd)
+    crlf_files: list[str] = []
+    for record in output.decode("utf-8").split("\0"):
+        if not record:
+            continue
+        metadata, separator, path = record.partition("\t")
+        if not separator:
+            continue
+        tokens = metadata.split()
+        if not tokens or not tokens[0].startswith("i/"):
+            continue
+        index_eol = tokens[0][len("i/") :]
+        if (
+            index_eol in {"crlf", "mixed"}
+            and "eol=crlf" not in metadata
+            and "attr/-text" not in metadata
+        ):
+            crlf_files.append(path)
+    return crlf_files
 
 
 def _has_source_extension(file: str) -> bool:
