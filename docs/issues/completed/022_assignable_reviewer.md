@@ -1,12 +1,10 @@
 ---
 id: 22
-status: in_progress
+status: completed
 priority: medium
 created: 2026-06-01
-completed: 
-assignee: codex
-stage: implementing
-implementer: codex
+completed: 2026-06-02
+stage: done
 title: Make the reviewer assignable (codex or claude) via MCP and config
 ---
 
@@ -105,3 +103,16 @@ work. Update the canonical protocol text to describe role assignment by
   `reviewer`)
 - `issuekit/config.py` (#20 config source resolution), `issuekit/protocol.py`
 - Issue #21 (implementer field + self-review guard; required)
+
+## Handoff
+
+- Summary: Added configurable reviewer routing for MCP and CLI, default_reviewer config, role-neutral protocol text, approve-time self-review guard, and coverage for default and explicit reviewer flows.
+- Branch: `main`
+- Commit: `81a71a1090ebb6bed00dd905c9a0e88c72775c4f`
+
+**Completed**: 2026-06-02
+
+## Completion Notes
+
+- Approved by claude.
+- Verification: `uv run pytest (121 passed, 12 skipped); issuekit validate (22 files, 0 warnings); check-encoding clean. Real-world verified: default reviewer routes to claude (assignee=claude/implementer=codex); default_reviewer=codex routes review to codex; MCP approve path writes 'Approved by <reviewer>.'; approve-time self-review blocked (reviewer==implementer raises); request_changes returns to recorded implementer. Backward compatible (no config/arg = claude reviews, existing tests pass). protocol.py role-neutral, single-source via get_protocol/issuekit protocol; no circular imports.`
