@@ -1,11 +1,10 @@
 ---
 id: 23
-status: in_progress
+status: completed
 priority: medium
 created: 2026-06-01
-completed: 
-assignee: codex
-stage: implementing
+completed: 2026-06-02
+stage: done
 title: Make the self-review guard optional and add an auto reviewer default
 ---
 
@@ -115,3 +114,16 @@ concrete `default_reviewer` behaves exactly like today.
 - `issuekit/protocol.py`
 - Issue #21 (the name-based guard this makes optional), Issue #22 (assignable
   reviewer + `default_reviewer`)
+
+## Handoff
+
+- Summary: Made distinct reviewer enforcement config-gated, added auto reviewer resolution, and covered config/workflow/MCP behavior with tests.
+- Branch: `main`
+- Commit: `21d7ece`
+
+**Completed**: 2026-06-02
+
+## Completion Notes
+
+- Approved by claude.
+- Verification: `uv run pytest (130 passed, 12 skipped); issuekit validate (23 files, 0 warnings); check-encoding clean. Real-world verified 5 scenarios: (1) guard OFF default allows same-name review (codex->codex); (2) guard ON blocks same-name (regression of #21); (3) auto+guard ON: codex impl -> reviewer auto-resolves to claude; (4) auto+guard ON: claude impl -> reviewer codex; (5) shipped defaults still route to claude (backward compatible). resolve_reviewer moved inside claim_lock for fresh state; next_review handles auto by pulling any stage=review issue; _bool_value parses common bool spellings; default_reviewer accepts auto.`
