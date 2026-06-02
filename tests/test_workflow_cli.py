@@ -68,6 +68,43 @@ def test_handoff_commands_round_trip_issue(tmp_path: Path, monkeypatch, capsys) 
     assert cli.main(["validate"]) == 0
 
 
+def test_handoff_commands_accept_reviewer(tmp_path: Path, monkeypatch, capsys) -> None:
+    issues_dir = tmp_path / "docs" / "issues"
+    write_issue(
+        issues_dir / "active" / "001_first.md",
+        issue_text(
+            1,
+            "First",
+            status="in_progress",
+            assignee="claude",
+            stage="implementing",
+            implementer="claude",
+        ),
+    )
+    write_indexes(issues_dir)
+    monkeypatch.chdir(tmp_path)
+
+    submit_exit = cli.main(
+        [
+            "submit-review",
+            "1",
+            "--summary",
+            "Implemented.",
+            "--assignee",
+            "claude",
+            "--reviewer",
+            "codex",
+        ]
+    )
+    request_exit = cli.main(["request-changes", "1", "--notes", "Add tests.", "--reviewer", "codex"])
+
+    captured = capsys.readouterr()
+    assert submit_exit == 0
+    assert request_exit == 0
+    assert "assignee=codex stage=review" in captured.out
+    assert "assignee=claude stage=changes_requested" in captured.out
+
+
 def test_queue_command_lists_matching_issues(tmp_path: Path, monkeypatch, capsys) -> None:
     issues_dir = tmp_path / "docs" / "issues"
     write_issue(

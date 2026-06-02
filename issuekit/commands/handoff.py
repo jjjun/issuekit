@@ -26,6 +26,8 @@ def run_submit_review(args) -> int:
             summary=args.summary,
             branch=args.branch,
             commit=args.commit,
+            assignee=args.assignee,
+            reviewer=args.reviewer,
             config=config,
         )
     except (TimeoutError, WorkflowError) as exc:
@@ -54,6 +56,8 @@ def run_request_changes(args) -> int:
             issues_dir,
             issue_id,
             notes=args.notes,
+            assignee=args.assignee,
+            reviewer=args.reviewer,
             config=config,
         )
     except (TimeoutError, WorkflowError) as exc:

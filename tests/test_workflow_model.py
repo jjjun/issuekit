@@ -107,7 +107,7 @@ def test_validate_rejects_unknown_workflow_values(tmp_path: Path, monkeypatch, c
 
 def test_validate_allows_configured_workflow_values(tmp_path: Path, monkeypatch, capsys) -> None:
     (tmp_path / "pyproject.toml").write_text(
-        "[tool.issuekit]\nassignees = ['alice']\nstages = ['draft']\n",
+        "[tool.issuekit]\nassignees = ['alice']\nstages = ['draft']\ndefault_reviewer = 'alice'\n",
         encoding="utf-8",
         newline="\n",
     )
@@ -127,12 +127,16 @@ def test_validate_allows_configured_workflow_values(tmp_path: Path, monkeypatch,
 
 def test_load_config_reads_workflow_sets(tmp_path: Path) -> None:
     (tmp_path / "pyproject.toml").write_text(
-        "[tool.issuekit]\nassignees = ['alice']\nstages = ['draft']\n",
+        "[tool.issuekit]\nassignees = ['alice']\nstages = ['draft']\ndefault_reviewer = 'alice'\n",
         encoding="utf-8",
         newline="\n",
     )
 
-    assert load_config(tmp_path) == IssuekitConfig(assignees=("alice",), stages=("draft",))
+    assert load_config(tmp_path) == IssuekitConfig(
+        assignees=("alice",),
+        stages=("draft",),
+        default_reviewer="alice",
+    )
 
 
 def test_write_issue_atomic_writes_utf8_lf_without_bom(tmp_path: Path) -> None:

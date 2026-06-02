@@ -81,7 +81,14 @@ def test_review_round_trip_and_approve(tmp_path: Path) -> None:
     issues_dir = tmp_path / "docs" / "issues"
     write_issue(
         issues_dir / "active" / "001_first.md",
-        issue_text(1, "First", status="in_progress", assignee="codex", stage="implementing"),
+        issue_text(
+            1,
+            "First",
+            status="in_progress",
+            assignee="codex",
+            stage="implementing",
+            implementer="codex",
+        ),
     )
     write_indexes(issues_dir)
     server = create_server(tmp_path)
@@ -101,13 +108,86 @@ def test_review_round_trip_and_approve(tmp_path: Path) -> None:
     assert approved["status"] == "completed"
     assert approved["stage"] == "done"
     assert (issues_dir / "completed" / "001_first.md").exists()
+    assert "Approved by claude." in (issues_dir / "completed" / "001_first.md").read_text(
+        encoding="utf-8"
+    )
+
+
+def test_review_can_be_routed_to_codex(tmp_path: Path) -> None:
+    issues_dir = tmp_path / "docs" / "issues"
+    write_issue(
+        issues_dir / "active" / "001_first.md",
+        issue_text(
+            1,
+            "First",
+            status="in_progress",
+            assignee="claude",
+            stage="implementing",
+            implementer="claude",
+        ),
+    )
+    write_indexes(issues_dir)
+    server = create_server(tmp_path)
+
+    submitted = _call(
+        server,
+        "submit_for_review",
+        {
+            "id": 1,
+            "summary": "Implemented.",
+            "branch": "claude/test",
+            "commit": "abc123",
+            "assignee": "claude",
+            "reviewer": "codex",
+        },
+    )
+    review = _call(server, "next_review", {"reviewer": "codex"})
+    approved = _call(
+        server,
+        "approve",
+        {"id": 1, "verification": "uv run pytest", "reviewer": "codex"},
+    )
+
+    assert submitted["assignee"] == "codex"
+    assert submitted["stage"] == "review"
+    assert review["id"] == 1
+    assert approved["status"] == "completed"
+    assert "Approved by codex." in (issues_dir / "completed" / "001_first.md").read_text(
+        encoding="utf-8"
+    )
+
+
+def test_next_review_uses_configured_default_reviewer(tmp_path: Path) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "default_reviewer = 'codex'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    issues_dir = tmp_path / "docs" / "issues"
+    write_issue(
+        issues_dir / "active" / "001_first.md",
+        issue_text(1, "First", status="in_progress", assignee="codex", stage="review"),
+    )
+    write_indexes(issues_dir)
+    server = create_server(tmp_path)
+
+    review = _call(server, "next_review", {})
+
+    assert review["id"] == 1
 
 
 def test_request_changes_returns_issue_to_codex(tmp_path: Path) -> None:
     issues_dir = tmp_path / "docs" / "issues"
     write_issue(
         issues_dir / "active" / "001_first.md",
-        issue_text(1, "First", status="in_progress", assignee="claude", stage="review"),
+        issue_text(
+            1,
+            "First",
+            status="in_progress",
+            assignee="claude",
+            stage="review",
+            implementer="codex",
+        ),
     )
     write_indexes(issues_dir)
     server = create_server(tmp_path)
@@ -121,3 +201,45 @@ def test_request_changes_returns_issue_to_codex(tmp_path: Path) -> None:
     assert [item["id"] for item in queue] == [1]
     assert issue["id"] == 1
     assert "body" in issue
+
+
+def test_request_changes_defaults_to_recorded_implementer(tmp_path: Path) -> None:
+    issues_dir = tmp_path / "docs" / "issues"
+    write_issue(
+        issues_dir / "active" / "001_first.md",
+        issue_text(
+            1,
+            "First",
+            status="in_progress",
+            assignee="codex",
+            stage="review",
+            implementer="claude",
+        ),
+    )
+    write_indexes(issues_dir)
+    server = create_server(tmp_path)
+
+    returned = _call(server, "request_changes", {"id": 1, "notes": "Add tests.", "reviewer": "codex"})
+
+    assert returned["assignee"] == "claude"
+    assert returned["stage"] == "changes_requested"
+
+
+def test_approve_rejects_self_review(tmp_path: Path) -> None:
+    issues_dir = tmp_path / "docs" / "issues"
+    write_issue(
+        issues_dir / "active" / "001_first.md",
+        issue_text(
+            1,
+            "First",
+            status="in_progress",
+            assignee="codex",
+            stage="review",
+            implementer="codex",
+        ),
+    )
+    write_indexes(issues_dir)
+    server = create_server(tmp_path)
+
+    with pytest.raises(Exception, match="self-review is not allowed"):
+        _call(server, "approve", {"id": 1, "verification": "uv run pytest", "reviewer": "codex"})

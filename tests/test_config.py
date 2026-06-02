@@ -74,7 +74,7 @@ def test_load_config_malformed_issuekit_toml_names_file(tmp_path: Path) -> None:
 
 def test_load_config_reads_workflow_sets_from_issuekit_toml(tmp_path: Path) -> None:
     (tmp_path / "issuekit.toml").write_text(
-        "assignees = ['alice', 'bob']\nstages = ['draft', 'review']\n",
+        "assignees = ['alice', 'bob']\nstages = ['draft', 'review']\ndefault_reviewer = 'bob'\n",
         encoding="utf-8",
         newline="\n",
     )
@@ -82,4 +82,27 @@ def test_load_config_reads_workflow_sets_from_issuekit_toml(tmp_path: Path) -> N
     assert load_config(tmp_path) == IssuekitConfig(
         assignees=("alice", "bob"),
         stages=("draft", "review"),
+        default_reviewer="bob",
     )
+
+
+def test_load_config_rejects_invalid_default_reviewer_token(tmp_path: Path) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "default_reviewer = 'bad value'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    with pytest.raises(ValueError, match="Invalid default_reviewer token"):
+        load_config(tmp_path)
+
+
+def test_load_config_rejects_unknown_default_reviewer(tmp_path: Path) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "assignees = ['alice', 'bob']\ndefault_reviewer = 'claude'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    with pytest.raises(ValueError, match="Unknown default_reviewer"):
+        load_config(tmp_path)

@@ -1,12 +1,14 @@
 ---
 id: 22
-status: active
+status: in_progress
 priority: medium
 created: 2026-06-01
-completed:
+completed: 
+assignee: codex
+stage: implementing
+implementer: codex
 title: Make the reviewer assignable (codex or claude) via MCP and config
 ---
-
 
 # Issue #22: Make the reviewer assignable (codex or claude) via MCP and config
 

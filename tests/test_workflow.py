@@ -136,6 +136,33 @@ def test_submit_for_review_rejects_self_review(tmp_path: Path) -> None:
         submit_for_review(issues_dir, 1, summary="Done.", reviewer="codex")
 
 
+def test_submit_for_review_routes_to_explicit_reviewer(tmp_path: Path) -> None:
+    issues_dir = tmp_path / "docs" / "issues"
+    write_issue(
+        issues_dir / "active" / "001_first.md",
+        issue_text(
+            1,
+            "First",
+            status="in_progress",
+            assignee="claude",
+            stage="implementing",
+            implementer="claude",
+        ),
+    )
+
+    issue = submit_for_review(
+        issues_dir,
+        1,
+        summary="Done.",
+        assignee="claude",
+        reviewer="codex",
+    )
+
+    assert issue.assignee == "codex"
+    assert issue.stage == "review"
+    assert issue.implementer == "claude"
+
+
 def test_request_changes_returns_issue_to_codex_and_can_be_reclaimed(tmp_path: Path) -> None:
     issues_dir = tmp_path / "docs" / "issues"
     write_issue(
@@ -162,6 +189,27 @@ def test_request_changes_returns_issue_to_codex_and_can_be_reclaimed(tmp_path: P
     assert reclaimed.stage == "implementing"
     assert reclaimed.implementer == "codex"
     assert_single_frontmatter_body_gap(reclaimed.file_path.read_text(encoding="utf-8"))
+
+
+def test_request_changes_defaults_to_recorded_implementer(tmp_path: Path) -> None:
+    issues_dir = tmp_path / "docs" / "issues"
+    write_issue(
+        issues_dir / "active" / "001_first.md",
+        issue_text(
+            1,
+            "First",
+            status="in_progress",
+            assignee="codex",
+            stage="review",
+            implementer="claude",
+        ),
+    )
+
+    issue = request_changes(issues_dir, 1, reviewer="codex", notes="Please add tests.")
+
+    assert issue.assignee == "claude"
+    assert issue.stage == "changes_requested"
+    assert issue.implementer == "claude"
 
 
 def test_workflow_transitions_do_not_grow_frontmatter_body_gap(tmp_path: Path) -> None:
@@ -244,6 +292,24 @@ def test_complete_issue_sets_done_stage_and_clears_assignee(tmp_path: Path) -> N
     assert "stage: done" in content
     assert "assignee:" not in content
     assert "implementer:" not in content
+
+
+def test_complete_issue_rejects_self_review(tmp_path: Path) -> None:
+    issues_dir = tmp_path / "docs" / "issues"
+    write_issue(
+        issues_dir / "active" / "001_first.md",
+        issue_text(
+            1,
+            "First",
+            status="in_progress",
+            assignee="codex",
+            stage="review",
+            implementer="codex",
+        ),
+    )
+
+    with pytest.raises(WorkflowError, match="self-review is not allowed"):
+        complete_issue(issues_dir, 1, reviewer="codex")
 
 
 def test_workflow_rejects_invalid_tokens_and_non_ascii_text(tmp_path: Path) -> None:

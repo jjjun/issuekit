@@ -124,13 +124,13 @@ def submit_for_review(
     branch: str | None = None,
     commit: str | None = None,
     assignee: str = "codex",
-    reviewer: str = "claude",
+    reviewer: str | None = None,
     config: IssuekitConfig | None = None,
     timeout: float = 10.0,
 ) -> Issue:
     config = config or IssuekitConfig()
     _validate_assignee(assignee, config)
-    _validate_assignee(reviewer, config)
+    reviewer = resolve_reviewer(reviewer, config)
     _validate_stage("review", config)
     _validate_ascii_text(summary, "--summary")
     _validate_ascii_text(branch or "", "--branch")
@@ -159,14 +159,15 @@ def request_changes(
     issue_id: int,
     *,
     notes: str,
-    reviewer: str = "claude",
-    assignee: str = "codex",
+    reviewer: str | None = None,
+    assignee: str | None = None,
     config: IssuekitConfig | None = None,
     timeout: float = 10.0,
 ) -> Issue:
     config = config or IssuekitConfig()
-    _validate_assignee(reviewer, config)
-    _validate_assignee(assignee, config)
+    reviewer = resolve_reviewer(reviewer, config)
+    if assignee is not None:
+        _validate_assignee(assignee, config)
     _validate_stage("changes_requested", config)
     _validate_ascii_text(notes, "--notes")
 
@@ -177,6 +178,8 @@ def request_changes(
             raise WorkflowError(
                 f"Issue #{issue_id} is assigned to {issue.assignee or 'no one'}, not {reviewer}."
             )
+        assignee = assignee or issue.implementer or "codex"
+        _validate_assignee(assignee, config)
         return _write_active_issue(
             issues_path,
             issue,
@@ -252,6 +255,12 @@ def ensure_not_self_review(issue: Issue, reviewer: str) -> None:
         raise WorkflowError(
             f"Issue #{issue.id} was implemented by {issue.implementer}; self-review is not allowed."
         )
+
+
+def resolve_reviewer(reviewer: str | None, config: IssuekitConfig) -> str:
+    resolved = reviewer or config.default_reviewer
+    _validate_assignee(resolved, config)
+    return resolved
 
 
 def _validate_assignee(value: str, config: IssuekitConfig) -> None:

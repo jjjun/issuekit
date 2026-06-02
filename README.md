@@ -105,6 +105,10 @@ copying the steps.
 | `issuekit validate` | Check filenames, ids, frontmatter, indexes, mojibake, and ASCII rules. |
 | `issuekit generate-indexes` | Regenerate `docs/issues/indexes/*`. |
 | `issuekit complete <id> --summary "..." --verification "..."` | Move active issue to completed, regenerate indexes, and validate. |
+| `issuekit claim --assignee codex` | Claim the next active issue for an implementer. |
+| `issuekit submit-review <id> --summary "..." [--assignee codex] [--reviewer claude]` | Submit implemented work to a reviewer. |
+| `issuekit request-changes <id> --notes "..." [--assignee codex] [--reviewer claude]` | Return a reviewed issue to implementation. |
+| `issuekit queue --assignee claude [--stage review]` | List active issues for an assignee. |
 | `issuekit check-encoding [--json]` | Check tracked source files for leading BOM bytes and likely mojibake. |
 | `issuekit protocol [--agent codex\|claude]` | Print the canonical handoff protocol. |
 | `issuekit init [--with-mcp]` | Install tracker templates, encoding hooks, and optional MCP handoff scaffolding. |
@@ -123,6 +127,7 @@ ascii_id_threshold = 407
 recent_count = 30
 assignees = ["codex", "claude"]
 stages = ["todo", "implementing", "review", "changes_requested", "done"]
+default_reviewer = "claude"
 ```
 
 Non-Python repositories can use a standalone `issuekit.toml` at the repo root
@@ -134,11 +139,15 @@ ascii_id_threshold = 407
 recent_count = 30
 assignees = ["codex", "claude"]
 stages = ["todo", "implementing", "review", "changes_requested", "done"]
+default_reviewer = "claude"
 ```
 
 When both files exist, `[tool.issuekit]` in `pyproject.toml` takes precedence.
 If `pyproject.toml` exists without `[tool.issuekit]`, issuekit falls back to
 `issuekit.toml`.
+
+`default_reviewer` controls where MCP and CLI review handoffs go when no
+reviewer is specified. It must be one of the configured `assignees`.
 
 ## Development
 

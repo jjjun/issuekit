@@ -17,6 +17,7 @@ from issuekit.workflow import (
     claim_next,
     find_for,
     request_changes as workflow_request_changes,
+    resolve_reviewer,
     submit_for_review as workflow_submit_for_review,
 )
 
@@ -45,8 +46,8 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
 
     @server.tool(
         description=(
-            "Codex protocol step 2: submit an implemented task for Claude review "
-            "with summary, branch, and commit."
+            "Implementation protocol step 2: submit an implemented task for reviewer "
+            "handoff with summary, branch, and commit."
         )
     )
     def submit_for_review(
@@ -54,14 +55,19 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
         summary: str,
         branch: str | None = None,
         commit: str | None = None,
+        assignee: str = "codex",
+        reviewer: str | None = None,
     ) -> dict[str, Any]:
         config, issues_dir = _context(root)
+        reviewer = resolve_reviewer(reviewer, config)
         issue = workflow_submit_for_review(
             issues_dir,
             id,
             summary=summary,
             branch=branch,
             commit=commit,
+            assignee=assignee,
+            reviewer=reviewer,
             config=config,
         )
         _refresh_indexes(issues_dir, config.recent_count)
@@ -69,36 +75,53 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
 
     @server.tool(
         description=(
-            "Claude protocol step 1: fetch the next issue waiting for review, then "
-            "call approve or request_changes."
+            "Reviewer protocol step 1: fetch the next issue waiting for the reviewer, "
+            "then call approve or request_changes."
         )
     )
-    def next_review() -> dict[str, Any]:
+    def next_review(reviewer: str | None = None) -> dict[str, Any]:
         config, issues_dir = _context(root)
-        issues = find_for(issues_dir, "claude", stage="review", config=config)
+        reviewer = resolve_reviewer(reviewer, config)
+        issues = find_for(issues_dir, reviewer, stage="review", config=config)
         if not issues:
-            return {"status": "none", "assignee": "claude", "stage": "review"}
+            return {"status": "none", "assignee": reviewer, "stage": "review"}
         return _issue_dict(issues[0], include_body=True)
 
     @server.tool(
-        description="Claude protocol decision: return a review issue to codex with notes."
+        description="Reviewer protocol decision: return a review issue to codex with notes."
     )
-    def request_changes(id: int, notes: str) -> dict[str, Any]:
+    def request_changes(
+        id: int,
+        notes: str,
+        reviewer: str | None = None,
+        assignee: str | None = None,
+    ) -> dict[str, Any]:
         config, issues_dir = _context(root)
-        issue = workflow_request_changes(issues_dir, id, notes=notes, config=config)
+        reviewer = resolve_reviewer(reviewer, config)
+        issue = workflow_request_changes(
+            issues_dir,
+            id,
+            notes=notes,
+            reviewer=reviewer,
+            assignee=assignee,
+            config=config,
+        )
         _refresh_indexes(issues_dir, config.recent_count)
         return _issue_dict(issue)
 
     @server.tool(
-        description="Claude protocol decision: approve a reviewed issue and move it to completed."
+        description="Reviewer protocol decision: approve a reviewed issue and move it to completed."
     )
-    def approve(id: int, verification: str) -> dict[str, Any]:
+    def approve(id: int, verification: str, reviewer: str | None = None) -> dict[str, Any]:
         config, issues_dir = _context(root)
+        reviewer = resolve_reviewer(reviewer, config)
         issue = complete_issue(
             issues_dir,
             id,
-            summary="Approved by claude.",
+            summary=f"Approved by {reviewer}.",
             verification=verification,
+            reviewer=reviewer,
+            config=config,
         )
         _refresh_indexes(issues_dir, config.recent_count)
         return _issue_dict(issue)

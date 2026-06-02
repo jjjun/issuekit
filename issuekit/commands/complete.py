@@ -7,7 +7,7 @@ from pathlib import Path
 import sys
 
 from issuekit.commands import generate_indexes, validate
-from issuekit.config import load_config
+from issuekit.config import IssuekitConfig, load_config
 from issuekit.core import (
     Issue,
     format_issue_frontmatter,
@@ -17,6 +17,7 @@ from issuekit.core import (
     read_issues,
     write_issue_atomic,
 )
+from issuekit.workflow import WorkflowError, ensure_not_self_review, resolve_reviewer
 
 
 def run(args) -> int:
@@ -37,8 +38,10 @@ def run(args) -> int:
             issue_id,
             summary=summary,
             verification=verification,
+            reviewer=config.default_reviewer,
+            config=config,
         )
-    except ValueError as exc:
+    except (ValueError, WorkflowError) as exc:
         print(str(exc), file=sys.stderr)
         return 1
     except LookupError:
@@ -63,10 +66,14 @@ def complete_issue(
     *,
     summary: str = "",
     verification: str = "",
+    reviewer: str | None = None,
+    config: IssuekitConfig | None = None,
 ) -> Issue:
     if has_non_ascii(summary) or has_non_ascii(verification):
         raise ValueError("--summary and --verification must be ASCII-only.")
 
+    config = config or IssuekitConfig()
+    reviewer = resolve_reviewer(reviewer, config)
     issues_path = Path(issues_dir)
     active_issues, _, _ = read_all_issues(issues_dir)
     issue = next((candidate for candidate in active_issues if candidate.id == issue_id), None)
@@ -74,6 +81,7 @@ def complete_issue(
         raise LookupError(issue_id)
     if issue.decode_error:
         raise UnicodeError(f"Active issue #{issue_id} is not valid UTF-8: {issue.relative_path}")
+    ensure_not_self_review(issue, reviewer)
 
     completed_date = date.today().isoformat()
     frontmatter = parse_issue_frontmatter(issue.content)

@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from pathlib import Path
 import tomllib
 
+from issuekit.core import is_valid_workflow_token
+
 
 @dataclass(frozen=True)
 class IssuekitConfig:
@@ -14,6 +16,7 @@ class IssuekitConfig:
     issues_dir: str = "docs/issues"
     assignees: tuple[str, ...] = ("codex", "claude")
     stages: tuple[str, ...] = ("todo", "implementing", "review", "changes_requested", "done")
+    default_reviewer: str = "claude"
 
     def issues_path(self, cwd: Path | str = ".") -> Path:
         path = Path(self.issues_dir)
@@ -24,14 +27,20 @@ class IssuekitConfig:
 
 def load_config(cwd: Path | str = ".") -> IssuekitConfig:
     raw_config = _load_raw_config(Path(cwd))
+    assignees = _string_tuple(raw_config.get("assignees", IssuekitConfig.assignees))
+    default_reviewer = str(
+        raw_config.get("default_reviewer", IssuekitConfig.default_reviewer)
+    ).strip()
+    _validate_default_reviewer(default_reviewer, assignees)
     return IssuekitConfig(
         recent_count=int(raw_config.get("recent_count", IssuekitConfig.recent_count)),
         ascii_id_threshold=int(
             raw_config.get("ascii_id_threshold", IssuekitConfig.ascii_id_threshold)
         ),
         issues_dir=str(raw_config.get("issues_dir", IssuekitConfig.issues_dir)),
-        assignees=_string_tuple(raw_config.get("assignees", IssuekitConfig.assignees)),
+        assignees=assignees,
         stages=_string_tuple(raw_config.get("stages", IssuekitConfig.stages)),
+        default_reviewer=default_reviewer,
     )
 
 
@@ -59,3 +68,10 @@ def _string_tuple(value: object) -> tuple[str, ...]:
     if isinstance(value, (list, tuple)):
         return tuple(str(item) for item in value)
     return tuple(str(value).split()) if isinstance(value, str) else tuple()
+
+
+def _validate_default_reviewer(default_reviewer: str, assignees: tuple[str, ...]) -> None:
+    if not is_valid_workflow_token(default_reviewer):
+        raise ValueError(f"Invalid default_reviewer token: {default_reviewer}")
+    if default_reviewer not in assignees:
+        raise ValueError(f"Unknown default_reviewer: {default_reviewer}")
