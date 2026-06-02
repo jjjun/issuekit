@@ -38,7 +38,7 @@ def run(args) -> int:
             issue_id,
             summary=summary,
             verification=verification,
-            reviewer=config.default_reviewer,
+            reviewer=None,
             config=config,
         )
     except (ValueError, WorkflowError) as exc:
@@ -73,7 +73,6 @@ def complete_issue(
         raise ValueError("--summary and --verification must be ASCII-only.")
 
     config = config or IssuekitConfig()
-    reviewer = resolve_reviewer(reviewer, config)
     issues_path = Path(issues_dir)
     active_issues, _, _ = read_all_issues(issues_dir)
     issue = next((candidate for candidate in active_issues if candidate.id == issue_id), None)
@@ -81,7 +80,8 @@ def complete_issue(
         raise LookupError(issue_id)
     if issue.decode_error:
         raise UnicodeError(f"Active issue #{issue_id} is not valid UTF-8: {issue.relative_path}")
-    ensure_not_self_review(issue, reviewer)
+    reviewer = resolve_reviewer(reviewer, config, issue=issue)
+    ensure_not_self_review(issue, reviewer, config)
 
     completed_date = date.today().isoformat()
     frontmatter = parse_issue_frontmatter(issue.content)

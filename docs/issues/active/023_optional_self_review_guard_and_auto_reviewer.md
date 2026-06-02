@@ -1,12 +1,13 @@
 ---
 id: 23
-status: active
+status: in_progress
 priority: medium
 created: 2026-06-01
-completed:
+completed: 
+assignee: codex
+stage: implementing
 title: Make the self-review guard optional and add an auto reviewer default
 ---
-
 
 # Issue #23: Make the self-review guard optional and add an auto reviewer default
 

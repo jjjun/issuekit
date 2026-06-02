@@ -5,6 +5,7 @@ import time
 import pytest
 
 from issuekit.commands.complete import complete_issue
+from issuekit.config import IssuekitConfig
 from issuekit.workflow import (
     WorkflowError,
     WorkflowLockTimeout,
@@ -118,7 +119,27 @@ def test_submit_for_review_rejects_wrong_assignee(tmp_path: Path) -> None:
         submit_for_review(issues_dir, 1, summary="Done.")
 
 
-def test_submit_for_review_rejects_self_review(tmp_path: Path) -> None:
+def test_submit_for_review_allows_self_review_by_default(tmp_path: Path) -> None:
+    issues_dir = tmp_path / "docs" / "issues"
+    write_issue(
+        issues_dir / "active" / "001_first.md",
+        issue_text(
+            1,
+            "First",
+            status="in_progress",
+            assignee="codex",
+            stage="implementing",
+            implementer="codex",
+        ),
+    )
+
+    issue = submit_for_review(issues_dir, 1, summary="Done.", reviewer="codex")
+
+    assert issue.assignee == "codex"
+    assert issue.stage == "review"
+
+
+def test_submit_for_review_rejects_self_review_when_guard_is_required(tmp_path: Path) -> None:
     issues_dir = tmp_path / "docs" / "issues"
     write_issue(
         issues_dir / "active" / "001_first.md",
@@ -133,7 +154,13 @@ def test_submit_for_review_rejects_self_review(tmp_path: Path) -> None:
     )
 
     with pytest.raises(WorkflowError, match="self-review is not allowed"):
-        submit_for_review(issues_dir, 1, summary="Done.", reviewer="codex")
+        submit_for_review(
+            issues_dir,
+            1,
+            summary="Done.",
+            reviewer="codex",
+            config=IssuekitConfig(require_distinct_reviewer=True),
+        )
 
 
 def test_submit_for_review_routes_to_explicit_reviewer(tmp_path: Path) -> None:
@@ -161,6 +188,60 @@ def test_submit_for_review_routes_to_explicit_reviewer(tmp_path: Path) -> None:
     assert issue.assignee == "codex"
     assert issue.stage == "review"
     assert issue.implementer == "claude"
+
+
+def test_submit_for_review_auto_keeps_current_assignee_when_guard_is_off(
+    tmp_path: Path,
+) -> None:
+    issues_dir = tmp_path / "docs" / "issues"
+    write_issue(
+        issues_dir / "active" / "001_first.md",
+        issue_text(
+            1,
+            "First",
+            status="in_progress",
+            assignee="codex",
+            stage="implementing",
+            implementer="codex",
+        ),
+    )
+
+    issue = submit_for_review(
+        issues_dir,
+        1,
+        summary="Done.",
+        config=IssuekitConfig(default_reviewer="auto"),
+    )
+
+    assert issue.assignee == "codex"
+    assert issue.stage == "review"
+
+
+def test_submit_for_review_auto_uses_other_assignee_when_guard_is_required(
+    tmp_path: Path,
+) -> None:
+    issues_dir = tmp_path / "docs" / "issues"
+    write_issue(
+        issues_dir / "active" / "001_first.md",
+        issue_text(
+            1,
+            "First",
+            status="in_progress",
+            assignee="codex",
+            stage="implementing",
+            implementer="codex",
+        ),
+    )
+
+    issue = submit_for_review(
+        issues_dir,
+        1,
+        summary="Done.",
+        config=IssuekitConfig(default_reviewer="auto", require_distinct_reviewer=True),
+    )
+
+    assert issue.assignee == "claude"
+    assert issue.stage == "review"
 
 
 def test_request_changes_returns_issue_to_codex_and_can_be_reclaimed(tmp_path: Path) -> None:
@@ -294,7 +375,26 @@ def test_complete_issue_sets_done_stage_and_clears_assignee(tmp_path: Path) -> N
     assert "implementer:" not in content
 
 
-def test_complete_issue_rejects_self_review(tmp_path: Path) -> None:
+def test_complete_issue_allows_self_review_by_default(tmp_path: Path) -> None:
+    issues_dir = tmp_path / "docs" / "issues"
+    write_issue(
+        issues_dir / "active" / "001_first.md",
+        issue_text(
+            1,
+            "First",
+            status="in_progress",
+            assignee="codex",
+            stage="review",
+            implementer="codex",
+        ),
+    )
+
+    issue = complete_issue(issues_dir, 1, reviewer="codex")
+
+    assert issue.status == "completed"
+
+
+def test_complete_issue_rejects_self_review_when_guard_is_required(tmp_path: Path) -> None:
     issues_dir = tmp_path / "docs" / "issues"
     write_issue(
         issues_dir / "active" / "001_first.md",
@@ -309,7 +409,12 @@ def test_complete_issue_rejects_self_review(tmp_path: Path) -> None:
     )
 
     with pytest.raises(WorkflowError, match="self-review is not allowed"):
-        complete_issue(issues_dir, 1, reviewer="codex")
+        complete_issue(
+            issues_dir,
+            1,
+            reviewer="codex",
+            config=IssuekitConfig(require_distinct_reviewer=True),
+        )
 
 
 def test_workflow_rejects_invalid_tokens_and_non_ascii_text(tmp_path: Path) -> None:

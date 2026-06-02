@@ -128,6 +128,7 @@ recent_count = 30
 assignees = ["codex", "claude"]
 stages = ["todo", "implementing", "review", "changes_requested", "done"]
 default_reviewer = "claude"
+require_distinct_reviewer = false
 ```
 
 Non-Python repositories can use a standalone `issuekit.toml` at the repo root
@@ -140,6 +141,7 @@ recent_count = 30
 assignees = ["codex", "claude"]
 stages = ["todo", "implementing", "review", "changes_requested", "done"]
 default_reviewer = "claude"
+require_distinct_reviewer = false
 ```
 
 When both files exist, `[tool.issuekit]` in `pyproject.toml` takes precedence.
@@ -147,7 +149,11 @@ If `pyproject.toml` exists without `[tool.issuekit]`, issuekit falls back to
 `issuekit.toml`.
 
 `default_reviewer` controls where MCP and CLI review handoffs go when no
-reviewer is specified. It must be one of the configured `assignees`.
+reviewer is specified. It must be one of the configured `assignees`, or `auto`.
+With `auto`, issuekit keeps the current review assignee when possible and
+otherwise uses a stable configured assignee. When `require_distinct_reviewer` is
+true, `auto` chooses an assignee that differs from the issue implementer and
+same-name review is rejected.
 
 ## Development
 

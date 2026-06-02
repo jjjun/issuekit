@@ -7,8 +7,8 @@ CODEX_PROTOCOL = """# Handoff protocol (codex)
 
 Codex usually implements issuekit tasks from docs/issues/active/, but any
 configured agent can be the implementer or the reviewer. The reviewer is the
-agent assigned at stage=review, defaults to `default_reviewer`, and must not
-match the issue's `implementer`.
+agent assigned at stage=review and defaults to `default_reviewer`, which may be
+`auto`. Same-name review is allowed unless `require_distinct_reviewer` is true.
 
 When the user asks codex to work on an issue in open-ended terms, such as
 "handle the next issue" or "take the queue", do not wait for explicit
@@ -28,7 +28,10 @@ commands. Run this protocol end to end:
 5. Call `submit_for_review(id, summary, branch, commit, assignee="codex",
    reviewer=None)` with an ASCII summary, the current branch name, and the
    implementation commit. Set assignee to the implementer. Omit reviewer to use
-   `default_reviewer`, or pass another configured assignee.
+   `default_reviewer`, or pass another configured assignee. If
+   `default_reviewer` is `auto`, issuekit keeps the current review assignee when
+   possible and chooses a distinct reviewer only when strict distinct review is
+   required.
 6. If a reviewer returns the issue with stage=changes_requested, call
    `claim_next_task(assignee="codex")` again, read the Review Feedback note,
    re-plan for just that feedback, address it, commit, and submit for review
@@ -43,11 +46,13 @@ CLAUDE_PROTOCOL = """# Handoff protocol (claude)
 
 Claude usually reviews issuekit tasks after codex submits them, but any
 configured reviewer can use this flow. The reviewer is the agent assigned at
-stage=review, defaults to `default_reviewer`, and must not match the issue's
-`implementer`.
+stage=review and defaults to `default_reviewer`, which may be `auto`. Same-name
+review is allowed unless `require_distinct_reviewer` is true.
 
 1. Call the issuekit MCP tool `next_review(reviewer=None)`. Omit reviewer to
-   use `default_reviewer`, or pass the reviewer assignee to inspect.
+   use `default_reviewer`, or pass the reviewer assignee to inspect. With
+   `default_reviewer = "auto"`, omitted reviewer means the next issue already
+   assigned at stage=review.
 2. Review the referenced branch and commit diff against the issue body.
 3. If the implementation is acceptable, call `approve(id, verification,
    reviewer=None)`.

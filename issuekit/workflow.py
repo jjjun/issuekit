@@ -26,6 +26,7 @@ READY_STAGES = {"", "todo", "changes_requested"}
 CLAIMABLE_STATUSES = {"active", "in_progress"}
 PRIORITY_RANK = {"high": 0, "medium": 1, "low": 2}
 LOCK_FILE_NAME = ".issuekit-claim.lock"
+AUTO_REVIEWER = "auto"
 
 
 class WorkflowError(RuntimeError):
@@ -130,7 +131,6 @@ def submit_for_review(
 ) -> Issue:
     config = config or IssuekitConfig()
     _validate_assignee(assignee, config)
-    reviewer = resolve_reviewer(reviewer, config)
     _validate_stage("review", config)
     _validate_ascii_text(summary, "--summary")
     _validate_ascii_text(branch or "", "--branch")
@@ -143,7 +143,8 @@ def submit_for_review(
             raise WorkflowError(
                 f"Issue #{issue_id} is assigned to {issue.assignee or 'no one'}, not {assignee}."
             )
-        ensure_not_self_review(issue, reviewer)
+        reviewer = resolve_reviewer(reviewer, config, issue=issue)
+        ensure_not_self_review(issue, reviewer, config)
         note = _handoff_note(summary=summary, branch=branch or "", commit=commit or "")
         return _write_active_issue(
             issues_path,
@@ -165,7 +166,6 @@ def request_changes(
     timeout: float = 10.0,
 ) -> Issue:
     config = config or IssuekitConfig()
-    reviewer = resolve_reviewer(reviewer, config)
     if assignee is not None:
         _validate_assignee(assignee, config)
     _validate_stage("changes_requested", config)
@@ -174,6 +174,7 @@ def request_changes(
     issues_path = Path(issues_dir)
     with claim_lock(issues_path / "active", timeout=timeout):
         issue = _find_active_issue(issues_path, issue_id)
+        reviewer = resolve_reviewer(reviewer, config, issue=issue)
         if issue.assignee != reviewer:
             raise WorkflowError(
                 f"Issue #{issue_id} is assigned to {issue.assignee or 'no one'}, not {reviewer}."
@@ -250,17 +251,49 @@ def _find_active_issue(issues_dir: Path, issue_id: int) -> Issue:
     return issue
 
 
-def ensure_not_self_review(issue: Issue, reviewer: str) -> None:
+def ensure_not_self_review(
+    issue: Issue,
+    reviewer: str,
+    config: IssuekitConfig | None = None,
+) -> None:
+    config = config or IssuekitConfig()
+    if not config.require_distinct_reviewer:
+        return
     if issue.implementer and issue.implementer == reviewer:
         raise WorkflowError(
             f"Issue #{issue.id} was implemented by {issue.implementer}; self-review is not allowed."
         )
 
 
-def resolve_reviewer(reviewer: str | None, config: IssuekitConfig) -> str:
-    resolved = reviewer or config.default_reviewer
+def resolve_reviewer(
+    reviewer: str | None,
+    config: IssuekitConfig,
+    *,
+    issue: Issue | None = None,
+) -> str:
+    configured = (reviewer or config.default_reviewer).strip()
+    resolved = (
+        _resolve_auto_reviewer(config, issue=issue)
+        if configured == AUTO_REVIEWER
+        else configured
+    )
     _validate_assignee(resolved, config)
     return resolved
+
+
+def _resolve_auto_reviewer(config: IssuekitConfig, *, issue: Issue | None) -> str:
+    if config.require_distinct_reviewer:
+        implementer = issue.implementer if issue is not None else ""
+        for assignee in config.assignees:
+            if assignee != implementer:
+                return assignee
+        raise WorkflowError("No reviewer is distinct from the issue implementer.")
+
+    if issue is not None and issue.assignee:
+        return issue.assignee
+    if config.assignees:
+        return config.assignees[0]
+    raise WorkflowError("No assignees are configured for auto reviewer.")
 
 
 def _validate_assignee(value: str, config: IssuekitConfig) -> None:

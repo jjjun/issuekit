@@ -17,6 +17,7 @@ class IssuekitConfig:
     assignees: tuple[str, ...] = ("codex", "claude")
     stages: tuple[str, ...] = ("todo", "implementing", "review", "changes_requested", "done")
     default_reviewer: str = "claude"
+    require_distinct_reviewer: bool = False
 
     def issues_path(self, cwd: Path | str = ".") -> Path:
         path = Path(self.issues_dir)
@@ -41,6 +42,12 @@ def load_config(cwd: Path | str = ".") -> IssuekitConfig:
         assignees=assignees,
         stages=_string_tuple(raw_config.get("stages", IssuekitConfig.stages)),
         default_reviewer=default_reviewer,
+        require_distinct_reviewer=_bool_value(
+            raw_config.get(
+                "require_distinct_reviewer",
+                IssuekitConfig.require_distinct_reviewer,
+            )
+        ),
     )
 
 
@@ -73,5 +80,21 @@ def _string_tuple(value: object) -> tuple[str, ...]:
 def _validate_default_reviewer(default_reviewer: str, assignees: tuple[str, ...]) -> None:
     if not is_valid_workflow_token(default_reviewer):
         raise ValueError(f"Invalid default_reviewer token: {default_reviewer}")
+    if default_reviewer == "auto":
+        return
     if default_reviewer not in assignees:
         raise ValueError(f"Unknown default_reviewer: {default_reviewer}")
+
+
+def _bool_value(value: object) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int):
+        return bool(value)
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"1", "true", "yes", "on"}:
+            return True
+        if normalized in {"0", "false", "no", "off"}:
+            return False
+    raise ValueError(f"Invalid require_distinct_reviewer value: {value}")

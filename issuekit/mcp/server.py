@@ -10,10 +10,11 @@ from mcp.server.fastmcp import FastMCP
 
 from issuekit.commands.complete import complete_issue
 from issuekit.commands.generate_indexes import write_index_files
-from issuekit.config import load_config
+from issuekit.config import IssuekitConfig, load_config
 from issuekit.core import Issue, read_all_issues
 from issuekit.protocol import render_protocol
 from issuekit.workflow import (
+    AUTO_REVIEWER,
     claim_next,
     find_for,
     request_changes as workflow_request_changes,
@@ -59,7 +60,6 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
         reviewer: str | None = None,
     ) -> dict[str, Any]:
         config, issues_dir = _context(root)
-        reviewer = resolve_reviewer(reviewer, config)
         issue = workflow_submit_for_review(
             issues_dir,
             id,
@@ -81,6 +81,11 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
     )
     def next_review(reviewer: str | None = None) -> dict[str, Any]:
         config, issues_dir = _context(root)
+        if reviewer is None and config.default_reviewer == AUTO_REVIEWER:
+            issues = find_for(issues_dir, stage="review", config=config)
+            if not issues:
+                return {"status": "none", "assignee": AUTO_REVIEWER, "stage": "review"}
+            return _issue_dict(issues[0], include_body=True)
         reviewer = resolve_reviewer(reviewer, config)
         issues = find_for(issues_dir, reviewer, stage="review", config=config)
         if not issues:
@@ -97,7 +102,6 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
         assignee: str | None = None,
     ) -> dict[str, Any]:
         config, issues_dir = _context(root)
-        reviewer = resolve_reviewer(reviewer, config)
         issue = workflow_request_changes(
             issues_dir,
             id,
@@ -114,7 +118,7 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
     )
     def approve(id: int, verification: str, reviewer: str | None = None) -> dict[str, Any]:
         config, issues_dir = _context(root)
-        reviewer = resolve_reviewer(reviewer, config)
+        reviewer = _resolve_reviewer_for_issue(issues_dir, id, reviewer, config)
         issue = complete_issue(
             issues_dir,
             id,
@@ -157,6 +161,17 @@ def _context(root: Path):
 
 def _refresh_indexes(issues_dir: Path, recent_count: int) -> None:
     write_index_files(issues_dir, recent_count)
+
+
+def _resolve_reviewer_for_issue(
+    issues_dir: Path,
+    issue_id: int,
+    reviewer: str | None,
+    config: IssuekitConfig,
+) -> str:
+    active_issues, _, _ = read_all_issues(issues_dir)
+    issue = next((candidate for candidate in active_issues if candidate.id == issue_id), None)
+    return resolve_reviewer(reviewer, config, issue=issue)
 
 
 def _issue_dict(issue: Issue, *, include_body: bool = False) -> dict[str, Any]:

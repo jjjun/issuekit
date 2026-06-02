@@ -74,7 +74,12 @@ def test_load_config_malformed_issuekit_toml_names_file(tmp_path: Path) -> None:
 
 def test_load_config_reads_workflow_sets_from_issuekit_toml(tmp_path: Path) -> None:
     (tmp_path / "issuekit.toml").write_text(
-        "assignees = ['alice', 'bob']\nstages = ['draft', 'review']\ndefault_reviewer = 'bob'\n",
+        (
+            "assignees = ['alice', 'bob']\n"
+            "stages = ['draft', 'review']\n"
+            "default_reviewer = 'bob'\n"
+            "require_distinct_reviewer = true\n"
+        ),
         encoding="utf-8",
         newline="\n",
     )
@@ -83,7 +88,31 @@ def test_load_config_reads_workflow_sets_from_issuekit_toml(tmp_path: Path) -> N
         assignees=("alice", "bob"),
         stages=("draft", "review"),
         default_reviewer="bob",
+        require_distinct_reviewer=True,
     )
+
+
+def test_load_config_accepts_auto_default_reviewer(tmp_path: Path) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "assignees = ['alice', 'bob']\ndefault_reviewer = 'auto'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    assert load_config(tmp_path) == IssuekitConfig(
+        assignees=("alice", "bob"),
+        default_reviewer="auto",
+    )
+
+
+def test_load_config_coerces_string_distinct_reviewer_flag(tmp_path: Path) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "require_distinct_reviewer = 'yes'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    assert load_config(tmp_path).require_distinct_reviewer is True
 
 
 def test_load_config_rejects_invalid_default_reviewer_token(tmp_path: Path) -> None:
