@@ -5,7 +5,7 @@ priority: medium
 created: 2026-06-03
 completed: 
 assignee: codex
-stage: implementing
+stage: review
 implementer: codex
 title: Add CRLF detection to check-encoding
 ---
@@ -139,3 +139,9 @@ no backward-compatibility shim is required.
   proposal 022 (shared issuekit CLI / encoding guard)
 - git: `git ls-files --eol` reports `i/<eol>` for the index blob; `eol=crlf`
   files are stored as LF blobs, so the rule respects `.gitattributes` by design.
+
+## Handoff
+
+- Summary: Implemented index-based CRLF detection for check-encoding, added --no-crlf, updated JSON/output reporting, covered CRLF/mixed/attribute/binary/path cases, and updated tracker docs.
+- Branch: `main`
+- Commit: `92a0706bb09e34e4bccb955e65029e6d8c819e6b`
