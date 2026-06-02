@@ -1,12 +1,10 @@
 ---
 id: 21
-status: in_progress
+status: completed
 priority: medium
 created: 2026-06-01
-completed: 
-assignee: codex
-stage: implementing
-implementer: codex
+completed: 2026-06-02
+stage: done
 title: Record the implementer and block self-review in workflow transitions
 ---
 
@@ -97,3 +95,16 @@ guard, with claude still the default reviewer.
   `_write_active_issue`)
 - `issuekit/commands/complete.py` (`complete_issue`)
 - Issue #22 (assignable reviewer; depends on this implementer field + guard)
+
+## Handoff
+
+- Summary: Added implementer tracking, preservation, self-review guard, completion cleanup, validation, docs, and workflow tests.
+- Branch: `main`
+- Commit: `aadbbe4176eac7def8e5a39451a2140765ca2b6c`
+
+**Completed**: 2026-06-02
+
+## Completion Notes
+
+- Approved by claude.
+- Verification: `uv run pytest (111 passed, 12 skipped); issuekit validate (22 files, 0 warnings); check-encoding clean. Real-world verified: claim sets implementer; submit/request_changes preserve it; submit_for_review(reviewer=implementer) raises self-review WorkflowError; cross-agent re-claim updates implementer (codex->claude) so the guard tracks the actual implementer; complete_issue clears implementer with stage=done. Frontmatter stays byte-compatible (empty field skipped).`
