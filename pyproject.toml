@@ -39,3 +39,4 @@ packages = ["issuekit"]
 # recent_count = 30
 # ascii_id_threshold = 0        # issue ids >= this value must be ASCII-only
 # issues_dir = "docs/issues"
+default_reviewer = "auto"
