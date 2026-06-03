@@ -113,8 +113,49 @@ copying the steps.
 | `issuekit protocol [--agent codex\|claude]` | Print the canonical handoff protocol. |
 | `issuekit init [--with-mcp]` | Install tracker templates, encoding hooks, and optional MCP handoff scaffolding. |
 | `issuekit setup [--force] [--json]` | Run per-repo MCP handoff scaffolding and setup diagnostics. |
+| `issuekit add-ref <name> --path <repo>` | Register a machine-local related repository. |
+| `issuekit list-refs` | List related repository refs from `issuekit.local.toml`. |
+| `issuekit propose --to <name> --title "..."` | Send a proposal to a related repo's `incoming/` directory. |
+| `issuekit incoming [--json]` | List inbound cross-project proposals. |
+| `issuekit adopt <proposal-file>` | Adopt an incoming proposal as a local active issue. |
+| `issuekit discard <proposal-file>` | Move an incoming proposal to `incoming/discarded/`. |
 
 The issue file specification lives in `docs/issues/README.md`.
+
+## Cross-Project Proposals
+
+Related repositories can exchange suggestions through files under
+`docs/issues/incoming/`. Proposals are not workflow items until they are adopted,
+so `validate`, `generate-indexes`, and the claim queue continue to scan only
+`active/` and `completed/`.
+
+Refs are machine-local and stored in gitignored `issuekit.local.toml`:
+
+```powershell
+issuekit add-ref fast-domain --path C:/abs/path/to/fast-domain
+issuekit list-refs
+```
+
+Send a proposal:
+
+```powershell
+issuekit propose --to fast-domain --title "Short proposal title" --body-file proposal.md
+```
+
+Triage inbound proposals:
+
+```powershell
+issuekit incoming
+issuekit adopt mine-py__42__short_proposal_title.md
+issuekit discard mine-py__42__short_proposal_title.md
+```
+
+Adopted issues record the proposal `origin:` in frontmatter. To reply after
+implementing an adopted issue, register the origin repo as a ref and run:
+
+```powershell
+issuekit propose --reply 42 --title "Implemented fast-domain support" --body-file reply.md
+```
 
 ## Configuration
 

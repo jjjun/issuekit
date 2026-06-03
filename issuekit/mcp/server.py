@@ -10,8 +10,16 @@ from mcp.server.fastmcp import FastMCP
 
 from issuekit.commands.complete import complete_issue
 from issuekit.commands.generate_indexes import write_index_files
+from issuekit.commands.propose import build_proposal
 from issuekit.config import IssuekitConfig, load_config
 from issuekit.core import Issue, read_all_issues
+from issuekit.proposals import (
+    adopt_proposal as adopt_proposal_file,
+    list_incoming as list_incoming_files,
+    proposal_dict,
+    write_proposal,
+)
+from issuekit.refs import resolve_ref
 from issuekit.protocol import render_protocol
 from issuekit.workflow import (
     AUTO_REVIEWER,
@@ -146,6 +154,41 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
             _issue_dict(issue)
             for issue in find_for(issues_dir, assignee, stage=stage, config=config)
         ]
+
+    @server.tool(description="Send a cross-repository proposal to a configured ref.")
+    def propose(
+        to: str | None = None,
+        title: str | None = None,
+        body: str | None = None,
+        from_issue: str | None = None,
+        reply: str | None = None,
+    ) -> dict[str, Any]:
+        proposal = build_proposal(
+            root,
+            to=to,
+            title=title,
+            body=body,
+            body_file=None,
+            from_issue=from_issue,
+            reply=reply,
+        )
+        target = resolve_ref(proposal.to, root)
+        path = write_proposal(target.issues_dir, proposal)
+        return {**proposal_dict(proposal), "path": path.as_posix()}
+
+    @server.tool(description="List incoming cross-repository proposals.")
+    def list_incoming() -> list[dict[str, Any]]:
+        _, issues_dir = _context(root)
+        return [proposal_dict(proposal) for proposal in list_incoming_files(issues_dir)]
+
+    @server.tool(description="Adopt an incoming proposal as a local active issue.")
+    def adopt_proposal(proposal_file: str, priority: str = "medium") -> dict[str, Any]:
+        config, issues_dir = _context(root)
+        path = adopt_proposal_file(issues_dir, proposal_file, priority=priority)
+        _refresh_indexes(issues_dir, config.recent_count)
+        _, _, issues = read_all_issues(issues_dir)
+        issue = next(candidate for candidate in issues if candidate.file_path == path)
+        return _issue_dict(issue, include_body=True)
 
     return server
 

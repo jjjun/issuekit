@@ -18,6 +18,12 @@ EXPECTED_COMMANDS = {
     "protocol",
     "init",
     "setup",
+    "add-ref",
+    "list-refs",
+    "propose",
+    "incoming",
+    "adopt",
+    "discard",
 }
 
 
@@ -81,6 +87,12 @@ def test_handlers_are_stubs(command: str) -> None:
         "setup",
         "submit-review",
         "validate",
+        "add-ref",
+        "list-refs",
+        "propose",
+        "incoming",
+        "adopt",
+        "discard",
     }:
         pytest.skip(f"{command} is implemented")
 
@@ -90,3 +102,45 @@ def test_handlers_are_stubs(command: str) -> None:
 
     with pytest.raises(NotImplementedError, match=command):
         cli.main(argv)
+
+
+def test_proposal_cli_round_trip(tmp_path, monkeypatch, capsys) -> None:
+    from tests.issue_helpers import make_issue_tree
+
+    source = tmp_path / "source"
+    target = tmp_path / "target"
+    make_issue_tree(source)
+    make_issue_tree(target)
+    body_file = source / "proposal.md"
+    body_file.write_text("## Suggested Change\n\nDo the thing.\n", encoding="utf-8", newline="\n")
+
+    monkeypatch.chdir(source)
+    assert cli.main(["add-ref", "target", "--path", str(target)]) == 0
+    assert cli.main(
+        [
+            "propose",
+            "--to",
+            "target",
+            "--from-issue",
+            "1",
+            "--title",
+            "Suggest Thing",
+            "--body-file",
+            str(body_file),
+        ]
+    ) == 0
+
+    proposal_files = list((target / "docs" / "issues" / "incoming").glob("*.md"))
+    assert len(proposal_files) == 1
+
+    monkeypatch.chdir(target)
+    assert cli.main(["incoming", "--json"]) == 0
+    assert "Suggest Thing" in capsys.readouterr().out
+    assert cli.main(["adopt", proposal_files[0].name, "--priority", "high"]) == 0
+
+    active_files = list((target / "docs" / "issues" / "active").glob("003_*.md"))
+    assert len(active_files) == 1
+    content = active_files[0].read_text(encoding="utf-8")
+    assert "origin: source#1@" in content
+    assert "Origin: `source#1@" in content
+    assert not proposal_files[0].exists()

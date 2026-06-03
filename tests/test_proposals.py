@@ -1,0 +1,133 @@
+from pathlib import Path
+
+from issuekit import cli
+from issuekit.proposals import (
+    Proposal,
+    adopt_proposal,
+    discard_proposal,
+    list_incoming,
+    write_proposal,
+)
+from issuekit.workflow import claim_next
+
+from tests.issue_helpers import issue_text, make_issue_tree, write_issue
+
+
+def test_write_and_list_incoming_proposal(tmp_path: Path) -> None:
+    issues_dir = tmp_path / "docs" / "issues"
+    proposal = Proposal(
+        origin="source#42@abc123",
+        to="target",
+        reply_to="",
+        created="2026-06-03",
+        title="Short Proposal",
+        body="## Context\n\nBody.",
+    )
+
+    path = write_proposal(issues_dir, proposal)
+    duplicate_path = write_proposal(issues_dir, proposal)
+    incoming = list_incoming(issues_dir)
+
+    data = path.read_bytes()
+    assert path == duplicate_path
+    assert len(list((issues_dir / "incoming").glob("*.md"))) == 1
+    assert not data.startswith(b"\xef\xbb\xbf")
+    assert b"\r\n" not in data
+    assert incoming[0].origin == "source#42@abc123"
+    assert incoming[0].title == "Short Proposal"
+
+
+def test_incoming_is_ignored_by_validate_and_claim(tmp_path: Path, monkeypatch) -> None:
+    issues_dir = make_issue_tree(tmp_path)
+    write_proposal(
+        issues_dir,
+        Proposal(
+            origin="source#42@abc123",
+            to="target",
+            reply_to="",
+            created="2026-06-03",
+            title="Incoming Only",
+            body="## Suggested Change\n\nDo not claim this.",
+        ),
+    )
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["validate"]) == 0
+    claimed = claim_next(issues_dir, "codex")
+
+    assert claimed is not None
+    assert claimed.id == 1
+    assert claimed.title == "First"
+
+
+def test_adopt_proposal_creates_active_issue_and_moves_source(tmp_path: Path) -> None:
+    issues_dir = make_issue_tree(tmp_path)
+    path = write_proposal(
+        issues_dir,
+        Proposal(
+            origin="source#42@abc123",
+            to="target",
+            reply_to="",
+            created="2026-06-03",
+            title="Adopt Me",
+            body="## Suggested Change\n\nImplement this locally.",
+        ),
+    )
+
+    active_path = adopt_proposal(issues_dir, path.name, priority="low")
+
+    content = active_path.read_text(encoding="utf-8")
+    assert active_path.name == "003_adopt_me.md"
+    assert "priority: low" in content
+    assert "origin: source#42@abc123" in content
+    assert "- Origin: `source#42@abc123`" in content
+    assert not path.exists()
+    assert (issues_dir / "incoming" / "adopted" / path.name).exists()
+
+
+def test_discard_proposal_moves_source(tmp_path: Path) -> None:
+    issues_dir = tmp_path / "docs" / "issues"
+    path = write_proposal(
+        issues_dir,
+        Proposal(
+            origin="source#42@abc123",
+            to="target",
+            reply_to="",
+            created="2026-06-03",
+            title="Discard Me",
+            body="## Suggested Change\n\nNo.",
+        ),
+    )
+
+    discarded = discard_proposal(issues_dir, path.name)
+
+    assert discarded == issues_dir / "incoming" / "discarded" / path.name
+    assert discarded.exists()
+    assert not path.exists()
+
+
+def test_reply_proposal_uses_adopted_issue_origin(tmp_path: Path, monkeypatch) -> None:
+    source = tmp_path / "source"
+    target = tmp_path / "target"
+    source.mkdir()
+    target.mkdir()
+    target_issues = target / "docs" / "issues"
+    write_issue(
+        target_issues / "active" / "001_adopted.md",
+        issue_text(1, "Adopted").replace(
+            "title: Adopted\n",
+            "origin: source#42@abc123\ntitle: Adopted\n",
+        ),
+    )
+    source_issues = source / "docs" / "issues"
+    source_issues.mkdir(parents=True)
+    monkeypatch.chdir(target)
+    assert cli.main(["add-ref", "source", "--path", str(source)]) == 0
+    assert cli.main(["propose", "--reply", "1", "--title", "Implemented Reply"]) == 0
+
+    proposals = list_incoming(source_issues)
+
+    assert len(proposals) == 1
+    assert proposals[0].to == "source"
+    assert proposals[0].reply_to == "source#42@abc123"
+    assert proposals[0].origin.startswith("target#1@")

@@ -1,9 +1,12 @@
 ---
 id: 25
-status: active
+status: in_progress
 priority: medium
 created: 2026-06-03
 completed:
+assignee: codex
+stage: implementing
+implementer: codex
 title: Cross-project proposal exchange with reply loop
 ---
 

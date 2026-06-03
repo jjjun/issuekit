@@ -51,12 +51,19 @@ def init_repo(cwd: Path, *, force: bool = False, with_mcp: bool = False) -> Init
     config = load_config(cwd)
     issues_dir = config.issues_path(cwd)
 
-    for directory in (issues_dir / "active", issues_dir / "completed", issues_dir / "indexes"):
+    for directory in (
+        issues_dir / "active",
+        issues_dir / "completed",
+        issues_dir / "indexes",
+        issues_dir / "incoming",
+    ):
         directory.mkdir(parents=True, exist_ok=True)
+    _write_incoming_placeholder(cwd, issues_dir, force, result)
 
     _write_template(cwd, cwd / ".gitattributes", "gitattributes", force, result)
     _write_template(cwd, cwd / ".editorconfig", "editorconfig", force, result)
     _write_template(cwd, issues_dir / "README.md", "issues_README.md", force, result)
+    _write_local_config_ignore(cwd, result)
     _write_pre_commit(cwd, force, result)
     if with_mcp:
         _write_mcp_scaffold(cwd, force, result)
@@ -94,6 +101,38 @@ def _write_pre_commit(cwd: Path, force: bool, result: InitResult) -> None:
         return
     path.write_text(_template_text("pre-commit-config.yaml"), encoding="utf-8", newline="\n")
     result.written.append(".pre-commit-config.yaml")
+
+
+def _write_incoming_placeholder(
+    cwd: Path,
+    issues_dir: Path,
+    force: bool,
+    result: InitResult,
+) -> None:
+    path = issues_dir / "incoming" / ".gitkeep"
+    if path.exists() and not force:
+        result.skipped.append(_display_path(cwd, path))
+        return
+    path.write_text("", encoding="utf-8", newline="\n")
+    result.written.append(_display_path(cwd, path))
+
+
+def _write_local_config_ignore(cwd: Path, result: InitResult) -> None:
+    path = cwd / ".gitignore"
+    entry = "issuekit.local.toml"
+    if not path.exists():
+        path.write_text(f"{entry}\n", encoding="utf-8", newline="\n")
+        result.written.append(".gitignore")
+        return
+    content = path.read_text(encoding="utf-8-sig", errors="ignore")
+    entries = {line.strip() for line in content.splitlines()}
+    if entry in entries:
+        result.skipped.append(".gitignore")
+        return
+    separator = "" if content.endswith("\n") or not content else "\n"
+    with path.open("a", encoding="utf-8", newline="\n") as handle:
+        handle.write(f"{separator}{entry}\n")
+    result.written.append(".gitignore")
 
 
 def _write_mcp_scaffold(cwd: Path, force: bool, result: InitResult) -> None:

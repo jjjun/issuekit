@@ -42,6 +42,7 @@ docs/issues/
   README.md                  # this specification
   active/                    # open, planned, investigating, or in-progress issues
   completed/                 # completed issue source files
+  incoming/                  # cross-project proposals, ignored by validation
   indexes/                   # generated issue indexes; never edit by hand
     active.md
     completed-recent.md
@@ -51,6 +52,53 @@ docs/issues/
 
 `README.md` does not contain the full issue table. Generated indexes are split
 so the system stays usable as completed issues grow.
+
+## Cross-Project Proposals
+
+Related repositories can send suggestions as Markdown files in
+`docs/issues/incoming/`. These proposal files are outside the issue lifecycle
+until someone adopts them, so tracker validation, generated indexes, and claim
+commands ignore them.
+
+Machine-local related repo paths live in gitignored `issuekit.local.toml`:
+
+```toml
+[refs]
+fast-domain = "C:/abs/path/to/fast-domain"
+```
+
+Use `issuekit add-ref <name> --path <repo>` and `issuekit list-refs` to manage
+that file.
+
+Proposal files use this ASCII frontmatter:
+
+```markdown
+---
+origin: mine-py#42@abc123
+to: fast-domain
+reply_to:
+created: 2026-06-03
+title: Short proposal title
+---
+
+# Proposal: Short proposal title
+
+## Context
+
+## Suggested Change
+
+## Rationale
+```
+
+`origin` is a stable source identifier in the form `<ref>#<id>@<commit>`.
+`reply_to` is empty for an initial proposal and set to the original `origin`
+when the proposal is a reply. Proposal text carries content, not remote status.
+A reply is a new inbound proposal in the target repo.
+
+Use `issuekit incoming` to list proposals, `issuekit adopt <proposal-file>` to
+create a local active issue, and `issuekit discard <proposal-file>` to move a
+proposal to `incoming/discarded/`. Adopted issues record the source `origin:` in
+frontmatter and under Related Resources.
 
 ## Issue Metadata
 

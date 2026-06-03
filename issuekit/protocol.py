@@ -10,6 +10,13 @@ configured agent can be the implementer or the reviewer. The reviewer is the
 agent assigned at stage=review and defaults to `default_reviewer`, which may be
 `auto`. Same-name review is allowed unless `require_distinct_reviewer` is true.
 
+Cross-project proposals are local suggestions under `docs/issues/incoming/`.
+Before claiming normal work, inspect `issuekit incoming` when cross-repo
+exchange is relevant. Adopt proposals only after local triage. When completing
+an adopted issue with an `origin:` field, optionally send `issuekit propose
+--reply <id>` so the origin repo receives a new inbound proposal; do not mutate
+state in the origin repo.
+
 When the user asks codex to work on an issue in open-ended terms, such as
 "handle the next issue" or "take the queue", do not wait for explicit
 commands. Run this protocol end to end:

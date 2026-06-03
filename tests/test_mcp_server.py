@@ -9,6 +9,7 @@ pytest.importorskip("mcp")
 
 from issuekit import cli
 from issuekit.mcp.server import create_server
+from issuekit.refs import add_ref
 
 from tests.issue_helpers import issue_text, write_indexes, write_issue
 
@@ -49,6 +50,9 @@ def test_server_registers_expected_tools(tmp_path: Path) -> None:
         "approve",
         "get_issue",
         "list_queue",
+        "propose",
+        "list_incoming",
+        "adopt_proposal",
     }
 
 
@@ -336,3 +340,34 @@ def test_approve_rejects_self_review_when_guard_is_required(tmp_path: Path) -> N
 
     with pytest.raises(Exception, match="self-review is not allowed"):
         _call(server, "approve", {"id": 1, "verification": "uv run pytest", "reviewer": "codex"})
+
+
+def test_proposal_tools_send_list_and_adopt(tmp_path: Path) -> None:
+    source = tmp_path / "source"
+    target = tmp_path / "target"
+    source_issues = source / "docs" / "issues"
+    target_issues = target / "docs" / "issues"
+    write_issue(source_issues / "active" / "001_first.md", issue_text(1, "First"))
+    write_indexes(source_issues)
+    write_indexes(target_issues)
+    add_ref("target", target, source)
+
+    source_server = create_server(source)
+    sent = _call(
+        source_server,
+        "propose",
+        {
+            "to": "target",
+            "title": "MCP Proposal",
+            "body": "## Suggested Change\n\nDo this.",
+            "from_issue": "1",
+        },
+    )
+    target_server = create_server(target)
+    incoming = _call(target_server, "list_incoming", {})
+    adopted = _call(target_server, "adopt_proposal", {"proposal_file": incoming[0]["file"]})
+
+    assert sent["origin"].startswith("source#1@")
+    assert incoming[0]["title"] == "MCP Proposal"
+    assert adopted["id"] == 1
+    assert adopted["title"] == "MCP Proposal"
