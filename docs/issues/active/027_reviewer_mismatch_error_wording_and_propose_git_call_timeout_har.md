@@ -5,7 +5,7 @@ priority: medium
 created: 2026-06-03
 completed: 
 assignee: codex
-stage: implementing
+stage: review
 implementer: codex
 origin: mine-js-monorepo#0@f8b6c5b3
 title: Reviewer-mismatch error wording and propose git-call timeout hardening
@@ -154,3 +154,9 @@ Both items were verified against the current code on 2026-06-03:
 ## Related Resources
 
 - Origin: `mine-js-monorepo#0@f8b6c5b3`
+
+## Handoff
+
+- Summary: Improved reviewer mismatch errors, enforced assigned reviewer for MCP approve, added a propose git timeout fallback, and updated protocol ASCII guidance with regression tests.
+- Branch: `main`
+- Commit: `2bba7f6`
