@@ -60,15 +60,35 @@ Related repositories can send suggestions as Markdown files in
 until someone adopts them, so tracker validation, generated indexes, and claim
 commands ignore them.
 
-Machine-local related repo paths live in gitignored `issuekit.local.toml`:
+Related repo refs resolve from a shared workspace registry plus optional
+per-repo local overrides. For sibling repos, place one `issuekit.workspace.toml`
+above them:
+
+```toml
+[projects]
+basekit = "basekit"
+fast-domain = "fast-domain"
+issuekit = "issuekit"
+mine-py = "mine-py"
+```
+
+`issuekit` discovers the nearest workspace file by walking up from the current
+directory. `ISSUEKIT_WORKSPACE` can point to an explicit workspace file and
+overrides discovery. Relative `[projects]` paths resolve against the workspace
+file's directory. Absolute paths are allowed for repos outside the workspace.
+
+Each repo can still use gitignored `issuekit.local.toml` with a `[refs]` table
+for private refs or overrides:
 
 ```toml
 [refs]
 fast-domain = "C:/abs/path/to/fast-domain"
 ```
 
-Use `issuekit add-ref <name> --path <repo>` and `issuekit list-refs` to manage
-that file.
+Effective refs are loaded as workspace projects, then local refs; local entries
+win on name conflicts. Use `issuekit add-ref <name> --path <repo>` for local
+refs, `issuekit add-ref <name> --path <repo> --scope workspace` for the shared
+file, and `issuekit list-refs` to inspect the merged view.
 
 Proposal files use this ASCII frontmatter:
 
@@ -102,8 +122,9 @@ frontmatter and under Related Resources.
 
 For `issuekit propose --reply <id>`, the destination ref is derived from the
 recorded `origin` value unless `--to <name>` is also provided. The derived ref
-name is the origin text before `#`, so local refs should use the sender's ref
-name when possible.
+name is the origin text before `#`, so shared project names should match repo
+directory names. With that convention, replies work across all registered repos
+without per-repo ref bookkeeping.
 
 Proposal de-duplication uses the full `origin`, including `@commit`. Sending the
 same source issue again after a new commit creates a separate proposal file.

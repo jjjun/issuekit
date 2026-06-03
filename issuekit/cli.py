@@ -200,11 +200,21 @@ def build_parser() -> argparse.ArgumentParser:
     )
     add_ref_parser.add_argument("name", help="Short ref name.")
     add_ref_parser.add_argument("--path", required=True, help="Absolute or relative repository path.")
+    add_ref_parser.add_argument(
+        "--scope",
+        choices=("local", "workspace"),
+        default="local",
+        help="Write to issuekit.local.toml or issuekit.workspace.toml.",
+    )
+    add_ref_parser.add_argument(
+        "--path-to-workspace",
+        help="Explicit workspace registry file for --scope workspace.",
+    )
     add_ref_parser.set_defaults(func=propose.run_add_ref)
 
     list_refs_parser = subparsers.add_parser(
         "list-refs",
-        help="List machine-local related repository refs.",
+        help="List effective related repository refs.",
     )
     list_refs_parser.set_defaults(func=propose.run_list_refs)
 

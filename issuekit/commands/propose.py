@@ -21,22 +21,44 @@ from issuekit.proposals import (
     proposal_dict,
     write_proposal,
 )
-from issuekit.refs import RefError, add_ref, default_repo_ref, list_refs, resolve_ref
+from issuekit.refs import (
+    RefError,
+    add_ref,
+    add_workspace_ref,
+    current_repo_ref,
+    list_effective_refs,
+    resolve_ref,
+)
 
 
 def run_add_ref(args) -> int:
     try:
-        refs = add_ref(args.name, args.path, Path.cwd())
+        if args.scope == "workspace":
+            refs = add_workspace_ref(
+                args.name,
+                args.path,
+                Path.cwd(),
+                workspace_path=args.path_to_workspace,
+            )
+        else:
+            refs = add_ref(args.name, args.path, Path.cwd())
     except RefError as exc:
         print(str(exc), file=sys.stderr)
         return 1
-    print(f"Added ref {args.name}: {refs[args.name]}")
+    print(f"Added {args.scope} ref {args.name}: {refs[args.name]}")
     return 0
 
 
 def run_list_refs(_args) -> int:
-    for name, path in list_refs(Path.cwd()).items():
-        print(f"{name}\t{path}")
+    cwd = Path.cwd().resolve()
+    try:
+        refs = list_effective_refs(cwd)
+    except RefError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    for name, entry in refs.items():
+        source = "self" if entry.path.resolve() == cwd else entry.source
+        print(f"{name}\t{source}\t{entry.path.as_posix()}")
     return 0
 
 
@@ -139,7 +161,7 @@ def build_proposal(
 
     proposal_body = _proposal_body(body, body_file, source_issue)
     origin_id = str(source_issue.id) if source_issue is not None and source_issue.id is not None else "0"
-    origin = f"{default_repo_ref(cwd)}#{origin_id}@{_git_commit(cwd)}"
+    origin = f"{current_repo_ref(cwd)}#{origin_id}@{_git_commit(cwd)}"
     return Proposal(
         origin=origin,
         to=to,

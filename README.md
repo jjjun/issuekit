@@ -113,8 +113,8 @@ copying the steps.
 | `issuekit protocol [--agent codex\|claude]` | Print the canonical handoff protocol. |
 | `issuekit init [--with-mcp]` | Install tracker templates, encoding hooks, and optional MCP handoff scaffolding. |
 | `issuekit setup [--force] [--json]` | Run per-repo MCP handoff scaffolding and setup diagnostics. |
-| `issuekit add-ref <name> --path <repo>` | Register a machine-local related repository. |
-| `issuekit list-refs` | List related repository refs from `issuekit.local.toml`. |
+| `issuekit add-ref <name> --path <repo> [--scope local\|workspace]` | Register a related repository ref. |
+| `issuekit list-refs` | List effective related repository refs and their source. |
 | `issuekit propose --to <name> --title "..."` | Send a proposal to a related repo's `incoming/` directory. |
 | `issuekit incoming [--json]` | List inbound cross-project proposals. |
 | `issuekit adopt <proposal-file>` | Adopt an incoming proposal as a local active issue. |
@@ -129,12 +129,44 @@ Related repositories can exchange suggestions through files under
 so `validate`, `generate-indexes`, and the claim queue continue to scan only
 `active/` and `completed/`.
 
-Refs are machine-local and stored in gitignored `issuekit.local.toml`:
+Refs resolve from a shared workspace registry plus optional per-repo local
+overrides. For a set of sibling repos, place one `issuekit.workspace.toml` above
+them:
+
+```toml
+[projects]
+basekit = "basekit"
+fast-domain = "fast-domain"
+issuekit = "issuekit"
+mine-py = "mine-py"
+py_cr_wrapper = "py_cr_wrapper"
+repom = "repom"
+mine-js-monorepo = "mine-js-monorepo"
+infra-toolkit = "infra-toolkit"
+```
+
+`issuekit` discovers the nearest `issuekit.workspace.toml` by walking up from
+the current directory. `ISSUEKIT_WORKSPACE` can point to an explicit workspace
+file and overrides discovery. Relative `[projects]` paths resolve against the
+workspace file's directory, so sibling entries like `fast-domain = "fast-domain"`
+survive moving the whole workspace. Absolute paths are allowed for out-of-tree
+repos.
+
+Each repo can still use gitignored `issuekit.local.toml` with a `[refs]` table
+for private refs or overrides. Effective refs are loaded as workspace projects,
+then local refs; local entries win on name conflicts.
+
+Manage refs with:
 
 ```powershell
 issuekit add-ref fast-domain --path C:/abs/path/to/fast-domain
+issuekit add-ref fast-domain --path ../fast-domain --scope workspace
 issuekit list-refs
 ```
+
+`add-ref` defaults to `--scope local`. `--scope workspace` writes to the
+discovered workspace file; if none is found, create one explicitly or pass
+`--path-to-workspace <file>`.
 
 Send a proposal:
 
@@ -151,16 +183,19 @@ issuekit discard mine-py__42__short_proposal_title.md
 ```
 
 Adopted issues record the proposal `origin:` in frontmatter. To reply after
-implementing an adopted issue, register the origin repo as a ref and run:
+implementing an adopted issue, make sure the origin repo resolves as a ref and
+run:
 
 ```powershell
 issuekit propose --reply 42 --title "Implemented fast-domain support" --body-file reply.md
 ```
 
 By default `--reply` derives the destination ref from the recorded `origin`
-value, so the local ref name must match the sender ref segment before `#`. Pass
-`--to <name>` with `--reply` to override that destination when your local ref
-uses a different name.
+value, so the ref name must match the sender ref segment before `#`. Use the
+repo directory name as the shared ref name for each project; `propose --reply`
+then works from every repo without per-repo bookkeeping. Pass `--to <name>` with
+`--reply` to override that destination when your local ref uses a different
+name.
 
 Proposal de-duplication is keyed by the full `origin`, including `@commit`.
 Re-sending the same source issue after a new commit creates a new proposal file.
