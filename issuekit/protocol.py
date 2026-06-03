@@ -62,7 +62,7 @@ review is allowed unless `require_distinct_reviewer` is true.
    assigned at stage=review.
 2. Review the referenced branch and commit diff against the issue body.
 3. If the implementation is acceptable, call `approve(id, verification,
-   reviewer=None)`.
+   reviewer=None)` with ASCII verification.
 4. If changes are needed, call `request_changes(id, notes, reviewer=None,
    assignee=None)` with ASCII notes. Omit assignee to return the issue to its
    recorded implementer.

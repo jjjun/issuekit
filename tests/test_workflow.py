@@ -293,6 +293,35 @@ def test_request_changes_defaults_to_recorded_implementer(tmp_path: Path) -> Non
     assert issue.implementer == "claude"
 
 
+def test_request_changes_reviewer_mismatch_names_assigned_reviewer(tmp_path: Path) -> None:
+    issues_dir = tmp_path / "docs" / "issues"
+    write_issue(
+        issues_dir / "active" / "001_first.md",
+        issue_text(
+            1,
+            "First",
+            status="in_progress",
+            assignee="codex",
+            stage="review",
+            implementer="claude",
+        ),
+    )
+
+    with pytest.raises(WorkflowError) as excinfo:
+        request_changes(
+            issues_dir,
+            1,
+            reviewer="claude",
+            notes="Please add tests.",
+            config=IssuekitConfig(default_reviewer="auto"),
+        )
+
+    message = str(excinfo.value)
+    assert "review is assigned to reviewer 'codex'" in message
+    assert "You passed reviewer='claude'" in message
+    assert "Omit `reviewer` to use default_reviewer" in message
+
+
 def test_workflow_transitions_do_not_grow_frontmatter_body_gap(tmp_path: Path) -> None:
     issues_dir = tmp_path / "docs" / "issues"
     write_issue(issues_dir / "active" / "001_first.md", issue_text(1, "First"))

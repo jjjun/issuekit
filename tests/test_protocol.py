@@ -11,8 +11,11 @@ def test_render_protocol_returns_each_agent_and_both() -> None:
 
     assert "claim_next_task" in codex
     assert "submit_for_review" in codex
+    assert "ASCII summary" in codex
     assert "next_review" in claude
     assert "request_changes" in claude
+    assert "ASCII verification" in claude
+    assert "ASCII notes" in claude
     assert codex.rstrip() in both
     assert claude in both
     both.encode("ascii")

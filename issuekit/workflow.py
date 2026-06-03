@@ -143,13 +143,13 @@ def submit_for_review(
             raise WorkflowError(
                 f"Issue #{issue_id} is assigned to {issue.assignee or 'no one'}, not {assignee}."
             )
-        reviewer = resolve_reviewer(reviewer, config, issue=issue)
-        ensure_not_self_review(issue, reviewer, config)
+        resolved_reviewer = resolve_reviewer(reviewer, config, issue=issue)
+        ensure_not_self_review(issue, resolved_reviewer, config)
         note = _handoff_note(summary=summary, branch=branch or "", commit=commit or "")
         return _write_active_issue(
             issues_path,
             issue,
-            assignee=reviewer,
+            assignee=resolved_reviewer,
             stage="review",
             extra_body=note,
         )
@@ -174,11 +174,8 @@ def request_changes(
     issues_path = Path(issues_dir)
     with claim_lock(issues_path / "active", timeout=timeout):
         issue = _find_active_issue(issues_path, issue_id)
-        reviewer = resolve_reviewer(reviewer, config, issue=issue)
-        if issue.assignee != reviewer:
-            raise WorkflowError(
-                f"Issue #{issue_id} is assigned to {issue.assignee or 'no one'}, not {reviewer}."
-            )
+        resolved_reviewer = resolve_reviewer(reviewer, config, issue=issue)
+        ensure_assigned_reviewer(issue, reviewer, resolved_reviewer)
         assignee = assignee or issue.implementer or "codex"
         _validate_assignee(assignee, config)
         return _write_active_issue(
@@ -279,6 +276,28 @@ def ensure_not_self_review(
         raise WorkflowError(
             f"Issue #{issue.id} was implemented by {issue.implementer}; self-review is not allowed."
         )
+
+
+def ensure_assigned_reviewer(
+    issue: Issue,
+    reviewer_arg: str | None,
+    resolved_reviewer: str,
+) -> None:
+    """Ensure a review transition is performed by the assigned reviewer."""
+    if issue.assignee == resolved_reviewer:
+        return
+    if reviewer_arg is None:
+        raise WorkflowError(
+            f"Issue #{issue.id} review is assigned to reviewer "
+            f"'{issue.assignee or 'no one'}'. default_reviewer resolved to "
+            f"reviewer='{resolved_reviewer}'. Pass reviewer='{issue.assignee}' "
+            "or update default_reviewer to match the assigned reviewer."
+        )
+    raise WorkflowError(
+        f"Issue #{issue.id} review is assigned to reviewer "
+        f"'{issue.assignee or 'no one'}'. You passed reviewer='{reviewer_arg}'. "
+        "Omit `reviewer` to use default_reviewer, or pass the assigned reviewer."
+    )
 
 
 def resolve_reviewer(

@@ -24,6 +24,7 @@ from issuekit.protocol import render_protocol
 from issuekit.workflow import (
     AUTO_REVIEWER,
     claim_next,
+    ensure_assigned_reviewer,
     find_for,
     request_changes as workflow_request_changes,
     resolve_reviewer,
@@ -214,7 +215,10 @@ def _resolve_reviewer_for_issue(
 ) -> str:
     active_issues, _, _ = read_all_issues(issues_dir)
     issue = next((candidate for candidate in active_issues if candidate.id == issue_id), None)
-    return resolve_reviewer(reviewer, config, issue=issue)
+    resolved_reviewer = resolve_reviewer(reviewer, config, issue=issue)
+    if issue is not None and issue.stage == "review":
+        ensure_assigned_reviewer(issue, reviewer, resolved_reviewer)
+    return resolved_reviewer
 
 
 def _issue_dict(issue: Issue, *, include_body: bool = False) -> dict[str, Any]:

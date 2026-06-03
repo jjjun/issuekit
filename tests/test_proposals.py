@@ -1,6 +1,8 @@
+import subprocess
 from pathlib import Path
 
 from issuekit import cli
+from issuekit.commands.propose import _git_commit
 from issuekit.proposals import (
     Proposal,
     adopt_proposal,
@@ -180,3 +182,13 @@ def test_reply_after_adopt_claim_and_complete_preserves_origin(
     assert len(proposals) == 1
     assert proposals[0].reply_to == "source#42@abc123"
     assert proposals[0].origin.startswith("target#1@")
+
+
+def test_git_commit_timeout_returns_unknown(tmp_path: Path, monkeypatch) -> None:
+    def fake_run(*args, **kwargs):
+        assert kwargs["timeout"] == 5
+        raise subprocess.TimeoutExpired(args[0], kwargs["timeout"])
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    assert _git_commit(tmp_path) == "unknown"

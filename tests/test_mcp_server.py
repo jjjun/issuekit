@@ -342,6 +342,36 @@ def test_approve_rejects_self_review_when_guard_is_required(tmp_path: Path) -> N
         _call(server, "approve", {"id": 1, "verification": "uv run pytest", "reviewer": "codex"})
 
 
+def test_approve_rejects_unassigned_reviewer_with_clear_message(tmp_path: Path) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "default_reviewer = 'auto'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    issues_dir = tmp_path / "docs" / "issues"
+    write_issue(
+        issues_dir / "active" / "001_first.md",
+        issue_text(
+            1,
+            "First",
+            status="in_progress",
+            assignee="codex",
+            stage="review",
+            implementer="claude",
+        ),
+    )
+    write_indexes(issues_dir)
+    server = create_server(tmp_path)
+
+    with pytest.raises(Exception) as excinfo:
+        _call(server, "approve", {"id": 1, "verification": "uv run pytest", "reviewer": "claude"})
+
+    message = str(excinfo.value)
+    assert "review is assigned to reviewer 'codex'" in message
+    assert "You passed reviewer='claude'" in message
+    assert "Omit `reviewer` to use default_reviewer" in message
+
+
 def test_proposal_tools_send_list_and_adopt(tmp_path: Path) -> None:
     source = tmp_path / "source"
     target = tmp_path / "target"

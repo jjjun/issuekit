@@ -201,7 +201,8 @@ def _git_commit(cwd: Path) -> str:
             check=True,
             capture_output=True,
             text=True,
+            timeout=5,
         )
-    except (OSError, subprocess.CalledProcessError):
+    except (OSError, subprocess.SubprocessError):
         return "unknown"
     return result.stdout.strip() or "unknown"
