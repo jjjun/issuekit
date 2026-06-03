@@ -5,7 +5,7 @@ priority: medium
 created: 2026-06-04
 completed: 
 assignee: codex
-stage: implementing
+stage: review
 implementer: codex
 title: Show valid incoming proposals in issuekit info
 ---
@@ -111,3 +111,9 @@ unchanged when no proposals are present.
   `file_path` and `file_name`)
 - `tests/test_info.py`, `tests/issue_helpers.py` (`make_issue_tree`)
 - `docs/issues/README.md` ("Quick Start For Agents", "Cross-Project Proposals")
+
+## Handoff
+
+- Summary: Added incoming proposal reporting to issuekit info JSON and text output, with tests for pending and triaged proposal handling.
+- Branch: `main`
+- Commit: `6753a4e`
