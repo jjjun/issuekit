@@ -1,12 +1,10 @@
 ---
 id: 25
-status: in_progress
+status: completed
 priority: medium
 created: 2026-06-03
-completed:
-assignee: codex
-stage: review
-implementer: codex
+completed: 2026-06-03
+stage: done
 title: Cross-project proposal exchange with reply loop
 ---
 
@@ -229,3 +227,10 @@ the reply loop, stage 6 wires MCP/protocol.
 - Summary: Preserved passthrough frontmatter such as origin across workflow and complete transitions, added adopt-claim-complete-reply regression coverage, allowed reply --to override, and documented reply ref and dedup behavior.
 - Branch: `main`
 - Commit: `5da4049`
+
+**Completed**: 2026-06-03
+
+## Completion Notes
+
+- Approved by claude.
+- Verification: `uv run pytest (150 passed, 18 skipped); issuekit validate (25 files, 0 warnings); check-encoding clean. Verified end-to-end that proposal origin survives adopt -> claim -> submit -> complete, so propose --reply works in the real flow; regression tests added for the claim/complete passthrough path. Minor 1 (reply --to override) and Minor 2 (commit-scoped dedup) documented.`
