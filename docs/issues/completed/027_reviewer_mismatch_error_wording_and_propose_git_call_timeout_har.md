@@ -1,12 +1,10 @@
 ---
 id: 27
-status: in_progress
+status: completed
 priority: medium
 created: 2026-06-03
-completed: 
-assignee: codex
-stage: review
-implementer: codex
+completed: 2026-06-04
+stage: done
 origin: mine-js-monorepo#0@f8b6c5b3
 title: Reviewer-mismatch error wording and propose git-call timeout hardening
 ---
@@ -160,3 +158,10 @@ Both items were verified against the current code on 2026-06-03:
 - Summary: Improved reviewer mismatch errors, enforced assigned reviewer for MCP approve, added a propose git timeout fallback, and updated protocol ASCII guidance with regression tests.
 - Branch: `main`
 - Commit: `2bba7f6`
+
+**Completed**: 2026-06-04
+
+## Completion Notes
+
+- Approved by codex.
+- Verification: `Reviewed diff at commit 2bba7f6. Item 2: _git_commit now passes timeout=5 and catches subprocess.SubprocessError, falling through to 'unknown' (test_git_commit_timeout_returns_unknown). Item 1: new ensure_assigned_reviewer names the assigned reviewer and states remediation, wired into workflow.request_changes and the MCP approve path (gated on stage=review); covered by test_request_changes_reviewer_mismatch_names_assigned_reviewer and test_approve_rejects_unassigned_reviewer_with_clear_message. Protocol now states ASCII summary/verification/notes (test_render_protocol). submit_for_review assignee message left unchanged, which is correct. Ran 'uv run pytest' (164 passed, 18 skipped) and 'uv run issuekit check-encoding' (passed).`

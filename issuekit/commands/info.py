@@ -7,12 +7,14 @@ from pathlib import Path
 
 from issuekit.config import load_config
 from issuekit.core import build_index_files, get_next_issue_id, group_issues_by_id, read_all_issues, read_index_files
+from issuekit.proposals import list_incoming
 
 
 def run(args) -> int:
     config = load_config(Path.cwd())
     issues_dir = config.issues_path(Path.cwd())
     active_issues, completed_issues, all_issues = read_all_issues(issues_dir)
+    incoming_proposals = list_incoming(issues_dir)
     expected_indexes = build_index_files(active_issues, completed_issues, config.recent_count)
     actual_index_names = read_index_files(issues_dir)
     duplicate_ids = [
@@ -45,6 +47,15 @@ def run(args) -> int:
             }
             for issue in active_issues
         ],
+        "incomingProposals": [
+            {
+                "origin": proposal.origin,
+                "title": proposal.title,
+                "created": proposal.created,
+                "file": _proposal_relative_path(issues_dir, proposal.file_path),
+            }
+            for proposal in incoming_proposals
+        ],
         "duplicateIds": duplicate_ids,
         "indexes": {
             "expected": list(expected_indexes),
@@ -65,6 +76,7 @@ def run(args) -> int:
     print(f"- Total issue files: {summary['counts']['total']}")
     print(f"- Next issue id: {summary['nextIssueId']}")
     print(f"- Latest completed id: {summary['latestCompletedId']}")
+    print(f"- Incoming proposals: {len(summary['incomingProposals'])}")
     print(f"- Indexes: {'ok' if summary['indexes']['ok'] else 'needs regeneration'}")
 
     if summary["activeIssues"]:
@@ -72,6 +84,12 @@ def run(args) -> int:
         print("Active issues")
         for issue in summary["activeIssues"]:
             print(f"- #{issue['id']}: {issue['title']} [{issue['status']}] ({issue['file']})")
+
+    if summary["incomingProposals"]:
+        print()
+        print("Incoming proposals")
+        for proposal in summary["incomingProposals"]:
+            print(f"- {proposal['origin']}: {proposal['title']} ({proposal['file']})")
 
     if duplicate_ids:
         print()
@@ -94,6 +112,12 @@ def run(args) -> int:
         print("Run: issuekit generate-indexes")
 
     return 0
+
+
+def _proposal_relative_path(issues_dir: Path, proposal_path: Path | None) -> str:
+    if proposal_path is None:
+        return ""
+    return proposal_path.relative_to(issues_dir).as_posix()
 
 
 def _stale_indexes(issues_dir: Path, expected_indexes: dict[str, str], actual_names: list[str]) -> list[str]:
