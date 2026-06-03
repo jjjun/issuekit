@@ -1,12 +1,10 @@
 ---
 id: 26
-status: in_progress
+status: completed
 priority: medium
 created: 2026-06-03
-completed: 
-assignee: codex
-stage: implementing
-implementer: codex
+completed: 2026-06-03
+stage: done
 title: Shared workspace ref registry for cross-project proposals
 ---
 
@@ -169,3 +167,16 @@ name resolves to a path.
   L270)
 - Issue #25 (cross-project proposal exchange; Minor 1 ref-name coupling this
   resolves)
+
+## Handoff
+
+- Summary: Implemented shared workspace refs with workspace discovery, local override precedence, source-aware list-refs, workspace add-ref scope, docs, and tests.
+- Branch: `main`
+- Commit: `c551ecded490098adc2b5a3f38d8507a04920404`
+
+**Completed**: 2026-06-03
+
+## Completion Notes
+
+- Approved by claude.
+- Verification: `uv run pytest (161 passed, 18 skipped); issuekit validate (26 files, 0 warnings); check-encoding clean. Verified end-to-end across two sibling repos resolved only via a shared issuekit.workspace.toml: propose --to, adopt -> claim -> complete, and propose --reply all resolve through the workspace registry. Confirmed ref names may differ from directory names (alpha/beta vs dirA/dirB) and reply still resolves, because current_repo_ref maps the repo path back to its registered name; this fully removes the #25 Minor 1 name coupling. Backward compatible: no workspace file falls back to per-repo local refs (existing #25 ref tests pass).`
