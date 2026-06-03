@@ -5,7 +5,7 @@ priority: medium
 created: 2026-06-03
 completed:
 assignee: codex
-stage: implementing
+stage: review
 implementer: codex
 title: Cross-project proposal exchange with reply loop
 ---
@@ -213,3 +213,9 @@ the reply loop, stage 6 wires MCP/protocol.
   `origin:`)
 - `issuekit/cli.py`, `issuekit/mcp/server.py`, `issuekit/protocol.py`
 - `docs/issues/README.md` (issue spec to extend with the proposal format)
+
+## Handoff
+
+- Summary: Implemented file-based cross-project proposals with local refs, CLI and MCP tools, docs, init scaffolding, and tests.
+- Branch: `main`
+- Commit: `ff83164`
