@@ -5,7 +5,7 @@ priority: medium
 created: 2026-06-03
 completed:
 assignee: codex
-stage: implementing
+stage: review
 implementer: codex
 title: Cross-project proposal exchange with reply loop
 ---
@@ -223,3 +223,9 @@ the reply loop, stage 6 wires MCP/protocol.
 ## Review Feedback
 
 - Blocker: reply loop is broken in the real flow. adopt stores origin in the issue frontmatter, but claim_next/_write_active_issue rebuilds frontmatter from a fixed key set and drops origin (verified: origin present after adopt, gone after claim). So propose --reply fails with 'has no origin field' after the issue is claimed/implemented, which is the normal path (adopt -> claim -> implement -> reply). Existing test_reply_proposal_uses_adopted_issue_origin passes only because it never claims the issue. Fix options: (a) preserve passthrough frontmatter keys like origin in _write_active_issue and the complete path; or (b) fall back to the Related Resources Origin line in build_proposal --reply. Add a regression test covering adopt -> claim -> submit/complete -> reply. Minor 1: reply --to is auto-derived from origin_destination, which equals the sender repo directory name (default_repo_ref); the receiver must register a ref whose name exactly matches that, or reply resolution fails. Document this or allow an explicit --to override on reply. Minor 2: idempotent-send dedup keys on origin which includes @commit, so re-sending after a new commit creates a duplicate file; note the limitation.
+
+## Handoff
+
+- Summary: Preserved passthrough frontmatter such as origin across workflow and complete transitions, added adopt-claim-complete-reply regression coverage, allowed reply --to override, and documented reply ref and dedup behavior.
+- Branch: `main`
+- Commit: `5da4049`
