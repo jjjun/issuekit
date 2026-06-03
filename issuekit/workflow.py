@@ -225,6 +225,7 @@ def _write_active_issue(
 ) -> Issue:
     frontmatter = parse_issue_frontmatter(issue.content)
     data = {
+        **_passthrough_frontmatter(frontmatter.data),
         "id": issue.id,
         "status": status or issue.issue_status or issue.status,
         "priority": issue.priority or "medium",
@@ -240,6 +241,21 @@ def _write_active_issue(
         body = f"{body}\n{extra_body.rstrip()}"
     write_issue_atomic(issue.file_path, f"{format_issue_frontmatter(data)}{body}\n")
     return _find_active_issue(issues_dir, issue.id or 0)
+
+
+def _passthrough_frontmatter(data: dict[str, str]) -> dict[str, str]:
+    managed_keys = {
+        "id",
+        "status",
+        "priority",
+        "created",
+        "completed",
+        "assignee",
+        "stage",
+        "implementer",
+        "title",
+    }
+    return {key: value for key, value in data.items() if key not in managed_keys}
 
 
 def _find_active_issue(issues_dir: Path, issue_id: int) -> Issue:

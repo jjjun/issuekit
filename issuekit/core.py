@@ -81,6 +81,17 @@ def parse_issue_frontmatter(content: str) -> Frontmatter:
 
 
 def format_issue_frontmatter(data: dict[str, object]) -> str:
+    fixed_keys = {
+        "id",
+        "status",
+        "priority",
+        "created",
+        "completed",
+        "assignee",
+        "stage",
+        "implementer",
+        "title",
+    }
     fields = [
         ("id", data.get("id")),
         ("status", data.get("status")),
@@ -90,8 +101,9 @@ def format_issue_frontmatter(data: dict[str, object]) -> str:
         ("assignee", data.get("assignee") or ""),
         ("stage", data.get("stage") or ""),
         ("implementer", data.get("implementer") or ""),
-        ("title", data.get("title")),
     ]
+    fields.extend((key, data.get(key)) for key in data if key not in fixed_keys)
+    fields.append(("title", data.get("title")))
     lines = []
     for key, value in fields:
         if key in {"assignee", "stage", "implementer"} and not value:

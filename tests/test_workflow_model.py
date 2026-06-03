@@ -73,6 +73,29 @@ def test_format_issue_frontmatter_orders_workflow_fields() -> None:
     ]
 
 
+def test_format_issue_frontmatter_preserves_extra_fields_before_title() -> None:
+    data = {
+        "id": 1,
+        "status": "active",
+        "priority": "high",
+        "created": "2026-01-01",
+        "completed": "",
+        "origin": "source#42@abc123",
+        "title": "First",
+    }
+
+    assert core.format_issue_frontmatter(data).splitlines()[:8] == [
+        "---",
+        "id: 1",
+        "status: active",
+        "priority: high",
+        "created: 2026-01-01",
+        "completed: ",
+        "origin: source#42@abc123",
+        "title: First",
+    ]
+
+
 def test_workflow_token_shape_rejects_frontmatter_injection() -> None:
     assert core.is_valid_workflow_token("")
     assert core.is_valid_workflow_token("codex")

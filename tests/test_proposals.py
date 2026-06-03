@@ -8,6 +8,7 @@ from issuekit.proposals import (
     list_incoming,
     write_proposal,
 )
+from issuekit.commands.complete import complete_issue
 from issuekit.workflow import claim_next
 
 from tests.issue_helpers import issue_text, make_issue_tree, write_issue
@@ -129,5 +130,53 @@ def test_reply_proposal_uses_adopted_issue_origin(tmp_path: Path, monkeypatch) -
 
     assert len(proposals) == 1
     assert proposals[0].to == "source"
+    assert proposals[0].reply_to == "source#42@abc123"
+    assert proposals[0].origin.startswith("target#1@")
+
+
+def test_reply_after_adopt_claim_and_complete_preserves_origin(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    source = tmp_path / "source"
+    target = tmp_path / "target"
+    source.mkdir()
+    target.mkdir()
+    source_issues = source / "docs" / "issues"
+    target_issues = target / "docs" / "issues"
+    source_issues.mkdir(parents=True)
+    proposal_path = write_proposal(
+        target_issues,
+        Proposal(
+            origin="source#42@abc123",
+            to="target",
+            reply_to="",
+            created="2026-06-03",
+            title="Adopted Reply Flow",
+            body="## Suggested Change\n\nImplement this.",
+        ),
+    )
+    adopted_path = adopt_proposal(target_issues, proposal_path.name)
+
+    claimed = claim_next(target_issues, "codex")
+    completed = complete_issue(
+        target_issues,
+        1,
+        summary="Implemented.",
+        verification="pytest",
+    )
+
+    assert claimed is not None
+    assert claimed.frontmatter.data["origin"] == "source#42@abc123"
+    assert completed.frontmatter.data["origin"] == "source#42@abc123"
+
+    monkeypatch.chdir(target)
+    assert cli.main(["add-ref", "source", "--path", str(source)]) == 0
+    assert cli.main(["propose", "--reply", "1", "--title", "Implemented Reply"]) == 0
+
+    proposals = list_incoming(source_issues)
+
+    assert adopted_path.name == "001_adopted_reply_flow.md"
+    assert len(proposals) == 1
     assert proposals[0].reply_to == "source#42@abc123"
     assert proposals[0].origin.startswith("target#1@")

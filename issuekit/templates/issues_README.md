@@ -100,6 +100,14 @@ create a local active issue, and `issuekit discard <proposal-file>` to move a
 proposal to `incoming/discarded/`. Adopted issues record the source `origin:` in
 frontmatter and under Related Resources.
 
+For `issuekit propose --reply <id>`, the destination ref is derived from the
+recorded `origin` value unless `--to <name>` is also provided. The derived ref
+name is the origin text before `#`, so local refs should use the sender's ref
+name when possible.
+
+Proposal de-duplication uses the full `origin`, including `@commit`. Sending the
+same source issue again after a new commit creates a separate proposal file.
+
 ## Issue Metadata
 
 New issues must use YAML frontmatter. This ASCII frontmatter is the source of

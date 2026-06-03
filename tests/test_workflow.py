@@ -375,6 +375,26 @@ def test_complete_issue_sets_done_stage_and_clears_assignee(tmp_path: Path) -> N
     assert "implementer:" not in content
 
 
+def test_workflow_transitions_preserve_unknown_frontmatter(tmp_path: Path) -> None:
+    issues_dir = tmp_path / "docs" / "issues"
+    write_issue(
+        issues_dir / "active" / "001_first.md",
+        issue_text(1, "First").replace(
+            "title: First\n",
+            "origin: source#42@abc123\ntitle: First\n",
+        ),
+    )
+
+    claimed = claim_next(issues_dir, "codex")
+    submitted = submit_for_review(issues_dir, 1, summary="Done.", reviewer="claude")
+    completed = complete_issue(issues_dir, 1, summary="Approved.", verification="pytest")
+
+    assert claimed is not None
+    assert claimed.frontmatter.data["origin"] == "source#42@abc123"
+    assert submitted.frontmatter.data["origin"] == "source#42@abc123"
+    assert completed.frontmatter.data["origin"] == "source#42@abc123"
+
+
 def test_complete_issue_allows_self_review_by_default(tmp_path: Path) -> None:
     issues_dir = tmp_path / "docs" / "issues"
     write_issue(

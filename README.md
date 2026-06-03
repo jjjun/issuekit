@@ -157,6 +157,14 @@ implementing an adopted issue, register the origin repo as a ref and run:
 issuekit propose --reply 42 --title "Implemented fast-domain support" --body-file reply.md
 ```
 
+By default `--reply` derives the destination ref from the recorded `origin`
+value, so the local ref name must match the sender ref segment before `#`. Pass
+`--to <name>` with `--reply` to override that destination when your local ref
+uses a different name.
+
+Proposal de-duplication is keyed by the full `origin`, including `@commit`.
+Re-sending the same source issue after a new commit creates a new proposal file.
+
 ## Configuration
 
 Python repositories can configure issuekit in `pyproject.toml`:

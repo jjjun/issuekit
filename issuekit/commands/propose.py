@@ -126,7 +126,7 @@ def build_proposal(
         reply_to = source_issue.frontmatter.data.get("origin", "").strip()
         if not reply_to:
             raise ProposalError(f"Issue #{source_issue.id} has no origin field.")
-        to = origin_destination(reply_to)
+        to = to or origin_destination(reply_to)
     elif from_issue is not None:
         source_issue = _find_issue(all_issues, from_issue)
 

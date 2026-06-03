@@ -86,6 +86,7 @@ def complete_issue(
     completed_date = date.today().isoformat()
     frontmatter = parse_issue_frontmatter(issue.content)
     data = {
+        **_passthrough_frontmatter(frontmatter.data),
         "id": issue.id,
         "status": "completed",
         "priority": issue.priority or "medium",
@@ -112,6 +113,21 @@ def complete_issue(
         candidate for candidate in read_issues(issues_path, "completed") if candidate.id == issue_id
     )
     return completed_issue
+
+
+def _passthrough_frontmatter(data: dict[str, str]) -> dict[str, str]:
+    managed_keys = {
+        "id",
+        "status",
+        "priority",
+        "created",
+        "completed",
+        "assignee",
+        "stage",
+        "implementer",
+        "title",
+    }
+    return {key: value for key, value in data.items() if key not in managed_keys}
 
 
 def _append_completion_note(
