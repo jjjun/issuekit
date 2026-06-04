@@ -271,3 +271,18 @@ def test_git_commit_timeout_returns_unknown(tmp_path: Path, monkeypatch) -> None
     monkeypatch.setattr(subprocess, "run", fake_run)
 
     assert _git_commit(tmp_path) == "unknown"
+
+
+def test_git_commit_redirects_stdin(tmp_path: Path, monkeypatch) -> None:
+    # Regression: inside the issuekit-mcp stdio server an inherited stdin pipe
+    # makes `git` block until the timeout, so stdin must be redirected away.
+    captured: dict = {}
+
+    def fake_run(*args, **kwargs):
+        captured.update(kwargs)
+        return subprocess.CompletedProcess(args[0], 0, stdout="abc123\n", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    assert _git_commit(tmp_path) == "abc123"
+    assert captured["stdin"] == subprocess.DEVNULL

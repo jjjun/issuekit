@@ -203,6 +203,8 @@ def _proposal_body(body: str | None, body_file: str | None, source_issue: Issue 
 
 def _git_commit(cwd: Path) -> str:
     try:
+        # stdin must be redirected: when this runs inside the issuekit-mcp stdio
+        # server, an inherited stdin pipe makes `git` block until the timeout.
         result = subprocess.run(
             ["git", "rev-parse", "--short", "HEAD"],
             cwd=cwd,
@@ -210,6 +212,7 @@ def _git_commit(cwd: Path) -> str:
             capture_output=True,
             text=True,
             timeout=5,
+            stdin=subprocess.DEVNULL,
         )
     except (OSError, subprocess.SubprocessError):
         return "unknown"
