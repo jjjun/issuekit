@@ -1,9 +1,12 @@
 ---
 id: 29
-status: active
+status: in_progress
 priority: medium
 created: 2026-06-04
-completed:
+completed: 
+assignee: codex
+stage: review
+implementer: codex
 title: Provide a non-MCP CLI fallback with parity for the proposal system
 ---
 
@@ -108,3 +111,9 @@ unstable. Keep the MCP tools unchanged in behavior.
 - `issuekit/core.py` (`Issue` dataclass), `issuekit/cli.py` (subparsers)
 - `tests/test_mcp_server.py` (`_call`, `test_proposal_tools_send_list_and_adopt`)
 - `docs/issues/README.md` ("Cross-Project Proposals")
+
+## Handoff
+
+- Summary: Added CLI proposal fallback parity with inline body support, JSON outputs matching MCP proposal and adopt tools, shared issue serialization, docs, and regression tests.
+- Branch: `main`
+- Commit: `54cdfa8`
