@@ -1,12 +1,10 @@
 ---
 id: 29
-status: in_progress
+status: completed
 priority: medium
 created: 2026-06-04
-completed: 
-assignee: codex
-stage: review
-implementer: codex
+completed: 2026-06-04
+stage: done
 title: Provide a non-MCP CLI fallback with parity for the proposal system
 ---
 
@@ -117,3 +115,10 @@ unstable. Keep the MCP tools unchanged in behavior.
 - Summary: Added CLI proposal fallback parity with inline body support, JSON outputs matching MCP proposal and adopt tools, shared issue serialization, docs, and regression tests.
 - Branch: `main`
 - Commit: `54cdfa8`
+
+**Completed**: 2026-06-04
+
+## Completion Notes
+
+- Approved by codex.
+- Verification: `Reviewed diff at commit 54cdfa8. issue_dict was extracted to core.py and the MCP _issue_dict now delegates to it (no behavior change; same keys and frontmatter.body). CLI propose gained --body (wired as body=args.body into build_proposal) and --json emitting {**proposal_dict(proposal), 'path': path.as_posix()}, identical to the MCP propose dict; CLI adopt gained --json reading the adopted issue back and emitting issue_dict(include_body=True), matching MCP adopt_proposal. Docs updated in protocol.py (MCP-to-CLI mapping + fallback rule), docs/issues/README.md (parity table), and CLAUDE.md. Tests: test_cli_proposal_json_matches_mcp_output asserts cli==mcp for propose/list_incoming/adopt; propose/adopt --json payload shape and non-JSON human output covered; both parity tests confirmed running (not skipped). Ran 'uv run --extra mcp pytest' (171 passed, 18 skipped), 'uv run issuekit validate' (29 files, 0 warnings), and 'uv run issuekit check-encoding' (clean).`
