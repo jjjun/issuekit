@@ -5,7 +5,7 @@ priority: medium
 created: 2026-06-04
 completed: 
 assignee: codex
-stage: implementing
+stage: review
 implementer: codex
 title: Add proactive outbound proposal guidance to the handoff protocol
 ---
@@ -119,3 +119,9 @@ the full reactive paragraph.
 - `issuekit/commands/propose.py` (`run_list_refs`, `build_proposal`)
 - `tests/test_protocol.py`
 - `docs/issues/README.md` ("Cross-Project Proposals")
+
+## Handoff
+
+- Summary: Added outbound proposal guidance to codex and claude protocol renders, covered it in protocol tests, and documented the human-facing list-refs/propose path.
+- Branch: `main`
+- Commit: `3c3f2bb88d79d71caf07b8db78ccca1cafb9153c`
