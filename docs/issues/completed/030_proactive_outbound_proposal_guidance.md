@@ -1,12 +1,10 @@
 ---
 id: 30
-status: in_progress
+status: completed
 priority: medium
 created: 2026-06-04
-completed: 
-assignee: codex
-stage: review
-implementer: codex
+completed: 2026-06-04
+stage: done
 title: Add proactive outbound proposal guidance to the handoff protocol
 ---
 
@@ -125,3 +123,10 @@ the full reactive paragraph.
 - Summary: Added outbound proposal guidance to codex and claude protocol renders, covered it in protocol tests, and documented the human-facing list-refs/propose path.
 - Branch: `main`
 - Commit: `3c3f2bb88d79d71caf07b8db78ccca1cafb9153c`
+
+**Completed**: 2026-06-04
+
+## Completion Notes
+
+- Approved by codex.
+- Verification: `Reviewed diff at commit 3c3f2bb. protocol.py adds a concise outbound-origination paragraph to both CODEX_PROTOCOL and CLAUDE_PROTOCOL: recognize a change belongs to another registered repo, use 'issuekit list-refs' to find the ref, send via 'issuekit propose --to <ref> --title <t> --body <b>' or the MCP propose tool, noting proposals are non-destructive and the target repo owns triage (do not mutate its state). Because render_protocol(None) is the MCP instructions, this propagates to all consuming repos. docs/issues/README.md gains one human-facing sentence. tests/test_protocol.py asserts the stable phrases ('belongs to another registered repo', 'issuekit list-refs', 'target repo owns triage') appear in render_protocol('codex'), ('claude'), and (None), keeping the ASCII guarantee. Ran 'uv run pytest' (171 passed, 18 skipped), 'uv run issuekit validate' (30 files, 0 warnings), 'uv run issuekit check-encoding' (clean), and confirmed 'issuekit protocol --agent claude' shows the new guidance.`
