@@ -90,6 +90,11 @@ win on name conflicts. Use `issuekit add-ref <name> --path <repo>` for local
 refs, `issuekit add-ref <name> --path <repo> --scope workspace` for the shared
 file, and `issuekit list-refs` to inspect the merged view.
 
+When work in one repo reveals a needed change that belongs to another
+registered repo, use `issuekit list-refs` to find the ref and
+`issuekit propose --to <ref> --title <t> --body <b>` to send a
+non-destructive inbound suggestion for that repo to triage.
+
 Proposal files use this ASCII frontmatter:
 
 ```markdown

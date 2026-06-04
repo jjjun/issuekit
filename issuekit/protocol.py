@@ -17,6 +17,13 @@ an adopted issue with an `origin:` field, optionally send `issuekit propose
 --reply <id>` so the origin repo receives a new inbound proposal; do not mutate
 state in the origin repo.
 
+When work reveals that a needed change belongs to another registered repo,
+originate a proposal instead of only working around it locally or reporting it.
+Use `issuekit list-refs` to find the target ref, then
+`issuekit propose --to <ref> --title <t> --body <b>` (or the MCP `propose`
+tool). Proposals are non-destructive suggestions in the target repo's
+`incoming/`; the target repo owns triage, so do not mutate its state directly.
+
 Proposal-system MCP and CLI share one implementation, so the CLI is a drop-in
 fallback when the MCP tools hang or error. Equivalents (add `--json` for the
 same structured output the MCP tools return):
@@ -63,6 +70,13 @@ Claude usually reviews issuekit tasks after codex submits them, but any
 configured reviewer can use this flow. The reviewer is the agent assigned at
 stage=review and defaults to `default_reviewer`, which may be `auto`. Same-name
 review is allowed unless `require_distinct_reviewer` is true.
+
+When review reveals that a needed change belongs to another registered repo,
+originate a proposal instead of only reporting it. Use
+`issuekit list-refs` to find the target ref, then
+`issuekit propose --to <ref> --title <t> --body <b>` (or the MCP `propose`
+tool). Proposals are non-destructive suggestions in the target repo's
+`incoming/`; the target repo owns triage, so do not mutate its state directly.
 
 1. Call the issuekit MCP tool `next_review(reviewer=None)`. Omit reviewer to
    use `default_reviewer`, or pass the reviewer assignee to inspect. With

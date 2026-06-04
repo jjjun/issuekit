@@ -16,6 +16,10 @@ def test_render_protocol_returns_each_agent_and_both() -> None:
     assert "request_changes" in claude
     assert "ASCII verification" in claude
     assert "ASCII notes" in claude
+    for rendered in (codex, claude, both):
+        assert "belongs to another registered repo" in rendered
+        assert "issuekit list-refs" in rendered
+        assert "target repo owns triage" in rendered
     assert codex.rstrip() in both
     assert claude in both
     both.encode("ascii")
