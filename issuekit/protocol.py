@@ -17,6 +17,14 @@ an adopted issue with an `origin:` field, optionally send `issuekit propose
 --reply <id>` so the origin repo receives a new inbound proposal; do not mutate
 state in the origin repo.
 
+Proposal-system MCP and CLI share one implementation, so the CLI is a drop-in
+fallback when the MCP tools hang or error. Equivalents (add `--json` for the
+same structured output the MCP tools return):
+
+- `propose(to, title, body)` -> `issuekit propose --to <ref> --title <t> --body <b> --json`
+- `list_incoming()` -> `issuekit incoming --json`
+- `adopt_proposal(file, priority)` -> `issuekit adopt <file> --priority <p> --json`
+
 When the user asks codex to work on an issue in open-ended terms, such as
 "handle the next issue" or "take the queue", do not wait for explicit
 commands. Run this protocol end to end:
@@ -69,6 +77,11 @@ review is allowed unless `require_distinct_reviewer` is true.
 
 Claude owns proposals and codex-ready issues unless assigned as implementer.
 The assigned reviewer owns the review decision.
+
+When the proposal-system MCP tools hang or error, fall back to the equivalent
+CLI: `issuekit propose --to <ref> --title <t> --body <b> --json`,
+`issuekit incoming --json`, and `issuekit adopt <file> --json`. They share the
+same implementation and emit the same structured output.
 """
 
 

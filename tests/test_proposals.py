@@ -1,3 +1,4 @@
+import json
 import subprocess
 from pathlib import Path
 
@@ -11,9 +12,10 @@ from issuekit.proposals import (
     write_proposal,
 )
 from issuekit.commands.complete import complete_issue
+from issuekit.refs import add_ref
 from issuekit.workflow import claim_next
 
-from tests.issue_helpers import issue_text, make_issue_tree, write_issue
+from tests.issue_helpers import issue_text, make_issue_tree, write_indexes, write_issue
 
 
 def test_write_and_list_incoming_proposal(tmp_path: Path) -> None:
@@ -182,6 +184,83 @@ def test_reply_after_adopt_claim_and_complete_preserves_origin(
     assert len(proposals) == 1
     assert proposals[0].reply_to == "source#42@abc123"
     assert proposals[0].origin.startswith("target#1@")
+
+
+def test_cli_propose_json_outputs_structured_payload(tmp_path: Path, monkeypatch, capsys) -> None:
+    source = tmp_path / "source"
+    target = tmp_path / "target"
+    source_issues = source / "docs" / "issues"
+    target_issues = target / "docs" / "issues"
+    write_issue(source_issues / "active" / "001_first.md", issue_text(1, "First"))
+    write_indexes(source_issues)
+    write_indexes(target_issues)
+    add_ref("target", target, source)
+
+    monkeypatch.chdir(source)
+    exit_code = cli.main(
+        [
+            "propose",
+            "--to",
+            "target",
+            "--title",
+            "CLI Proposal",
+            "--body",
+            "## Suggested Change\n\nDo this.",
+            "--from-issue",
+            "1",
+            "--json",
+        ]
+    )
+    sent = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert set(sent) == {"file", "origin", "to", "reply_to", "created", "title", "path"}
+    assert sent["to"] == "target"
+    assert sent["origin"].startswith("source#1@")
+    assert sent["title"] == "CLI Proposal"
+    assert sent["path"].endswith(sent["file"])
+    assert (target_issues / "incoming" / sent["file"]).exists()
+
+
+def test_cli_propose_without_json_keeps_human_output(tmp_path: Path, monkeypatch, capsys) -> None:
+    source = tmp_path / "source"
+    target = tmp_path / "target"
+    write_issue(source / "docs" / "issues" / "active" / "001_first.md", issue_text(1, "First"))
+    write_indexes(source / "docs" / "issues")
+    write_indexes(target / "docs" / "issues")
+    add_ref("target", target, source)
+
+    monkeypatch.chdir(source)
+    exit_code = cli.main(
+        ["propose", "--to", "target", "--title", "CLI Proposal", "--body", "## Suggested Change\n\nDo this."]
+    )
+
+    assert exit_code == 0
+    assert capsys.readouterr().out.startswith("Wrote proposal:")
+
+
+def test_cli_adopt_json_outputs_issue_payload(tmp_path: Path, monkeypatch, capsys) -> None:
+    issues_dir = make_issue_tree(tmp_path)
+    path = write_proposal(
+        issues_dir,
+        Proposal(
+            origin="source#42@abc123",
+            to="target",
+            reply_to="",
+            created="2026-06-03",
+            title="Adopt Me",
+            body="## Suggested Change\n\nImplement this locally.",
+        ),
+    )
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = cli.main(["adopt", path.name, "--priority", "low", "--json"])
+    adopted = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert set(adopted) == {"id", "title", "status", "assignee", "stage", "implementer", "file", "body"}
+    assert adopted["title"] == "Adopt Me"
+    assert "Implement this locally." in adopted["body"]
 
 
 def test_git_commit_timeout_returns_unknown(tmp_path: Path, monkeypatch) -> None:

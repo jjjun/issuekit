@@ -401,3 +401,62 @@ def test_proposal_tools_send_list_and_adopt(tmp_path: Path) -> None:
     assert incoming[0]["title"] == "MCP Proposal"
     assert adopted["id"] == 1
     assert adopted["title"] == "MCP Proposal"
+
+
+def test_cli_proposal_json_matches_mcp_output(tmp_path: Path, monkeypatch, capsys) -> None:
+    source = tmp_path / "source"
+    target = tmp_path / "target"
+    source_issues = source / "docs" / "issues"
+    target_issues = target / "docs" / "issues"
+    write_issue(source_issues / "active" / "001_first.md", issue_text(1, "First"))
+    write_indexes(source_issues)
+    write_indexes(target_issues)
+    add_ref("target", target, source)
+
+    # propose via MCP and via CLI: same source/title/body -> identical proposal_dict
+    source_server = create_server(source)
+    mcp_sent = _call(
+        source_server,
+        "propose",
+        {"to": "target", "title": "Parity", "body": "## Suggested Change\n\nDo this.", "from_issue": "1"},
+    )
+    monkeypatch.chdir(source)
+    cli.main(
+        [
+            "propose",
+            "--to",
+            "target",
+            "--title",
+            "Parity",
+            "--body",
+            "## Suggested Change\n\nDo this.",
+            "--from-issue",
+            "1",
+            "--json",
+        ]
+    )
+    cli_sent = json.loads(capsys.readouterr().out)
+    assert cli_sent == mcp_sent
+
+    # list_incoming parity
+    target_server = create_server(target)
+    mcp_incoming = _call(target_server, "list_incoming", {})
+    monkeypatch.chdir(target)
+    cli.main(["incoming", "--json"])
+    cli_incoming = json.loads(capsys.readouterr().out)
+    assert cli_incoming == mcp_incoming
+
+    # adopt parity: CLI adopt output equals MCP adopt output keys/values
+    cli.main(["adopt", cli_incoming[0]["file"], "--json"])
+    cli_adopted = json.loads(capsys.readouterr().out)
+    assert set(cli_adopted) == {
+        "id",
+        "title",
+        "status",
+        "assignee",
+        "stage",
+        "implementer",
+        "file",
+        "body",
+    }
+    assert cli_adopted["title"] == "Parity"

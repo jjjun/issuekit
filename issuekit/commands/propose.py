@@ -10,7 +10,7 @@ import sys
 
 from issuekit.commands.generate_indexes import write_index_files
 from issuekit.config import load_config
-from issuekit.core import Issue, VALID_ISSUE_PRIORITIES, read_all_issues
+from issuekit.core import Issue, VALID_ISSUE_PRIORITIES, issue_dict, read_all_issues
 from issuekit.proposals import (
     Proposal,
     ProposalError,
@@ -68,7 +68,7 @@ def run_propose(args) -> int:
             Path.cwd(),
             to=args.to,
             title=args.title,
-            body=None,
+            body=args.body,
             body_file=args.body_file,
             from_issue=args.from_issue,
             reply=args.reply,
@@ -78,6 +78,9 @@ def run_propose(args) -> int:
     except (LookupError, ProposalError, RefError, ValueError) as exc:
         print(str(exc), file=sys.stderr)
         return 1
+    if args.json:
+        print(json.dumps({**proposal_dict(proposal), "path": path.as_posix()}, indent=2))
+        return 0
     print(f"Wrote proposal: {path}")
     return 0
 
@@ -112,6 +115,11 @@ def run_adopt(args) -> int:
         print(str(exc), file=sys.stderr)
         return 1
     write_index_files(issues_dir, config.recent_count)
+    if args.json:
+        _, _, issues = read_all_issues(issues_dir)
+        issue = next(candidate for candidate in issues if candidate.file_path == path)
+        print(json.dumps(issue_dict(issue, include_body=True), indent=2))
+        return 0
     print(f"Adopted proposal as: {path}")
     return 0
 

@@ -12,7 +12,7 @@ from issuekit.commands.complete import complete_issue
 from issuekit.commands.generate_indexes import write_index_files
 from issuekit.commands.propose import build_proposal
 from issuekit.config import IssuekitConfig, load_config
-from issuekit.core import Issue, read_all_issues
+from issuekit.core import Issue, issue_dict, read_all_issues
 from issuekit.proposals import (
     adopt_proposal as adopt_proposal_file,
     list_incoming as list_incoming_files,
@@ -222,15 +222,4 @@ def _resolve_reviewer_for_issue(
 
 
 def _issue_dict(issue: Issue, *, include_body: bool = False) -> dict[str, Any]:
-    data: dict[str, Any] = {
-        "id": issue.id,
-        "title": issue.title,
-        "status": issue.issue_status,
-        "assignee": issue.assignee,
-        "stage": issue.stage,
-        "implementer": issue.implementer,
-        "file": issue.relative_path,
-    }
-    if include_body:
-        data["body"] = issue.frontmatter.body
-    return data
+    return issue_dict(issue, include_body=include_body)

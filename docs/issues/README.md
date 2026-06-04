@@ -120,6 +120,24 @@ create a local active issue, and `issuekit discard <proposal-file>` to move a
 proposal to `incoming/discarded/`. Adopted issues record the source `origin:` in
 frontmatter and under Related Resources.
 
+### MCP and CLI parity (non-MCP fallback)
+
+The proposal-system MCP tools and the CLI call the same implementation, so the
+CLI is a drop-in fallback when the MCP server is unstable (for example when a
+cross-repo write hangs under an agent harness). Add `--json` to get the same
+structured output the MCP tools return:
+
+| MCP tool | CLI equivalent |
+| --- | --- |
+| `propose(to, title, body)` | `issuekit propose --to <ref> --title <t> --body <b> --json` |
+| `list_incoming()` | `issuekit incoming --json` |
+| `adopt_proposal(file, priority)` | `issuekit adopt <file> --priority <p> --json` |
+
+`propose` also accepts `--body-file <path>` instead of `--body`, and
+`--from-issue <id>` / `--reply <id>` to derive the body and destination from a
+local issue. If an MCP proposal tool hangs or errors, run the matching CLI
+command; the result is identical.
+
 For `issuekit propose --reply <id>`, the destination ref is derived from the
 recorded `origin` value unless `--to <name>` is also provided. The derived ref
 name is the origin text before `#`, so shared project names should match repo

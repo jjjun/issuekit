@@ -13,6 +13,8 @@ Claude Code from the repo root so the MCP server resolves the correct
 ## Project notes
 
 - Claude writes proposals, codex-ready issues, and reviews.
+- If the proposal-system MCP tools hang or error, use the equivalent CLI with
+  `--json` (`issuekit propose/incoming/adopt`); they share one implementation.
 - Codex implements issuekit tasks from `docs/issues/active/`.
 - Tracker conventions live in `docs/issues/README.md`.
 - Write all files as UTF-8 without a BOM and with LF line endings.

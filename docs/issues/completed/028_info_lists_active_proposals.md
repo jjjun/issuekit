@@ -1,12 +1,10 @@
 ---
 id: 28
-status: in_progress
+status: completed
 priority: medium
 created: 2026-06-04
-completed: 
-assignee: codex
-stage: review
-implementer: codex
+completed: 2026-06-04
+stage: done
 title: Show valid incoming proposals in issuekit info
 ---
 
@@ -117,3 +115,10 @@ unchanged when no proposals are present.
 - Summary: Added incoming proposal reporting to issuekit info JSON and text output, with tests for pending and triaged proposal handling.
 - Branch: `main`
 - Commit: `6753a4e`
+
+**Completed**: 2026-06-04
+
+## Completion Notes
+
+- Approved by codex.
+- Verification: `Reviewed diff at commit 6753a4e. info.py now calls list_incoming(issues_dir) and adds a top-level incomingProposals array (origin, title, created, file) without changing counts; file is computed via _proposal_relative_path using relative_to(issues_dir).as_posix() with a None-safe guard. Text output adds '- Incoming proposals: N' after the latest-completed line and an 'Incoming proposals' detail section only when non-empty, ASCII only. Tests cover empty case, JSON listing with exact file name, text listing, exclusion of triaged (adopted) proposals, and the 0-count/no-section path in the index-mismatch test. Ran 'uv run pytest' (167 passed, 18 skipped), 'uv run issuekit validate' (28 files, 0 warnings), and 'uv run issuekit check-encoding' (clean).`

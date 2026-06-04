@@ -47,6 +47,25 @@ class Issue:
     decode_error: bool = False
 
 
+def issue_dict(issue: "Issue", *, include_body: bool = False) -> dict[str, object]:
+    """Serialize an issue for JSON output.
+
+    Shared by the MCP server and the CLI so both paths emit identical payloads.
+    """
+    data: dict[str, object] = {
+        "id": issue.id,
+        "title": issue.title,
+        "status": issue.issue_status,
+        "assignee": issue.assignee,
+        "stage": issue.stage,
+        "implementer": issue.implementer,
+        "file": issue.relative_path,
+    }
+    if include_body:
+        data["body"] = issue.frontmatter.body
+    return data
+
+
 def parse_issue_id(file_name: str) -> int | None:
     match = re.match(r"^(\d+)_.*\.md$", file_name)
     return int(match.group(1)) if match else None

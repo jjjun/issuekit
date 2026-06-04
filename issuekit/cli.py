@@ -224,9 +224,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     propose_parser.add_argument("--to", help="Target related repository ref.")
     propose_parser.add_argument("--title", help="Proposal title.")
+    propose_parser.add_argument("--body", help="Inline proposal body.")
     propose_parser.add_argument("--body-file", help="File containing proposal body.")
     propose_parser.add_argument("--from-issue", help="Local issue id to propose from.")
     propose_parser.add_argument("--reply", help="Local adopted issue id to reply from.")
+    propose_parser.add_argument("--json", action="store_true", help="Print JSON output.")
     propose_parser.set_defaults(func=propose.run_propose)
 
     incoming_parser = subparsers.add_parser(
@@ -247,6 +249,7 @@ def build_parser() -> argparse.ArgumentParser:
         default="medium",
         help="Priority for the adopted issue.",
     )
+    adopt_parser.add_argument("--json", action="store_true", help="Print JSON output.")
     adopt_parser.set_defaults(func=propose.run_adopt)
 
     discard_parser = subparsers.add_parser(
