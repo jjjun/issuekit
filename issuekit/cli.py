@@ -192,6 +192,37 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Print JSON output.",
     )
+    setup_parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Check setup state without writing files.",
+    )
+    setup_subparsers = setup_parser.add_subparsers(dest="setup_action", metavar="<action>")
+    setup_check_parser = setup_subparsers.add_parser(
+        "check",
+        help="Check setup state without writing files.",
+    )
+    setup_check_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Print JSON output.",
+    )
+    setup_check_parser.set_defaults(func=setup.run)
+    setup_apply_parser = setup_subparsers.add_parser(
+        "apply",
+        help="Initialize repo MCP handoff scaffolding and print setup diagnostics.",
+    )
+    setup_apply_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Overwrite existing templated files.",
+    )
+    setup_apply_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Print JSON output.",
+    )
+    setup_apply_parser.set_defaults(func=setup.run)
     setup_parser.set_defaults(func=setup.run)
 
     add_ref_parser = subparsers.add_parser(

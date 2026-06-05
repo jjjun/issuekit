@@ -70,6 +70,18 @@ and `diagnostics` fields instead of the human checklist. `ok: false` means at
 least one diagnostic still needs action, often an optional global install or
 configuration step; the command still exits 0 when repo scaffolding succeeds.
 
+Orchestrators that only need a preflight should use the read-only check:
+
+```powershell
+issuekit setup check --json
+```
+
+The check does not write files or run subprocesses. Its JSON object reports
+`ok`, `needs_setup`, `would_write`, `would_update`, `diagnostics`, and `actions`
+so automation can decide whether to run the applying command. `issuekit setup`
+keeps its applying behavior, and `issuekit setup apply --json` is an explicit
+alias for that path.
+
 The repo scaffold writes `.mcp.json`, appends `.codex/config.toml` when needed,
 and adds thin handoff references to `AGENTS.md` and `CLAUDE.md`. The generated
 MCP entries run the global `issuekit-mcp` binary; they do not use `uv run`, so
@@ -113,6 +125,7 @@ copying the steps.
 | `issuekit protocol [--agent codex\|claude]` | Print the canonical handoff protocol. |
 | `issuekit init [--with-mcp]` | Install tracker templates, encoding hooks, and optional MCP handoff scaffolding. |
 | `issuekit setup [--force] [--json]` | Run per-repo MCP handoff scaffolding and setup diagnostics. |
+| `issuekit setup check --json` | Check setup state without writing files. |
 | `issuekit add-ref <name> --path <repo> [--scope local\|workspace]` | Register a related repository ref. |
 | `issuekit list-refs` | List effective related repository refs and their source. |
 | `issuekit propose --to <name> --title "..."` | Send a proposal to a related repo's `incoming/` directory. |

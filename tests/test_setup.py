@@ -19,6 +19,14 @@ def _diagnostic_status(diagnostics: list[setup.Diagnostic], label: str) -> str:
     raise AssertionError(f"missing diagnostic: {label}")
 
 
+def _file_snapshot(root: Path) -> dict[str, bytes]:
+    return {
+        path.relative_to(root).as_posix(): path.read_bytes()
+        for path in sorted(root.rglob("*"))
+        if path.is_file()
+    }
+
+
 def test_setup_empty_repo_scaffolds_mcp_and_prints_checklist(
     tmp_path: Path,
     monkeypatch,
@@ -114,6 +122,112 @@ def test_setup_output_is_ascii(tmp_path: Path, monkeypatch, capsys) -> None:
     captured = capsys.readouterr()
     assert exit_code == 0
     captured.out.encode("ascii")
+
+
+def test_setup_check_json_current_repo_reports_ok_without_writes(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    _force_mcp_available(monkeypatch)
+    init_repo(tmp_path, with_mcp=True)
+    before = _file_snapshot(tmp_path)
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = cli.main(["setup", "check", "--json"])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert payload["ok"] is True
+    assert payload["state"] == "current"
+    assert payload["needs_setup"] is False
+    assert payload["would_write"] is False
+    assert payload["would_update"] is False
+    assert payload["actions"] == []
+    assert _file_snapshot(tmp_path) == before
+
+
+def test_setup_check_json_missing_repo_reports_writes_without_writing(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    _force_mcp_available(monkeypatch)
+    monkeypatch.chdir(tmp_path)
+
+    def fail_process(*_args, **_kwargs):
+        raise AssertionError("setup check must not run subprocesses")
+
+    monkeypatch.setattr(subprocess, "run", fail_process)
+    monkeypatch.setattr(subprocess, "Popen", fail_process)
+
+    exit_code = cli.main(["setup", "check", "--json"])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert payload["state"] == "missing"
+    assert payload["needs_setup"] is True
+    assert payload["would_write"] is True
+    assert payload["would_update"] is False
+    assert ".mcp.json" in {item["path"] for item in payload["actions"]}
+    assert _file_snapshot(tmp_path) == {}
+
+
+def test_setup_check_json_stale_repo_reports_updates_without_writing(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    _force_mcp_available(monkeypatch)
+    init_repo(tmp_path, with_mcp=True)
+    (tmp_path / "AGENTS.md").write_text("# AGENTS.md\n", encoding="utf-8", newline="\n")
+    index_path = tmp_path / "docs" / "issues" / "indexes" / "active.md"
+    index_path.write_text("stale\n", encoding="utf-8", newline="\n")
+    before = _file_snapshot(tmp_path)
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = cli.main(["setup", "check", "--json"])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert payload["state"] == "stale"
+    assert payload["needs_setup"] is True
+    assert payload["would_write"] is False
+    assert payload["would_update"] is True
+    paths = {item["path"] for item in payload["actions"]}
+    assert "AGENTS.md" in paths
+    assert "docs/issues/indexes/active.md" in paths
+    assert _file_snapshot(tmp_path) == before
+
+
+def test_setup_check_json_blocked_repo_reports_manual_action_without_writing(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    _force_mcp_available(monkeypatch)
+    init_repo(tmp_path, with_mcp=True)
+    (tmp_path / ".mcp.json").write_text("{not-json\n", encoding="utf-8", newline="\n")
+    before = _file_snapshot(tmp_path)
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = cli.main(["setup", "--check", "--json"])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert payload["state"] == "blocked"
+    assert payload["needs_setup"] is True
+    assert payload["would_write"] is False
+    assert payload["would_update"] is False
+    assert payload["actions"] == [
+        {
+            "path": ".mcp.json",
+            "state": "blocked",
+            "action": "manual",
+            "reason": "invalid JSON blocks issuekit setup from safely merging this file.",
+        }
+    ]
+    assert _file_snapshot(tmp_path) == before
 
 
 def test_setup_reports_missing_mcp_extra(monkeypatch) -> None:
