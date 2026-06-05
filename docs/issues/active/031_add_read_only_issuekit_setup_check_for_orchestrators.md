@@ -5,7 +5,7 @@ priority: medium
 created: 2026-06-05
 completed: 
 assignee: codex
-stage: implementing
+stage: review
 implementer: codex
 origin: infra-toolkit#0@7522a33
 title: Add read-only issuekit setup check for orchestrators
@@ -65,3 +65,9 @@ Add an issuekit-owned read-only setup check and clarify the apply boundary:
 
 - Origin proposal: `infra-toolkit#0@7522a33`
 - Intended consumer: infra-toolkit `issuekit-rollout` preflight
+
+## Handoff
+
+- Summary: Added a read-only setup check path exposed as issuekit setup check --json and issuekit setup --check --json, plus setup apply --json as an explicit apply alias. The check reports ok, state, needs_setup, would_write, would_update, diagnostics, and actions without calling init_repo, writing files, or running subprocesses. It compares MCP handoff scaffold and generated indexes using issuekit-owned logic, documents the check/apply boundary, and adds tests for current, missing, stale, blocked, no-write, and no-subprocess behavior. Verification: uv run pytest; uv run issuekit validate; uv run issuekit check-encoding.
+- Branch: `main`
+- Commit: `4782142`
