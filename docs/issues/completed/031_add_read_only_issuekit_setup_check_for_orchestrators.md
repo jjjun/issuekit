@@ -1,12 +1,10 @@
 ---
 id: 31
-status: in_progress
+status: completed
 priority: medium
 created: 2026-06-05
-completed: 
-assignee: codex
-stage: review
-implementer: codex
+completed: 2026-06-05
+stage: done
 origin: infra-toolkit#0@7522a33
 title: Add read-only issuekit setup check for orchestrators
 ---
@@ -71,3 +69,10 @@ Add an issuekit-owned read-only setup check and clarify the apply boundary:
 - Summary: Added a read-only setup check path exposed as issuekit setup check --json and issuekit setup --check --json, plus setup apply --json as an explicit apply alias. The check reports ok, state, needs_setup, would_write, would_update, diagnostics, and actions without calling init_repo, writing files, or running subprocesses. It compares MCP handoff scaffold and generated indexes using issuekit-owned logic, documents the check/apply boundary, and adds tests for current, missing, stale, blocked, no-write, and no-subprocess behavior. Verification: uv run pytest; uv run issuekit validate; uv run issuekit check-encoding.
 - Branch: `main`
 - Commit: `4782142`
+
+**Completed**: 2026-06-05
+
+## Completion Notes
+
+- Approved by codex.
+- Verification: `Reviewed branch main commit 4782142. Confirmed issue #31 scope: read-only setup check added as `issuekit setup check --json` and `issuekit setup --check --json`, with `issuekit setup apply --json` alias and existing `issuekit setup --json` apply path preserved. Verified read-only: git working tree stayed clean after running the check, and the check path returns before init_repo; no subprocess usage in setup.py (diagnostics use file reads, shutil.which, module import). JSON payload exposes ok, state, needs_setup, would_write, would_update, diagnostics, actions; state machine reports current/missing/stale/blocked. Ran `uv run pytest tests/test_setup.py` (15 passed, including no-write and no-subprocess assertions for missing/stale/blocked), `uv run issuekit validate` (31 files, 0 warnings), and `uv run issuekit check-encoding` (clean). README documents the command, read-only guarantee, fields, and apply alias.`
