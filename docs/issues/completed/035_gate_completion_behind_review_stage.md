@@ -1,12 +1,10 @@
 ---
 id: 35
-status: in_progress
+status: completed
 priority: high
 created: 2026-06-08
-completed: 
-assignee: kimi
-stage: implementing
-implementer: kimi
+completed: 2026-06-08
+stage: done
 title: Gate issue completion behind review stage
 ---
 
@@ -96,3 +94,16 @@ escape hatch for legitimate direct closes.
 ## Review Feedback
 
 - Implementation is correct, but one existing test regressed under the new review-stage gate. tests/test_proposals.py::test_reply_after_adopt_claim_and_complete_preserves_origin calls complete_issue directly after claim_next (stage=implementing) without force, so it now fails with the new WorkflowError. Fix: add force=True to that complete_issue(...) call (test_proposals.py around lines 166-171), matching how test_cli.py and test_complete.py were updated. Then run the full suite (uv run pytest) and confirm 0 failures, plus issuekit check-encoding, before resubmitting via submit_for_review. Process note: this time claim via claim_next_task(assignee=kimi) and finish with submit_for_review so the issue goes through the review stage instead of being completed directly.
+
+## Handoff
+
+- Summary: Gate issue completion behind review stage: add require_review_before_complete config, force flag on complete command, stage gate in complete_issue, update README, and fix test_proposals regression. All tests pass and encoding check clean.
+- Branch: `main`
+- Commit: `d673c17`
+
+**Completed**: 2026-06-08
+
+## Completion Notes
+
+- Approved by claude.
+- Verification: `uv run pytest (194 passed, 18 skipped); uv run issuekit check-encoding passed; uv run issuekit validate passed; test_proposals regression fixed with force=True; review-stage gate, force flag, and require_review_before_complete config verified`
