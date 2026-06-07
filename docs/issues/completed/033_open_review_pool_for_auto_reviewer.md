@@ -1,12 +1,10 @@
 ---
 id: 33
-status: in_progress
+status: completed
 priority: medium
 created: 2026-06-08
-completed: 
-assignee: kimi
-stage: implementing
-implementer: kimi
+completed: 2026-06-08
+stage: done
 title: Open review pool when default_reviewer is auto and reviewer is omitted
 ---
 
@@ -108,3 +106,16 @@ decide, and have auto + omitted reviewer produce that open state at submit.
 - `issuekit/mcp/server.py` `next_review`, `approve`, `_resolve_reviewer_for_issue`
 - `issuekit/core.py` `is_valid_workflow_token` (empty token is valid)
 - Follow-up from issue #32 (first-class kimi agent support)
+
+## Handoff
+
+- Summary: Open review pool when default_reviewer is auto and reviewer is omitted: empty assignee on submit, allow any reviewer on open reviews, self-review guard moved to decision time.
+- Branch: `main`
+- Commit: `a045c5a`
+
+**Completed**: 2026-06-08
+
+## Completion Notes
+
+- Approved by kimi.
+- Verification: `Reviewed branch main commit a045c5a against issue #33 scope. Confirmed: submit_for_review sets an empty (open) review assignee when reviewer is omitted and default_reviewer is auto, and keeps assign-and-lock when reviewer is explicit; ensure_assigned_reviewer early-returns for an empty (open) assignee; approve and request_changes record the caller-supplied reviewer on open reviews; require_distinct_reviewer self-review guard moved to decision time (ensure_not_self_review added in approve and request_changes); resolve_reviewer skips validation for empty reviewer. Verified: pytest 187 passed 18 skipped (6 new open-review tests plus updated former keep-assignee tests); issuekit validate 33 files 0 warnings; issuekit check-encoding clean.`
