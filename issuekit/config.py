@@ -14,7 +14,7 @@ class IssuekitConfig:
     recent_count: int = 30
     ascii_id_threshold: int = 0
     issues_dir: str = "docs/issues"
-    assignees: tuple[str, ...] = ("codex", "claude")
+    assignees: tuple[str, ...] = ("codex", "claude", "kimi")
     stages: tuple[str, ...] = ("todo", "implementing", "review", "changes_requested", "done")
     default_reviewer: str = "claude"
     require_distinct_reviewer: bool = False

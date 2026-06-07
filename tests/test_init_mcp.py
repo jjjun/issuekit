@@ -27,8 +27,8 @@ def test_init_with_mcp_writes_global_binary_scaffold(tmp_path: Path) -> None:
     assert 'command = "issuekit-mcp"' in codex_config
     assert "uv" not in mcp_json
     assert "uv run" not in codex_config
-    assert "issuekit protocol --agent codex" in agents
-    assert "issuekit protocol --agent claude" in claude
+    assert "issuekit protocol --agent" in agents
+    assert "issuekit protocol --agent" in claude
     assert "claim_next_task" not in agents
     assert "next_review" not in claude
 

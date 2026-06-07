@@ -153,12 +153,16 @@ def build_parser() -> argparse.ArgumentParser:
 
     protocol_parser = subparsers.add_parser(
         "protocol",
-        help="Print the current two-agent handoff protocol.",
+        help="Print the current handoff protocol.",
     )
     protocol_parser.add_argument(
         "--agent",
-        choices=("codex", "claude"),
-        help="Print the protocol for one agent role.",
+        help="Print the protocol for one agent (defaults to implementer flow for unknown agents).",
+    )
+    protocol_parser.add_argument(
+        "--role",
+        choices=("implementer", "reviewer"),
+        help="Print the protocol for a specific role instead of the agent default.",
     )
     protocol_parser.set_defaults(func=protocol.run)
 

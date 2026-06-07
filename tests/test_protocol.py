@@ -25,9 +25,18 @@ def test_render_protocol_returns_each_agent_and_both() -> None:
     both.encode("ascii")
 
 
-def test_render_protocol_rejects_unknown_agent() -> None:
-    with pytest.raises(ValueError, match="unknown agent"):
-        render_protocol("other")
+def test_render_protocol_returns_implementer_for_unknown_agent() -> None:
+    assert render_protocol("other") == render_protocol("codex")
+
+
+def test_render_protocol_returns_role_for_kimi() -> None:
+    assert render_protocol("kimi") == render_protocol("codex")
+    assert render_protocol("kimi", role="reviewer") == render_protocol("claude")
+
+
+def test_render_protocol_rejects_unknown_role() -> None:
+    with pytest.raises(ValueError, match="unknown role"):
+        render_protocol(role="other")
 
 
 def test_protocol_command_prints_agent_text(capsys: pytest.CaptureFixture[str]) -> None:
@@ -37,6 +46,26 @@ def test_protocol_command_prints_agent_text(capsys: pytest.CaptureFixture[str]) 
 
     assert exit_code == 0
     assert captured.out == render_protocol("codex")
+    captured.out.encode("ascii")
+
+
+def test_protocol_command_prints_kimi_text(capsys: pytest.CaptureFixture[str]) -> None:
+    exit_code = cli.main(["protocol", "--agent", "kimi"])
+
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert captured.out == render_protocol("kimi")
+    captured.out.encode("ascii")
+
+
+def test_protocol_command_prints_role_text(capsys: pytest.CaptureFixture[str]) -> None:
+    exit_code = cli.main(["protocol", "--role", "reviewer"])
+
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert captured.out == render_protocol("claude")
     captured.out.encode("ascii")
 
 

@@ -60,6 +60,10 @@ def test_load_config_uses_defaults_without_config_files(tmp_path: Path) -> None:
     assert load_config(tmp_path) == IssuekitConfig()
 
 
+def test_default_assignees_includes_kimi() -> None:
+    assert "kimi" in IssuekitConfig.assignees
+
+
 def test_load_config_malformed_issuekit_toml_names_file(tmp_path: Path) -> None:
     issuekit_path = tmp_path / "issuekit.toml"
     issuekit_path.write_text(

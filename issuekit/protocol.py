@@ -99,17 +99,25 @@ same implementation and emit the same structured output.
 """
 
 
-PROTOCOLS = {
-    "codex": CODEX_PROTOCOL,
-    "claude": CLAUDE_PROTOCOL,
+_ROLE_PROTOCOLS = {
+    "implementer": CODEX_PROTOCOL,
+    "reviewer": CLAUDE_PROTOCOL,
+}
+
+_AGENT_ROLE = {
+    "codex": "implementer",
+    "claude": "reviewer",
 }
 
 
-def render_protocol(agent: str | None = None) -> str:
-    """Render the handoff protocol for one agent, or both agents."""
-    if agent is None:
+def render_protocol(agent: str | None = None, role: str | None = None) -> str:
+    """Render the handoff protocol for one agent/role, or both roles."""
+    if agent is None and role is None:
         return f"{CODEX_PROTOCOL.rstrip()}\n\n{CLAUDE_PROTOCOL}"
-    try:
-        return PROTOCOLS[agent]
-    except KeyError as exc:
-        raise ValueError(f"unknown agent: {agent}") from exc
+    if role is not None:
+        try:
+            return _ROLE_PROTOCOLS[role]
+        except KeyError as exc:
+            raise ValueError(f"unknown role: {role}") from exc
+    resolved_role = _AGENT_ROLE.get(agent, "implementer")
+    return _ROLE_PROTOCOLS[resolved_role]

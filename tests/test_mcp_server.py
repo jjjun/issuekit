@@ -62,6 +62,10 @@ def test_get_protocol_matches_canonical_text(tmp_path: Path) -> None:
     server = create_server(tmp_path)
 
     assert _call(server, "get_protocol", {"agent": "codex"}) == render_protocol("codex")
+    assert _call(server, "get_protocol", {"agent": "kimi"}) == render_protocol("kimi")
+    assert _call(server, "get_protocol", {"agent": "kimi", "role": "reviewer"}) == render_protocol(
+        "kimi", role="reviewer"
+    )
     assert _call(server, "get_protocol", {}) == render_protocol(None)
 
 

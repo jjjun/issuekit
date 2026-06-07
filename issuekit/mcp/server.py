@@ -37,8 +37,8 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
     root = Path.cwd() if cwd is None else Path(cwd)
 
     @server.tool(description="Read the current issuekit handoff protocol.")
-    def get_protocol(agent: str | None = None) -> str:
-        return render_protocol(agent)
+    def get_protocol(agent: str | None = None, role: str | None = None) -> str:
+        return render_protocol(agent, role=role)
 
     @server.tool(
         description=(

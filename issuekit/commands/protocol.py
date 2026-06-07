@@ -6,5 +6,5 @@ from issuekit.protocol import render_protocol
 
 
 def run(args) -> int:
-    print(render_protocol(args.agent), end="")
+    print(render_protocol(args.agent, role=args.role), end="")
     return 0
