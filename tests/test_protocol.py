@@ -34,6 +34,14 @@ def test_render_protocol_returns_role_for_kimi() -> None:
     assert render_protocol("kimi", role="reviewer") == render_protocol("claude")
 
 
+def test_render_protocol_returns_author_role() -> None:
+    author = render_protocol(role="author")
+    assert "issuekit info" in author
+    assert "docs/issues/active/" in author
+    assert "Do not call `claim_next_task`" in author
+    author.encode("ascii")
+
+
 def test_render_protocol_rejects_unknown_role() -> None:
     with pytest.raises(ValueError, match="unknown role"):
         render_protocol(role="other")
@@ -66,6 +74,16 @@ def test_protocol_command_prints_role_text(capsys: pytest.CaptureFixture[str]) -
 
     assert exit_code == 0
     assert captured.out == render_protocol("claude")
+    captured.out.encode("ascii")
+
+
+def test_protocol_command_prints_author_role_text(capsys: pytest.CaptureFixture[str]) -> None:
+    exit_code = cli.main(["protocol", "--role", "author"])
+
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert captured.out == render_protocol(role="author")
     captured.out.encode("ascii")
 
 

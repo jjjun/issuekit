@@ -64,6 +64,32 @@ review decision for issues assigned to them at stage=review.
 """
 
 
+AUTHOR_PROTOCOL = """# Handoff protocol (author)
+
+An author writes codex-ready issues and proposals. The author does not
+implement issues.
+
+When a needed change belongs to another registered repo, originate a proposal
+instead of only reporting it. Use `issuekit list-refs` to find the target ref,
+then `issuekit propose --to <ref> --title <t> --body <b>` (or the MCP
+`propose` tool). Proposals are non-destructive suggestions in the target repo's
+`incoming/`; the target repo owns triage, so do not mutate its state directly.
+
+When the proposal-system MCP tools hang or error, fall back to the equivalent
+CLI: `issuekit propose --to <ref> --title <t> --body <b> --json`,
+`issuekit incoming --json`, and `issuekit adopt <file> --json`. They share the
+same implementation and emit the same structured output.
+
+When asked to write or plan an issue:
+
+1. Run `issuekit info` to find the next issue id.
+2. Create the issue under `docs/issues/active/` with `status: active`, an
+   unstarted stage (empty or `todo`), and no assignee.
+3. STOP. Do not call `claim_next_task` or implement the issue in the same
+   session. An implementer claims it later via `claim_next_task`.
+"""
+
+
 CLAUDE_PROTOCOL = """# Handoff protocol (claude)
 
 Claude usually reviews issuekit tasks after codex submits them, but any
@@ -100,6 +126,7 @@ same implementation and emit the same structured output.
 
 
 _ROLE_PROTOCOLS = {
+    "author": AUTHOR_PROTOCOL,
     "implementer": CODEX_PROTOCOL,
     "reviewer": CLAUDE_PROTOCOL,
 }
