@@ -15,6 +15,11 @@ def test_complete_moves_issue_updates_frontmatter_and_regenerates_indexes(
     monkeypatch,
     capsys,
 ) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "require_review_before_complete = false\n",
+        encoding="utf-8",
+        newline="\n",
+    )
     issues_dir = make_issue_tree(tmp_path)
     monkeypatch.chdir(tmp_path)
 
@@ -68,6 +73,11 @@ def test_complete_rejects_non_ascii_summary(tmp_path: Path, monkeypatch, capsys)
 
 
 def test_complete_writes_without_bom_or_crlf(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "require_review_before_complete = false\n",
+        encoding="utf-8",
+        newline="\n",
+    )
     issues_dir = tmp_path / "docs" / "issues"
     write_issue(issues_dir / "active" / "001_first.md", issue_text(1, "First"))
     monkeypatch.chdir(tmp_path)
@@ -83,6 +93,11 @@ def test_complete_normalizes_accumulated_frontmatter_body_gap(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "require_review_before_complete = false\n",
+        encoding="utf-8",
+        newline="\n",
+    )
     issues_dir = tmp_path / "docs" / "issues"
     write_issue(
         issues_dir / "active" / "001_first.md",
@@ -116,3 +131,53 @@ def test_complete_rejects_non_utf8_issue_without_modifying_it(
     assert "Active issue #1 is not valid UTF-8: active/001_cp932.md" in capsys.readouterr().err
     assert bad_issue.read_bytes() == raw_content
     assert not (issues_dir / "completed" / "001_cp932.md").exists()
+
+
+def test_complete_rejects_non_review_stage_by_default(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    issues_dir = tmp_path / "docs" / "issues"
+    write_issue(issues_dir / "active" / "001_first.md", issue_text(1, "First", stage="implementing"))
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = cli.main(["complete", "1", "--summary", "Done."])
+
+    assert exit_code == 1
+    assert "must reach the review stage before completion" in capsys.readouterr().err
+    assert not (issues_dir / "completed" / "001_first.md").exists()
+
+
+def test_complete_allows_force_bypass(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    issues_dir = tmp_path / "docs" / "issues"
+    write_issue(issues_dir / "active" / "001_first.md", issue_text(1, "First", stage="implementing"))
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = cli.main(["complete", "1", "--force", "--summary", "Done."])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "Completed issue #1" in captured.out
+    assert (issues_dir / "completed" / "001_first.md").exists()
+
+
+def test_complete_allows_review_stage_by_default(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    issues_dir = tmp_path / "docs" / "issues"
+    write_issue(issues_dir / "active" / "001_first.md", issue_text(1, "First", stage="review"))
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = cli.main(["complete", "1", "--summary", "Approved."])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "Completed issue #1" in captured.out
+    assert (issues_dir / "completed" / "001_first.md").exists()

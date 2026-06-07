@@ -20,10 +20,12 @@ issuekit generate-indexes
 issuekit validate
 ```
 
-Prefer the completion command when closing an active issue:
+The normal close path is reviewer approval (via `approve` in the MCP flow).  To
+close an issue directly without review, use the completion command with the
+explicit escape hatch:
 
 ```bash
-issuekit complete <id> --summary "Completed scope." --verification "issuekit validate"
+issuekit complete <id> --force --summary "Completed scope." --verification "issuekit validate"
 ```
 
 Do not hand-edit files under `docs/issues/indexes/`.
@@ -201,9 +203,16 @@ The `NNN` id must be unique across both `active/` and `completed/`.
 
 ## Completing An Issue
 
-Prefer `issuekit complete <id> --summary "..." --verification "..."`. It updates
-frontmatter, appends completion notes, moves the file from `active/` to
-`completed/`, regenerates indexes, and validates the tracker.
+Issues normally reach `completed/` through the reviewer's `approve` step after
+`submit_for_review`.  To close an issue directly without review — for example
+abandoned or trivial issues — use:
+
+```bash
+issuekit complete <id> --force --summary "..." --verification "..."
+```
+
+This updates frontmatter, appends completion notes, moves the file from
+`active/` to `completed/`, regenerates indexes, and validates the tracker.
 
 ## Issue Template
 

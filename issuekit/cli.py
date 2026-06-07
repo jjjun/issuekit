@@ -85,6 +85,11 @@ def build_parser() -> argparse.ArgumentParser:
     complete_parser.add_argument("id", help="Issue id to complete.")
     complete_parser.add_argument("--summary", help="Completion summary.")
     complete_parser.add_argument("--verification", help="Verification notes.")
+    complete_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Bypass the review-stage requirement.",
+    )
     complete_parser.set_defaults(func=complete.run)
 
     claim_parser = subparsers.add_parser(

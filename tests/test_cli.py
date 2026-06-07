@@ -243,7 +243,7 @@ def test_workspace_refs_drive_propose_and_reply_round_trip(
     monkeypatch.chdir(target)
     assert cli.main(["adopt", proposal_files[0].name]) == 0
     assert cli.main(["claim", "--assignee", "codex"]) == 0
-    assert cli.main(["complete", "1", "--summary", "Implemented.", "--verification", "pytest"]) == 0
+    assert cli.main(["complete", "1", "--force", "--summary", "Implemented.", "--verification", "pytest"]) == 0
     assert cli.main(
         [
             "propose",

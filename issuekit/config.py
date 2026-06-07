@@ -18,6 +18,7 @@ class IssuekitConfig:
     stages: tuple[str, ...] = ("todo", "implementing", "review", "changes_requested", "done")
     default_reviewer: str = "claude"
     require_distinct_reviewer: bool = False
+    require_review_before_complete: bool = True
 
     def issues_path(self, cwd: Path | str = ".") -> Path:
         path = Path(self.issues_dir)
@@ -46,6 +47,12 @@ def load_config(cwd: Path | str = ".") -> IssuekitConfig:
             raw_config.get(
                 "require_distinct_reviewer",
                 IssuekitConfig.require_distinct_reviewer,
+            )
+        ),
+        require_review_before_complete=_bool_value(
+            raw_config.get(
+                "require_review_before_complete",
+                IssuekitConfig.require_review_before_complete,
             )
         ),
     )
@@ -97,4 +104,4 @@ def _bool_value(value: object) -> bool:
             return True
         if normalized in {"0", "false", "no", "off"}:
             return False
-    raise ValueError(f"Invalid require_distinct_reviewer value: {value}")
+    raise ValueError(f"Invalid boolean config value: {value}")

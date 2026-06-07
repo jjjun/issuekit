@@ -39,6 +39,7 @@ def run(args) -> int:
             summary=summary,
             verification=verification,
             reviewer=None,
+            force=args.force,
             config=config,
         )
     except (ValueError, WorkflowError) as exc:
@@ -67,6 +68,7 @@ def complete_issue(
     summary: str = "",
     verification: str = "",
     reviewer: str | None = None,
+    force: bool = False,
     config: IssuekitConfig | None = None,
 ) -> Issue:
     if has_non_ascii(summary) or has_non_ascii(verification):
@@ -82,6 +84,12 @@ def complete_issue(
         raise UnicodeError(f"Active issue #{issue_id} is not valid UTF-8: {issue.relative_path}")
     reviewer = resolve_reviewer(reviewer, config, issue=issue)
     ensure_not_self_review(issue, reviewer, config)
+
+    if config.require_review_before_complete and not force and issue.stage != "review":
+        raise WorkflowError(
+            f"Issue #{issue_id} must reach the review stage before completion. "
+            "Use submit_for_review / approve, or pass --force to bypass."
+        )
 
     completed_date = date.today().isoformat()
     frontmatter = parse_issue_frontmatter(issue.content)

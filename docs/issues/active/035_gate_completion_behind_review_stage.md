@@ -1,9 +1,12 @@
 ---
 id: 35
-status: active
+status: in_progress
 priority: high
 created: 2026-06-08
-completed:
+completed: 
+assignee: kimi
+stage: implementing
+implementer: kimi
 title: Gate issue completion behind review stage
 ---
 
@@ -89,3 +92,7 @@ escape hatch for legitimate direct closes.
   review pool is open, so an implementer could still self-approve after submit.
   Tightening self-approval is out of scope here; see #21 and #23.
 - Issue #34 (the author-role protocol; sibling fix for handoff discipline)
+
+## Review Feedback
+
+- Implementation is correct, but one existing test regressed under the new review-stage gate. tests/test_proposals.py::test_reply_after_adopt_claim_and_complete_preserves_origin calls complete_issue directly after claim_next (stage=implementing) without force, so it now fails with the new WorkflowError. Fix: add force=True to that complete_issue(...) call (test_proposals.py around lines 166-171), matching how test_cli.py and test_complete.py were updated. Then run the full suite (uv run pytest) and confirm 0 failures, plus issuekit check-encoding, before resubmitting via submit_for_review. Process note: this time claim via claim_next_task(assignee=kimi) and finish with submit_for_review so the issue goes through the review stage instead of being completed directly.

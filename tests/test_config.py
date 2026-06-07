@@ -139,3 +139,17 @@ def test_load_config_rejects_unknown_default_reviewer(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="Unknown default_reviewer"):
         load_config(tmp_path)
+
+
+def test_load_config_reads_require_review_before_complete(tmp_path: Path) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "require_review_before_complete = false\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    assert load_config(tmp_path).require_review_before_complete is False
+
+
+def test_load_config_defaults_require_review_before_complete_true(tmp_path: Path) -> None:
+    assert load_config(tmp_path).require_review_before_complete is True

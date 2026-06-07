@@ -168,6 +168,7 @@ def test_reply_after_adopt_claim_and_complete_preserves_origin(
         1,
         summary="Implemented.",
         verification="pytest",
+        force=True,
     )
 
     assert claimed is not None
