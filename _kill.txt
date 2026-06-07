@@ -1,6 +1,0 @@
-stopped 16904
-stopped 10052
-stopped 15000
-stopped 13732
-remaining:
-6620
