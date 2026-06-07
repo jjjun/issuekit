@@ -233,7 +233,7 @@ def test_request_changes_defaults_to_recorded_implementer(tmp_path: Path) -> Non
     assert returned["stage"] == "changes_requested"
 
 
-def test_auto_default_reviewer_keeps_current_review_assignee(tmp_path: Path) -> None:
+def test_auto_default_reviewer_opens_review_pool(tmp_path: Path) -> None:
     (tmp_path / "issuekit.toml").write_text(
         "default_reviewer = 'auto'\n",
         encoding="utf-8",
@@ -258,7 +258,7 @@ def test_auto_default_reviewer_keeps_current_review_assignee(tmp_path: Path) -> 
     review = _call(server, "next_review", {})
     approved = _call(server, "approve", {"id": 1, "verification": "uv run pytest"})
 
-    assert submitted["assignee"] == "codex"
+    assert submitted["assignee"] == ""
     assert review["id"] == 1
     assert approved["status"] == "completed"
     assert "Approved by codex." in (issues_dir / "completed" / "001_first.md").read_text(
@@ -266,7 +266,7 @@ def test_auto_default_reviewer_keeps_current_review_assignee(tmp_path: Path) -> 
     )
 
 
-def test_auto_default_reviewer_uses_distinct_reviewer_when_guard_is_required(
+def test_auto_default_reviewer_opens_review_even_when_guard_is_required(
     tmp_path: Path,
 ) -> None:
     (tmp_path / "issuekit.toml").write_text(
@@ -292,8 +292,66 @@ def test_auto_default_reviewer_uses_distinct_reviewer_when_guard_is_required(
     submitted = _call(server, "submit_for_review", {"id": 1, "summary": "Implemented."})
     review = _call(server, "next_review", {})
 
-    assert submitted["assignee"] == "claude"
+    assert submitted["assignee"] == ""
     assert review["id"] == 1
+
+
+def test_open_review_allows_any_agent_to_approve(tmp_path: Path) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "default_reviewer = 'auto'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    issues_dir = tmp_path / "docs" / "issues"
+    write_issue(
+        issues_dir / "active" / "001_first.md",
+        issue_text(
+            1,
+            "First",
+            status="in_progress",
+            assignee="codex",
+            stage="implementing",
+            implementer="codex",
+        ),
+    )
+    write_indexes(issues_dir)
+    server = create_server(tmp_path)
+
+    submitted = _call(server, "submit_for_review", {"id": 1, "summary": "Implemented."})
+    approved = _call(server, "approve", {"id": 1, "verification": "uv run pytest", "reviewer": "claude"})
+
+    assert submitted["assignee"] == ""
+    assert approved["status"] == "completed"
+    assert "Approved by claude." in (issues_dir / "completed" / "001_first.md").read_text(
+        encoding="utf-8"
+    )
+
+
+def test_open_review_rejects_self_review_when_guard_is_required(tmp_path: Path) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "default_reviewer = 'auto'\nrequire_distinct_reviewer = true\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    issues_dir = tmp_path / "docs" / "issues"
+    write_issue(
+        issues_dir / "active" / "001_first.md",
+        issue_text(
+            1,
+            "First",
+            status="in_progress",
+            assignee="codex",
+            stage="implementing",
+            implementer="codex",
+        ),
+    )
+    write_indexes(issues_dir)
+    server = create_server(tmp_path)
+
+    _call(server, "submit_for_review", {"id": 1, "summary": "Implemented."})
+
+    with pytest.raises(Exception, match="self-review is not allowed"):
+        _call(server, "approve", {"id": 1, "verification": "uv run pytest", "reviewer": "codex"})
 
 
 def test_approve_allows_self_review_by_default(tmp_path: Path) -> None:

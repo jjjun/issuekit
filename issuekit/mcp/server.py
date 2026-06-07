@@ -25,6 +25,7 @@ from issuekit.workflow import (
     AUTO_REVIEWER,
     claim_next,
     ensure_assigned_reviewer,
+    ensure_not_self_review,
     find_for,
     request_changes as workflow_request_changes,
     resolve_reviewer,
@@ -218,6 +219,8 @@ def _resolve_reviewer_for_issue(
     resolved_reviewer = resolve_reviewer(reviewer, config, issue=issue)
     if issue is not None and issue.stage == "review":
         ensure_assigned_reviewer(issue, reviewer, resolved_reviewer)
+        if not issue.assignee:
+            ensure_not_self_review(issue, resolved_reviewer, config)
     return resolved_reviewer
 
 

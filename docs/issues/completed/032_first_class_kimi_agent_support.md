@@ -1,12 +1,10 @@
 ---
 id: 32
-status: in_progress
+status: completed
 priority: medium
 created: 2026-06-08
-completed: 
-assignee: kimi
-stage: implementing
-implementer: kimi
+completed: 2026-06-08
+stage: done
 title: First-class kimi agent support in issuekit
 ---
 
@@ -98,3 +96,16 @@ any configured agent can read.
 - `issuekit/protocol.py` `PROTOCOLS` / `render_protocol`
 - `issuekit/cli.py` `protocol` subparser
 - Bootstrap: `pyproject.toml` `[tool.issuekit] assignees` now includes `kimi`
+
+## Handoff
+
+- Summary: Add first-class kimi agent support: default assignees, role-based protocol rendering, CLI/MCP protocol updates, docs, and tests.
+- Branch: `main`
+- Commit: `fc1ba6d`
+
+**Completed**: 2026-06-08
+
+## Completion Notes
+
+- Approved by kimi.
+- Verification: `Reviewed branch main commit fc1ba6d against issue #32 scope. Confirmed: kimi added to default IssuekitConfig.assignees; protocol.py generalized to role-based (_ROLE_PROTOCOLS implementer/reviewer, _AGENT_ROLE) so render_protocol("kimi") returns the implementer flow without raising and role= override works; cli.py protocol --agent accepts any agent plus new --role choices; commands/protocol.py and mcp/server.py get_protocol pass role through; handoff docs (AGENTS.md, CLAUDE.md, handoff_reference.md template) updated to multi-agent guidance. Verified: pytest 181 passed 18 skipped; issuekit validate 32 files 0 warnings; issuekit check-encoding clean; CLI protocol --agent kimi prints implementer protocol and protocol --role reviewer prints reviewer protocol.`

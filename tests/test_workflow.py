@@ -190,7 +190,7 @@ def test_submit_for_review_routes_to_explicit_reviewer(tmp_path: Path) -> None:
     assert issue.implementer == "claude"
 
 
-def test_submit_for_review_auto_keeps_current_assignee_when_guard_is_off(
+def test_submit_for_review_auto_opens_review_pool_when_guard_is_off(
     tmp_path: Path,
 ) -> None:
     issues_dir = tmp_path / "docs" / "issues"
@@ -213,11 +213,11 @@ def test_submit_for_review_auto_keeps_current_assignee_when_guard_is_off(
         config=IssuekitConfig(default_reviewer="auto"),
     )
 
-    assert issue.assignee == "codex"
+    assert issue.assignee == ""
     assert issue.stage == "review"
 
 
-def test_submit_for_review_auto_uses_other_assignee_when_guard_is_required(
+def test_submit_for_review_auto_opens_review_even_when_guard_is_required(
     tmp_path: Path,
 ) -> None:
     issues_dir = tmp_path / "docs" / "issues"
@@ -240,7 +240,7 @@ def test_submit_for_review_auto_uses_other_assignee_when_guard_is_required(
         config=IssuekitConfig(default_reviewer="auto", require_distinct_reviewer=True),
     )
 
-    assert issue.assignee == "claude"
+    assert issue.assignee == ""
     assert issue.stage == "review"
 
 
@@ -320,6 +320,99 @@ def test_request_changes_reviewer_mismatch_names_assigned_reviewer(tmp_path: Pat
     assert "review is assigned to reviewer 'codex'" in message
     assert "You passed reviewer='claude'" in message
     assert "Omit `reviewer` to use default_reviewer" in message
+
+
+def test_open_review_can_be_approved_by_any_agent(tmp_path: Path) -> None:
+    issues_dir = tmp_path / "docs" / "issues"
+    write_issue(
+        issues_dir / "active" / "001_first.md",
+        issue_text(
+            1,
+            "First",
+            status="in_progress",
+            assignee="",
+            stage="review",
+            implementer="codex",
+        ),
+    )
+
+    issue = complete_issue(
+        issues_dir, 1, reviewer="claude", summary="Approved by claude.", verification="pytest"
+    )
+
+    assert issue.status == "completed"
+    assert "Approved by claude." in issue.file_path.read_text(encoding="utf-8")
+
+
+def test_open_review_can_be_returned_by_any_agent(tmp_path: Path) -> None:
+    issues_dir = tmp_path / "docs" / "issues"
+    write_issue(
+        issues_dir / "active" / "001_first.md",
+        issue_text(
+            1,
+            "First",
+            status="in_progress",
+            assignee="",
+            stage="review",
+            implementer="codex",
+        ),
+    )
+
+    issue = request_changes(issues_dir, 1, reviewer="claude", notes="Please add tests.")
+
+    assert issue.assignee == "codex"
+    assert issue.stage == "changes_requested"
+
+
+def test_open_review_rejects_self_review_when_guard_is_required(tmp_path: Path) -> None:
+    issues_dir = tmp_path / "docs" / "issues"
+    write_issue(
+        issues_dir / "active" / "001_first.md",
+        issue_text(
+            1,
+            "First",
+            status="in_progress",
+            assignee="",
+            stage="review",
+            implementer="codex",
+        ),
+    )
+
+    with pytest.raises(WorkflowError, match="self-review is not allowed"):
+        complete_issue(
+            issues_dir,
+            1,
+            reviewer="codex",
+            verification="pytest",
+            config=IssuekitConfig(require_distinct_reviewer=True),
+        )
+
+
+def test_open_review_allows_non_implementer_when_guard_is_required(tmp_path: Path) -> None:
+    issues_dir = tmp_path / "docs" / "issues"
+    write_issue(
+        issues_dir / "active" / "001_first.md",
+        issue_text(
+            1,
+            "First",
+            status="in_progress",
+            assignee="",
+            stage="review",
+            implementer="codex",
+        ),
+    )
+
+    issue = complete_issue(
+        issues_dir,
+        1,
+        reviewer="claude",
+        summary="Approved by claude.",
+        verification="pytest",
+        config=IssuekitConfig(require_distinct_reviewer=True),
+    )
+
+    assert issue.status == "completed"
+    assert "Approved by claude." in issue.file_path.read_text(encoding="utf-8")
 
 
 def test_workflow_transitions_do_not_grow_frontmatter_body_gap(tmp_path: Path) -> None:

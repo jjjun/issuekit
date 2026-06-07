@@ -143,8 +143,11 @@ def submit_for_review(
             raise WorkflowError(
                 f"Issue #{issue_id} is assigned to {issue.assignee or 'no one'}, not {assignee}."
             )
-        resolved_reviewer = resolve_reviewer(reviewer, config, issue=issue)
-        ensure_not_self_review(issue, resolved_reviewer, config)
+        if reviewer is None and config.default_reviewer == AUTO_REVIEWER:
+            resolved_reviewer = ""
+        else:
+            resolved_reviewer = resolve_reviewer(reviewer, config, issue=issue)
+            ensure_not_self_review(issue, resolved_reviewer, config)
         note = _handoff_note(summary=summary, branch=branch or "", commit=commit or "")
         return _write_active_issue(
             issues_path,
@@ -176,6 +179,8 @@ def request_changes(
         issue = _find_active_issue(issues_path, issue_id)
         resolved_reviewer = resolve_reviewer(reviewer, config, issue=issue)
         ensure_assigned_reviewer(issue, reviewer, resolved_reviewer)
+        if not issue.assignee:
+            ensure_not_self_review(issue, resolved_reviewer, config)
         assignee = assignee or issue.implementer or "codex"
         _validate_assignee(assignee, config)
         return _write_active_issue(
@@ -284,6 +289,9 @@ def ensure_assigned_reviewer(
     resolved_reviewer: str,
 ) -> None:
     """Ensure a review transition is performed by the assigned reviewer."""
+    if not issue.assignee:
+        # Open review pool: any configured agent may decide
+        return
     if issue.assignee == resolved_reviewer:
         return
     if reviewer_arg is None:
@@ -312,7 +320,8 @@ def resolve_reviewer(
         if configured == AUTO_REVIEWER
         else configured
     )
-    _validate_assignee(resolved, config)
+    if resolved:
+        _validate_assignee(resolved, config)
     return resolved
 
 
