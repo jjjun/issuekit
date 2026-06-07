@@ -1,9 +1,10 @@
 ---
 id: 34
-status: active
+status: completed
 priority: high
 created: 2026-06-08
-completed:
+completed: 2026-06-08
+stage: done
 title: Add author role protocol to prevent immediate implementation
 ---
 
@@ -71,3 +72,10 @@ implementation are separate handoffs.
 - `issuekit/cli.py`
 - `CLAUDE.md` (Claude writes proposals, codex-ready issues, and reviews)
 - Issue #35 (the completion-stage gate; sibling fix for handoff discipline)
+
+**Completed**: 2026-06-08
+
+## Completion Notes
+
+- Approved by claude.
+- Verification: `uv run pytest (189 passed, 18 skipped); uv run issuekit protocol --role author renders; uv run issuekit check-encoding passed`
