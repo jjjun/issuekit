@@ -1,8 +1,11 @@
 ---
 id: 40
-status: active
+status: in_progress
 priority: low
 created: 2026-06-08
+completed: 
+stage: review
+implementer: codex
 title: Route synchronous agent runs into the issuekit review gate
 ---
 
@@ -56,3 +59,9 @@ existing review flow so completion stays gated behind a distinct reviewer.
 - Issue #39 (the implement command this hooks into)
 - Issue #35 (completion gated behind review) and Issue #36 (no self-review)
 - `issuekit/workflow.py` (`submit_for_review`, open-pool reviewer resolution)
+
+## Handoff
+
+- Summary: Implement.py now claims the issue, runs the agent, and on a successful run submits for review with reviewer omitted (open pool). Failed/timed-out runs are not submitted. Added claim_issue() to workflow.py and tests covering review handoff, failed-run no-submit, and the self-review guard.
+- Branch: `main`
+- Commit: `c4ab26b`
