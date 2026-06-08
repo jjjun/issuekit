@@ -107,6 +107,7 @@ def claim_next(
         issue = sorted(candidates, key=lambda item: (PRIORITY_RANK.get(item.priority, 99), item.id or 0))[
             0
         ]
+        ensure_not_author_self_claim(issue, assignee)
         return _write_active_issue(
             issues_path,
             issue,
@@ -146,6 +147,7 @@ def claim_issue(
             raise WorkflowError(
                 f"Issue #{issue_id} is assigned to {issue.assignee}, not {assignee}."
             )
+        ensure_not_author_self_claim(issue, assignee)
         return _write_active_issue(
             issues_path,
             issue,
@@ -327,6 +329,15 @@ def ensure_not_self_review(
     if issue.implementer and issue.implementer == reviewer:
         raise WorkflowError(
             f"Issue #{issue.id} was implemented by {issue.implementer}; self-review is not allowed."
+        )
+
+
+def ensure_not_author_self_claim(issue: Issue, assignee: str) -> None:
+    if issue.author and issue.author == assignee and issue.assignee == assignee:
+        raise WorkflowError(
+            f"Issue #{issue.id} was authored by {issue.author}; "
+            "author self-implementation is not allowed. Leave the issue unassigned "
+            "for the open implement pool or assign a different implementer."
         )
 
 

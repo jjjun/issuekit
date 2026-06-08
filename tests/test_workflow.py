@@ -9,6 +9,7 @@ from issuekit.config import IssuekitConfig
 from issuekit.workflow import (
     WorkflowError,
     WorkflowLockTimeout,
+    claim_issue,
     claim_next,
     find_for,
     request_changes,
@@ -50,6 +51,58 @@ def test_claim_next_respects_priority_filter(tmp_path: Path) -> None:
 
     assert issue is not None
     assert issue.id == 1
+
+
+def test_claim_issue_rejects_explicit_author_self_assignment(tmp_path: Path) -> None:
+    issues_dir = tmp_path / "docs" / "issues"
+    write_issue(
+        issues_dir / "active" / "001_first.md",
+        issue_text(1, "First", assignee="codex", author="codex"),
+    )
+
+    with pytest.raises(WorkflowError, match="authored by codex"):
+        claim_issue(issues_dir, 1, "codex")
+
+
+def test_claim_next_rejects_explicit_author_self_assignment(tmp_path: Path) -> None:
+    issues_dir = tmp_path / "docs" / "issues"
+    write_issue(
+        issues_dir / "active" / "001_first.md",
+        issue_text(1, "First", assignee="codex", author="codex"),
+    )
+
+    with pytest.raises(WorkflowError, match="author self-implementation"):
+        claim_next(issues_dir, "codex")
+
+
+def test_claim_allows_different_implementer_for_authored_issue(tmp_path: Path) -> None:
+    issues_dir = tmp_path / "docs" / "issues"
+    write_issue(
+        issues_dir / "active" / "001_first.md",
+        issue_text(1, "First", assignee="kimi", author="codex"),
+    )
+
+    issue = claim_issue(issues_dir, 1, "kimi")
+
+    assert issue.assignee == "kimi"
+    assert issue.stage == "implementing"
+    assert issue.implementer == "kimi"
+    assert issue.author == "codex"
+
+
+def test_claim_open_pool_allows_same_name_author_claim(tmp_path: Path) -> None:
+    issues_dir = tmp_path / "docs" / "issues"
+    write_issue(
+        issues_dir / "active" / "001_first.md",
+        issue_text(1, "First", author="codex"),
+    )
+
+    issue = claim_next(issues_dir, "codex")
+
+    assert issue is not None
+    assert issue.assignee == "codex"
+    assert issue.stage == "implementing"
+    assert issue.implementer == "codex"
 
 
 def test_claim_next_times_out_when_lock_is_held(tmp_path: Path) -> None:
@@ -195,6 +248,44 @@ def test_submit_for_review_routes_to_explicit_reviewer(tmp_path: Path) -> None:
     assert issue.assignee == "codex"
     assert issue.stage == "review"
     assert issue.implementer == "claude"
+
+
+def test_author_can_review_and_approve_different_implementer(tmp_path: Path) -> None:
+    issues_dir = tmp_path / "docs" / "issues"
+    write_issue(
+        issues_dir / "active" / "001_first.md",
+        issue_text(
+            1,
+            "First",
+            status="in_progress",
+            assignee="kimi",
+            stage="implementing",
+            implementer="kimi",
+            author="codex",
+        ),
+    )
+
+    submitted = submit_for_review(
+        issues_dir,
+        1,
+        summary="Done.",
+        assignee="kimi",
+        reviewer="codex",
+        config=IssuekitConfig(require_distinct_reviewer=True),
+    )
+    approved = complete_issue(
+        issues_dir,
+        1,
+        reviewer="codex",
+        summary="Approved by author.",
+        verification="pytest",
+        config=IssuekitConfig(require_distinct_reviewer=True),
+    )
+
+    assert submitted.assignee == "codex"
+    assert submitted.stage == "review"
+    assert approved.status == "completed"
+    assert approved.author == "codex"
 
 
 def test_submit_for_review_auto_opens_review_pool_when_guard_is_off(

@@ -1,10 +1,10 @@
 ---
 id: 43
-status: active
+status: completed
 priority: high
 created: 2026-06-08
-completed:
-stage: todo
+completed: 2026-06-08
+stage: done
 title: Enforce author is not the implementer while allowing author to review
 ---
 
@@ -74,3 +74,14 @@ authored, reusing the open-pool same-name exception pattern from #36/#33.
 - Issue #33 (open review pool pattern reused for the open implement pool)
 - Issue #34 (author handoff this enforces)
 - `issuekit/workflow.py`, `issuekit/commands/implement.py`
+
+## Handoff
+
+- Summary: Implemented by codex via issuekit implement.
+
+**Completed**: 2026-06-08
+
+## Completion Notes
+
+- Approved by codex.
+- Verification: `Reviewed by claude (distinct from implementer codex; open review pool). ensure_not_author_self_claim added and called in both claim paths (claim_next, claim_issue); it raises only when issue.author == assignee AND issue.assignee == assignee, i.e. explicit author self-assignment is blocked while the open-pool same-name claim is allowed, mirroring the #36 pattern with no new bypass. Review guards unchanged, so author == reviewer remains allowed. Tests cover: explicit self-assign rejected via claim_issue and claim_next, different implementer accepted, open-pool same-name author claim allowed, end-to-end implement command blocks self-assignment without running the agent, and author can review+approve a different implementer under require_distinct_reviewer=True. Verified: uv run pytest (239 passed, 21 skipped), uv run issuekit validate (44 files, 0 warnings), uv run issuekit check-encoding clean.`

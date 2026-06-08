@@ -8,7 +8,7 @@ from issuekit.commands.complete import complete_issue
 from issuekit.config import IssuekitConfig
 from issuekit.core import read_issues
 from issuekit.workflow import WorkflowError
-from tests.issue_helpers import make_issue_tree
+from tests.issue_helpers import issue_text, make_issue_tree, write_indexes, write_issue
 
 
 @dataclass(frozen=True)
@@ -174,6 +174,28 @@ def test_implement_command_open_review_preserves_self_review_guard(
                 require_distinct_reviewer=True,
             ),
         )
+
+
+def test_implement_command_reports_author_self_assignment(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    issues_dir = tmp_path / "docs" / "issues"
+    write_issue(
+        issues_dir / "active" / "001_first.md",
+        issue_text(1, "First", assignee="codex", author="codex"),
+    )
+    write_indexes(issues_dir)
+    FakeRunner.calls.clear()
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", FakeRunner)
+
+    exit_code = cli.main(["implement", "1", "--agent", "codex"])
+
+    assert exit_code == 1
+    assert not FakeRunner.calls
+    assert "author self-implementation is not allowed" in capsys.readouterr().err
 
 
 def test_implement_command_reports_missing_issue(
