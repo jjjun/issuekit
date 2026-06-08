@@ -113,7 +113,7 @@ class AgentResult:
 
     exit_code: int
     stdout_path: Path
-    stderr_path: Path
+    agent_log_path: Path
     elapsed_sec: float
     timed_out: bool
     parsed: dict[str, str] | None = None
@@ -153,7 +153,7 @@ class AgentRunner:
         run_dir.mkdir(exist_ok=True)
         run_id, reservation_path = self._reserve_run_id(run_dir)
         stdout_path = run_dir / f"{run_id}.out.log"
-        stderr_path = run_dir / f"{run_id}.err.log"
+        agent_log_path = run_dir / f"{run_id}.agent.log"
         run_status_path = status_path(run_dir, run_id)
         started_at = datetime.now().replace(microsecond=0).isoformat()
         run_status = RunStatus(
@@ -168,19 +168,19 @@ class AgentRunner:
             exit_code=None,
             plan=repo_relative(plan_path, repo),
             stdout_log=repo_relative(stdout_path, repo),
-            stderr_log=repo_relative(stderr_path, repo),
+            agent_log=repo_relative(agent_log_path, repo),
         )
         write_status(run_status_path, run_status)
         self._release_run_id_reservation(reservation_path)
 
         start = time.monotonic()
         with open(stdout_path, "w", encoding="utf-8") as out_f, open(
-            stderr_path, "w", encoding="utf-8"
-        ) as err_f:
+            agent_log_path, "w", encoding="utf-8"
+        ) as log_f:
             kwargs: dict[str, Any] = {
                 "stdin": subprocess.DEVNULL,
                 "stdout": out_f,
-                "stderr": err_f,
+                "stderr": log_f,
                 "cwd": str(repo),
             }
             if os.name == "nt":
@@ -213,15 +213,15 @@ class AgentRunner:
         )
 
         stdout_text = stdout_path.read_text(encoding="utf-8", errors="replace")
-        stderr_text = stderr_path.read_text(encoding="utf-8", errors="replace")
-        parsed = adapter.parse_output(stdout_text, stderr_text)
+        agent_log_text = agent_log_path.read_text(encoding="utf-8", errors="replace")
+        parsed = adapter.parse_output(stdout_text, agent_log_text)
 
         status_short = self._git_status_short(repo)
 
         return AgentResult(
             exit_code=exit_code,
             stdout_path=stdout_path,
-            stderr_path=stderr_path,
+            agent_log_path=agent_log_path,
             elapsed_sec=elapsed,
             timed_out=timed_out,
             parsed=parsed,
@@ -237,6 +237,7 @@ class AgentRunner:
             reservation_path = run_dir / f"{run_id}.lock"
             if (
                 (run_dir / f"{run_id}.out.log").exists()
+                or (run_dir / f"{run_id}.agent.log").exists()
                 or (run_dir / f"{run_id}.err.log").exists()
                 or status_path(run_dir, run_id).exists()
                 or reservation_path.exists()

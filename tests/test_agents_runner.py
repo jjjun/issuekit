@@ -44,9 +44,9 @@ def test_runner_captures_stdout_stderr_and_returns_result(tmp_path: Path) -> Non
     assert result.timed_out is False
     assert result.exit_code == 0
     assert result.stdout_path.exists()
-    assert result.stderr_path.exists()
+    assert result.agent_log_path.exists()
     assert "hello out" in result.stdout_path.read_text(encoding="utf-8")
-    assert "hello err" in result.stderr_path.read_text(encoding="utf-8")
+    assert "hello err" in result.agent_log_path.read_text(encoding="utf-8")
     assert result.elapsed_sec >= 0
     assert result.status_path is not None
     status = json.loads(result.status_path.read_text(encoding="utf-8"))
@@ -54,7 +54,7 @@ def test_runner_captures_stdout_stderr_and_returns_result(tmp_path: Path) -> Non
     assert status["exit_code"] == 0
     assert status["elapsed_sec"] >= 0
     assert status["stdout_log"].endswith(".out.log")
-    assert status["stderr_log"].endswith(".err.log")
+    assert status["agent_log"].endswith(".agent.log")
 
 
 def test_runner_replaces_invalid_log_bytes_before_parsing(tmp_path: Path) -> None:

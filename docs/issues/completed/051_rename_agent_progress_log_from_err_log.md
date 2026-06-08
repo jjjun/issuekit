@@ -1,9 +1,10 @@
 ---
 id: 51
-status: active
+status: completed
 priority: low
 created: 2026-06-08
-completed:
+completed: 2026-06-08
+stage: done
 origin: py_cr_wrapper#0@3f071a8
 title: Rename agent progress log from err.log to a non-error name
 ---
@@ -73,3 +74,14 @@ point 4 in #50.
 - Origin: `py_cr_wrapper#0@3f071a8`
 - Split siblings: #49 (progress visibility), #50 (info status+stage)
 - Coordinate with #49 (heartbeat tails the renamed log).
+
+## Handoff
+
+- Summary: Implemented by kimi via issuekit implement.
+
+**Completed**: 2026-06-08
+
+## Completion Notes
+
+- Rename agent stderr log .err.log -> .agent.log with backward-compatible reads. err.log->agent.log done across runner/status/implement/runs + tests.
+- Verification: `uv run pytest tests/test_agents_runner.py tests/test_implement_command.py tests/test_runs_command.py (26 passed); issuekit validate (0 warnings). Reviewer cleanup: removed dead/buggy with_suffix legacy fallback in runs.py (legacy handled by RunStatus.from_dict), renamed err_f->log_f in runner.py.`

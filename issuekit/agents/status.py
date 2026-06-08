@@ -27,7 +27,7 @@ class RunStatus:
     exit_code: int | None
     plan: str
     stdout_log: str
-    stderr_log: str
+    agent_log: str
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "RunStatus":
@@ -43,7 +43,7 @@ class RunStatus:
             exit_code=_optional_int(data.get("exit_code")),
             plan=str(data["plan"]),
             stdout_log=str(data["stdout_log"]),
-            stderr_log=str(data["stderr_log"]),
+            agent_log=str(data["agent_log"]) if "agent_log" in data else str(data["stderr_log"]),
         )
 
     def to_dict(self) -> dict[str, Any]:

@@ -68,19 +68,19 @@ def test_runs_detail_prints_record_and_log_tails(tmp_path: Path, monkeypatch, ca
     run_dir = tmp_path / ".agent-runs"
     run_dir.mkdir()
     stdout_log = run_dir / "detail.out.log"
-    stderr_log = run_dir / "detail.err.log"
+    agent_log = run_dir / "detail.agent.log"
     stdout_log.write_text(
         "\n".join(f"out-{index}" for index in range(45)) + "\n",
         encoding="utf-8",
         newline="\n",
     )
-    stderr_log.write_text("err-one\nerr-two\n", encoding="utf-8", newline="\n")
+    agent_log.write_text("err-one\nerr-two\n", encoding="utf-8", newline="\n")
     _write_run(
         run_dir,
         "detail",
         status="failed",
         stdout_log=".agent-runs/detail.out.log",
-        stderr_log=".agent-runs/detail.err.log",
+        agent_log=".agent-runs/detail.agent.log",
         exit_code=1,
         elapsed_sec=3.0,
     )
@@ -106,6 +106,37 @@ def test_runs_detail_missing_returns_error(tmp_path: Path, monkeypatch, capsys) 
     assert "Run not found: missing" in capsys.readouterr().err
 
 
+def test_runs_detail_reads_legacy_err_log(tmp_path: Path, monkeypatch, capsys) -> None:
+    run_dir = tmp_path / ".agent-runs"
+    run_dir.mkdir()
+    stderr_log = run_dir / "legacy.err.log"
+    stderr_log.write_text("legacy-err-line\n", encoding="utf-8", newline="\n")
+    status_json = {
+        "run_id": "legacy",
+        "agent": "codex",
+        "issue": 1,
+        "status": "completed",
+        "pid": None,
+        "started_at": "2026-06-08T11:00:00",
+        "ended_at": "2026-06-08T11:00:01",
+        "elapsed_sec": 1.0,
+        "exit_code": 0,
+        "plan": "docs/issues/active/001_first.md",
+        "stdout_log": ".agent-runs/legacy.out.log",
+        "stderr_log": ".agent-runs/legacy.err.log",
+    }
+    (run_dir / "legacy.status.json").write_text(
+        json.dumps(status_json, indent=2) + "\n", encoding="utf-8", newline="\n"
+    )
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["runs", "legacy"]) == 0
+
+    output = capsys.readouterr().out
+    assert '"run_id": "legacy"' in output
+    assert "legacy-err-line" in output
+
+
 def _write_run(
     run_dir: Path,
     run_id: str,
@@ -117,7 +148,7 @@ def _write_run(
     elapsed_sec: float | None = None,
     exit_code: int | None = None,
     stdout_log: str | None = None,
-    stderr_log: str | None = None,
+    agent_log: str | None = None,
 ) -> None:
     write_status(
         status_path(run_dir, run_id),
@@ -133,6 +164,6 @@ def _write_run(
             exit_code=exit_code,
             plan="docs/issues/active/001_first.md",
             stdout_log=stdout_log or f".agent-runs/{run_id}.out.log",
-            stderr_log=stderr_log or f".agent-runs/{run_id}.err.log",
+            agent_log=agent_log or f".agent-runs/{run_id}.agent.log",
         ),
     )

@@ -58,7 +58,7 @@ def run(args) -> int:
         )
     )
     print(f"stdout_log={result.stdout_path}")
-    print(f"stderr_log={result.stderr_path}")
+    print(f"agent_log={result.agent_log_path}")
     if result.status_path:
         print(f"status_file={result.status_path}")
     if result.parsed:

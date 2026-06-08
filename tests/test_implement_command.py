@@ -15,7 +15,7 @@ from tests.issue_helpers import issue_text, make_issue_tree, write_indexes, writ
 class FakeResult:
     exit_code: int = 0
     stdout_path: Path = Path("out.log")
-    stderr_path: Path = Path("err.log")
+    agent_log_path: Path = Path("agent.log")
     elapsed_sec: float = 1.25
     timed_out: bool = False
     parsed: dict[str, str] | None = None
