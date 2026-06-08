@@ -1,10 +1,10 @@
 ---
 id: 54
-status: active
+status: completed
 priority: medium
 created: 2026-06-09
-completed: 
-stage: todo
+completed: 2026-06-09
+stage: done
 author: claude
 title: Centralize managed frontmatter keys, passthrough, and slug helpers
 ---
@@ -75,3 +75,14 @@ and `issuekit/commands/author.py` `_slugify` (no truncation, default
 - `issuekit/workflow.py` `_passthrough_frontmatter`
 - `issuekit/commands/complete.py` `_passthrough_frontmatter`
 - `issuekit/proposals.py` `slugify`, `issuekit/commands/author.py` `_slugify`
+
+## Handoff
+
+- Summary: Implemented by codex via issuekit implement.
+
+**Completed**: 2026-06-09
+
+## Completion Notes
+
+- Centralize managed frontmatter keys, passthrough, and slug helpers.
+- Verification: `Reviewed diff: added MANAGED_FRONTMATTER_KEYS constant and shared passthrough_frontmatter in core.py; format_issue_frontmatter derives fixed_keys from it; both duplicate _passthrough_frontmatter (workflow.py, complete.py) now call the shared helper. Added parameterized core.slugify(value, *, default, max_len); proposals.slugify and author._slugify wrap it preserving prior behavior (64-cap/'proposal'; no-cap/'issue'). Behavior verified equivalent. Full suite 274 passed/22 skipped; check-encoding clean; validate clean.`

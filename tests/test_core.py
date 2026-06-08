@@ -84,6 +84,25 @@ def test_build_index_files(tmp_path: Path) -> None:
     ]
 
 
+def test_passthrough_frontmatter_omits_managed_keys() -> None:
+    assert core.passthrough_frontmatter(
+        {
+            "id": "123",
+            "status": "active",
+            "title": "Managed",
+            "origin": "source#1",
+            "stage": "review",
+            "assignee": "codex",
+        }
+    ) == {"origin": "source#1"}
+
+
+def test_slugify_defaults_and_limit() -> None:
+    assert core.slugify("Hello, Issue Name!!", default="issue") == "hello_issue_name"
+    assert core.slugify("###", default="proposal") == "proposal"
+    assert core.slugify("A" * 80, default="proposal", max_len=64) == "a" * 64
+
+
 def test_mojibake_detection() -> None:
     assert core.has_mojibake("\u7e67")
     assert core.has_mojibake("\ufffd")

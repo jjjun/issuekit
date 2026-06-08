@@ -13,6 +13,7 @@ from issuekit.core import (
     has_non_ascii,
     parse_issue_frontmatter,
     read_all_issues,
+    slugify as _core_slugify,
     write_issue_atomic,
 )
 
@@ -146,9 +147,7 @@ def proposal_dict(proposal: Proposal) -> dict[str, str]:
 
 
 def slugify(value: str) -> str:
-    slug = re.sub(r"[^a-z0-9]+", "_", value.lower())
-    slug = re.sub(r"_+", "_", slug).strip("_")
-    return slug[:64] or "proposal"
+    return _core_slugify(value, default="proposal", max_len=64)
 
 
 def origin_destination(origin: str) -> str:

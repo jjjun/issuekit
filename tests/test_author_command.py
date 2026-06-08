@@ -2,6 +2,7 @@ from pathlib import Path
 
 from issuekit import cli
 from issuekit.core import read_issues
+from issuekit.commands.author import _slugify
 
 from tests.issue_helpers import make_issue_tree
 
@@ -98,3 +99,7 @@ def test_author_command_can_assign_explicit_implementer(
     assert "author: claude" in content
     assert "assignee: kimi" in content
     assert "implementer:" not in content
+
+
+def test_slugify_preserves_title_length_for_authored_issues() -> None:
+    assert _slugify("Feature: " + ("A" * 80)) == "feature_" + ("a" * 80)

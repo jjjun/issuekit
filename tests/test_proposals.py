@@ -12,6 +12,7 @@ from issuekit.proposals import (
     ProposalError,
     list_incoming,
     _resolve_proposal_path,
+    slugify,
     write_proposal,
 )
 from issuekit.commands.complete import complete_issue
@@ -43,6 +44,12 @@ def test_write_and_list_incoming_proposal(tmp_path: Path) -> None:
     assert b"\r\n" not in data
     assert incoming[0].origin == "source#42@abc123"
     assert incoming[0].title == "Short Proposal"
+
+
+def test_slugify_cap_and_default_from_proposals() -> None:
+    assert slugify("Draft: New Proposal!!!") == "draft_new_proposal"
+    assert slugify("###") == "proposal"
+    assert slugify("A" * 80) == ("a" * 64)
 
 
 def test_incoming_is_ignored_by_validate_and_claim(tmp_path: Path, monkeypatch) -> None:

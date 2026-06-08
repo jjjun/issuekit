@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from datetime import date
 from pathlib import Path
-import re
 import sys
 
 from issuekit.commands import generate_indexes, validate
@@ -15,6 +14,7 @@ from issuekit.core import (
     get_next_issue_id,
     has_non_ascii,
     is_valid_workflow_token,
+    slugify as _core_slugify,
     read_all_issues,
     write_issue_atomic,
 )
@@ -135,6 +135,4 @@ def _read_body(*, body: str | None, body_file: str | None) -> str:
 
 
 def _slugify(title: str) -> str:
-    slug = re.sub(r"[^a-z0-9]+", "_", title.strip().lower())
-    slug = re.sub(r"_+", "_", slug).strip("_")
-    return slug or "issue"
+    return _core_slugify(title.strip(), default="issue")
