@@ -12,11 +12,11 @@ from issuekit.core import (
     Issue,
     find_issue_by_id,
     parse_issue_id_arg,
+    read_active_issues,
     format_issue_frontmatter,
     has_non_ascii,
     parse_issue_frontmatter,
     passthrough_frontmatter,
-    read_all_issues,
     read_issues,
     write_issue_atomic,
 )
@@ -79,7 +79,7 @@ def complete_issue(
 
     config = config or IssuekitConfig()
     issues_path = Path(issues_dir)
-    active_issues, _, _ = read_all_issues(issues_dir)
+    active_issues = read_active_issues(issues_path)
     issue = find_issue_by_id(active_issues, issue_id)
     if issue is None:
         raise LookupError(issue_id)

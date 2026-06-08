@@ -130,28 +130,40 @@ class _TrackerSnapshot:
     """Pre-agent file contents for the issue tracker subtree."""
 
     root: Path
+    file_states: dict[Path, tuple[int, int]]
     files: dict[Path, bytes]
+    git_root: Path | None = None
+
+    _CACHED_PREFIXES = ("active", "indexes")
 
     @classmethod
     def capture(cls, root: Path) -> "_TrackerSnapshot":
         root = root.resolve()
+        git_root = cls._find_git_root(root)
+        file_states: dict[Path, tuple[int, int]] = {}
         files: dict[Path, bytes] = {}
         if root.exists():
             for path in root.rglob("*"):
                 if path.is_file():
-                    files[path.relative_to(root)] = path.read_bytes()
-        return cls(root=root, files=files)
+                    rel = path.relative_to(root)
+                    try:
+                        stat = path.stat()
+                    except OSError:
+                        continue
+                    file_states[rel] = (stat.st_size, stat.st_mtime_ns)
+                    if rel.parts and (git_root is None or rel.parts[0] in cls._CACHED_PREFIXES):
+                        try:
+                            files[rel] = path.read_bytes()
+                        except OSError:
+                            continue
+        return cls(root=root, file_states=file_states, files=files, git_root=git_root)
 
     def changed_paths(self) -> tuple[str, ...]:
-        current: dict[Path, bytes] = {}
-        if self.root.exists():
-            for path in self.root.rglob("*"):
-                if path.is_file():
-                    current[path.relative_to(self.root)] = path.read_bytes()
+        current = self._scan_file_states(self.root)
         changed = {
             rel
-            for rel in set(self.files) | set(current)
-            if self.files.get(rel) != current.get(rel)
+            for rel in set(self.file_states) | set(current)
+            if self.file_states.get(rel) != current.get(rel)
         }
         return tuple(sorted(rel.as_posix() for rel in changed))
 
@@ -161,18 +173,30 @@ class _TrackerSnapshot:
             return ()
 
         self.root.mkdir(parents=True, exist_ok=True)
-        current_files = [
+        changed_paths = [Path(path) for path in changed]
+        for path in (
             path
             for path in self.root.rglob("*")
-            if path.is_file() and path.relative_to(self.root) not in self.files
-        ]
-        for path in current_files:
-            path.unlink()
+            if path.is_file() and path.relative_to(self.root) not in self.file_states
+        ):
+            try:
+                path.unlink()
+            except OSError:
+                pass
 
-        for rel, content in self.files.items():
+        for rel in changed_paths:
             path = self.root / rel
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_bytes(content)
+            if rel in self.files:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                try:
+                    path.write_bytes(self.files[rel])
+                except OSError:
+                    continue
+                continue
+
+            if rel in self.file_states:
+                if not self._restore_from_git(path):
+                    continue
 
         for path in sorted(
             (candidate for candidate in self.root.rglob("*") if candidate.is_dir()),
@@ -185,6 +209,52 @@ class _TrackerSnapshot:
                 pass
 
         return changed
+
+    @staticmethod
+    def _scan_file_states(root: Path) -> dict[Path, tuple[int, int]]:
+        states: dict[Path, tuple[int, int]] = {}
+        if not root.exists():
+            return states
+        for path in root.rglob("*"):
+            if path.is_file():
+                try:
+                    stat = path.stat()
+                except OSError:
+                    continue
+                states[path.relative_to(root)] = (stat.st_size, stat.st_mtime_ns)
+        return states
+
+    def _restore_from_git(self, path: Path) -> bool:
+        if self.git_root is None:
+            return False
+        try:
+            rel_path = path.resolve().relative_to(self.git_root).as_posix()
+        except ValueError:
+            return False
+        try:
+            result = subprocess.run(
+                ["git", "--no-pager", "restore", "--", rel_path],
+                cwd=str(self.git_root),
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return False
+        if result.returncode != 0:
+            return False
+        return path.exists()
+
+    @staticmethod
+    def _find_git_root(start: Path) -> Path | None:
+        candidate = start
+        while True:
+            if (candidate / ".git").exists():
+                return candidate
+            if candidate.parent == candidate:
+                return None
+            candidate = candidate.parent
+
 
 
 class _RunWatcher:

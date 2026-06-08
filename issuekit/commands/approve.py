@@ -8,7 +8,7 @@ import sys
 from issuekit.commands import generate_indexes, validate
 from issuekit.commands.complete import complete_issue
 from issuekit.config import IssuekitConfig, load_config
-from issuekit.core import Issue, find_issue_by_id, parse_issue_id_arg, read_all_issues
+from issuekit.core import Issue, find_issue_by_id, parse_issue_id_arg, read_active_issues
 from issuekit.workflow import (
     WorkflowError,
     ensure_assigned_reviewer,
@@ -97,7 +97,7 @@ def _resolve_approval_context(
     reviewer: str | None,
     config: IssuekitConfig,
 ) -> tuple[Issue, str]:
-    active_issues, _, _ = read_all_issues(issues_dir)
+    active_issues = read_active_issues(issues_dir)
     issue = find_issue_by_id(active_issues, issue_id)
     if issue is None:
         raise LookupError(issue_id)

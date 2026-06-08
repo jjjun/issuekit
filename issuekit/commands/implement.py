@@ -8,7 +8,12 @@ import sys
 from issuekit.agents.runner import AgentRunner, resolve_adapter
 from issuekit.commands.generate_indexes import write_index_files
 from issuekit.config import load_config
-from issuekit.core import find_issue_by_id, parse_issue_id_arg, read_all_issues
+from issuekit.core import (
+    find_issue_by_id,
+    parse_issue_id_arg,
+    read_active_issues,
+    read_completed_issues,
+)
 from issuekit.workflow import WorkflowError, claim_issue, submit_for_review
 
 
@@ -22,7 +27,7 @@ def run(args) -> int:
     cwd = Path.cwd()
     config = load_config(cwd)
     issues_dir = config.issues_path(cwd)
-    active_issues, _, _ = read_all_issues(issues_dir)
+    active_issues = read_active_issues(issues_dir)
     issue = find_issue_by_id(active_issues, issue_id)
     if issue is None:
         print(f"Active issue #{issue_id} was not found.", file=sys.stderr)
@@ -118,7 +123,7 @@ def _submit_for_review_error(issues_dir: Path, issue_id: int, exc: Exception) ->
     if str(exc) != generic_missing:
         return str(exc)
 
-    _, completed_issues, _ = read_all_issues(issues_dir)
+    completed_issues = read_completed_issues(issues_dir)
     completed_issue = next(
         (candidate for candidate in completed_issues if candidate.id == issue_id),
         None,

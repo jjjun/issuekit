@@ -12,7 +12,13 @@ from issuekit.commands.approve import approve_issue
 from issuekit.commands.generate_indexes import write_index_files
 from issuekit.commands.propose import build_proposal
 from issuekit.config import load_config
-from issuekit.core import Issue, find_issue_by_id, issue_dict, read_all_issues
+from issuekit.core import (
+    Issue,
+    find_issue_by_id,
+    issue_dict,
+    read_active_issues,
+    read_completed_issues,
+)
 from issuekit.proposals import (
     adopt_proposal as adopt_proposal_file,
     list_incoming as list_incoming_files,
@@ -139,8 +145,9 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
     @server.tool(description="Read one active or completed issue by id.")
     def get_issue(id: int) -> dict[str, Any]:
         _, issues_dir = _context(root)
-        _, _, issues = read_all_issues(issues_dir)
-        issue = find_issue_by_id(issues, id)
+        issue = find_issue_by_id(read_active_issues(issues_dir), id)
+        if issue is None:
+            issue = find_issue_by_id(read_completed_issues(issues_dir), id)
         if issue is None:
             return {"status": "none", "id": id}
         return _issue_dict(issue, include_body=True)
@@ -184,7 +191,7 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
         config, issues_dir = _context(root)
         path = adopt_proposal_file(issues_dir, proposal_file, priority=priority)
         _refresh_indexes(issues_dir, config.recent_count)
-        _, _, issues = read_all_issues(issues_dir)
+        issues = read_active_issues(issues_dir)
         issue = next(candidate for candidate in issues if candidate.file_path == path)
         return _issue_dict(issue, include_body=True)
 

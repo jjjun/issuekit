@@ -1,10 +1,10 @@
 ---
 id: 57
-status: active
+status: completed
 priority: medium
 created: 2026-06-09
-completed: 
-stage: todo
+completed: 2026-06-09
+stage: done
 author: claude
 title: Reduce redundant tracker reads and optimize implement-run snapshots and index writes
 ---
@@ -88,3 +88,14 @@ Pick the low-risk wins; correctness must not regress.
   `issuekit/agents/runner.py` `_TrackerSnapshot`,
   `issuekit/commands/generate_indexes.py`
 - Builds on #52 (tracker-mutation guard) and #49-#51 (run visibility).
+
+## Handoff
+
+- Summary: Implemented by codex via issuekit implement.
+
+**Completed**: 2026-06-09
+
+## Completion Notes
+
+- Reduce redundant tracker reads and optimize implement-run snapshots and index writes.
+- Verification: `Reviewed diff: core gained read_active_issues/read_completed_issues/read_issues_in_directories; callers (workflow, approve, complete, implement, mcp) now read only the directory they need (get_issue does active-then-completed short-circuit, preserving precedence). workflow write helpers de-duplicate the post-write re-scan: _write_active_issue builds the updated Issue in memory via _build_updated_issue and _find_active_issue accepts a preloaded list. write_index_files is now incremental (write only changed, remove only obsolete) instead of unlink-all/rewrite-all. _TrackerSnapshot keeps full-byte capture in non-git trees but caches only active/indexes bytes in a git repo and reverts completed/ via git restore, preserving the #52 revert-and-warn guarantee (test_implement_command_restores_agent_tracker_mutations passes). Full suite 282 passed/22 skipped; check-encoding clean; validate clean; indexes byte-identical.`

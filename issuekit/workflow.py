@@ -12,14 +12,15 @@ import time
 from issuekit.config import IssuekitConfig
 from issuekit.core import (
     Issue,
+    Frontmatter,
     VALID_ISSUE_PRIORITIES,
     find_issue_by_id,
+    read_active_issues,
     passthrough_frontmatter,
     format_issue_frontmatter,
     has_non_ascii,
     is_valid_workflow_token,
     parse_issue_frontmatter,
-    read_issues,
     write_issue_atomic,
 )
 
@@ -94,7 +95,7 @@ def claim_next(
 
     issues_path = Path(issues_dir)
     with claim_lock(issues_path / "active", timeout=timeout):
-        issues = read_issues(issues_path, "active")
+        issues = read_active_issues(issues_path)
         candidates = [
             issue
             for issue in issues
@@ -134,7 +135,7 @@ def claim_issue(
 
     issues_path = Path(issues_dir)
     with claim_lock(issues_path / "active", timeout=timeout):
-        issue = _find_active_issue(issues_path, issue_id)
+        issue = _find_active_issue(issues_path, issue_id, active_issues=read_active_issues(issues_path))
         if issue.issue_status not in CLAIMABLE_STATUSES:
             raise WorkflowError(
                 f"Issue #{issue_id} has status {issue.issue_status or issue.status}; "
@@ -181,7 +182,7 @@ def submit_for_review(
 
     issues_path = Path(issues_dir)
     with claim_lock(issues_path / "active", timeout=timeout):
-        issue = _find_active_issue(issues_path, issue_id)
+        issue = _find_active_issue(issues_path, issue_id, active_issues=read_active_issues(issues_path))
         if issue.assignee != assignee:
             raise WorkflowError(
                 f"Issue #{issue_id} is assigned to {issue.assignee or 'no one'}, not {assignee}."
@@ -225,7 +226,7 @@ def request_changes(
 
     issues_path = Path(issues_dir)
     with claim_lock(issues_path / "active", timeout=timeout):
-        issue = _find_active_issue(issues_path, issue_id)
+        issue = _find_active_issue(issues_path, issue_id, active_issues=read_active_issues(issues_path))
         resolved_reviewer = resolve_reviewer(reviewer, config, issue=issue)
         ensure_assigned_reviewer(issue, reviewer, resolved_reviewer)
         if not issue.assignee:
@@ -254,7 +255,7 @@ def find_for(
     if stage:
         _validate_stage(stage, config)
 
-    issues = read_issues(issues_dir, "active")
+    issues = read_active_issues(issues_dir)
     return [
         issue
         for issue in issues
@@ -291,17 +292,70 @@ def _write_active_issue(
     body = frontmatter.body.strip("\n")
     if extra_body:
         body = f"{body}\n{extra_body.rstrip()}"
-    write_issue_atomic(issue.file_path, f"{format_issue_frontmatter(data)}{body}\n")
-    return _find_active_issue(issues_dir, issue.id or 0)
+    content = f"{format_issue_frontmatter(data)}{body}\n"
+    write_issue_atomic(issue.file_path, content)
+    return _build_updated_issue(
+        issue,
+        frontmatter,
+        data,
+        issue_content=content,
+        body=body,
+    )
 
 
-def _find_active_issue(issues_dir: Path, issue_id: int) -> Issue:
-    issue = find_issue_by_id(read_issues(issues_dir, "active"), issue_id)
+def _find_active_issue(
+    issues_dir: Path,
+    issue_id: int,
+    *,
+    active_issues: list[Issue] | None = None,
+) -> Issue:
+    issue = find_issue_by_id(active_issues if active_issues is not None else read_active_issues(issues_dir), issue_id)
     if issue is None:
         raise WorkflowError(f"Active issue #{issue_id} was not found.")
     if issue.decode_error:
         raise WorkflowError(f"Active issue #{issue_id} is not valid UTF-8: {issue.relative_path}")
     return issue
+
+
+def _build_updated_issue(
+    issue: Issue,
+    frontmatter: Frontmatter,
+    data: dict[str, object],
+    *,
+    issue_content: str,
+    body: str,
+) -> Issue:
+    return Issue(
+        id=issue.id,
+        file_name_id=issue.file_name_id,
+        file_name=issue.file_name,
+        file_path=issue.file_path,
+        relative_path=issue.relative_path,
+        title=str(data["title"]),
+        status=issue.status,
+        issue_status=str(data["status"]),
+        created=issue.created or "",
+        completed=str(data["completed"]),
+        priority=str(data["priority"]),
+        assignee=str(data["assignee"]),
+        stage=str(data["stage"]),
+        implementer=str(data["implementer"]),
+        author=str(data["author"]),
+        content=issue_content,
+        frontmatter=Frontmatter(data=frontmatter.data | {
+            "id": str(data["id"]),
+            "status": str(data["status"]),
+            "priority": str(data["priority"]),
+            "created": str(data["created"]),
+            "completed": str(data["completed"]),
+            "assignee": str(data["assignee"]),
+            "stage": str(data["stage"]),
+            "implementer": str(data["implementer"]),
+            "author": str(data["author"]),
+            "title": str(data["title"]),
+        }, body=body, has_frontmatter=True),
+        decode_error=False,
+    )
 
 
 def ensure_not_self_review(

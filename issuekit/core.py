@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import os
 from pathlib import Path
+from collections.abc import Iterable
 import re
 import tempfile
 
@@ -246,9 +247,30 @@ def read_issues(issues_dir: Path | str, directory_status: str) -> list[Issue]:
     return sorted(issues, key=lambda issue: (issue.id or 0, issue.file_name))
 
 
+def read_active_issues(issues_dir: Path | str) -> list[Issue]:
+    """Read issues from the active tracker directory."""
+    return read_issues(issues_dir, "active")
+
+
+def read_completed_issues(issues_dir: Path | str) -> list[Issue]:
+    """Read issues from the completed tracker directory."""
+    return read_issues(issues_dir, "completed")
+
+
+def read_issues_in_directories(
+    issues_dir: Path | str,
+    directories: Iterable[str],
+) -> list[Issue]:
+    """Read issues from an explicit set of tracker subdirectories."""
+    issues: list[Issue] = []
+    for directory in directories:
+        issues.extend(read_issues(issues_dir, directory))
+    return issues
+
+
 def read_all_issues(issues_dir: Path | str) -> tuple[list[Issue], list[Issue], list[Issue]]:
-    active_issues = read_issues(issues_dir, "active")
-    completed_issues = read_issues(issues_dir, "completed")
+    active_issues = read_active_issues(issues_dir)
+    completed_issues = read_completed_issues(issues_dir)
     return active_issues, completed_issues, [*active_issues, *completed_issues]
 
 

@@ -1,4 +1,5 @@
 from pathlib import Path
+import time
 
 from issuekit import cli
 
@@ -53,3 +54,32 @@ def test_generate_indexes_includes_non_utf8_issue_file_without_crashing(
     assert exit_code == 0
     active_index = (issues_dir / "indexes" / "active.md").read_text(encoding="utf-8")
     assert "| 3 | cp932 | - | active | [active/003_cp932.md](../active/003_cp932.md) |" in active_index
+
+
+def test_generate_indexes_preserves_unmodified_files(tmp_path: Path, monkeypatch) -> None:
+    issues_dir = tmp_path / "docs" / "issues"
+    write_issue(issues_dir / "active" / "001_first.md", issue_text(1, "First"))
+    write_issue(
+        issues_dir / "completed" / "002_done.md",
+        issue_text(2, "Done", status="completed", completed="2026-01-02"),
+    )
+    monkeypatch.chdir(tmp_path)
+
+    cli.main(["generate-indexes"])
+    index_dir = issues_dir / "indexes"
+    active_index = index_dir / "active.md"
+    completed_index = index_dir / "completed-recent.md"
+    completed_range_index = index_dir / "completed-001-099.md"
+    before = {
+        path: path.stat().st_mtime_ns
+        for path in (active_index, completed_index, completed_range_index)
+    }
+
+    time.sleep(1.1)
+    cli.main(["generate-indexes"])
+    after = {
+        path: path.stat().st_mtime_ns
+        for path in (active_index, completed_index, completed_range_index)
+    }
+
+    assert before == after
