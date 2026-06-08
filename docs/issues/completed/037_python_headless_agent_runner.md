@@ -1,12 +1,10 @@
 ---
 id: 37
-status: in_progress
+status: completed
 priority: medium
 created: 2026-06-08
-completed: 
-assignee: codex
-stage: changes_requested
-implementer: codex
+completed: 2026-06-08
+stage: done
 title: Python headless agent runner with kimi adapter
 ---
 
@@ -154,3 +152,16 @@ Fix:
 2. Update test_kimi_adapter_parse_output_extracts_resume_id so the footer is on stderr (matching reality), and keep an assertion that resume_session_id is extracted.
 
 NON-BLOCKING (do not need to address for this issue): in an arbitrary target repo, .agent-runs/ is not gitignored, so status_short surfaces it as untracked (it is only gitignored in this repo). Consider handling the log-output location when the CLI lands in #39.
+
+## Handoff
+
+- Summary: Fix KimiAdapter.parse_output to scan stderr for resume session id. Real kimi places the footer on stderr; previous implementation scanned stdout only, masked by a synthetic unit test.
+- Branch: `main`
+- Commit: `561d9aa`
+
+**Completed**: 2026-06-08
+
+## Completion Notes
+
+- Approved by claude.
+- Verification: `uv run pytest (205 passed, 18 skipped); uv run issuekit validate (40 files, 0 warnings); uv run issuekit check-encoding (clean). Real AgentRunner+KimiAdapter end-to-end run on Windows: file created, no commit, resume_session_id now captured from stderr (was None before the fix). Reviewed by claude; implementer codex (distinct reviewer).`
