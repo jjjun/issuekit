@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from issuekit import core
 from issuekit.config import IssuekitConfig, load_config
 
@@ -125,3 +127,40 @@ def test_load_config_reads_tool_issuekit(tmp_path: Path) -> None:
         stages=IssuekitConfig.stages,
     )
     assert config.issues_path(tmp_path) == tmp_path / "custom" / "issues"
+
+
+def test_parse_issue_id_arg() -> None:
+    assert core.parse_issue_id_arg("42") == 42
+    with pytest.raises(ValueError, match="Invalid issue id: not-a-number"):
+        core.parse_issue_id_arg("not-a-number")
+
+
+def test_find_issue_by_id_matches_by_id(tmp_path: Path) -> None:
+    issues_dir = tmp_path / "docs" / "issues"
+    write_issue(
+        issues_dir / "active" / "001_first.md",
+        "---\nid: 1\nstatus: active\npriority: high\ncreated: 2026-01-01\ncompleted:\ntitle: First\n---\n\n# Issue #1: First\n",
+    )
+    issues = core.read_issues(issues_dir, "active")
+    assert core.find_issue_by_id(issues, 1) == issues[0]
+    assert core.find_issue_by_id(issues, 99) is None
+
+
+def test_diff_index_files_reports_missing_extra_and_stale(tmp_path: Path) -> None:
+    issues_dir = tmp_path / "docs" / "issues"
+    indexes_dir = issues_dir / "indexes"
+    indexes_dir.mkdir(parents=True, exist_ok=True)
+    indexes_dir.joinpath("active.md").write_text("stale index content\n", encoding="utf-8", newline="\n")
+    indexes_dir.joinpath("legacy.md").write_text("legacy content\n", encoding="utf-8", newline="\n")
+
+    diff = core.diff_index_files(
+        issues_dir,
+        {
+            "active.md": "# active index\n",
+            "completed.md": "# completed index\n",
+        },
+    )
+
+    assert diff.missing == ["completed.md"]
+    assert diff.extra == ["legacy.md"]
+    assert diff.stale == ["active.md"]

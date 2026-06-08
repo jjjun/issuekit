@@ -8,22 +8,22 @@ import sys
 from issuekit.agents.runner import AgentRunner, resolve_adapter
 from issuekit.commands.generate_indexes import write_index_files
 from issuekit.config import load_config
-from issuekit.core import read_all_issues
+from issuekit.core import find_issue_by_id, parse_issue_id_arg, read_all_issues
 from issuekit.workflow import WorkflowError, claim_issue, submit_for_review
 
 
 def run(args) -> int:
     try:
-        issue_id = int(args.id)
-    except ValueError:
-        print(f"Invalid issue id: {args.id}", file=sys.stderr)
+        issue_id = parse_issue_id_arg(args.id)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
         return 1
 
     cwd = Path.cwd()
     config = load_config(cwd)
     issues_dir = config.issues_path(cwd)
     active_issues, _, _ = read_all_issues(issues_dir)
-    issue = next((candidate for candidate in active_issues if candidate.id == issue_id), None)
+    issue = find_issue_by_id(active_issues, issue_id)
     if issue is None:
         print(f"Active issue #{issue_id} was not found.", file=sys.stderr)
         return 1

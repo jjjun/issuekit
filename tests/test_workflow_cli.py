@@ -139,3 +139,23 @@ def test_submit_review_rejects_non_ascii_summary(tmp_path: Path, monkeypatch, ca
 
     assert exit_code == 1
     assert "ASCII-only" in capsys.readouterr().err
+
+
+def test_handoff_commands_reject_invalid_issue_id(tmp_path: Path, monkeypatch, capsys) -> None:
+    issues_dir = tmp_path / "docs" / "issues"
+    write_issue(
+        issues_dir / "active" / "001_first.md",
+        issue_text(1, "First", status="in_progress", assignee="codex", stage="implementing"),
+    )
+    write_indexes(issues_dir)
+    monkeypatch.chdir(tmp_path)
+
+    submit_exit = cli.main(
+        ["submit-review", "bad-id", "--summary", "Implemented."],
+    )
+    request_exit = cli.main(["request-changes", "bad-id", "--notes", "Add tests."])
+
+    assert submit_exit == 1
+    assert request_exit == 1
+    out = capsys.readouterr()
+    assert "Invalid issue id: bad-id" in out.err

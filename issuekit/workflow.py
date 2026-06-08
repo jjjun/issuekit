@@ -13,6 +13,7 @@ from issuekit.config import IssuekitConfig
 from issuekit.core import (
     Issue,
     VALID_ISSUE_PRIORITIES,
+    find_issue_by_id,
     passthrough_frontmatter,
     format_issue_frontmatter,
     has_non_ascii,
@@ -295,7 +296,7 @@ def _write_active_issue(
 
 
 def _find_active_issue(issues_dir: Path, issue_id: int) -> Issue:
-    issue = next((candidate for candidate in read_issues(issues_dir, "active") if candidate.id == issue_id), None)
+    issue = find_issue_by_id(read_issues(issues_dir, "active"), issue_id)
     if issue is None:
         raise WorkflowError(f"Active issue #{issue_id} was not found.")
     if issue.decode_error:

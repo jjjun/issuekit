@@ -181,3 +181,14 @@ def test_complete_allows_review_stage_by_default(
     assert exit_code == 0
     assert "Completed issue #1" in captured.out
     assert (issues_dir / "completed" / "001_first.md").exists()
+
+
+def test_complete_rejects_invalid_issue_id(tmp_path: Path, monkeypatch, capsys) -> None:
+    issues_dir = tmp_path / "docs" / "issues"
+    write_issue(issues_dir / "active" / "001_first.md", issue_text(1, "First"))
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = cli.main(["complete", "bad-id", "--summary", "Implemented."])
+
+    assert exit_code == 1
+    assert "Invalid issue id: bad-id" in capsys.readouterr().err

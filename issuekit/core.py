@@ -60,6 +60,13 @@ class Issue:
     decode_error: bool = False
 
 
+@dataclass(frozen=True)
+class IndexDiff:
+    missing: list[str]
+    extra: list[str]
+    stale: list[str]
+
+
 def issue_dict(issue: "Issue", *, include_body: bool = False) -> dict[str, object]:
     """Serialize an issue for JSON output.
 
@@ -83,6 +90,17 @@ def issue_dict(issue: "Issue", *, include_body: bool = False) -> dict[str, objec
 def parse_issue_id(file_name: str) -> int | None:
     match = re.match(r"^(\d+)_.*\.md$", file_name)
     return int(match.group(1)) if match else None
+
+
+def parse_issue_id_arg(raw_issue_id: str) -> int:
+    try:
+        return int(raw_issue_id)
+    except ValueError as exc:
+        raise ValueError(f"Invalid issue id: {raw_issue_id}") from exc
+
+
+def find_issue_by_id(issues: list[Issue], issue_id: int) -> Issue | None:
+    return next((issue for issue in issues if issue.id == issue_id), None)
 
 
 def parse_issue_frontmatter(content: str) -> Frontmatter:
@@ -286,6 +304,22 @@ def read_index_files(issues_dir: Path | str) -> list[str]:
     if not indexes_dir.exists():
         return []
     return sorted(path.name for path in indexes_dir.iterdir() if path.suffix == ".md")
+
+
+def diff_index_files(issues_dir: Path | str, expected_indexes: dict[str, str]) -> IndexDiff:
+    actual_indexes = read_index_files(issues_dir)
+    actual_set = set(actual_indexes)
+    missing: list[str] = []
+    stale: list[str] = []
+    indexes_dir = Path(issues_dir) / "indexes"
+    for name in expected_indexes:
+        if name not in actual_set:
+            missing.append(name)
+            continue
+        if (indexes_dir / name).read_text(encoding="utf-8-sig") != expected_indexes[name]:
+            stale.append(name)
+    extra = [name for name in actual_indexes if name not in expected_indexes]
+    return IndexDiff(missing=missing, extra=extra, stale=stale)
 
 
 def has_mojibake(text: str) -> bool:

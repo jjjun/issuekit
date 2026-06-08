@@ -10,6 +10,8 @@ from issuekit.commands import generate_indexes, validate
 from issuekit.config import IssuekitConfig, load_config
 from issuekit.core import (
     Issue,
+    find_issue_by_id,
+    parse_issue_id_arg,
     format_issue_frontmatter,
     has_non_ascii,
     parse_issue_frontmatter,
@@ -26,9 +28,9 @@ def run(args) -> int:
     verification = args.verification or ""
 
     try:
-        issue_id = int(args.id)
-    except ValueError:
-        print(f"Invalid issue id: {args.id}", file=sys.stderr)
+        issue_id = parse_issue_id_arg(args.id)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
         return 1
 
     config = load_config(Path.cwd())
@@ -78,7 +80,7 @@ def complete_issue(
     config = config or IssuekitConfig()
     issues_path = Path(issues_dir)
     active_issues, _, _ = read_all_issues(issues_dir)
-    issue = next((candidate for candidate in active_issues if candidate.id == issue_id), None)
+    issue = find_issue_by_id(active_issues, issue_id)
     if issue is None:
         raise LookupError(issue_id)
     if issue.decode_error:

@@ -18,7 +18,7 @@ from issuekit.commands.init import (
     init_repo,
 )
 from issuekit.config import load_config
-from issuekit.core import build_index_files, read_all_issues
+from issuekit.core import build_index_files, diff_index_files, read_all_issues
 
 
 CODEX_MCP_ADD_COMMAND = "codex mcp add issuekit -- issuekit-mcp"
@@ -242,31 +242,41 @@ def _add_index_actions(cwd: Path, actions: list[SetupAction]) -> None:
     indexes_dir = issues_dir / "indexes"
     active_issues, completed_issues, _ = read_all_issues(issues_dir)
     expected = build_index_files(active_issues, completed_issues, config.recent_count)
-    for name, content in expected.items():
-        path = indexes_dir / name
-        display = _display_path(cwd, path)
-        if not path.exists():
+    index_diff = diff_index_files(issues_dir, expected)
+    stale_set = set(index_diff.stale)
+    missing_set = set(index_diff.missing)
+    for name in expected:
+        if name in missing_set:
+            path = indexes_dir / name
             actions.append(
-                SetupAction(display, "missing", "write", "issuekit setup would generate this index.")
+                SetupAction(
+                    _display_path(cwd, path),
+                    "missing",
+                    "write",
+                    "issuekit setup would generate this index.",
+                )
             )
             continue
-        current = path.read_text(encoding="utf-8-sig", errors="ignore")
-        if current != content:
-            actions.append(
-                SetupAction(display, "stale", "update", "issuekit setup would refresh this index.")
-            )
-    if not indexes_dir.exists():
-        return
-    for path in sorted(indexes_dir.glob("*.md")):
-        if path.name not in expected:
+        if name in stale_set:
+            path = indexes_dir / name
             actions.append(
                 SetupAction(
                     _display_path(cwd, path),
                     "stale",
-                    "remove",
-                    "issuekit setup would remove this obsolete generated index.",
+                    "update",
+                    "issuekit setup would refresh this index.",
                 )
             )
+    for name in index_diff.extra:
+        path = indexes_dir / name
+        actions.append(
+            SetupAction(
+                _display_path(cwd, path),
+                "stale",
+                "remove",
+                "issuekit setup would remove this obsolete generated index.",
+            )
+        )
 
 
 def _add_mcp_json_action(cwd: Path, actions: list[SetupAction]) -> None:

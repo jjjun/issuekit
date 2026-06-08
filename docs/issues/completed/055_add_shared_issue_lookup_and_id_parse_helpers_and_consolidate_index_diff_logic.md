@@ -1,10 +1,10 @@
 ---
 id: 55
-status: active
+status: completed
 priority: medium
 created: 2026-06-09
-completed: 
-stage: todo
+completed: 2026-06-09
+stage: done
 author: claude
 title: Add shared issue-lookup and id-parse helpers and consolidate index-diff logic
 ---
@@ -71,3 +71,14 @@ subtly different shapes.
 - `issuekit/core.py`, `issuekit/commands/info.py` `_stale_indexes`,
   `issuekit/commands/validate.py`, `issuekit/commands/setup.py`
   `_add_index_actions`
+
+## Handoff
+
+- Summary: Implemented by codex via issuekit implement.
+
+**Completed**: 2026-06-09
+
+## Completion Notes
+
+- Add shared issue-lookup/id-parse helpers and consolidate index-diff logic.
+- Verification: `Reviewed diff: core gained find_issue_by_id, parse_issue_id_arg, and IndexDiff/diff_index_files. The six inline id lookups (workflow, approve, complete, propose, implement, mcp.get_issue) and the four CLI int(args.id) sites (complete, approve, implement, handoff x2) now use the helpers with identical error text/exit codes. info/validate/setup all consume diff_index_files; error/action sets verified equivalent. Reviewer normalized info.py to LF (codex saved it CRLF). Full suite 281 passed/22 skipped; check-encoding clean; validate clean.`

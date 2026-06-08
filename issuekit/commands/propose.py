@@ -10,7 +10,14 @@ import sys
 
 from issuekit.commands.generate_indexes import write_index_files
 from issuekit.config import load_config
-from issuekit.core import Issue, VALID_ISSUE_PRIORITIES, issue_dict, read_all_issues
+from issuekit.core import (
+    Issue,
+    VALID_ISSUE_PRIORITIES,
+    find_issue_by_id,
+    issue_dict,
+    parse_issue_id_arg,
+    read_all_issues,
+)
 from issuekit.proposals import (
     Proposal,
     ProposalError,
@@ -181,11 +188,8 @@ def build_proposal(
 
 
 def _find_issue(issues: list[Issue], raw_id: str) -> Issue:
-    try:
-        issue_id = int(raw_id)
-    except ValueError as exc:
-        raise ValueError(f"Invalid issue id: {raw_id}") from exc
-    issue = next((candidate for candidate in issues if candidate.id == issue_id), None)
+    issue_id = parse_issue_id_arg(raw_id)
+    issue = find_issue_by_id(issues, issue_id)
     if issue is None:
         raise LookupError(f"Issue #{issue_id} was not found.")
     return issue

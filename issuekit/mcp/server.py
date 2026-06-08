@@ -12,7 +12,7 @@ from issuekit.commands.approve import approve_issue
 from issuekit.commands.generate_indexes import write_index_files
 from issuekit.commands.propose import build_proposal
 from issuekit.config import load_config
-from issuekit.core import Issue, issue_dict, read_all_issues
+from issuekit.core import Issue, find_issue_by_id, issue_dict, read_all_issues
 from issuekit.proposals import (
     adopt_proposal as adopt_proposal_file,
     list_incoming as list_incoming_files,
@@ -140,7 +140,7 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
     def get_issue(id: int) -> dict[str, Any]:
         _, issues_dir = _context(root)
         _, _, issues = read_all_issues(issues_dir)
-        issue = next((candidate for candidate in issues if candidate.id == id), None)
+        issue = find_issue_by_id(issues, id)
         if issue is None:
             return {"status": "none", "id": id}
         return _issue_dict(issue, include_body=True)

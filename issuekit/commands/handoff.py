@@ -7,14 +7,15 @@ import sys
 
 from issuekit.commands.generate_indexes import write_index_files
 from issuekit.config import load_config
+from issuekit.core import parse_issue_id_arg
 from issuekit.workflow import WorkflowError, request_changes, submit_for_review
 
 
 def run_submit_review(args) -> int:
     try:
-        issue_id = int(args.id)
-    except ValueError:
-        print(f"Invalid issue id: {args.id}", file=sys.stderr)
+        issue_id = parse_issue_id_arg(args.id)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
         return 1
 
     config = load_config(Path.cwd())
@@ -44,9 +45,9 @@ def run_submit_review(args) -> int:
 
 def run_request_changes(args) -> int:
     try:
-        issue_id = int(args.id)
-    except ValueError:
-        print(f"Invalid issue id: {args.id}", file=sys.stderr)
+        issue_id = parse_issue_id_arg(args.id)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
         return 1
 
     config = load_config(Path.cwd())

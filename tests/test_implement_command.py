@@ -347,3 +347,15 @@ def test_implement_command_reports_missing_issue(
 
     assert exit_code == 1
     assert "Active issue #99 was not found." in capsys.readouterr().err
+
+
+def test_implement_rejects_invalid_issue_id(tmp_path: Path, monkeypatch, capsys) -> None:
+    issues_dir = tmp_path / "docs" / "issues"
+    write_issue(issues_dir / "active" / "001_first.md", issue_text(1, "First"))
+    write_indexes(issues_dir)
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = cli.main(["implement", "bad-id", "--agent", "codex"])
+
+    assert exit_code == 1
+    assert "Invalid issue id: bad-id" in capsys.readouterr().err

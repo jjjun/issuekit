@@ -8,6 +8,7 @@ import sys
 from issuekit.config import load_config
 from issuekit.core import (
     GENERATED_FILE_MARKER,
+    diff_index_files,
     VALID_ISSUE_PRIORITIES,
     VALID_ISSUE_STATUSES,
     build_index_files,
@@ -152,23 +153,21 @@ def run(_args) -> int:
         files = ", ".join(issue.relative_path for issue in group)
         errors.append(f"Issue id {issue_id} is used by {files}")
 
-    index_files = read_index_files(issues_dir)
     expected_indexes = build_index_files(active_issues, completed_issues, config.recent_count)
-    for name in expected_indexes:
-        if name not in index_files:
-            errors.append(f"Missing generated index: docs/issues/indexes/{name}")
-    for name in index_files:
-        if name not in expected_indexes:
-            errors.append(f"Unexpected generated index: docs/issues/indexes/{name}")
+    index_diff = diff_index_files(issues_dir, expected_indexes)
+    index_files = read_index_files(issues_dir)
+    for name in index_diff.missing:
+        errors.append(f"Missing generated index: docs/issues/indexes/{name}")
+    for name in index_diff.extra:
+        errors.append(f"Unexpected generated index: docs/issues/indexes/{name}")
 
     indexes_dir = issues_dir / "indexes"
     for name in index_files:
         content = (indexes_dir / name).read_text(encoding="utf-8-sig")
         if GENERATED_FILE_MARKER not in content:
             errors.append(f"Index file is missing generated-file marker: docs/issues/indexes/{name}")
-        expected_content = expected_indexes.get(name)
-        if expected_content is not None and content != expected_content:
-            errors.append(f"Generated index is stale: docs/issues/indexes/{name}")
+    for name in index_diff.stale:
+        errors.append(f"Generated index is stale: docs/issues/indexes/{name}")
 
     for warning in warnings:
         print(f"Warning: {warning}", file=sys.stderr)

@@ -6,7 +6,13 @@ import json
 from pathlib import Path
 
 from issuekit.config import load_config
-from issuekit.core import build_index_files, get_next_issue_id, group_issues_by_id, read_all_issues, read_index_files
+from issuekit.core import (
+    build_index_files,
+    diff_index_files,
+    get_next_issue_id,
+    group_issues_by_id,
+    read_all_issues,
+)
 from issuekit.proposals import list_incoming
 
 
@@ -16,7 +22,7 @@ def run(args) -> int:
     active_issues, completed_issues, all_issues = read_all_issues(issues_dir)
     incoming_proposals = list_incoming(issues_dir)
     expected_indexes = build_index_files(active_issues, completed_issues, config.recent_count)
-    actual_index_names = read_index_files(issues_dir)
+    index_diff = diff_index_files(issues_dir, expected_indexes)
     duplicate_ids = [
         {
             "id": issue_id,
@@ -26,9 +32,9 @@ def run(args) -> int:
         for issue_id, group in group_issues_by_id(all_issues).items()
         if len(group) > 1
     ]
-    missing_indexes = [name for name in expected_indexes if name not in actual_index_names]
-    extra_indexes = [name for name in actual_index_names if name not in expected_indexes]
-    stale_indexes = _stale_indexes(issues_dir, expected_indexes, actual_index_names)
+    missing_indexes = index_diff.missing
+    extra_indexes = index_diff.extra
+    stale_indexes = index_diff.stale
     summary = {
         "counts": {
             "active": len(active_issues),
@@ -120,14 +126,3 @@ def _proposal_relative_path(issues_dir: Path, proposal_path: Path | None) -> str
     if proposal_path is None:
         return ""
     return proposal_path.relative_to(issues_dir).as_posix()
-
-
-def _stale_indexes(issues_dir: Path, expected_indexes: dict[str, str], actual_names: list[str]) -> list[str]:
-    stale = []
-    indexes_dir = issues_dir / "indexes"
-    for name, expected_content in expected_indexes.items():
-        if name not in actual_names:
-            continue
-        if (indexes_dir / name).read_text(encoding="utf-8-sig") != expected_content:
-            stale.append(name)
-    return stale

@@ -8,7 +8,7 @@ import sys
 from issuekit.commands import generate_indexes, validate
 from issuekit.commands.complete import complete_issue
 from issuekit.config import IssuekitConfig, load_config
-from issuekit.core import Issue, read_all_issues
+from issuekit.core import Issue, find_issue_by_id, parse_issue_id_arg, read_all_issues
 from issuekit.workflow import (
     WorkflowError,
     ensure_assigned_reviewer,
@@ -19,9 +19,9 @@ from issuekit.workflow import (
 
 def run(args) -> int:
     try:
-        issue_id = int(args.id)
-    except ValueError:
-        print(f"Invalid issue id: {args.id}", file=sys.stderr)
+        issue_id = parse_issue_id_arg(args.id)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
         return 1
 
     config = load_config(Path.cwd())
@@ -98,7 +98,7 @@ def _resolve_approval_context(
     config: IssuekitConfig,
 ) -> tuple[Issue, str]:
     active_issues, _, _ = read_all_issues(issues_dir)
-    issue = next((candidate for candidate in active_issues if candidate.id == issue_id), None)
+    issue = find_issue_by_id(active_issues, issue_id)
     if issue is None:
         raise LookupError(issue_id)
     if issue.decode_error:
