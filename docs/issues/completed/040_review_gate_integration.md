@@ -1,11 +1,10 @@
 ---
 id: 40
-status: in_progress
+status: completed
 priority: low
 created: 2026-06-08
-completed: 
-stage: review
-implementer: codex
+completed: 2026-06-08
+stage: done
 title: Route synchronous agent runs into the issuekit review gate
 ---
 
@@ -65,3 +64,10 @@ existing review flow so completion stays gated behind a distinct reviewer.
 - Summary: Implement.py now claims the issue, runs the agent, and on a successful run submits for review with reviewer omitted (open pool). Failed/timed-out runs are not submitted. Added claim_issue() to workflow.py and tests covering review handoff, failed-run no-submit, and the self-review guard.
 - Branch: `main`
 - Commit: `c4ab26b`
+
+**Completed**: 2026-06-08
+
+## Completion Notes
+
+- Approved by claude.
+- Verification: `Reviewed by claude (distinct from implementer codex). implement.py claims the issue, runs the agent, and submits for review only on a successful run; failed/timed-out runs are not submitted. claim_issue() added to workflow.py is idempotent for re-claim at the implementing stage and reuses existing open-pool/self-review guards (no new bypass). Ran uv run pytest (230 passed, 20 skipped), uv run issuekit validate (0 warnings), uv run issuekit check-encoding (passed).`
