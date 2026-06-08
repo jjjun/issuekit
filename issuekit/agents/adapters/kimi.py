@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-import shutil
-from pathlib import Path
-
-from issuekit.agents.runner import AgentAdapter
+from issuekit.agents.runner import ConfigAgentAdapter
+from issuekit.config import IssuekitConfig
 
 
-class KimiAdapter(AgentAdapter):
+class KimiAdapter(ConfigAgentAdapter):
     """Adapter for the kimi-code CLI headless contract.
 
     Verified contract against kimi-code v0.11.0:
@@ -18,30 +16,12 @@ class KimiAdapter(AgentAdapter):
     - Stdin must be empty/closed or the process can hang.
     """
 
-    def __init__(self, model: str | None = None) -> None:
-        self.model = model
-
-    def resolve_binary(self) -> Path:
-        found = shutil.which("kimi")
-        if found:
-            return Path(found)
-        home = Path.home()
-        candidates = [
-            home / ".kimi-code" / "bin" / "kimi",
-            home / ".kimi-code" / "bin" / "kimi.exe",
-        ]
-        for candidate in candidates:
-            if candidate.exists():
-                return candidate
-        raise RuntimeError(
-            "kimi executable not found. Tried PATH and known per-OS locations."
-        )
-
-    def build_argv(self, prompt: str, plan_path: Path) -> list[str]:
-        argv = ["-p", prompt, "--output-format", "text"]
-        if self.model:
-            argv.extend(["-m", self.model])
-        return argv
+    def __init__(
+        self,
+        config: IssuekitConfig | None = None,
+        model: str | None = None,
+    ) -> None:
+        super().__init__("kimi", config=config, model=model)
 
     def parse_output(self, stdout: str, stderr: str) -> dict[str, str]:
         result: dict[str, str] = {

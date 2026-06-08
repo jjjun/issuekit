@@ -1,8 +1,12 @@
 ---
 id: 38
-status: active
+status: in_progress
 priority: low
 created: 2026-06-08
+completed: 
+assignee: codex
+stage: implementing
+implementer: codex
 title: Config-driven agent registry with codex adapter
 ---
 

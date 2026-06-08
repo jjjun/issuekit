@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import signal
 import subprocess
 import time
@@ -11,6 +12,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+from issuekit.config import AgentRunConfig, IssuekitConfig
 
 
 class AgentAdapter(ABC):
@@ -27,6 +30,72 @@ class AgentAdapter(ABC):
     @abstractmethod
     def parse_output(self, stdout: str, stderr: str) -> dict[str, str]:
         """Parse stdout/stderr into a structured dict."""
+
+
+class ConfigAgentAdapter(AgentAdapter):
+    """Adapter driven by declarative AgentRunConfig."""
+
+    def __init__(
+        self,
+        agent_name: str,
+        *,
+        config: IssuekitConfig | None = None,
+        model: str | None = None,
+    ) -> None:
+        self.agent_name = agent_name
+        self.config = config or IssuekitConfig()
+        agents_dict = dict(self.config.agents)
+        if agent_name not in agents_dict:
+            raise ValueError(f"Unknown agent: {agent_name}")
+        self.run_config = agents_dict[agent_name]
+        self.model = model
+
+    def resolve_binary(self) -> Path:
+        found = shutil.which(self.run_config.binary)
+        if found:
+            return Path(found)
+        for p in self.run_config.known_paths:
+            expanded = Path(p).expanduser()
+            if expanded.exists():
+                return expanded
+        raise RuntimeError(
+            f"{self.run_config.binary} executable not found. "
+            "Tried PATH and known per-OS locations."
+        )
+
+    def build_argv(self, prompt: str, plan_path: Path) -> list[str]:
+        argv = list(self.run_config.headless_argv)
+        argv.append(prompt)
+        if self.run_config.approval_flag and self.run_config.approval_value:
+            argv.extend([self.run_config.approval_flag, self.run_config.approval_value])
+        if self.run_config.output_format_flag and self.run_config.output_format:
+            argv.extend(
+                [self.run_config.output_format_flag, self.run_config.output_format]
+            )
+        if self.model and self.run_config.model_flag:
+            argv.extend([self.run_config.model_flag, self.model])
+        return argv
+
+    @abstractmethod
+    def parse_output(self, stdout: str, stderr: str) -> dict[str, str]:
+        """Parse stdout/stderr into a structured dict."""
+
+
+def resolve_adapter(
+    agent_name: str,
+    config: IssuekitConfig | None = None,
+    model: str | None = None,
+) -> AgentAdapter:
+    """Resolve an AgentAdapter by registered agent name."""
+    if agent_name == "kimi":
+        from issuekit.agents.adapters.kimi import KimiAdapter
+
+        return KimiAdapter(config=config, model=model)
+    if agent_name == "codex":
+        from issuekit.agents.adapters.codex import CodexAdapter
+
+        return CodexAdapter(config=config, model=model)
+    raise ValueError(f"Unknown agent: {agent_name}")
 
 
 @dataclass(frozen=True)

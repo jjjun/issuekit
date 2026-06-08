@@ -151,8 +151,8 @@ def test_kimi_adapter_parse_output_extracts_resume_id_from_stderr() -> None:
 
 
 def test_kimi_adapter_resolve_binary_raises_when_not_found(monkeypatch, tmp_path: Path) -> None:
-    monkeypatch.setattr("issuekit.agents.adapters.kimi.shutil.which", lambda _cmd: None)
-    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    monkeypatch.setattr("issuekit.agents.runner.shutil.which", lambda _cmd: None)
+    monkeypatch.setattr("os.path.expanduser", lambda p: str(p).replace("~", str(tmp_path)))
     adapter = KimiAdapter()
     with pytest.raises(RuntimeError, match="not found"):
         adapter.resolve_binary()
