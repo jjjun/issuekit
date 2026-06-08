@@ -1,10 +1,10 @@
 ---
 id: 53
-status: active
+status: completed
 priority: low
 created: 2026-06-09
-completed: 
-stage: todo
+completed: 2026-06-09
+stage: done
 author: claude
 title: Remove dead code and legacy agent-log compatibility
 ---
@@ -78,3 +78,14 @@ Remove the dead and obsolete-compat code:
 - `issuekit/agents/status.py`, `issuekit/agents/runner.py`,
   `issuekit/commands/runs.py`, `issuekit/cli.py`,
   `issuekit/agents/adapters/codex.py`
+
+## Handoff
+
+- Summary: Implemented by codex via issuekit implement.
+
+**Completed**: 2026-06-09
+
+## Completion Notes
+
+- Remove dead code and legacy agent-log compatibility.
+- Verification: `Reviewed codex's diff: removed unused _not_implemented (cli.py), the redundant CodexAdapter.parse_output override, the .err.log probe in _reserve_run_id, the stderr_log fallback in RunStatus.from_dict, and the stale legacy comment in runs.py; test_runs renamed to agent_log. All correct. Reviewer fix applied: codex also dropped the still-required 'import argparse' from cli.py (breaking build_parser at runtime) and saved the file as CRLF; reviewer restored the import and normalized to LF. After the fix: uv run pytest -> 270 passed, 22 skipped; uv run issuekit check-encoding -> clean; issuekit CLI works.`

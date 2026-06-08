@@ -51,13 +51,6 @@ COMMANDS = (
 )
 
 
-def _not_implemented(command_name: str):
-    def handler(_args: argparse.Namespace) -> int:
-        raise NotImplementedError(command_name)
-
-    return handler
-
-
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="issuekit",

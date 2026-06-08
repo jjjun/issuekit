@@ -26,9 +26,3 @@ class CodexAdapter(ConfigAgentAdapter):
         model: str | None = None,
     ) -> None:
         super().__init__("codex", config=config, model=model)
-
-    def parse_output(self, stdout: str, stderr: str) -> dict[str, str]:
-        return {
-            "stdout": stdout,
-            "stderr": stderr,
-        }

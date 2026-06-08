@@ -467,7 +467,6 @@ class AgentRunner:
             if (
                 (run_dir / f"{run_id}.out.log").exists()
                 or (run_dir / f"{run_id}.agent.log").exists()
-                or (run_dir / f"{run_id}.err.log").exists()
                 or status_path(run_dir, run_id).exists()
                 or reservation_path.exists()
             ):

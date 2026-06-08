@@ -106,11 +106,11 @@ def test_runs_detail_missing_returns_error(tmp_path: Path, monkeypatch, capsys) 
     assert "Run not found: missing" in capsys.readouterr().err
 
 
-def test_runs_detail_reads_legacy_err_log(tmp_path: Path, monkeypatch, capsys) -> None:
+def test_runs_detail_reads_agent_log(tmp_path: Path, monkeypatch, capsys) -> None:
     run_dir = tmp_path / ".agent-runs"
     run_dir.mkdir()
-    stderr_log = run_dir / "legacy.err.log"
-    stderr_log.write_text("legacy-err-line\n", encoding="utf-8", newline="\n")
+    agent_log = run_dir / "legacy.agent.log"
+    agent_log.write_text("legacy-agent-line\n", encoding="utf-8", newline="\n")
     status_json = {
         "run_id": "legacy",
         "agent": "codex",
@@ -123,7 +123,7 @@ def test_runs_detail_reads_legacy_err_log(tmp_path: Path, monkeypatch, capsys) -
         "exit_code": 0,
         "plan": "docs/issues/active/001_first.md",
         "stdout_log": ".agent-runs/legacy.out.log",
-        "stderr_log": ".agent-runs/legacy.err.log",
+        "agent_log": ".agent-runs/legacy.agent.log",
     }
     (run_dir / "legacy.status.json").write_text(
         json.dumps(status_json, indent=2) + "\n", encoding="utf-8", newline="\n"
@@ -134,7 +134,7 @@ def test_runs_detail_reads_legacy_err_log(tmp_path: Path, monkeypatch, capsys) -
 
     output = capsys.readouterr().out
     assert '"run_id": "legacy"' in output
-    assert "legacy-err-line" in output
+    assert "legacy-agent-line" in output
 
 
 def _write_run(

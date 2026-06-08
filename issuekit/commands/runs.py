@@ -71,9 +71,6 @@ def _print_detail(run_dir: Path, run_id: str, *, json_output: bool) -> int:
 
     print(json.dumps(record, indent=2))
     _print_log_tail("stdout", _resolve_log_path(run_dir, status.stdout_log))
-    # Legacy `.err.log` runs are handled by RunStatus.from_dict, which maps an
-    # old status file's `stderr_log` onto `agent_log`, so the resolved path
-    # already points at the existing log regardless of the run's age.
     _print_log_tail("agent", _resolve_log_path(run_dir, status.agent_log))
     return 0
 
