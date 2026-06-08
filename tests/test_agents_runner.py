@@ -57,6 +57,29 @@ def test_runner_captures_stdout_stderr_and_returns_result(tmp_path: Path) -> Non
     assert status["agent_log"].endswith(".agent.log")
 
 
+def test_runner_prompt_forbids_tracker_mutations(tmp_path: Path) -> None:
+    class PromptCaptureAdapter(FakeAdapter):
+        prompt: str = ""
+
+        def build_argv(self, prompt: str, plan_path: Path) -> list[str]:
+            self.prompt = prompt
+            return super().build_argv(prompt, plan_path)
+
+    script = tmp_path / "script.py"
+    script.write_text("pass")
+    plan = tmp_path / "plan.md"
+    plan.write_text("plan")
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / ".git").mkdir()
+
+    adapter = PromptCaptureAdapter([sys.executable, str(script)])
+    AgentRunner().run(adapter, plan, repo, timeout=10.0)
+
+    assert "Never move, create, delete, or edit files under docs/issues/" in adapter.prompt
+    assert "issuekit owns the tracker lifecycle" in adapter.prompt
+
+
 def test_runner_replaces_invalid_log_bytes_before_parsing(tmp_path: Path) -> None:
     class ParsingAdapter(FakeAdapter):
         def parse_output(self, stdout: str, stderr: str) -> dict[str, str]:

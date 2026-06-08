@@ -233,6 +233,11 @@ agent, and submits the completed work for review. Use it when you need to push a
 specific issue through a named external agent instead of waiting for an idle
 implementer to pull from the queue.
 
+Implementers driven by `issuekit implement` must not move, create, delete, or
+edit files under `docs/issues/`, including generated indexes. The command owns
+tracker lifecycle changes and will restore tracker mutations before submitting
+the issue for review.
+
 Separation-of-duties rules:
 
 - The author role and implementer role must be different sessions. Explicit

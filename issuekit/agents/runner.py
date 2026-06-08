@@ -121,6 +121,70 @@ class AgentResult:
     parsed: dict[str, str] | None = None
     status_short: str | None = None
     status_path: Path | None = None
+    tracker_mutation_restored: bool = False
+    tracker_mutation_paths: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class _TrackerSnapshot:
+    """Pre-agent file contents for the issue tracker subtree."""
+
+    root: Path
+    files: dict[Path, bytes]
+
+    @classmethod
+    def capture(cls, root: Path) -> "_TrackerSnapshot":
+        root = root.resolve()
+        files: dict[Path, bytes] = {}
+        if root.exists():
+            for path in root.rglob("*"):
+                if path.is_file():
+                    files[path.relative_to(root)] = path.read_bytes()
+        return cls(root=root, files=files)
+
+    def changed_paths(self) -> tuple[str, ...]:
+        current: dict[Path, bytes] = {}
+        if self.root.exists():
+            for path in self.root.rglob("*"):
+                if path.is_file():
+                    current[path.relative_to(self.root)] = path.read_bytes()
+        changed = {
+            rel
+            for rel in set(self.files) | set(current)
+            if self.files.get(rel) != current.get(rel)
+        }
+        return tuple(sorted(rel.as_posix() for rel in changed))
+
+    def restore(self) -> tuple[str, ...]:
+        changed = self.changed_paths()
+        if not changed:
+            return ()
+
+        self.root.mkdir(parents=True, exist_ok=True)
+        current_files = [
+            path
+            for path in self.root.rglob("*")
+            if path.is_file() and path.relative_to(self.root) not in self.files
+        ]
+        for path in current_files:
+            path.unlink()
+
+        for rel, content in self.files.items():
+            path = self.root / rel
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(content)
+
+        for path in sorted(
+            (candidate for candidate in self.root.rglob("*") if candidate.is_dir()),
+            key=lambda candidate: len(candidate.parts),
+            reverse=True,
+        ):
+            try:
+                path.rmdir()
+            except OSError:
+                pass
+
+        return changed
 
 
 class _RunWatcher:
@@ -230,6 +294,7 @@ class AgentRunner:
         agent_name: str | None = None,
         issue_id: int | None = None,
         follow: bool = False,
+        tracker_dir: Path | None = None,
     ) -> AgentResult:
         plan_path = plan_path.resolve()
         repo = repo.resolve()
@@ -242,10 +307,18 @@ class AgentRunner:
         prompt = (
             f"Read the plan file at: {plan_path} . Implement it fully by editing "
             "files directly in this repository. Do NOT run git commit or git push - "
-            "leave all changes unstaged for review. If the plan is ambiguous, make "
-            "the most reasonable choice and note it at the end."
+            "leave all changes unstaged for review. Edit only code, tests, and "
+            "supporting project files needed for the implementation. Never move, "
+            "create, delete, or edit files under docs/issues/ or its indexes; "
+            "issuekit owns the tracker lifecycle, not the implementer. If the plan "
+            "is ambiguous, make the most reasonable choice and note it at the end."
         )
         argv = [str(binary)] + adapter.build_argv(prompt, plan_path)
+        tracker_snapshot = (
+            _TrackerSnapshot.capture(tracker_dir)
+            if tracker_dir is not None
+            else None
+        )
 
         run_dir = repo / ".agent-runs"
         run_dir_existed = run_dir.exists()
@@ -349,6 +422,27 @@ class AgentRunner:
         agent_log_text = agent_log_path.read_text(encoding="utf-8", errors="replace")
         parsed = adapter.parse_output(stdout_text, agent_log_text)
 
+        tracker_mutation_paths: tuple[str, ...] = ()
+        if tracker_snapshot is not None:
+            try:
+                tracker_mutation_paths = tracker_snapshot.restore()
+            except OSError as exc:
+                rel_tracker = repo_relative(tracker_snapshot.root, repo)
+                raise RuntimeError(
+                    f"Implementer modified issue tracker under {rel_tracker}, "
+                    f"and issuekit could not restore it: {exc}"
+                ) from exc
+            if tracker_mutation_paths:
+                rel_tracker = repo_relative(tracker_snapshot.root, repo)
+                preview = ", ".join(tracker_mutation_paths[:5])
+                if len(tracker_mutation_paths) > 5:
+                    preview += ", ..."
+                print(
+                    f"WARNING: implementer modified issue tracker under {rel_tracker}; "
+                    f"restored pre-agent tracker state. Changed tracker paths: {preview}",
+                    file=sys.stderr,
+                )
+
         status_short = self._git_status_short(repo)
 
         return AgentResult(
@@ -360,6 +454,8 @@ class AgentRunner:
             parsed=parsed,
             status_short=status_short,
             status_path=run_status_path,
+            tracker_mutation_restored=bool(tracker_mutation_paths),
+            tracker_mutation_paths=tracker_mutation_paths,
         )
 
     def _reserve_run_id(self, run_dir: Path) -> tuple[str, Path]:

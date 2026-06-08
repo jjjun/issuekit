@@ -1,10 +1,10 @@
 ---
 id: 52
-status: active
+status: completed
 priority: high
 created: 2026-06-08
-completed: 
-stage: todo
+completed: 2026-06-08
+stage: done
 author: claude
 title: Guard issuekit implement against implementer mutating tracker state
 ---
@@ -99,3 +99,14 @@ the real fix.
 - `issuekit/commands/implement.py` (submit_for_review path)
 - Separation-of-duties invariants in `get_protocol` and `docs/issues/README.md`
 - Prior art: #48 (implement hardening), #49-#51 (progress visibility)
+
+## Handoff
+
+- Summary: Guard issuekit implement against implementer tracker mutation. Added a do-not-touch-docs/issues clause to the implement prompt, a _TrackerSnapshot capture/restore guard in AgentRunner wired via tracker_dir (reverts and warns if the implementer mutates the tracker subtree), and a targeted submit_for_review error in implement.py when the issue was moved out of active/. Documented the rule in docs/issues/README.md. Tests added in test_agents_runner.py and test_implement_command.py; full suite 264 passed/22 skipped, check-encoding clean.
+
+**Completed**: 2026-06-08
+
+## Completion Notes
+
+- Approved by claude.
+- Verification: `Reviewed codex's diff across runner.py, implement.py, README.md, and both test files. All three plan layers are present and correct: (1) implement prompt now forbids editing docs/issues/; (2) _TrackerSnapshot.capture/restore in AgentRunner, wired via tracker_dir from implement.py, reverts tracker-subtree mutations after the agent exits and warns to stderr, raising a clear RuntimeError if restore fails; (3) _submit_for_review_error surfaces a targeted message when the issue was moved out of active/. Verified: uv run pytest tests/test_agents_runner.py tests/test_implement_command.py -> 28 passed; full suite -> 264 passed, 22 skipped; uv run issuekit check-encoding -> clean. Approving.`

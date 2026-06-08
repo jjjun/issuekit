@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from pathlib import Path
+import sys
 
 import pytest
 
@@ -82,6 +83,100 @@ def test_implement_command_resolves_issue_and_invokes_runner(
     assert issue.stage == "review"
     assert issue.implementer == "kimi"
     assert "## Handoff" in issue.file_path.read_text(encoding="utf-8")
+
+
+def test_implement_command_restores_agent_tracker_mutations(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "default_reviewer = 'auto'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    issues_dir = make_issue_tree(tmp_path)
+    script = tmp_path / "mutate_tracker.py"
+    script.write_text(
+        "\n".join(
+            [
+                "import pathlib, shutil, sys",
+                "plan = pathlib.Path(sys.argv[1])",
+                "issues_dir = plan.parents[1]",
+                "completed = issues_dir / 'completed' / plan.name",
+                "completed.parent.mkdir(parents=True, exist_ok=True)",
+                "shutil.move(str(plan), str(completed))",
+                "(issues_dir / 'indexes' / 'active.md').write_text('mutated\\n', encoding='utf-8')",
+                "(issues_dir / 'indexes' / 'stray.md').write_text('stray\\n', encoding='utf-8')",
+            ]
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    class MutatingAdapter:
+        def resolve_binary(self) -> Path:
+            return Path(sys.executable)
+
+        def build_argv(self, prompt: str, plan_path: Path) -> list[str]:
+            return [str(script), str(plan_path)]
+
+        def parse_output(self, stdout: str, stderr: str) -> dict[str, str]:
+            return {}
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        "issuekit.commands.implement.resolve_adapter",
+        lambda *args, **kwargs: MutatingAdapter(),
+    )
+
+    exit_code = cli.main(["implement", "1", "--agent", "kimi", "--timeout-sec", "12"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "WARNING: implementer modified issue tracker under docs/issues" in captured.err
+    assert not (issues_dir / "completed" / "001_first.md").exists()
+    assert not (issues_dir / "indexes" / "stray.md").exists()
+    [issue] = read_issues(issues_dir, "active")
+    assert issue.assignee == ""
+    assert issue.stage == "review"
+    assert issue.implementer == "kimi"
+    assert "## Handoff" in issue.file_path.read_text(encoding="utf-8")
+
+
+def test_implement_command_reports_completed_move_when_submit_cannot_find_issue(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    issues_dir = make_issue_tree(tmp_path)
+
+    class CompletingRunner(FakeRunner):
+        def run(
+            self,
+            adapter,
+            plan_path: Path,
+            repo: Path,
+            timeout: float,
+            agent_name: str | None = None,
+            issue_id: int | None = None,
+            follow: bool = False,
+            **kwargs,
+        ) -> FakeResult:
+            completed_path = issues_dir / "completed" / plan_path.name
+            completed_path.parent.mkdir(parents=True, exist_ok=True)
+            plan_path.replace(completed_path)
+            return FakeResult(status_short=" M code.py")
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", CompletingRunner)
+
+    exit_code = cli.main(["implement", "1", "--agent", "codex"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "moved to completed/001_first.md during implementation" in captured.err
+    assert "Implementers must not mutate docs/issues/ tracker state" in captured.err
 
 
 def test_implement_command_does_not_commit_or_push(

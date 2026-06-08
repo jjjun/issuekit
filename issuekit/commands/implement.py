@@ -45,6 +45,7 @@ def run(args) -> int:
             agent_name=args.agent,
             issue_id=issue.id,
             follow=getattr(args, "follow", False),
+            tracker_dir=issues_dir,
         )
     except (FileNotFoundError, RuntimeError, ValueError, TimeoutError, WorkflowError) as exc:
         print(str(exc), file=sys.stderr)
@@ -95,7 +96,7 @@ def run(args) -> int:
             config=config,
         )
     except (TimeoutError, WorkflowError) as exc:
-        print(str(exc), file=sys.stderr)
+        print(_submit_for_review_error(issues_dir, issue.id or issue_id, exc), file=sys.stderr)
         return 1
 
     write_index_files(issues_dir, config.recent_count)
@@ -110,3 +111,24 @@ def _has_recorded_implementation_commit(parsed: dict[str, str] | None) -> bool:
     if not parsed:
         return False
     return bool(parsed.get("implementation_commit") or parsed.get("commit"))
+
+
+def _submit_for_review_error(issues_dir: Path, issue_id: int, exc: Exception) -> str:
+    generic_missing = f"Active issue #{issue_id} was not found."
+    if str(exc) != generic_missing:
+        return str(exc)
+
+    _, completed_issues, _ = read_all_issues(issues_dir)
+    completed_issue = next(
+        (candidate for candidate in completed_issues if candidate.id == issue_id),
+        None,
+    )
+    if completed_issue is None:
+        return str(exc)
+
+    return (
+        f"Active issue #{issue_id} was not found because it appears to have been "
+        f"moved to {completed_issue.relative_path} during implementation. "
+        "Implementers must not mutate docs/issues/ tracker state; restore the "
+        "issue to active/ and submit it for review."
+    )
