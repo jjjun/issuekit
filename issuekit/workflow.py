@@ -150,7 +150,8 @@ def submit_for_review(
             if resolved_reviewer and issue.implementer and resolved_reviewer == issue.implementer:
                 raise WorkflowError(
                     f"Issue #{issue_id} was implemented by {issue.implementer}; "
-                    "omit `reviewer` to route through the open review pool instead."
+                    "omit `reviewer` if default_reviewer is auto to use the open "
+                    "review pool, otherwise name a different reviewer."
                 )
             ensure_not_self_review(issue, resolved_reviewer, config)
         note = _handoff_note(summary=summary, branch=branch or "", commit=commit or "")
