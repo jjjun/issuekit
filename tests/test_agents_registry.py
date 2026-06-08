@@ -32,6 +32,22 @@ def test_resolve_adapter_unknown_raises() -> None:
         resolve_adapter("unknown")
 
 
+def test_resolve_adapter_returns_configured_agent() -> None:
+    config = IssuekitConfig(
+        agents=(
+            (
+                "custom",
+                AgentRunConfig(binary="custom-agent", headless_argv=("run",)),
+            ),
+        )
+    )
+
+    adapter = resolve_adapter("custom", config=config)
+
+    assert isinstance(adapter, ConfigAgentAdapter)
+    assert adapter.agent_name == "custom"
+
+
 def test_resolve_adapter_passes_model() -> None:
     adapter = resolve_adapter("kimi", model="k2")
     assert adapter.model == "k2"

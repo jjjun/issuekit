@@ -11,6 +11,7 @@ from issuekit.commands import (
     complete,
     generate_indexes,
     handoff,
+    implement,
     info,
     init,
     propose,
@@ -23,6 +24,7 @@ from issuekit.commands import (
 
 COMMANDS = (
     "info",
+    "implement",
     "validate",
     "generate-indexes",
     "complete",
@@ -65,6 +67,25 @@ def build_parser() -> argparse.ArgumentParser:
     info_parser = subparsers.add_parser("info", help="Show issue tracker status.")
     info_parser.add_argument("--json", action="store_true", help="Print JSON output.")
     info_parser.set_defaults(func=info.run)
+
+    implement_parser = subparsers.add_parser(
+        "implement",
+        help="Drive an agent to implement an active issue.",
+    )
+    implement_parser.add_argument("id", help="Issue id to implement.")
+    implement_parser.add_argument(
+        "--agent",
+        required=True,
+        help="Configured agent name to run.",
+    )
+    implement_parser.add_argument("--model", help="Optional model name passed to the agent.")
+    implement_parser.add_argument(
+        "--timeout-sec",
+        type=float,
+        default=600.0,
+        help="Hard timeout for the agent run in seconds.",
+    )
+    implement_parser.set_defaults(func=implement.run)
 
     validate_parser = subparsers.add_parser(
         "validate",

@@ -78,9 +78,12 @@ class ConfigAgentAdapter(AgentAdapter):
             argv.extend([self.run_config.model_flag, self.model])
         return argv
 
-    @abstractmethod
     def parse_output(self, stdout: str, stderr: str) -> dict[str, str]:
         """Parse stdout/stderr into a structured dict."""
+        return {
+            "stdout": stdout,
+            "stderr": stderr,
+        }
 
 
 def resolve_adapter(
@@ -89,6 +92,7 @@ def resolve_adapter(
     model: str | None = None,
 ) -> AgentAdapter:
     """Resolve an AgentAdapter by registered agent name."""
+    config = config or IssuekitConfig()
     if agent_name == "kimi":
         from issuekit.agents.adapters.kimi import KimiAdapter
 
@@ -97,6 +101,8 @@ def resolve_adapter(
         from issuekit.agents.adapters.codex import CodexAdapter
 
         return CodexAdapter(config=config, model=model)
+    if agent_name in dict(config.agents):
+        return ConfigAgentAdapter(agent_name, config=config, model=model)
     raise ValueError(f"Unknown agent: {agent_name}")
 
 

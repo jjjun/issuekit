@@ -7,6 +7,7 @@ from issuekit import cli
 
 EXPECTED_COMMANDS = {
     "info",
+    "implement",
     "validate",
     "generate-indexes",
     "complete",
@@ -79,6 +80,7 @@ def test_handlers_are_stubs(command: str) -> None:
         "claim",
         "complete",
         "generate-indexes",
+        "implement",
         "info",
         "init",
         "queue",
