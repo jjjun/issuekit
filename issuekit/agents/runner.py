@@ -6,6 +6,8 @@ import os
 import shutil
 import signal
 import subprocess
+import sys
+import threading
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, replace
@@ -13,7 +15,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from issuekit.agents.status import RunStatus, repo_relative, status_path, write_status
+from issuekit.agents.status import RunStatus, read_status, repo_relative, status_path, write_status
 from issuekit.config import AgentRunConfig, IssuekitConfig
 
 
@@ -121,6 +123,101 @@ class AgentResult:
     status_path: Path | None = None
 
 
+class _RunWatcher:
+    """Background watcher that updates status JSON and optionally emits a heartbeat."""
+
+    def __init__(
+        self,
+        *,
+        run_status_path: Path,
+        run_status: RunStatus,
+        repo: Path,
+        agent_log_path: Path,
+        enable_heartbeat: bool,
+        start_time: float,
+    ) -> None:
+        self.run_status_path = run_status_path
+        self.run_status = run_status
+        self.repo = repo
+        self.agent_log_path = agent_log_path
+        self.enable_heartbeat = enable_heartbeat
+        self.start_time = start_time
+        self._stop_event = threading.Event()
+        self._thread = threading.Thread(target=self._loop, daemon=True)
+
+    def start(self) -> None:
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._stop_event.set()
+        self._thread.join(timeout=2.0)
+
+    def _loop(self) -> None:
+        while not self._stop_event.is_set():
+            self._tick()
+            self._stop_event.wait(timeout=1.0)
+
+    def _tick(self) -> None:
+        last_line = self._read_last_log_line(self.agent_log_path)
+        now = datetime.now().replace(microsecond=0).isoformat()
+        changed = self._changed_file_count(self.repo)
+
+        self.run_status = replace(
+            self.run_status,
+            last_log_line=last_line,
+            last_log_at=now if last_line else self.run_status.last_log_at,
+            heartbeat_at=now,
+        )
+        write_status(self.run_status_path, self.run_status)
+
+        if self.enable_heartbeat:
+            elapsed = time.monotonic() - self.start_time
+            minutes, seconds = divmod(int(elapsed), 60)
+            line_text = last_line or "-"
+            if len(line_text) > 50:
+                line_text = line_text[:47] + "..."
+            msg = (
+                f"[{minutes:02d}:{seconds:02d}] running run={self.run_status.run_id} "
+                f"changed={changed} last: {line_text}"
+            )
+            max_width = 100
+            if len(msg) > max_width:
+                msg = msg[: max_width - 3] + "..."
+            sys.stderr.write(f"\r{msg}")
+            sys.stderr.flush()
+
+    @staticmethod
+    def _read_last_log_line(path: Path) -> str | None:
+        try:
+            data = path.read_bytes()
+        except OSError:
+            return None
+        if not data:
+            return None
+        lines = data.split(b"\n")
+        for line in reversed(lines):
+            stripped = line.strip()
+            if stripped:
+                return stripped.decode("utf-8", errors="replace")
+        return None
+
+    @staticmethod
+    def _changed_file_count(repo: Path) -> int:
+        try:
+            result = subprocess.run(
+                ["git", "--no-pager", "status", "--short"],
+                cwd=str(repo),
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if result.returncode == 0:
+                return sum(1 for line in result.stdout.splitlines() if line.strip())
+            return 0
+        except (OSError, subprocess.SubprocessError):
+            return 0
+
+
 class AgentRunner:
     """Drive a coding agent synchronously against a target repo."""
 
@@ -132,6 +229,7 @@ class AgentRunner:
         timeout: float = 600.0,
         agent_name: str | None = None,
         issue_id: int | None = None,
+        follow: bool = False,
     ) -> AgentResult:
         plan_path = plan_path.resolve()
         repo = repo.resolve()
@@ -150,7 +248,13 @@ class AgentRunner:
         argv = [str(binary)] + adapter.build_argv(prompt, plan_path)
 
         run_dir = repo / ".agent-runs"
+        run_dir_existed = run_dir.exists()
         run_dir.mkdir(exist_ok=True)
+        if not run_dir_existed:
+            print(
+                ".agent-runs/ is gitignored run-log storage and is not normally committed.",
+                file=sys.stderr,
+            )
         run_id, reservation_path = self._reserve_run_id(run_dir)
         stdout_path = run_dir / f"{run_id}.out.log"
         agent_log_path = run_dir / f"{run_id}.agent.log"
@@ -173,7 +277,9 @@ class AgentRunner:
         write_status(run_status_path, run_status)
         self._release_run_id_reservation(reservation_path)
 
+        enable_heartbeat = sys.stderr.isatty() or follow
         start = time.monotonic()
+        watcher: _RunWatcher | None = None
         with open(stdout_path, "w", encoding="utf-8") as out_f, open(
             agent_log_path, "w", encoding="utf-8"
         ) as log_f:
@@ -191,6 +297,17 @@ class AgentRunner:
             proc = subprocess.Popen(argv, **kwargs)
             run_status = replace(run_status, pid=proc.pid)
             write_status(run_status_path, run_status)
+
+            watcher = _RunWatcher(
+                run_status_path=run_status_path,
+                run_status=run_status,
+                repo=repo,
+                agent_log_path=agent_log_path,
+                enable_heartbeat=enable_heartbeat,
+                start_time=start,
+            )
+            watcher.start()
+
             try:
                 exit_code = proc.wait(timeout=timeout)
                 timed_out = False
@@ -198,9 +315,22 @@ class AgentRunner:
                 timed_out = True
                 self._kill_process_group(proc)
                 exit_code = proc.returncode if proc.returncode is not None else -1
+            finally:
+                if watcher is not None:
+                    watcher.stop()
+                    if enable_heartbeat:
+                        sys.stderr.write("\n")
+                        sys.stderr.flush()
 
         elapsed = time.monotonic() - start
         terminal_status = self._terminal_status(exit_code, timed_out)
+
+        # Preserve fields the watcher may have written.
+        try:
+            current_status = read_status(run_status_path)
+        except (OSError, ValueError):
+            current_status = run_status
+
         write_status(
             run_status_path,
             replace(
@@ -209,6 +339,9 @@ class AgentRunner:
                 ended_at=datetime.now().replace(microsecond=0).isoformat(),
                 elapsed_sec=elapsed,
                 exit_code=exit_code,
+                last_log_line=current_status.last_log_line,
+                last_log_at=current_status.last_log_at,
+                heartbeat_at=current_status.heartbeat_at,
             ),
         )
 

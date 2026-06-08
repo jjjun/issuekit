@@ -257,3 +257,102 @@ def test_kimi_adapter_resolve_binary_raises_when_not_found(monkeypatch, tmp_path
     adapter = KimiAdapter()
     with pytest.raises(RuntimeError, match="not found"):
         adapter.resolve_binary()
+
+
+
+def test_runner_status_gains_last_log_fields_during_run(tmp_path: Path) -> None:
+    script = tmp_path / "script.py"
+    script.write_text(
+        "import sys, time; print('log-one', file=sys.stderr); time.sleep(0.8); print('log-two', file=sys.stderr); time.sleep(0.8)"
+    )
+    plan = tmp_path / "plan.md"
+    plan.write_text("plan")
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / ".git").mkdir()
+
+    adapter = FakeAdapter([sys.executable, str(script)])
+    result = AgentRunner().run(adapter, plan, repo, timeout=10.0)
+
+    assert result.status_path is not None
+    final_status = json.loads(result.status_path.read_text(encoding="utf-8"))
+    assert final_status["last_log_line"] == "log-two"
+    assert final_status["last_log_at"] is not None
+    assert final_status["heartbeat_at"] is not None
+
+
+def test_runner_prints_agent_runs_note_when_dir_is_created(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    script = tmp_path / "script.py"
+    script.write_text("pass")
+    plan = tmp_path / "plan.md"
+    plan.write_text("plan")
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / ".git").mkdir()
+
+    adapter = FakeAdapter([sys.executable, str(script)])
+    AgentRunner().run(adapter, plan, repo, timeout=10.0)
+
+    captured = capsys.readouterr()
+    assert ".agent-runs/ is gitignored run-log storage" in captured.err
+
+
+def test_runner_does_not_print_agent_runs_note_when_dir_already_exists(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    script = tmp_path / "script.py"
+    script.write_text("pass")
+    plan = tmp_path / "plan.md"
+    plan.write_text("plan")
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / ".git").mkdir()
+    (repo / ".agent-runs").mkdir()
+
+    adapter = FakeAdapter([sys.executable, str(script)])
+    AgentRunner().run(adapter, plan, repo, timeout=10.0)
+
+    captured = capsys.readouterr()
+    assert ".agent-runs/ is gitignored run-log storage" not in captured.err
+
+
+def test_runner_heartbeat_suppressed_when_stderr_not_tty(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    script = tmp_path / "script.py"
+    script.write_text("import time; time.sleep(0.3)")
+    plan = tmp_path / "plan.md"
+    plan.write_text("plan")
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / ".git").mkdir()
+
+    monkeypatch.setattr("sys.stderr.isatty", lambda: False)
+
+    adapter = FakeAdapter([sys.executable, str(script)])
+    AgentRunner().run(adapter, plan, repo, timeout=10.0)
+
+    captured = capsys.readouterr()
+    assert "running run=" not in captured.err
+
+
+def test_runner_heartbeat_emitted_when_follow_is_set(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    script = tmp_path / "script.py"
+    script.write_text("import time; time.sleep(0.3)")
+    plan = tmp_path / "plan.md"
+    plan.write_text("plan")
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / ".git").mkdir()
+
+    monkeypatch.setattr("sys.stderr.isatty", lambda: False)
+
+    adapter = FakeAdapter([sys.executable, str(script)])
+    AgentRunner().run(adapter, plan, repo, timeout=10.0, follow=True)
+
+    captured = capsys.readouterr()
+    assert "running run=" in captured.err

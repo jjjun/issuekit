@@ -1,9 +1,10 @@
 ---
 id: 49
-status: active
+status: completed
 priority: medium
 created: 2026-06-08
-completed:
+completed: 2026-06-08
+stage: done
 origin: py_cr_wrapper#0@3f071a8
 title: Improve issuekit implement progress visibility
 ---
@@ -130,3 +131,10 @@ cost stays flat regardless of run length:
 - Split siblings: #50 (info status+stage), #51 (rename err.log)
 - Prior art: #37, #39 (headless runner), #41 (run status), #48 (implement
   hardening, `.agent-runs/` gitignore)
+
+**Completed**: 2026-06-08
+
+## Completion Notes
+
+- TTY-gated live heartbeat + status.json enrichment for issuekit implement progress visibility (#49: proposal points 1,2,3,6). --follow flag added; captured stdout stays compact.
+- Verification: `uv run pytest tests/test_agents_runner.py tests/test_implement_command.py tests/test_runs_command.py (32 passed). Reviewed runner.py: enable_heartbeat = sys.stderr.isatty() or follow gates streaming so no heartbeat reaches a captured (non-TTY) pipe; watcher thread updates status.json (last_log_line/last_log_at/heartbeat_at) for cheap orchestrator polling; final write_status preserves watcher fields; .agent-runs note printed to stderr only. --force used because implementer (kimi) wrongly self-moved the issue to completed, breaking submit_for_review; tracker state was restored and re-approved by reviewer=claude.`

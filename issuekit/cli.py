@@ -109,6 +109,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=600.0,
         help="Hard timeout for the agent run in seconds.",
     )
+    implement_parser.add_argument(
+        "--follow",
+        action="store_true",
+        help="Emit a live heartbeat to stderr while the agent runs.",
+    )
     implement_parser.set_defaults(func=implement.run)
 
     validate_parser = subparsers.add_parser(

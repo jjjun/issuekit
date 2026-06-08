@@ -44,6 +44,7 @@ def run(args) -> int:
             timeout=float(args.timeout_sec),
             agent_name=args.agent,
             issue_id=issue.id,
+            follow=getattr(args, "follow", False),
         )
     except (FileNotFoundError, RuntimeError, ValueError, TimeoutError, WorkflowError) as exc:
         print(str(exc), file=sys.stderr)

@@ -34,6 +34,8 @@ class FakeRunner:
         timeout: float,
         agent_name: str | None = None,
         issue_id: int | None = None,
+        follow: bool = False,
+        **kwargs,
     ) -> FakeResult:
         self.calls.append((adapter, plan_path, repo, timeout, agent_name, issue_id))
         return FakeResult(parsed={"resume_session_id": "abc123"})
@@ -109,6 +111,8 @@ def test_implement_command_does_not_commit_or_push(
             timeout: float,
             agent_name: str | None = None,
             issue_id: int | None = None,
+            follow: bool = False,
+            **kwargs,
         ) -> FakeResult:
             return FakeResult(status_short=" M tracked.py")
 
@@ -139,6 +143,8 @@ def test_implement_command_omits_uncommitted_warning_when_no_changes(
             timeout: float,
             agent_name: str | None = None,
             issue_id: int | None = None,
+            follow: bool = False,
+            **kwargs,
         ) -> FakeResult:
             return FakeResult(status_short="")
 
@@ -166,6 +172,8 @@ def test_implement_command_does_not_submit_failed_run(
             timeout: float,
             agent_name: str | None = None,
             issue_id: int | None = None,
+            follow: bool = False,
+            **kwargs,
         ) -> FakeResult:
             return FakeResult(exit_code=2, status_short=" M tracked.py")
 

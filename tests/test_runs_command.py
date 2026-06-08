@@ -167,3 +167,34 @@ def _write_run(
             agent_log=agent_log or f".agent-runs/{run_id}.agent.log",
         ),
     )
+
+
+def test_runs_list_shows_last_log_line(tmp_path: Path, monkeypatch, capsys) -> None:
+    run_dir = tmp_path / ".agent-runs"
+    write_status(
+        status_path(run_dir, "run-a"),
+        RunStatus(
+            run_id="run-a",
+            agent="kimi",
+            issue=1,
+            status="running",
+            pid=123,
+            started_at="2026-06-08T11:00:00",
+            ended_at=None,
+            elapsed_sec=None,
+            exit_code=None,
+            plan="docs/issues/active/001_first.md",
+            stdout_log=".agent-runs/run-a.out.log",
+            agent_log=".agent-runs/run-a.agent.log",
+            last_log_line=" agent is processing...",
+            last_log_at="2026-06-08T11:00:05",
+            heartbeat_at="2026-06-08T11:00:05",
+        ),
+    )
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["runs"]) == 0
+
+    output = capsys.readouterr().out
+    assert "agent is processing..." in output
+    assert "LAST LOG" in output

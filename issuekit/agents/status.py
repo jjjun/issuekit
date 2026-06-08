@@ -28,6 +28,9 @@ class RunStatus:
     plan: str
     stdout_log: str
     agent_log: str
+    last_log_line: str | None = None
+    last_log_at: str | None = None
+    heartbeat_at: str | None = None
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "RunStatus":
@@ -44,6 +47,9 @@ class RunStatus:
             plan=str(data["plan"]),
             stdout_log=str(data["stdout_log"]),
             agent_log=str(data["agent_log"]) if "agent_log" in data else str(data["stderr_log"]),
+            last_log_line=_optional_str(data.get("last_log_line")),
+            last_log_at=_optional_str(data.get("last_log_at")),
+            heartbeat_at=_optional_str(data.get("heartbeat_at")),
         )
 
     def to_dict(self) -> dict[str, Any]:

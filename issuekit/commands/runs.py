@@ -40,6 +40,7 @@ def _print_list(run_dir: Path, *, active_only: bool, json_output: bool) -> int:
             str(status.issue) if status.issue is not None else "-",
             status.status,
             _format_elapsed(status),
+            _format_last_log(status),
         )
         for status in statuses
     ]
@@ -49,8 +50,9 @@ def _print_list(run_dir: Path, *, active_only: bool, json_output: bool) -> int:
         max(len("ISSUE"), *(len(row[2]) for row in rows)),
         max(len("STATUS"), *(len(row[3]) for row in rows)),
         max(len("ELAPSED"), *(len(row[4]) for row in rows)),
+        max(len("LAST LOG"), *(len(row[5]) for row in rows)),
     ]
-    print(_format_row(("RUN ID", "AGENT", "ISSUE", "STATUS", "ELAPSED"), widths))
+    print(_format_row(("RUN ID", "AGENT", "ISSUE", "STATUS", "ELAPSED", "LAST LOG"), widths))
     for row in rows:
         print(_format_row(row, widths))
     return 0
@@ -76,7 +78,7 @@ def _print_detail(run_dir: Path, run_id: str, *, json_output: bool) -> int:
     return 0
 
 
-def _format_row(values: tuple[str, str, str, str, str], widths: list[int]) -> str:
+def _format_row(values: tuple[str, str, str, str, str, str], widths: list[int]) -> str:
     return "  ".join(value.ljust(width) for value, width in zip(values, widths))
 
 
@@ -91,6 +93,15 @@ def _format_elapsed(status: RunStatus) -> str:
     if elapsed is None:
         return "-"
     return f"{elapsed:.2f}s"
+
+
+def _format_last_log(status: RunStatus) -> str:
+    if not status.last_log_line:
+        return "-"
+    line = status.last_log_line
+    if len(line) > 30:
+        line = line[:27] + "..."
+    return line
 
 
 def _resolve_log_path(run_dir: Path, log_path: str) -> Path:
