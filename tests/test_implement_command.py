@@ -14,13 +14,22 @@ class FakeResult:
     timed_out: bool = False
     parsed: dict[str, str] | None = None
     status_short: str | None = " M tracked.py\n?? new.py"
+    status_path: Path | None = Path("status.json")
 
 
 class FakeRunner:
-    calls: list[tuple[object, Path, Path, float]] = []
+    calls: list[tuple[object, Path, Path, float, str | None, int | None]] = []
 
-    def run(self, adapter, plan_path: Path, repo: Path, timeout: float) -> FakeResult:
-        self.calls.append((adapter, plan_path, repo, timeout))
+    def run(
+        self,
+        adapter,
+        plan_path: Path,
+        repo: Path,
+        timeout: float,
+        agent_name: str | None = None,
+        issue_id: int | None = None,
+    ) -> FakeResult:
+        self.calls.append((adapter, plan_path, repo, timeout, agent_name, issue_id))
         return FakeResult(parsed={"resume_session_id": "abc123"})
 
 
@@ -38,11 +47,14 @@ def test_implement_command_resolves_issue_and_invokes_runner(
     captured = capsys.readouterr()
     assert exit_code == 0
     assert len(FakeRunner.calls) == 1
-    _, plan_path, repo, timeout = FakeRunner.calls[0]
+    _, plan_path, repo, timeout, agent_name, issue_id = FakeRunner.calls[0]
     assert plan_path == issues_dir / "active" / "001_first.md"
     assert repo == tmp_path
     assert timeout == 12
+    assert agent_name == "kimi"
+    assert issue_id == 1
     assert "issue=1 file=active/001_first.md agent=kimi" in captured.out
+    assert "status_file=status.json" in captured.out
     assert "--- git status --short ---" in captured.out
     assert "?? new.py" in captured.out
     assert "resume_session_id=abc123" in captured.out
@@ -62,7 +74,15 @@ def test_implement_command_does_not_commit_or_push(
     monkeypatch.setattr("subprocess.run", reject_commit_or_push)
 
     class ModifyingRunner(FakeRunner):
-        def run(self, adapter, plan_path: Path, repo: Path, timeout: float) -> FakeResult:
+        def run(
+            self,
+            adapter,
+            plan_path: Path,
+            repo: Path,
+            timeout: float,
+            agent_name: str | None = None,
+            issue_id: int | None = None,
+        ) -> FakeResult:
             return FakeResult(status_short=" M tracked.py")
 
     monkeypatch.chdir(tmp_path)

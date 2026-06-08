@@ -8,11 +8,12 @@ import signal
 import subprocess
 import time
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from issuekit.agents.status import RunStatus, repo_relative, status_path, write_status
 from issuekit.config import AgentRunConfig, IssuekitConfig
 
 
@@ -117,6 +118,7 @@ class AgentResult:
     timed_out: bool
     parsed: dict[str, str] | None = None
     status_short: str | None = None
+    status_path: Path | None = None
 
 
 class AgentRunner:
@@ -128,6 +130,8 @@ class AgentRunner:
         plan_path: Path,
         repo: Path,
         timeout: float = 600.0,
+        agent_name: str | None = None,
+        issue_id: int | None = None,
     ) -> AgentResult:
         plan_path = plan_path.resolve()
         repo = repo.resolve()
@@ -147,9 +151,27 @@ class AgentRunner:
 
         run_dir = repo / ".agent-runs"
         run_dir.mkdir(exist_ok=True)
-        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-        stdout_path = run_dir / f"{stamp}.out.log"
-        stderr_path = run_dir / f"{stamp}.err.log"
+        run_id, reservation_path = self._reserve_run_id(run_dir)
+        stdout_path = run_dir / f"{run_id}.out.log"
+        stderr_path = run_dir / f"{run_id}.err.log"
+        run_status_path = status_path(run_dir, run_id)
+        started_at = datetime.now().replace(microsecond=0).isoformat()
+        run_status = RunStatus(
+            run_id=run_id,
+            agent=agent_name or "unknown",
+            issue=issue_id,
+            status="running",
+            pid=None,
+            started_at=started_at,
+            ended_at=None,
+            elapsed_sec=None,
+            exit_code=None,
+            plan=repo_relative(plan_path, repo),
+            stdout_log=repo_relative(stdout_path, repo),
+            stderr_log=repo_relative(stderr_path, repo),
+        )
+        write_status(run_status_path, run_status)
+        self._release_run_id_reservation(reservation_path)
 
         start = time.monotonic()
         with open(stdout_path, "w", encoding="utf-8") as out_f, open(
@@ -167,6 +189,8 @@ class AgentRunner:
                 kwargs["start_new_session"] = True
 
             proc = subprocess.Popen(argv, **kwargs)
+            run_status = replace(run_status, pid=proc.pid)
+            write_status(run_status_path, run_status)
             try:
                 exit_code = proc.wait(timeout=timeout)
                 timed_out = False
@@ -176,6 +200,17 @@ class AgentRunner:
                 exit_code = proc.returncode if proc.returncode is not None else -1
 
         elapsed = time.monotonic() - start
+        terminal_status = self._terminal_status(exit_code, timed_out)
+        write_status(
+            run_status_path,
+            replace(
+                run_status,
+                status=terminal_status,
+                ended_at=datetime.now().replace(microsecond=0).isoformat(),
+                elapsed_sec=elapsed,
+                exit_code=exit_code,
+            ),
+        )
 
         stdout_text = stdout_path.read_text(encoding="utf-8")
         stderr_text = stderr_path.read_text(encoding="utf-8")
@@ -191,7 +226,48 @@ class AgentRunner:
             timed_out=timed_out,
             parsed=parsed,
             status_short=status_short,
+            status_path=run_status_path,
         )
+
+    def _reserve_run_id(self, run_dir: Path) -> tuple[str, Path]:
+        base = datetime.now().strftime("%Y%m%d-%H%M%S")
+        run_id = base
+        counter = 2
+        while True:
+            reservation_path = run_dir / f"{run_id}.lock"
+            if (
+                (run_dir / f"{run_id}.out.log").exists()
+                or (run_dir / f"{run_id}.err.log").exists()
+                or status_path(run_dir, run_id).exists()
+                or reservation_path.exists()
+            ):
+                run_id = f"{base}-{counter:02d}"
+                counter += 1
+                continue
+            try:
+                fd = os.open(
+                    reservation_path,
+                    os.O_CREAT | os.O_EXCL | os.O_WRONLY,
+                )
+            except FileExistsError:
+                run_id = f"{base}-{counter:02d}"
+                counter += 1
+                continue
+            os.close(fd)
+            return run_id, reservation_path
+
+    def _release_run_id_reservation(self, reservation_path: Path) -> None:
+        try:
+            reservation_path.unlink()
+        except FileNotFoundError:
+            pass
+
+    def _terminal_status(self, exit_code: int, timed_out: bool):
+        if timed_out:
+            return "timed_out"
+        if exit_code == 0:
+            return "completed"
+        return "failed"
 
     def _kill_process_group(self, proc: subprocess.Popen) -> None:
         if os.name == "nt":

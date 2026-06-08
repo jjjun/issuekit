@@ -1,3 +1,4 @@
+import json
 import os
 import signal
 import subprocess
@@ -47,6 +48,60 @@ def test_runner_captures_stdout_stderr_and_returns_result(tmp_path: Path) -> Non
     assert "hello out" in result.stdout_path.read_text(encoding="utf-8")
     assert "hello err" in result.stderr_path.read_text(encoding="utf-8")
     assert result.elapsed_sec >= 0
+    assert result.status_path is not None
+    status = json.loads(result.status_path.read_text(encoding="utf-8"))
+    assert status["status"] == "completed"
+    assert status["exit_code"] == 0
+    assert status["elapsed_sec"] >= 0
+    assert status["stdout_log"].endswith(".out.log")
+    assert status["stderr_log"].endswith(".err.log")
+
+
+def test_runner_status_is_running_while_process_is_active(tmp_path: Path) -> None:
+    script = tmp_path / "script.py"
+    script.write_text(
+        "\n".join(
+            [
+                "import json, pathlib, sys, time",
+                "repo = pathlib.Path(sys.argv[1])",
+                "deadline = time.time() + 5",
+                "while time.time() < deadline:",
+                "    files = list((repo / '.agent-runs').glob('*.status.json'))",
+                "    if files:",
+                "        data = json.loads(files[0].read_text(encoding='utf-8'))",
+                "        (repo / 'seen-status.json').write_text(json.dumps(data), encoding='utf-8')",
+                "        break",
+                "    time.sleep(0.01)",
+                "else:",
+                "    raise SystemExit(2)",
+            ]
+        )
+    )
+    plan = tmp_path / "plan.md"
+    plan.write_text("plan")
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / ".git").mkdir()
+
+    adapter = FakeAdapter([sys.executable, str(script), str(repo)])
+    result = AgentRunner().run(
+        adapter,
+        plan,
+        repo,
+        timeout=10.0,
+        agent_name="codex",
+        issue_id=41,
+    )
+
+    seen_status = json.loads((repo / "seen-status.json").read_text(encoding="utf-8"))
+    assert seen_status["status"] == "running"
+    assert seen_status["agent"] == "codex"
+    assert seen_status["issue"] == 41
+    assert seen_status["plan"] == plan.resolve().as_posix()
+
+    final_status = json.loads(result.status_path.read_text(encoding="utf-8"))
+    assert final_status["status"] == "completed"
+    assert final_status["ended_at"] is not None
 
 
 def test_runner_uses_devnull_stdin_and_does_not_hang(tmp_path: Path) -> None:
@@ -84,6 +139,29 @@ def test_runner_kills_on_timeout(tmp_path: Path) -> None:
 
     assert result.timed_out is True
     assert elapsed < 5.0
+    assert result.status_path is not None
+    status = json.loads(result.status_path.read_text(encoding="utf-8"))
+    assert status["status"] == "timed_out"
+    assert status["exit_code"] != 0
+
+
+def test_runner_status_is_failed_for_nonzero_exit(tmp_path: Path) -> None:
+    script = tmp_path / "script.py"
+    script.write_text("raise SystemExit(7)")
+    plan = tmp_path / "plan.md"
+    plan.write_text("plan")
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / ".git").mkdir()
+
+    adapter = FakeAdapter([sys.executable, str(script)])
+    result = AgentRunner().run(adapter, plan, repo, timeout=10.0)
+
+    assert result.exit_code == 7
+    assert result.status_path is not None
+    status = json.loads(result.status_path.read_text(encoding="utf-8"))
+    assert status["status"] == "failed"
+    assert status["exit_code"] == 7
 
 
 def test_runner_git_status_short(tmp_path: Path) -> None:

@@ -39,6 +39,8 @@ def run(args) -> int:
             issue.file_path,
             cwd,
             timeout=float(args.timeout_sec),
+            agent_name=args.agent,
+            issue_id=issue.id,
         )
     except (FileNotFoundError, RuntimeError, ValueError) as exc:
         print(str(exc), file=sys.stderr)
@@ -54,6 +56,8 @@ def run(args) -> int:
     )
     print(f"stdout_log={result.stdout_path}")
     print(f"stderr_log={result.stderr_path}")
+    if result.status_path:
+        print(f"status_file={result.status_path}")
     if result.parsed:
         for key, value in sorted(result.parsed.items()):
             if key in {"stdout", "stderr"} or not value:

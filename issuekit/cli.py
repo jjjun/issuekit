@@ -17,6 +17,7 @@ from issuekit.commands import (
     propose,
     protocol,
     queue,
+    runs,
     setup,
     validate,
 )
@@ -32,6 +33,7 @@ COMMANDS = (
     "submit-review",
     "request-changes",
     "queue",
+    "runs",
     "check-encoding",
     "protocol",
     "init",
@@ -150,6 +152,19 @@ def build_parser() -> argparse.ArgumentParser:
     queue_parser.add_argument("--assignee", required=True, help="Assignee to list.")
     queue_parser.add_argument("--stage", help="Workflow stage filter.")
     queue_parser.set_defaults(func=queue.run)
+
+    runs_parser = subparsers.add_parser(
+        "runs",
+        help="List and inspect agent runs.",
+    )
+    runs_parser.add_argument("run_id", nargs="?", help="Run id to inspect.")
+    runs_parser.add_argument(
+        "--active",
+        action="store_true",
+        help="Show only running agent runs.",
+    )
+    runs_parser.add_argument("--json", action="store_true", help="Print JSON output.")
+    runs_parser.set_defaults(func=runs.run)
 
     check_encoding_parser = subparsers.add_parser(
         "check-encoding",
