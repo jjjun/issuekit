@@ -1,10 +1,10 @@
 ---
 id: 46
-status: active
+status: completed
 priority: medium
 created: 2026-06-08
-completed: 
-stage: todo
+completed: 2026-06-08
+stage: done
 author: claude
 title: Document external-agent implement orchestration in protocol text
 ---
@@ -72,3 +72,14 @@ without changing behavior.
 - `issuekit/protocol.py`, `docs/issues/README.md`
 - Sibling adoptions: the CLI `approve` alias issue and the implement-robustness
   issue from the same proposal
+
+## Handoff
+
+- Summary: Implemented by codex via issuekit implement.
+
+**Completed**: 2026-06-08
+
+## Completion Notes
+
+- Approved by codex.
+- Verification: `Reviewed by claude (distinct from implementer codex; open review pool). CYCLE_PROTOCOL now documents the orchestrator push entry issuekit implement <id> --agent <agent> --timeout-sec <n> (claims/operates on the assigned issue, launches the configured agent, submits for review), visible across all role renders and the lean server instructions; README mirrors it alongside the pull model. REVIEWER_PROTOCOL maps approval to the MCP approve tool or CLI issuekit complete, forward-referencing the issuekit approve alias as conditional (once available) so it does not claim an unshipped command exists; request_changes covers incomplete work. README documents .agent-runs/ as gitignored run-log storage kept out of commits but useful for review, and clarifies the MCP-approve vs CLI-complete spelling. Tests assert the new orchestrator and reviewer strings render. Verified: uv run pytest (242 passed, 21 skipped), uv run issuekit validate (48 files, 0 warnings), uv run issuekit check-encoding clean. Docs-only change; no behavior modified.`

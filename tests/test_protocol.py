@@ -20,6 +20,9 @@ def test_render_protocol_returns_each_agent_and_both() -> None:
         assert "belongs to another registered repo" in rendered
         assert "issuekit list-refs" in rendered
         assert "target repo owns triage" in rendered
+        assert "issuekit implement <id> --agent <agent> --timeout-sec <n>" in rendered
+        assert "launches the configured agent" in rendered
+        assert "submits the completed work for review" in rendered
     assert "claim_next_task" in codex
     assert "submit_for_review" in codex
     assert 'assignee="<agent>"' in codex
@@ -28,6 +31,9 @@ def test_render_protocol_returns_each_agent_and_both() -> None:
     assert "request_changes" in claude
     assert "ASCII verification" in claude
     assert "ASCII notes" in claude
+    assert "issuekit complete <id>" in claude
+    assert "CLI `approve` alias" in claude
+    assert "work is incomplete" in claude
     assert "Handoff protocol (author)" in both
     assert "Handoff protocol (implementer)" in both
     assert "Handoff protocol (reviewer)" in both

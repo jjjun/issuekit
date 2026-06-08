@@ -23,6 +23,12 @@ The model is pull-based: authors publish work to a pool, implementers pull from
 that pool, and reviewers pull from the review pool. No central orchestrator is
 required for the normal author -> implement -> review cycle.
 
+When an orchestrator or author needs to drive a configured external
+implementer instead of waiting for the pull model, use
+`issuekit implement <id> --agent <agent> --timeout-sec <n>`. That command
+claims or operates on the assigned issue, launches the configured agent, and
+submits the completed work for review.
+
 Separation-of-duties invariants:
 
 - The author role and implementer role must be different sessions. If the same
@@ -143,11 +149,13 @@ tool). Proposals are non-destructive suggestions in the target repo's
    `default_reviewer = "auto"`, omitted reviewer means the next issue already
    assigned at stage=review.
 2. Review the referenced branch and commit diff against the issue body.
-3. If the implementation is acceptable, call `approve(id, verification,
-   reviewer=None)` with ASCII verification.
-4. If changes are needed, call `request_changes(id, notes, reviewer=None,
-   assignee=None)` with ASCII notes. Omit assignee to return the issue to its
-   recorded implementer.
+3. If the implementation is acceptable, approve it through the reviewer flow:
+   call `approve(id, verification, reviewer=None)` with ASCII verification, or
+   use the CLI `issuekit complete <id>` command. The CLI `approve` alias is the
+   equivalent spelling once it is available.
+4. If changes are needed or the work is incomplete, call
+   `request_changes(id, notes, reviewer=None, assignee=None)` with ASCII notes.
+   Omit assignee to return the issue to its recorded implementer.
 
 Authors own proposals and implementation-ready issues unless assigned as
 implementer. The assigned reviewer owns the review decision. The approving

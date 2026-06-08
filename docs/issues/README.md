@@ -55,6 +55,11 @@ docs/issues/
 `README.md` does not contain the full issue table. Generated indexes are split
 so the system stays usable as completed issues grow.
 
+External agent runs may create `.agent-runs/` at the repository root. The
+directory is gitignored run-log storage, not issue state. Keep it out of
+commits, but use the logs when reviewing how an orchestrated agent handled an
+issue.
+
 ## Cross-Project Proposals
 
 Related repositories can send suggestions as Markdown files in
@@ -216,6 +221,18 @@ This is a pull model. Authors publish work to the open implement pool,
 implementers pull work when idle, and reviewers pull review work when idle. No
 central orchestrator is required for the normal cycle.
 
+An orchestrator or author may also drive a configured external implementer
+directly:
+
+```bash
+issuekit implement <id> --agent <agent> --timeout-sec <n>
+```
+
+That command claims or operates on the assigned issue, runs the configured
+agent, and submits the completed work for review. Use it when you need to push a
+specific issue through a named external agent instead of waiting for an idle
+implementer to pull from the queue.
+
 Separation-of-duties rules:
 
 - The author role and implementer role must be different sessions. Explicit
@@ -253,8 +270,10 @@ The `NNN` id must be unique across both `active/` and `completed/`.
 ## Completing An Issue
 
 Issues normally reach `completed/` through the reviewer's `approve` step after
-`submit_for_review`. To close an issue directly without review, for example
-abandoned or trivial issues, use:
+`submit_for_review`. The reviewer MCP flow uses `approve`; the CLI completion
+spelling is `issuekit complete <id>` until the `issuekit approve` alias is
+available. To close an issue directly without review, for example abandoned or
+trivial issues, use:
 
 ```bash
 issuekit complete <id> --force --summary "..." --verification "..."
