@@ -1,10 +1,10 @@
 ---
 id: 58
-status: active
+status: completed
 priority: high
 created: 2026-06-09
-completed: 
-stage: todo
+completed: 2026-06-09
+stage: done
 author: claude
 title: Harden proposal file path resolution against directory traversal
 ---
@@ -87,3 +87,14 @@ that escapes it:
 - Note: subprocess usage in the codebase already uses list-form args (no
   `shell=True`) and redirects stdin to DEVNULL, so this proposal-path gap is the
   main input-validation issue found in this pass.
+
+## Handoff
+
+- Summary: Implemented by codex via issuekit implement.
+
+**Completed**: 2026-06-09
+
+## Completion Notes
+
+- Constrain proposal path resolution to incoming/.
+- Verification: `Reviewed diff: _resolve_proposal_path now rejects absolute paths, resolves against incoming/ and verifies containment via relative_to (blocks .. traversal), and requires an existing regular file. Tests cover happy path, absolute, traversal, missing, non-file, plus MCP-level traversal. Full suite 270 passed/22 skipped; check-encoding clean.`

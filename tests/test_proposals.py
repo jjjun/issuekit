@@ -1,4 +1,5 @@
 import json
+import pytest
 import subprocess
 from pathlib import Path
 
@@ -8,7 +9,9 @@ from issuekit.proposals import (
     Proposal,
     adopt_proposal,
     discard_proposal,
+    ProposalError,
     list_incoming,
+    _resolve_proposal_path,
     write_proposal,
 )
 from issuekit.commands.complete import complete_issue
@@ -88,6 +91,66 @@ def test_adopt_proposal_creates_active_issue_and_moves_source(tmp_path: Path) ->
     assert "- Origin: `source#42@abc123`" in content
     assert not path.exists()
     assert (issues_dir / "incoming" / "adopted" / path.name).exists()
+
+
+def test_resolve_proposal_path_accepts_incoming_filename(tmp_path: Path) -> None:
+    issues_dir = tmp_path / "docs" / "issues"
+    path = write_proposal(
+        issues_dir,
+        Proposal(
+            origin="source#42@abc123",
+            to="target",
+            reply_to="",
+            created="2026-06-03",
+            title="Safe Path",
+            body="## Suggested Change\n\nKeep this local.",
+        ),
+    )
+
+    assert _resolve_proposal_path(issues_dir, path.name) == path
+
+
+def test_resolve_proposal_path_rejects_absolute_path(tmp_path: Path) -> None:
+    issues_dir = tmp_path / "docs" / "issues"
+    absolute_path = tmp_path / "outside.md"
+    absolute_path.write_text(
+        "---\norigin: source#42@abc123\nto: target\nreply_to:\ncreated: 2026-06-03\ntitle: Outside\n---\n\n# Proposal: Outside\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    with pytest.raises(ProposalError, match="must be an incoming-relative file"):
+        adopt_proposal(issues_dir, str(absolute_path))
+
+
+def test_resolve_proposal_path_rejects_directory_traversal(tmp_path: Path) -> None:
+    issues_dir = tmp_path / "docs" / "issues"
+    escaped = issues_dir.parent / "outside.md"
+    escaped.parent.mkdir(parents=True, exist_ok=True)
+    escaped.write_text(
+        "---\norigin: source#42@abc123\nto: target\nreply_to:\ncreated: 2026-06-03\ntitle: Escaped\n---\n\n# Proposal: Escaped\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    with pytest.raises(ProposalError, match="escapes incoming directory"):
+        adopt_proposal(issues_dir, "../outside.md")
+
+
+def test_resolve_proposal_path_rejects_missing_file(tmp_path: Path) -> None:
+    issues_dir = tmp_path / "docs" / "issues"
+
+    with pytest.raises(ProposalError, match="Proposal file not found"):
+        adopt_proposal(issues_dir, "does-not-exist.md")
+
+
+def test_resolve_proposal_path_rejects_non_file(tmp_path: Path) -> None:
+    issues_dir = tmp_path / "docs" / "issues"
+    directory = issues_dir / "incoming" / "directory"
+    directory.mkdir(parents=True, exist_ok=True)
+
+    with pytest.raises(ProposalError, match="not a file"):
+        discard_proposal(issues_dir, "directory")
 
 
 def test_discard_proposal_moves_source(tmp_path: Path) -> None:

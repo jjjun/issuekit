@@ -493,6 +493,23 @@ def test_proposal_tools_send_list_and_adopt(tmp_path: Path) -> None:
     assert adopted["title"] == "MCP Proposal"
 
 
+def test_proposal_tool_rejects_traversal_path(tmp_path: Path) -> None:
+    target = tmp_path / "target"
+    issues_dir = target / "docs" / "issues"
+    issues_dir.mkdir(parents=True, exist_ok=True)
+    escaped = issues_dir.parent / "outside.md"
+    escaped.write_text(
+        "---\norigin: source#42@abc123\nto: target\nreply_to:\ncreated: 2026-06-03\ntitle: Escaped\n---\n\n# Proposal: Escaped\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    server = create_server(target)
+
+    with pytest.raises(Exception, match="escapes incoming directory"):
+        _call(server, "adopt_proposal", {"proposal_file": "../outside.md"})
+
+
 def test_cli_proposal_json_matches_mcp_output(tmp_path: Path, monkeypatch, capsys) -> None:
     source = tmp_path / "source"
     target = tmp_path / "target"

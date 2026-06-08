@@ -201,13 +201,26 @@ def _validate_proposal(proposal: Proposal) -> None:
 
 
 def _resolve_proposal_path(issues_dir: Path, proposal_file: Path | str) -> Path:
+    incoming = (issues_dir / "incoming").resolve()
     path = Path(proposal_file)
     if path.is_absolute():
-        return path
-    incoming = issues_dir / "incoming"
-    if (incoming / path).exists():
-        return incoming / path
-    return Path.cwd() / path
+        raise ProposalError(
+            f"Proposal path must be an incoming-relative file, not absolute: {path}"
+        )
+
+    resolved = (incoming / path).resolve()
+    try:
+        resolved.relative_to(incoming)
+    except ValueError as exc:
+        raise ProposalError(
+            f"Proposal path escapes incoming directory: {proposal_file}"
+        ) from exc
+
+    if not resolved.exists():
+        raise ProposalError(f"Proposal file not found in incoming: {resolved.name}")
+    if not resolved.is_file():
+        raise ProposalError(f"Proposal path is not a file: {resolved}")
+    return resolved
 
 
 def _adopted_issue_content(
