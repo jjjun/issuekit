@@ -1,8 +1,10 @@
 ---
 id: 39
-status: active
+status: completed
 priority: low
 created: 2026-06-08
+completed: 2026-06-08
+stage: done
 title: issuekit implement CLI command driving an agent from an issue
 ---
 
@@ -56,3 +58,10 @@ commits after inspecting the changes.
 - Issue #37 (runner) and Issue #38 (registry); depends on both
 - `issuekit/cli.py`, `issuekit/commands/`
 - Issue #40 (optional review-gate hookup)
+
+**Completed**: 2026-06-08
+
+## Completion Notes
+
+- Add issuekit implement command driving an agent from an issue; implemented by codex via the agent runner, reviewed and approved by claude.
+- Verification: `uv run pytest: 221 passed, 19 skipped; uv run issuekit validate: 0 warnings; uv run issuekit check-encoding: passed; issuekit implement --help registered.`
