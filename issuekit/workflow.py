@@ -117,6 +117,45 @@ def claim_next(
         )
 
 
+def claim_issue(
+    issues_dir: Path | str,
+    issue_id: int,
+    assignee: str,
+    *,
+    config: IssuekitConfig | None = None,
+    timeout: float = 10.0,
+) -> Issue:
+    config = config or IssuekitConfig()
+    _validate_assignee(assignee, config)
+    _validate_stage("implementing", config)
+
+    issues_path = Path(issues_dir)
+    with claim_lock(issues_path / "active", timeout=timeout):
+        issue = _find_active_issue(issues_path, issue_id)
+        if issue.issue_status not in CLAIMABLE_STATUSES:
+            raise WorkflowError(
+                f"Issue #{issue_id} has status {issue.issue_status or issue.status}; "
+                "only active or in_progress issues can be implemented."
+            )
+        if issue.stage not in READY_STAGES | {"implementing"}:
+            raise WorkflowError(
+                f"Issue #{issue_id} is at stage {issue.stage or 'todo'}, "
+                "not ready for implementation."
+            )
+        if issue.assignee not in {"", assignee}:
+            raise WorkflowError(
+                f"Issue #{issue_id} is assigned to {issue.assignee}, not {assignee}."
+            )
+        return _write_active_issue(
+            issues_path,
+            issue,
+            status="in_progress",
+            assignee=assignee,
+            stage="implementing",
+            implementer=assignee,
+        )
+
+
 def submit_for_review(
     issues_dir: Path | str,
     issue_id: int,

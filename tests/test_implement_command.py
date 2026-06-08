@@ -1,7 +1,13 @@
 from dataclasses import dataclass
 from pathlib import Path
 
+import pytest
+
 from issuekit import cli
+from issuekit.commands.complete import complete_issue
+from issuekit.config import IssuekitConfig
+from issuekit.core import read_issues
+from issuekit.workflow import WorkflowError
 from tests.issue_helpers import make_issue_tree
 
 
@@ -38,7 +44,13 @@ def test_implement_command_resolves_issue_and_invokes_runner(
     monkeypatch,
     capsys,
 ) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "default_reviewer = 'auto'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
     issues_dir = make_issue_tree(tmp_path)
+    FakeRunner.calls.clear()
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr("issuekit.commands.implement.AgentRunner", FakeRunner)
 
@@ -58,12 +70,26 @@ def test_implement_command_resolves_issue_and_invokes_runner(
     assert "--- git status --short ---" in captured.out
     assert "?? new.py" in captured.out
     assert "resume_session_id=abc123" in captured.out
+    assert (
+        "submitted_review id=1 file=active/001_first.md assignee= stage=review"
+        in captured.out
+    )
+    [issue] = read_issues(issues_dir, "active")
+    assert issue.assignee == ""
+    assert issue.stage == "review"
+    assert issue.implementer == "kimi"
+    assert "## Handoff" in issue.file_path.read_text(encoding="utf-8")
 
 
 def test_implement_command_does_not_commit_or_push(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "default_reviewer = 'auto'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
     make_issue_tree(tmp_path)
 
     def reject_commit_or_push(argv, *args, **kwargs):
@@ -89,6 +115,65 @@ def test_implement_command_does_not_commit_or_push(
     monkeypatch.setattr("issuekit.commands.implement.AgentRunner", ModifyingRunner)
 
     assert cli.main(["implement", "1", "--agent", "codex"]) == 0
+
+
+def test_implement_command_does_not_submit_failed_run(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    issues_dir = make_issue_tree(tmp_path)
+
+    class FailingRunner(FakeRunner):
+        def run(
+            self,
+            adapter,
+            plan_path: Path,
+            repo: Path,
+            timeout: float,
+            agent_name: str | None = None,
+            issue_id: int | None = None,
+        ) -> FakeResult:
+            return FakeResult(exit_code=2, status_short=" M tracked.py")
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", FailingRunner)
+
+    assert cli.main(["implement", "1", "--agent", "codex"]) == 2
+    [issue] = read_issues(issues_dir, "active")
+    assert issue.assignee == "codex"
+    assert issue.stage == "implementing"
+    assert "## Handoff" not in issue.file_path.read_text(encoding="utf-8")
+
+
+def test_implement_command_open_review_preserves_self_review_guard(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "default_reviewer = 'auto'\nrequire_distinct_reviewer = true\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    issues_dir = make_issue_tree(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", FakeRunner)
+
+    assert cli.main(["implement", "1", "--agent", "codex"]) == 0
+
+    [issue] = read_issues(issues_dir, "active")
+    assert issue.assignee == ""
+    assert issue.stage == "review"
+    assert issue.implementer == "codex"
+    with pytest.raises(WorkflowError, match="self-review is not allowed"):
+        complete_issue(
+            issues_dir,
+            1,
+            reviewer="codex",
+            config=IssuekitConfig(
+                default_reviewer="auto",
+                require_distinct_reviewer=True,
+            ),
+        )
 
 
 def test_implement_command_reports_missing_issue(
