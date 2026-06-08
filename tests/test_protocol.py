@@ -9,19 +9,30 @@ def test_render_protocol_returns_each_agent_and_both() -> None:
     claude = render_protocol("claude")
     both = render_protocol(None)
 
+    for rendered in (codex, claude, both):
+        assert "Delegation cycle overview" in rendered
+        assert "author -> implement -> review cycle" in rendered
+        assert "open implement pool" in rendered
+        assert "open review pool" in rendered
+        assert "author role and implementer role must be different sessions" in rendered
+        assert "implementer and reviewer must be different sessions" in rendered
+        assert "author may also be the reviewer" in rendered
+        assert "belongs to another registered repo" in rendered
+        assert "issuekit list-refs" in rendered
+        assert "target repo owns triage" in rendered
     assert "claim_next_task" in codex
     assert "submit_for_review" in codex
+    assert 'assignee="<agent>"' in codex
     assert "ASCII summary" in codex
     assert "next_review" in claude
     assert "request_changes" in claude
     assert "ASCII verification" in claude
     assert "ASCII notes" in claude
-    for rendered in (codex, claude, both):
-        assert "belongs to another registered repo" in rendered
-        assert "issuekit list-refs" in rendered
-        assert "target repo owns triage" in rendered
-    assert codex.rstrip() in both
-    assert claude in both
+    assert "Handoff protocol (author)" in both
+    assert "Handoff protocol (implementer)" in both
+    assert "Handoff protocol (reviewer)" in both
+    assert "The implementer handles issuekit tasks" in both
+    assert "The reviewer handles issuekit tasks" in both
     both.encode("ascii")
 
 
@@ -36,9 +47,11 @@ def test_render_protocol_returns_role_for_kimi() -> None:
 
 def test_render_protocol_returns_author_role() -> None:
     author = render_protocol(role="author")
+    assert "Delegation cycle overview" in author
     assert "issuekit info" in author
     assert "docs/issues/active/" in author
     assert "Do not call `claim_next_task`" in author
+    assert "implementation-ready issues" in author
     author.encode("ascii")
 
 
@@ -94,5 +107,7 @@ def test_protocol_command_prints_both_agents(capsys: pytest.CaptureFixture[str])
 
     assert exit_code == 0
     assert captured.out == render_protocol(None)
-    assert "Handoff protocol (codex)" in captured.out
-    assert "Handoff protocol (claude)" in captured.out
+    assert "Delegation cycle overview" in captured.out
+    assert "Handoff protocol (author)" in captured.out
+    assert "Handoff protocol (implementer)" in captured.out
+    assert "Handoff protocol (reviewer)" in captured.out

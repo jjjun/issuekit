@@ -1,10 +1,10 @@
 ---
 id: 44
-status: active
+status: completed
 priority: medium
 created: 2026-06-08
-completed:
-stage: todo
+completed: 2026-06-08
+stage: done
 title: Document the end-to-end author-implement-review delegation cycle
 ---
 
@@ -77,3 +77,14 @@ still pins roles to specific agents.
 - Issue #34 (author protocol), #39/#40 (implement command + review gate)
 - Issue #33 (open review pool; model for the open implement pool)
 - `issuekit/protocol.py`, `docs/issues/README.md`, `CLAUDE.md`
+
+## Handoff
+
+- Summary: Implemented by codex via issuekit implement.
+
+**Completed**: 2026-06-08
+
+## Completion Notes
+
+- Approved by codex.
+- Verification: `Reviewed by claude (distinct from implementer codex; open review pool). Adds a CYCLE_PROTOCOL overview prepended to every role render and an all-roles render; documents the author -> implementer -> reviewer pull model in issuekit/protocol.py, docs/issues/README.md, README.md, and the issues_README template. Separation-of-duties invariants are stated accurately, including the precise #43 behavior (explicit author self-assignment rejected while an open-pool same-name claim represents a distinct session) and author-may-review. De-pins agent names: CODEX_PROTOCOL/CLAUDE_PROTOCOL renamed to IMPLEMENTER_PROTOCOL/REVIEWER_PROTOCOL, claim_next_task(assignee=\"<agent>\") generalized, CLAUDE.md rewritten role-first. run-cycle command intentionally omitted per the issue's optional/secondary guidance (no new bypass; pull model covers the multi-operator case). No dangling references to the old constant names in code. Verified: uv run pytest (239 passed, 21 skipped), uv run issuekit validate (44 files, 0 warnings), uv run issuekit check-encoding clean.`

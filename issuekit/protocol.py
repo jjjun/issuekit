@@ -3,14 +3,44 @@
 from __future__ import annotations
 
 
-CODEX_PROTOCOL = """# Handoff protocol (codex)
+CYCLE_PROTOCOL = """# Delegation cycle overview
 
-Codex usually implements issuekit tasks from docs/issues/active/, but any
-configured agent can be the implementer or the reviewer. The reviewer is the
-agent assigned at stage=review and defaults to `default_reviewer`, which may be
-`auto`. Same-name review is allowed through the open review pool by omitting
-`reviewer`; an implementer may not explicitly assign itself as reviewer at
-submit time.
+The canonical delegation cycle is:
+
+1. Author: write an implementation-ready issue or proposal, then stop.
+2. Open implement pool: leave `assignee` empty unless a specific implementer is
+   required, so any idle configured agent can claim the issue.
+3. Implementer: claim the issue with `claim_next_task`, run the work, then call
+   `submit_for_review`.
+4. Open review pool: omit `reviewer` when `default_reviewer = "auto"` so any
+   eligible reviewer can decide the issue.
+5. Reviewer: approve to complete the issue, or request changes to return it to
+   implementation.
+6. Changes loop: the implementer reclaims or continues the issue, addresses only
+   the review feedback, and submits for review again.
+
+The model is pull-based: authors publish work to a pool, implementers pull from
+that pool, and reviewers pull from the review pool. No central orchestrator is
+required for the normal author -> implement -> review cycle.
+
+Separation-of-duties invariants:
+
+- The author role and implementer role must be different sessions. If the same
+  agent name appears through the open implement pool, it represents a distinct
+  operator/session; explicit author self-assignment is rejected.
+- The implementer and reviewer must be different sessions; explicit implementer
+  self-review is rejected.
+- The author may also be the reviewer when a different implementer did the work.
+"""
+
+
+IMPLEMENTER_PROTOCOL = """# Handoff protocol (implementer)
+
+The implementer handles issuekit tasks from docs/issues/active/. Any configured
+agent can be the implementer or the reviewer. The reviewer is the agent assigned
+at stage=review and defaults to `default_reviewer`, which may be `auto`.
+Same-name review is allowed through the open review pool by omitting `reviewer`;
+an implementer may not explicitly assign itself as reviewer at submit time.
 
 Cross-project proposals are local suggestions under `docs/issues/incoming/`.
 Before claiming normal work, inspect `issuekit incoming` when cross-repo
@@ -34,11 +64,11 @@ same structured output the MCP tools return):
 - `list_incoming()` -> `issuekit incoming --json`
 - `adopt_proposal(file, priority)` -> `issuekit adopt <file> --priority <p> --json`
 
-When the user asks codex to work on an issue in open-ended terms, such as
-"handle the next issue" or "take the queue", do not wait for explicit
+When the user asks an implementer to work on an issue in open-ended terms, such
+as "handle the next issue" or "take the queue", do not wait for explicit
 commands. Run this protocol end to end:
 
-1. Call the issuekit MCP tool `claim_next_task(assignee="codex")`. The returned
+1. Call the issuekit MCP tool `claim_next_task(assignee="<agent>")`. The returned
    payload includes the issue body, which is the spec to implement. If it
    returns no issue, report that the queue is empty and stop.
 2. Read the claimed issue, especially Problem, Implementation Plan, and Test
@@ -49,7 +79,7 @@ commands. Run this protocol end to end:
    Do not create or switch branches. The local workflow commits directly to
    main for speed; only create a branch when the user explicitly asks for one.
 4. Run the relevant tests and `uv run issuekit check-encoding`.
-5. Call `submit_for_review(id, summary, branch, commit, assignee="codex",
+5. Call `submit_for_review(id, summary, branch, commit, assignee="<agent>",
    reviewer=None)` with an ASCII summary, the current branch name, and the
    implementation commit. Set assignee to the implementer. Omit reviewer to use
    `default_reviewer`, or pass another configured assignee. If
@@ -58,18 +88,18 @@ commands. Run this protocol end to end:
    implementer may not name itself as the explicit reviewer; use the open pool
    for same-name review.
 6. If a reviewer returns the issue with stage=changes_requested, call
-   `claim_next_task(assignee="codex")` again, read the Review Feedback note,
+   `claim_next_task(assignee="<agent>")` again, read the Review Feedback note,
    re-plan for just that feedback, address it, commit, and submit for review
    again.
 
-Codex owns implementation unless assigned as reviewer. The reviewer owns the
-review decision for issues assigned to them at stage=review.
+The assigned implementer owns implementation unless assigned as reviewer. The
+reviewer owns the review decision for issues assigned to them at stage=review.
 """
 
 
 AUTHOR_PROTOCOL = """# Handoff protocol (author)
 
-An author writes codex-ready issues and proposals. The author does not
+An author writes implementation-ready issues and proposals. The author does not
 implement issues.
 
 When a needed change belongs to another registered repo, originate a proposal
@@ -93,13 +123,13 @@ When asked to write or plan an issue:
 """
 
 
-CLAUDE_PROTOCOL = """# Handoff protocol (claude)
+REVIEWER_PROTOCOL = """# Handoff protocol (reviewer)
 
-Claude usually reviews issuekit tasks after codex submits them, but any
-configured reviewer can use this flow. The reviewer is the agent assigned at
-stage=review and defaults to `default_reviewer`, which may be `auto`. Same-name
-review is allowed through the open review pool; an implementer may not
-explicitly assign itself as reviewer at submit time.
+The reviewer handles issuekit tasks after an implementer submits them for
+review. Any configured reviewer can use this flow. The reviewer is the agent
+assigned at stage=review and defaults to `default_reviewer`, which may be
+`auto`. Same-name review is allowed through the open review pool; an
+implementer may not explicitly assign itself as reviewer at submit time.
 
 When review reveals that a needed change belongs to another registered repo,
 originate a proposal instead of only reporting it. Use
@@ -119,10 +149,11 @@ tool). Proposals are non-destructive suggestions in the target repo's
    assignee=None)` with ASCII notes. Omit assignee to return the issue to its
    recorded implementer.
 
-Claude owns proposals and codex-ready issues unless assigned as implementer.
-The assigned reviewer owns the review decision. The approving session or agent
-must not be the same session that implemented the issue; same-name review is
-allowed only when the issue was routed through the open review pool.
+Authors own proposals and implementation-ready issues unless assigned as
+implementer. The assigned reviewer owns the review decision. The approving
+session or agent must not be the same session that implemented the issue;
+same-name review is allowed only when the issue was routed through the open
+review pool.
 
 When the proposal-system MCP tools hang or error, fall back to the equivalent
 CLI: `issuekit propose --to <ref> --title <t> --body <b> --json`,
@@ -133,8 +164,8 @@ same implementation and emit the same structured output.
 
 _ROLE_PROTOCOLS = {
     "author": AUTHOR_PROTOCOL,
-    "implementer": CODEX_PROTOCOL,
-    "reviewer": CLAUDE_PROTOCOL,
+    "implementer": IMPLEMENTER_PROTOCOL,
+    "reviewer": REVIEWER_PROTOCOL,
 }
 
 _AGENT_ROLE = {
@@ -144,13 +175,21 @@ _AGENT_ROLE = {
 
 
 def render_protocol(agent: str | None = None, role: str | None = None) -> str:
-    """Render the handoff protocol for one agent/role, or both roles."""
+    """Render the handoff protocol for one agent/role, or all roles."""
     if agent is None and role is None:
-        return f"{CODEX_PROTOCOL.rstrip()}\n\n{CLAUDE_PROTOCOL}"
+        return "\n\n".join(
+            (
+                CYCLE_PROTOCOL.rstrip(),
+                AUTHOR_PROTOCOL.rstrip(),
+                IMPLEMENTER_PROTOCOL.rstrip(),
+                REVIEWER_PROTOCOL,
+            )
+        )
     if role is not None:
         try:
-            return _ROLE_PROTOCOLS[role]
+            role_protocol = _ROLE_PROTOCOLS[role]
         except KeyError as exc:
             raise ValueError(f"unknown role: {role}") from exc
+        return f"{CYCLE_PROTOCOL.rstrip()}\n\n{role_protocol}"
     resolved_role = _AGENT_ROLE.get(agent, "implementer")
-    return _ROLE_PROTOCOLS[resolved_role]
+    return f"{CYCLE_PROTOCOL.rstrip()}\n\n{_ROLE_PROTOCOLS[resolved_role]}"

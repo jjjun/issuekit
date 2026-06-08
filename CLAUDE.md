@@ -13,10 +13,12 @@ directory.
 
 ## Project notes
 
-- Claude writes proposals, codex-ready issues, and reviews.
+- Authors write proposals and implementation-ready issues, then stop.
+- Implementers claim active issues from `docs/issues/active/`.
+- Reviewers decide submitted issues and may also be the original author when a
+  different implementer did the work.
 - If the proposal-system MCP tools hang or error, use the equivalent CLI with
   `--json` (`issuekit propose/incoming/adopt`); they share one implementation.
-- Codex implements issuekit tasks from `docs/issues/active/`.
 - Tracker conventions live in `docs/issues/README.md`.
 - Write all files as UTF-8 without a BOM and with LF line endings.
 - `docs/issues/` content must be English ASCII only.

@@ -97,12 +97,17 @@ uv run --group mcp issuekit-mcp
 
 ## Handoff protocol
 
-The two-agent protocol is centralized in issuekit:
+The role-based author, implementer, and reviewer protocol is centralized in
+issuekit:
 
 ```powershell
 issuekit protocol
 issuekit protocol --agent codex
 issuekit protocol --agent claude
+issuekit protocol --agent kimi
+issuekit protocol --role author
+issuekit protocol --role implementer
+issuekit protocol --role reviewer
 ```
 
 The MCP server exposes the same text as its instructions and through the
@@ -255,4 +260,4 @@ same-name review is rejected.
 ## Development
 
 This repo dogfoods issuekit. Implementation tasks live in `docs/issues/active/`
-as codex-ready issues.
+as implementation-ready issues.

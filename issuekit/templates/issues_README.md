@@ -154,7 +154,10 @@ Allowed `priority` values: `high`, `medium`, `low`.
 Workflow tools may add optional `author`, `assignee`, `stage`, and
 `implementer` fields. `author` records the agent that wrote the issue.
 `implementer` records the agent that claimed the implementation so review can
-reject self-review. Agents should not hand-edit these tool-managed fields.
+reject self-review. An implementer may not explicitly assign itself as reviewer
+at submit time; omit `reviewer` to route the issue through the open review pool,
+where another session or agent (including one with the same name) may review it.
+Agents should not hand-edit these tool-managed fields.
 
 ## Issue Lifecycle
 
@@ -166,6 +169,38 @@ completed/   -> completed
 Move an issue to `completed/` only when the requested scope is genuinely done.
 If meaningful work remains, keep the issue active or create a follow-up issue
 and reference it from the completed issue.
+
+## Delegation Cycle
+
+The canonical handoff is author -> implementer -> reviewer:
+
+1. The author writes an implementation-ready issue or proposal and stops.
+2. The issue remains unassigned in the open implement pool unless a specific
+   implementer is required.
+3. An idle implementer claims the issue with `claim_next_task` or
+   `issuekit claim`, does the work, and submits it with `submit_for_review` or
+   `issuekit submit-review`.
+4. The review handoff omits `reviewer` when `default_reviewer = "auto"` so the
+   issue enters the open review pool.
+5. A reviewer approves the issue to complete it, or requests changes and sends
+   it back to implementation.
+6. For requested changes, the implementer handles the review feedback and
+   submits the issue for review again.
+
+This is a pull model. Authors publish work to the open implement pool,
+implementers pull work when idle, and reviewers pull review work when idle. No
+central orchestrator is required for the normal cycle.
+
+Separation-of-duties rules:
+
+- The author role and implementer role must be different sessions. Explicit
+  author self-assignment is rejected; a same agent name claiming through the
+  open implement pool represents a distinct operator/session.
+- The implementer and reviewer must be different sessions. Explicit
+  implementer self-review is rejected; the open review pool may route to a
+  distinct same-named session.
+- The author may also be the reviewer when a different implementer did the
+  work.
 
 ## Creating A New Issue
 
