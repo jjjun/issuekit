@@ -1,8 +1,10 @@
 ---
 id: 41
-status: active
+status: completed
 priority: medium
 created: 2026-06-08
+completed: 2026-06-08
+stage: done
 title: Surface agent run status so humans can see running vs done
 ---
 
@@ -102,3 +104,10 @@ independent and lists them all without write contention.
 - Issue #39 (the implement command that drives runs)
 - Issue #40 (review-gate integration; separate concern from run visibility)
 - `issuekit/agents/runner.py`, `issuekit/commands/`, `issuekit/cli.py`
+
+**Completed**: 2026-06-08
+
+## Completion Notes
+
+- Add agent run status visibility: runner writes one status JSON per run under .agent-runs (running -> completed/failed/timed_out) with atomic writes and O_EXCL run-id reservation; new issuekit runs command lists and inspects runs. Implemented by codex via issuekit implement (dogfooding #39), reviewed and approved by claude.
+- Verification: `uv run pytest: 228 passed, 20 skipped; uv run issuekit validate: 0 warnings; uv run issuekit check-encoding: passed; issuekit runs/--active/--json/runs <id> smoke ok.`
