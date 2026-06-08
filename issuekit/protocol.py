@@ -8,7 +8,9 @@ CODEX_PROTOCOL = """# Handoff protocol (codex)
 Codex usually implements issuekit tasks from docs/issues/active/, but any
 configured agent can be the implementer or the reviewer. The reviewer is the
 agent assigned at stage=review and defaults to `default_reviewer`, which may be
-`auto`. Same-name review is allowed unless `require_distinct_reviewer` is true.
+`auto`. Same-name review is allowed through the open review pool by omitting
+`reviewer`; an implementer may not explicitly assign itself as reviewer at
+submit time.
 
 Cross-project proposals are local suggestions under `docs/issues/incoming/`.
 Before claiming normal work, inspect `issuekit incoming` when cross-repo
@@ -51,9 +53,10 @@ commands. Run this protocol end to end:
    reviewer=None)` with an ASCII summary, the current branch name, and the
    implementation commit. Set assignee to the implementer. Omit reviewer to use
    `default_reviewer`, or pass another configured assignee. If
-   `default_reviewer` is `auto`, issuekit keeps the current review assignee when
-   possible and chooses a distinct reviewer only when strict distinct review is
-   required.
+   `default_reviewer` is `auto`, the issue enters the open review pool so any
+   agent (including another session of the same name) may review it. An
+   implementer may not name itself as the explicit reviewer; use the open pool
+   for same-name review.
 6. If a reviewer returns the issue with stage=changes_requested, call
    `claim_next_task(assignee="codex")` again, read the Review Feedback note,
    re-plan for just that feedback, address it, commit, and submit for review
@@ -95,7 +98,8 @@ CLAUDE_PROTOCOL = """# Handoff protocol (claude)
 Claude usually reviews issuekit tasks after codex submits them, but any
 configured reviewer can use this flow. The reviewer is the agent assigned at
 stage=review and defaults to `default_reviewer`, which may be `auto`. Same-name
-review is allowed unless `require_distinct_reviewer` is true.
+review is allowed through the open review pool; an implementer may not
+explicitly assign itself as reviewer at submit time.
 
 When review reveals that a needed change belongs to another registered repo,
 originate a proposal instead of only reporting it. Use
@@ -116,7 +120,9 @@ tool). Proposals are non-destructive suggestions in the target repo's
    recorded implementer.
 
 Claude owns proposals and codex-ready issues unless assigned as implementer.
-The assigned reviewer owns the review decision.
+The assigned reviewer owns the review decision. The approving session or agent
+must not be the same session that implemented the issue; same-name review is
+allowed only when the issue was routed through the open review pool.
 
 When the proposal-system MCP tools hang or error, fall back to the equivalent
 CLI: `issuekit propose --to <ref> --title <t> --body <b> --json`,

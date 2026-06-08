@@ -165,6 +165,34 @@ def test_review_can_be_routed_to_codex(tmp_path: Path) -> None:
     )
 
 
+def test_submit_for_review_rejects_explicit_self_assignment(tmp_path: Path) -> None:
+    issues_dir = tmp_path / "docs" / "issues"
+    write_issue(
+        issues_dir / "active" / "001_first.md",
+        issue_text(
+            1,
+            "First",
+            status="in_progress",
+            assignee="codex",
+            stage="implementing",
+            implementer="codex",
+        ),
+    )
+    write_indexes(issues_dir)
+    server = create_server(tmp_path)
+
+    with pytest.raises(Exception, match="omit `reviewer`"):
+        _call(
+            server,
+            "submit_for_review",
+            {
+                "id": 1,
+                "summary": "Implemented.",
+                "reviewer": "codex",
+            },
+        )
+
+
 def test_next_review_uses_configured_default_reviewer(tmp_path: Path) -> None:
     (tmp_path / "issuekit.toml").write_text(
         "default_reviewer = 'codex'\n",

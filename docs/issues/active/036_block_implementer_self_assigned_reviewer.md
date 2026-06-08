@@ -1,9 +1,12 @@
 ---
 id: 36
-status: active
+status: in_progress
 priority: high
 created: 2026-06-08
-completed:
+completed: 
+assignee: codex
+stage: implementing
+implementer: codex
 title: Block implementer from self-assigning as reviewer on submit
 ---
 

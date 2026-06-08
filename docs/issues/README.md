@@ -177,7 +177,10 @@ Allowed `priority` values: `high`, `medium`, `low`.
 
 Workflow tools may add optional `assignee`, `stage`, and `implementer` fields.
 `implementer` records the agent that claimed the implementation so review can
-reject self-review. Agents should not hand-edit these tool-managed fields.
+reject self-review. An implementer may not explicitly assign itself as reviewer
+at submit time; omit `reviewer` to route the issue through the open review pool,
+where another session or agent (including one with the same name) may review it.
+Agents should not hand-edit these tool-managed fields.
 
 ## Issue Lifecycle
 
