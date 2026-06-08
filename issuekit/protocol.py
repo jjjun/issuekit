@@ -174,6 +174,16 @@ _AGENT_ROLE = {
 }
 
 
+SERVER_INSTRUCTIONS = """# Role-specific instructions
+
+To see the full protocol steps for your role, call:
+
+- `get_protocol(role="author")` for the author protocol
+- `get_protocol(role="implementer")` for the implementer protocol
+- `get_protocol(role="reviewer")` for the reviewer protocol
+"""
+
+
 def render_protocol(agent: str | None = None, role: str | None = None) -> str:
     """Render the handoff protocol for one agent/role, or all roles."""
     if agent is None and role is None:
@@ -193,3 +203,8 @@ def render_protocol(agent: str | None = None, role: str | None = None) -> str:
         return f"{CYCLE_PROTOCOL.rstrip()}\n\n{role_protocol}"
     resolved_role = _AGENT_ROLE.get(agent, "implementer")
     return f"{CYCLE_PROTOCOL.rstrip()}\n\n{_ROLE_PROTOCOLS[resolved_role]}"
+
+
+def render_server_instructions() -> str:
+    """Render lean server instructions: cycle overview plus a get_protocol pointer."""
+    return f"{CYCLE_PROTOCOL.rstrip()}\n\n{SERVER_INSTRUCTIONS}"

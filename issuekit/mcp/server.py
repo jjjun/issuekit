@@ -20,7 +20,7 @@ from issuekit.proposals import (
     write_proposal,
 )
 from issuekit.refs import resolve_ref
-from issuekit.protocol import render_protocol
+from issuekit.protocol import render_protocol, render_server_instructions
 from issuekit.workflow import (
     AUTO_REVIEWER,
     claim_next,
@@ -34,7 +34,7 @@ from issuekit.workflow import (
 
 
 def create_server(cwd: Path | str | None = None) -> FastMCP:
-    server = FastMCP("issuekit", instructions=render_protocol(None))
+    server = FastMCP("issuekit", instructions=render_server_instructions())
     root = Path.cwd() if cwd is None else Path(cwd)
 
     @server.tool(description="Read the current issuekit handoff protocol.")

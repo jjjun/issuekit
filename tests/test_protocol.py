@@ -1,7 +1,7 @@
 import pytest
 
 from issuekit import cli
-from issuekit.protocol import render_protocol
+from issuekit.protocol import render_protocol, render_server_instructions
 
 
 def test_render_protocol_returns_each_agent_and_both() -> None:
@@ -111,3 +111,29 @@ def test_protocol_command_prints_both_agents(capsys: pytest.CaptureFixture[str])
     assert "Handoff protocol (author)" in captured.out
     assert "Handoff protocol (implementer)" in captured.out
     assert "Handoff protocol (reviewer)" in captured.out
+
+
+def test_render_server_instructions_includes_cycle_and_pointer() -> None:
+    lean = render_server_instructions()
+    assert "Delegation cycle overview" in lean
+    assert 'get_protocol(role="author")' in lean
+    assert 'get_protocol(role="implementer")' in lean
+    assert 'get_protocol(role="reviewer")' in lean
+    assert "author" in lean
+    assert "implementer" in lean
+    assert "reviewer" in lean
+    lean.encode("ascii")
+
+
+def test_render_server_instructions_is_substantially_smaller_than_full() -> None:
+    lean = render_server_instructions()
+    full = render_protocol(None)
+    assert len(lean) < len(full) // 2
+
+
+def test_render_protocol_roles_remain_self_contained() -> None:
+    for role in ("author", "implementer", "reviewer"):
+        rendered = render_protocol(role=role)
+        assert "Delegation cycle overview" in rendered
+        assert f"Handoff protocol ({role})" in rendered
+        rendered.encode("ascii")
