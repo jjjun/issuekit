@@ -57,6 +57,29 @@ def test_runner_captures_stdout_stderr_and_returns_result(tmp_path: Path) -> Non
     assert status["stderr_log"].endswith(".err.log")
 
 
+def test_runner_replaces_invalid_log_bytes_before_parsing(tmp_path: Path) -> None:
+    class ParsingAdapter(FakeAdapter):
+        def parse_output(self, stdout: str, stderr: str) -> dict[str, str]:
+            return {"stdout": stdout, "stderr": stderr}
+
+    script = tmp_path / "script.py"
+    script.write_text(
+        "import os; os.write(1, b'valid\\xfftext\\n'); os.write(2, b'err\\xfe\\n')"
+    )
+    plan = tmp_path / "plan.md"
+    plan.write_text("plan")
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / ".git").mkdir()
+
+    adapter = ParsingAdapter([sys.executable, str(script)])
+    result = AgentRunner().run(adapter, plan, repo, timeout=10.0)
+
+    assert result.parsed is not None
+    assert "valid\ufffdtext" in result.parsed["stdout"]
+    assert "err\ufffd" in result.parsed["stderr"]
+
+
 def test_runner_status_is_running_while_process_is_active(tmp_path: Path) -> None:
     script = tmp_path / "script.py"
     script.write_text(

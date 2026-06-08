@@ -13,6 +13,7 @@ from issuekit.commands.init import (
     CODEX_MCP_HEADER,
     HANDOFF_HEADER,
     InitResult,
+    LOCAL_GITIGNORE_ENTRIES,
     _display_path,
     init_repo,
 )
@@ -213,19 +214,24 @@ def _add_gitignore_action(cwd: Path, actions: list[SetupAction]) -> None:
                 ".gitignore",
                 "missing",
                 "write",
-                "issuekit setup would create .gitignore with issuekit.local.toml.",
+                "issuekit setup would create .gitignore with issuekit local entries.",
             )
         )
         return
     content = path.read_text(encoding="utf-8-sig", errors="ignore")
     entries = {line.strip() for line in content.splitlines()}
-    if "issuekit.local.toml" not in entries:
+    missing_entries = [
+        entry
+        for entry in LOCAL_GITIGNORE_ENTRIES
+        if entry not in entries and not (entry == ".agent-runs/" and ".agent-runs" in entries)
+    ]
+    if missing_entries:
         actions.append(
             SetupAction(
                 ".gitignore",
                 "stale",
                 "update",
-                "issuekit setup would add issuekit.local.toml.",
+                "issuekit setup would add missing issuekit local entries.",
             )
         )
 

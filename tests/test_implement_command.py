@@ -69,6 +69,7 @@ def test_implement_command_resolves_issue_and_invokes_runner(
     assert "status_file=status.json" in captured.out
     assert "--- git status --short ---" in captured.out
     assert "?? new.py" in captured.out
+    assert "WARNING: implementation changes are unstaged and not committed." in captured.out
     assert "resume_session_id=abc123" in captured.out
     assert (
         "submitted_review id=1 file=active/001_first.md assignee= stage=review"
@@ -115,6 +116,39 @@ def test_implement_command_does_not_commit_or_push(
     monkeypatch.setattr("issuekit.commands.implement.AgentRunner", ModifyingRunner)
 
     assert cli.main(["implement", "1", "--agent", "codex"]) == 0
+
+
+def test_implement_command_omits_uncommitted_warning_when_no_changes(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "default_reviewer = 'auto'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    make_issue_tree(tmp_path)
+
+    class CleanRunner(FakeRunner):
+        def run(
+            self,
+            adapter,
+            plan_path: Path,
+            repo: Path,
+            timeout: float,
+            agent_name: str | None = None,
+            issue_id: int | None = None,
+        ) -> FakeResult:
+            return FakeResult(status_short="")
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", CleanRunner)
+
+    assert cli.main(["implement", "1", "--agent", "codex"]) == 0
+    captured = capsys.readouterr()
+    assert "No changes." in captured.out
+    assert "WARNING: implementation changes" not in captured.out
 
 
 def test_implement_command_does_not_submit_failed_run(

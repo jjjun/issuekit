@@ -79,6 +79,11 @@ def run(args) -> int:
         return 124
     if result.exit_code != 0:
         return result.exit_code if result.exit_code >= 0 else 1
+    if result.status_short and not _has_recorded_implementation_commit(result.parsed):
+        print(
+            "WARNING: implementation changes are unstaged and not committed. "
+            "Review the diff, then stage and commit the changes after review."
+        )
 
     try:
         reviewed_issue = submit_for_review(
@@ -98,3 +103,9 @@ def run(args) -> int:
         f"assignee={reviewed_issue.assignee} stage={reviewed_issue.stage}"
     )
     return 0
+
+
+def _has_recorded_implementation_commit(parsed: dict[str, str] | None) -> bool:
+    if not parsed:
+        return False
+    return bool(parsed.get("implementation_commit") or parsed.get("commit"))

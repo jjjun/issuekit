@@ -1,10 +1,10 @@
 ---
 id: 48
-status: active
+status: completed
 priority: medium
 created: 2026-06-08
-completed: 
-stage: todo
+completed: 2026-06-08
+stage: done
 author: claude
 title: Harden issuekit implement runs: uncommitted warning, agent-runs gitignore, log decode
 ---
@@ -82,3 +82,14 @@ Origin: infra-toolkit#0@10762a8.
   `issuekit/agents/runner.py`
 - Issue #37/#39 (implement never commits by design; this only adds a warning)
 - Sibling adoptions: the protocol/docs issue and the CLI `approve` alias issue
+
+## Handoff
+
+- Summary: Implemented by codex via issuekit implement.
+
+**Completed**: 2026-06-08
+
+## Completion Notes
+
+- Approved by codex.
+- Verification: `Reviewed by claude (distinct from implementer codex; open review pool). (1) runner.py reads stdout/stderr logs with errors="replace" (writes stay UTF-8), so undecodable external-agent bytes no longer crash parsing. (2) implement.py prints an explicit WARNING after a successful run when there are uncommitted changes and no recorded implementation commit (_has_recorded_implementation_commit), keeping the by-design no-commit behavior while surfacing it. (3) init.py adds .agent-runs/ to the scaffolded LOCAL_GITIGNORE_ENTRIES with a guard against duplicating an existing .agent-runs entry; setup.py was kept in sync so its read-only gitignore check matches. Tests are meaningful: a subprocess emits raw \xff/\xfe and the parsed output is asserted to contain U+FFFD; the warning is asserted present with changes and absent on a clean run; init writes/appends .agent-runs/ on both fresh and pre-existing .gitignore. Verified: uv run pytest (251 passed, 22 skipped), uv run issuekit validate (48 files, 0 warnings), uv run issuekit check-encoding clean.`

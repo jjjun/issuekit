@@ -26,6 +26,7 @@ repos:
         language: system
         pass_filenames: false
 """
+LOCAL_GITIGNORE_ENTRIES = ("issuekit.local.toml", ".agent-runs/")
 
 
 @dataclass
@@ -119,19 +120,29 @@ def _write_incoming_placeholder(
 
 def _write_local_config_ignore(cwd: Path, result: InitResult) -> None:
     path = cwd / ".gitignore"
-    entry = "issuekit.local.toml"
     if not path.exists():
-        path.write_text(f"{entry}\n", encoding="utf-8", newline="\n")
+        path.write_text(
+            "".join(f"{entry}\n" for entry in LOCAL_GITIGNORE_ENTRIES),
+            encoding="utf-8",
+            newline="\n",
+        )
         result.written.append(".gitignore")
         return
     content = path.read_text(encoding="utf-8-sig", errors="ignore")
     entries = {line.strip() for line in content.splitlines()}
-    if entry in entries:
+    missing_entries = [
+        entry
+        for entry in LOCAL_GITIGNORE_ENTRIES
+        if entry not in entries and not (entry == ".agent-runs/" and ".agent-runs" in entries)
+    ]
+    if not missing_entries:
         result.skipped.append(".gitignore")
         return
     separator = "" if content.endswith("\n") or not content else "\n"
     with path.open("a", encoding="utf-8", newline="\n") as handle:
-        handle.write(f"{separator}{entry}\n")
+        handle.write(separator)
+        for entry in missing_entries:
+            handle.write(f"{entry}\n")
     result.written.append(".gitignore")
 
 

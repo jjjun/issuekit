@@ -212,8 +212,8 @@ class AgentRunner:
             ),
         )
 
-        stdout_text = stdout_path.read_text(encoding="utf-8")
-        stderr_text = stderr_path.read_text(encoding="utf-8")
+        stdout_text = stdout_path.read_text(encoding="utf-8", errors="replace")
+        stderr_text = stderr_path.read_text(encoding="utf-8", errors="replace")
         parsed = adapter.parse_output(stdout_text, stderr_text)
 
         status_short = self._git_status_short(repo)

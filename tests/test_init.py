@@ -15,6 +15,9 @@ def test_init_fresh_dir_gets_full_scaffold(tmp_path: Path, monkeypatch, capsys) 
     assert "Wrote: .gitattributes" in captured.out
     assert (tmp_path / ".gitattributes").exists()
     assert (tmp_path / ".editorconfig").exists()
+    assert (tmp_path / ".gitignore").read_text(encoding="utf-8") == (
+        "issuekit.local.toml\n.agent-runs/\n"
+    )
     assert (tmp_path / ".pre-commit-config.yaml").exists()
     assert (tmp_path / "docs" / "issues" / "README.md").exists()
     assert (tmp_path / "docs" / "issues" / "active").is_dir()
@@ -33,6 +36,21 @@ def test_init_rerun_preserves_existing_files(tmp_path: Path, monkeypatch) -> Non
 
     assert exit_code == 0
     assert (tmp_path / ".gitattributes").read_text(encoding="utf-8") == custom
+
+
+def test_init_adds_missing_agent_runs_gitignore_entry(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    (tmp_path / ".gitignore").write_text("issuekit.local.toml\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = cli.main(["init"])
+
+    assert exit_code == 0
+    assert (tmp_path / ".gitignore").read_text(encoding="utf-8") == (
+        "issuekit.local.toml\n.agent-runs/\n"
+    )
 
 
 def test_init_force_overwrites_templates(tmp_path: Path, monkeypatch) -> None:
