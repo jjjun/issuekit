@@ -140,10 +140,10 @@ def test_kimi_adapter_argv_includes_model() -> None:
     assert argv[argv.index("-m") + 1] == "k2"
 
 
-def test_kimi_adapter_parse_output_extracts_resume_id() -> None:
+def test_kimi_adapter_parse_output_extracts_resume_id_from_stderr() -> None:
     adapter = KimiAdapter()
-    stdout = "Answer\nTo resume this session: kimi -r abc123\n"
-    stderr = "thinking..."
+    stdout = "Answer\n"
+    stderr = "thinking...\nTo resume this session: kimi -r abc123\n"
     parsed = adapter.parse_output(stdout, stderr)
     assert parsed["resume_session_id"] == "abc123"
     assert parsed["stdout"] == stdout

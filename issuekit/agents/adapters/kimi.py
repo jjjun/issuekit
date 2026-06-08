@@ -48,7 +48,7 @@ class KimiAdapter(AgentAdapter):
             "stdout": stdout,
             "stderr": stderr,
         }
-        for line in reversed(stdout.splitlines()):
+        for line in reversed(stderr.splitlines()):
             if line.startswith("To resume this session:"):
                 parts = line.split()
                 if parts:
