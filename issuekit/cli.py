@@ -6,6 +6,7 @@ import argparse
 from collections.abc import Sequence
 
 from issuekit.commands import (
+    author,
     check_encoding,
     claim,
     complete,
@@ -25,6 +26,7 @@ from issuekit.commands import (
 
 COMMANDS = (
     "info",
+    "author",
     "implement",
     "validate",
     "generate-indexes",
@@ -69,6 +71,24 @@ def build_parser() -> argparse.ArgumentParser:
     info_parser = subparsers.add_parser("info", help="Show issue tracker status.")
     info_parser.add_argument("--json", action="store_true", help="Print JSON output.")
     info_parser.set_defaults(func=info.run)
+
+    author_parser = subparsers.add_parser(
+        "author",
+        help="Create an active issue authored by an agent.",
+    )
+    author_parser.add_argument("--title", required=True, help="Issue title.")
+    body_group = author_parser.add_mutually_exclusive_group(required=True)
+    body_group.add_argument("--body", help="Inline issue body.")
+    body_group.add_argument("--body-file", help="File containing the issue body.")
+    author_parser.add_argument(
+        "--priority",
+        choices=("high", "medium", "low"),
+        default="medium",
+        help="Issue priority.",
+    )
+    author_parser.add_argument("--agent", required=True, help="Configured author agent.")
+    author_parser.add_argument("--assign", help="Optional implementer assignee.")
+    author_parser.set_defaults(func=author.run)
 
     implement_parser = subparsers.add_parser(
         "implement",

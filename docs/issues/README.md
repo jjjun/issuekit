@@ -166,6 +166,7 @@ status: active
 priority: medium
 created: 2026-05-28
 completed:
+author: codex
 title: Short issue title
 ---
 ```
@@ -175,7 +176,8 @@ Allowed `status` values: `active`, `planned`, `investigating`, `in_progress`,
 
 Allowed `priority` values: `high`, `medium`, `low`.
 
-Workflow tools may add optional `assignee`, `stage`, and `implementer` fields.
+Workflow tools may add optional `author`, `assignee`, `stage`, and
+`implementer` fields. `author` records the agent that wrote the issue.
 `implementer` records the agent that claimed the implementation so review can
 reject self-review. An implementer may not explicitly assign itself as reviewer
 at submit time; omit `reviewer` to route the issue through the open review pool,
@@ -195,6 +197,18 @@ and reference it from the completed issue.
 
 ## Creating A New Issue
 
+Use `issuekit author` to create a stamped issue and stop without claiming it:
+
+```bash
+issuekit author --title "Short issue title" --body-file plan.md --agent codex
+```
+
+Pass `--assign <agent>` only for an explicit handoff to one implementer. Without
+`--assign`, the issue remains in the open implement pool for any configured
+agent to claim later.
+
+Manual creation is still allowed when needed:
+
 1. Run `issuekit info`.
 2. Use the reported next issue id.
 3. Create `docs/issues/active/NNN_slug.md` with a snake_case slug.
@@ -207,8 +221,8 @@ The `NNN` id must be unique across both `active/` and `completed/`.
 ## Completing An Issue
 
 Issues normally reach `completed/` through the reviewer's `approve` step after
-`submit_for_review`.  To close an issue directly without review — for example
-abandoned or trivial issues — use:
+`submit_for_review`. To close an issue directly without review, for example
+abandoned or trivial issues, use:
 
 ```bash
 issuekit complete <id> --force --summary "..." --verification "..."

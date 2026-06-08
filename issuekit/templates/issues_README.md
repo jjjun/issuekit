@@ -141,6 +141,7 @@ status: active
 priority: medium
 created: 2026-05-28
 completed:
+author: codex
 title: Short issue title
 ---
 ```
@@ -149,6 +150,11 @@ Allowed `status` values: `active`, `planned`, `investigating`, `in_progress`,
 `completed`.
 
 Allowed `priority` values: `high`, `medium`, `low`.
+
+Workflow tools may add optional `author`, `assignee`, `stage`, and
+`implementer` fields. `author` records the agent that wrote the issue.
+`implementer` records the agent that claimed the implementation so review can
+reject self-review. Agents should not hand-edit these tool-managed fields.
 
 ## Issue Lifecycle
 
@@ -162,6 +168,18 @@ If meaningful work remains, keep the issue active or create a follow-up issue
 and reference it from the completed issue.
 
 ## Creating A New Issue
+
+Use `issuekit author` to create a stamped issue and stop without claiming it:
+
+```bash
+issuekit author --title "Short issue title" --body-file plan.md --agent codex
+```
+
+Pass `--assign <agent>` only for an explicit handoff to one implementer. Without
+`--assign`, the issue remains in the open implement pool for any configured
+agent to claim later.
+
+Manual creation is still allowed when needed:
 
 1. Run `issuekit info`.
 2. Use the reported next issue id.

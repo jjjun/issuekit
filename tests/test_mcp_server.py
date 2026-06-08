@@ -546,6 +546,7 @@ def test_cli_proposal_json_matches_mcp_output(tmp_path: Path, monkeypatch, capsy
         "assignee",
         "stage",
         "implementer",
+        "author",
         "file",
         "body",
     }

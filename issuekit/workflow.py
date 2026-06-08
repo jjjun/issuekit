@@ -281,6 +281,7 @@ def _write_active_issue(
         "assignee": issue.assignee if assignee is None else assignee,
         "stage": issue.stage if stage is None else stage,
         "implementer": issue.implementer if implementer is None else implementer,
+        "author": issue.author,
         "title": issue.title,
     }
     body = frontmatter.body.strip("\n")
@@ -300,6 +301,7 @@ def _passthrough_frontmatter(data: dict[str, str]) -> dict[str, str]:
         "assignee",
         "stage",
         "implementer",
+        "author",
         "title",
     }
     return {key: value for key, value in data.items() if key not in managed_keys}

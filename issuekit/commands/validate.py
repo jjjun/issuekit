@@ -97,6 +97,19 @@ def run(_args) -> int:
                         f"{issue.relative_path}"
                     )
 
+            author = metadata.get("author", "")
+            if author:
+                if not is_valid_workflow_token(author):
+                    errors.append(
+                        f"Issue frontmatter has invalid author token \"{author}\": "
+                        f"{issue.relative_path}"
+                    )
+                if author not in config.assignees:
+                    errors.append(
+                        f"Issue frontmatter has unknown author \"{author}\": "
+                        f"{issue.relative_path}"
+                    )
+
             stage = metadata.get("stage", "")
             if stage:
                 if not is_valid_workflow_token(stage):

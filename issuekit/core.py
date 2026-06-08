@@ -42,6 +42,7 @@ class Issue:
     assignee: str
     stage: str
     implementer: str
+    author: str
     content: str
     frontmatter: Frontmatter
     decode_error: bool = False
@@ -59,6 +60,7 @@ def issue_dict(issue: "Issue", *, include_body: bool = False) -> dict[str, objec
         "assignee": issue.assignee,
         "stage": issue.stage,
         "implementer": issue.implementer,
+        "author": issue.author,
         "file": issue.relative_path,
     }
     if include_body:
@@ -109,6 +111,7 @@ def format_issue_frontmatter(data: dict[str, object]) -> str:
         "assignee",
         "stage",
         "implementer",
+        "author",
         "title",
     }
     fields = [
@@ -120,12 +123,13 @@ def format_issue_frontmatter(data: dict[str, object]) -> str:
         ("assignee", data.get("assignee") or ""),
         ("stage", data.get("stage") or ""),
         ("implementer", data.get("implementer") or ""),
+        ("author", data.get("author") or ""),
     ]
     fields.extend((key, data.get(key)) for key in data if key not in fixed_keys)
     fields.append(("title", data.get("title")))
     lines = []
     for key, value in fields:
-        if key in {"assignee", "stage", "implementer"} and not value:
+        if key in {"assignee", "stage", "implementer", "author"} and not value:
             continue
         lines.append(f"{key}: {'' if value is None else value}")
     body = "\n".join(lines)
@@ -209,6 +213,7 @@ def read_issues(issues_dir: Path | str, directory_status: str) -> list[Issue]:
                 assignee=_normalize(metadata.get("assignee")),
                 stage=_normalize(metadata.get("stage")),
                 implementer=_normalize(metadata.get("implementer")),
+                author=_normalize(metadata.get("author")),
                 content=content,
                 frontmatter=frontmatter,
                 decode_error=decode_error,

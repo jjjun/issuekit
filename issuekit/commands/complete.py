@@ -103,6 +103,7 @@ def complete_issue(
         "assignee": "",
         "stage": "done",
         "implementer": "",
+        "author": issue.author,
         "title": issue.title,
     }
     next_content = format_issue_frontmatter(data) + _append_completion_note(
@@ -133,6 +134,7 @@ def _passthrough_frontmatter(data: dict[str, str]) -> dict[str, str]:
         "assignee",
         "stage",
         "implementer",
+        "author",
         "title",
     }
     return {key: value for key, value in data.items() if key not in managed_keys}

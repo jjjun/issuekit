@@ -7,6 +7,7 @@ from issuekit import cli
 
 EXPECTED_COMMANDS = {
     "info",
+    "author",
     "implement",
     "validate",
     "generate-indexes",
@@ -92,6 +93,7 @@ def test_handlers_are_stubs(command: str) -> None:
         "submit-review",
         "validate",
         "add-ref",
+        "author",
         "list-refs",
         "propose",
         "incoming",

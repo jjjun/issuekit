@@ -259,7 +259,17 @@ def test_cli_adopt_json_outputs_issue_payload(tmp_path: Path, monkeypatch, capsy
     adopted = json.loads(capsys.readouterr().out)
 
     assert exit_code == 0
-    assert set(adopted) == {"id", "title", "status", "assignee", "stage", "implementer", "file", "body"}
+    assert set(adopted) == {
+        "id",
+        "title",
+        "status",
+        "assignee",
+        "stage",
+        "implementer",
+        "author",
+        "file",
+        "body",
+    }
     assert adopted["title"] == "Adopt Me"
     assert "Implement this locally." in adopted["body"]
 
