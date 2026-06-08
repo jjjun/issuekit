@@ -1,12 +1,10 @@
 ---
 id: 38
-status: in_progress
+status: completed
 priority: low
 created: 2026-06-08
-completed: 
-assignee: codex
-stage: changes_requested
-implementer: codex
+completed: 2026-06-08
+stage: done
 title: Config-driven agent registry with codex adapter
 ---
 
@@ -81,3 +79,23 @@ REQUIRED CHANGES (blocking):
 4. (secondary) codex known_paths is empty, so resolve_binary raises where codex is not on PATH. On this machine codex was found only at ~/.codex/.sandbox-bin/codex.exe (not on PATH), which may be sandbox-specific. Add appropriate known_paths for codex or document that codex must be on PATH, and confirm against the real install location.
 
 Re-submit for review once the codex adapter runs against the installed CLI and the docstring/tests reflect the verified contract.
+
+## Handoff
+
+- Summary: Addressed review feedback for issue #38:
+
+1. Replaced non-existent --approval-mode auto-edit with verified --full-auto (value-less flag) in default codex config.
+2. Updated build_argv in runner.py to support approval_flag without approval_value, enabling value-less flags like --full-auto.
+3. Added known_paths for codex sandbox installs (~/.codex/.sandbox-bin/codex and .exe).
+4. Updated CodexAdapter docstring with verified contract from codex-cli 0.119.0 on Windows: exec mode, --full-auto, stdin=DEVNULL behavior, stdout/stderr split, exit codes.
+5. Updated tests to assert --full-auto instead of --approval-mode, and added test_codex_adapter_argv_value_less_approval_flag to verify the corrected argv shape.
+
+All 217 tests pass, validate and check-encoding are clean. The adapter now builds an argv that matches the real codex CLI.
+- Commit: `efef133`
+
+**Completed**: 2026-06-08
+
+## Completion Notes
+
+- Approved by claude.
+- Verification: `uv run pytest (217 passed, 18 skipped); uv run issuekit validate (40 files, 0 warnings); check-encoding clean. All 4 request_changes items resolved and verified by real AgentRunner+CodexAdapter runs on Windows: binary resolves via known_paths (~/.codex/.sandbox-bin/codex.exe), argv ['exec', prompt, '--full-auto'] is accepted (no more 'unexpected argument' - previous blocker gone), codex starts a workspace-write/approval-never session, build_argv supports the value-less --full-auto, docstring/tests updated. Caveat (environment, out of adapter scope): codex runs do not complete on this machine because the configured model gpt-5.5 needs a newer codex CLI and gpt-5/gpt-5-codex are not supported on this ChatGPT account; the adapter invokes codex correctly and the failure is codex-side model/account config. Relevant to #39 real runs.`
