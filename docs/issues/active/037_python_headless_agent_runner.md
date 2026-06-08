@@ -1,8 +1,12 @@
 ---
 id: 37
-status: active
+status: in_progress
 priority: medium
 created: 2026-06-08
+completed: 
+assignee: codex
+stage: implementing
+implementer: codex
 title: Python headless agent runner with kimi adapter
 ---
 

@@ -1,0 +1,158 @@
+import os
+import signal
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+import pytest
+
+from issuekit.agents.adapters.kimi import KimiAdapter
+from issuekit.agents.runner import AgentAdapter, AgentResult, AgentRunner
+
+
+class FakeAdapter(AgentAdapter):
+    """Fake adapter for testing the runner without a real agent."""
+
+    def __init__(self, command: list[str]) -> None:
+        self.command = command
+
+    def resolve_binary(self) -> Path:
+        return Path(self.command[0])
+
+    def build_argv(self, prompt: str, plan_path: Path) -> list[str]:
+        return self.command[1:]
+
+    def parse_output(self, stdout: str, stderr: str) -> dict[str, str]:
+        return {}
+
+
+def test_runner_captures_stdout_stderr_and_returns_result(tmp_path: Path) -> None:
+    script = tmp_path / "script.py"
+    script.write_text("import sys; print('hello out'); print('hello err', file=sys.stderr)")
+    plan = tmp_path / "plan.md"
+    plan.write_text("plan")
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / ".git").mkdir()
+
+    adapter = FakeAdapter([sys.executable, str(script)])
+    runner = AgentRunner()
+    result = runner.run(adapter, plan, repo, timeout=10.0)
+
+    assert result.timed_out is False
+    assert result.exit_code == 0
+    assert result.stdout_path.exists()
+    assert result.stderr_path.exists()
+    assert "hello out" in result.stdout_path.read_text(encoding="utf-8")
+    assert "hello err" in result.stderr_path.read_text(encoding="utf-8")
+    assert result.elapsed_sec >= 0
+
+
+def test_runner_uses_devnull_stdin_and_does_not_hang(tmp_path: Path) -> None:
+    script = tmp_path / "script.py"
+    script.write_text("import sys; data = sys.stdin.read(); print('read:', repr(data))")
+    plan = tmp_path / "plan.md"
+    plan.write_text("plan")
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / ".git").mkdir()
+
+    adapter = FakeAdapter([sys.executable, str(script)])
+    runner = AgentRunner()
+    result = runner.run(adapter, plan, repo, timeout=10.0)
+
+    assert result.timed_out is False
+    assert result.exit_code == 0
+    assert "read: ''" in result.stdout_path.read_text(encoding="utf-8")
+
+
+def test_runner_kills_on_timeout(tmp_path: Path) -> None:
+    script = tmp_path / "script.py"
+    script.write_text("import time; time.sleep(60)")
+    plan = tmp_path / "plan.md"
+    plan.write_text("plan")
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / ".git").mkdir()
+
+    adapter = FakeAdapter([sys.executable, str(script)])
+    runner = AgentRunner()
+    start = time.monotonic()
+    result = runner.run(adapter, plan, repo, timeout=0.5)
+    elapsed = time.monotonic() - start
+
+    assert result.timed_out is True
+    assert elapsed < 5.0
+
+
+def test_runner_git_status_short(tmp_path: Path) -> None:
+    script = tmp_path / "script.py"
+    script.write_text("import pathlib, sys; (pathlib.Path(sys.argv[1]) / 'new.txt').write_text('x')")
+    plan = tmp_path / "plan.md"
+    plan.write_text("plan")
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init"], cwd=str(repo), check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=str(repo), check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=str(repo), check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    adapter = FakeAdapter([sys.executable, str(script), str(repo)])
+    runner = AgentRunner()
+    result = runner.run(adapter, plan, repo, timeout=10.0)
+
+    assert result.timed_out is False
+    assert result.status_short is not None
+    assert "new.txt" in result.status_short
+
+
+def test_runner_missing_plan_raises(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    adapter = FakeAdapter([sys.executable, "-c", "pass"])
+    runner = AgentRunner()
+    with pytest.raises(FileNotFoundError, match="Plan file not found"):
+        runner.run(adapter, tmp_path / "nosuch.md", repo)
+
+
+def test_runner_missing_repo_raises(tmp_path: Path) -> None:
+    plan = tmp_path / "plan.md"
+    plan.write_text("plan")
+    adapter = FakeAdapter([sys.executable, "-c", "pass"])
+    runner = AgentRunner()
+    with pytest.raises(FileNotFoundError, match="Repo directory not found"):
+        runner.run(adapter, plan, tmp_path / "nosuch")
+
+
+def test_kimi_adapter_argv_contains_p_and_never_auto() -> None:
+    adapter = KimiAdapter()
+    argv = adapter.build_argv("prompt", Path("/plan.md"))
+    assert "-p" in argv
+    assert "--auto" not in argv
+    assert "-y" not in argv
+    assert "--output-format" in argv
+
+
+def test_kimi_adapter_argv_includes_model() -> None:
+    adapter = KimiAdapter(model="k2")
+    argv = adapter.build_argv("prompt", Path("/plan.md"))
+    assert "-m" in argv
+    assert argv[argv.index("-m") + 1] == "k2"
+
+
+def test_kimi_adapter_parse_output_extracts_resume_id() -> None:
+    adapter = KimiAdapter()
+    stdout = "Answer\nTo resume this session: kimi -r abc123\n"
+    stderr = "thinking..."
+    parsed = adapter.parse_output(stdout, stderr)
+    assert parsed["resume_session_id"] == "abc123"
+    assert parsed["stdout"] == stdout
+    assert parsed["stderr"] == stderr
+
+
+def test_kimi_adapter_resolve_binary_raises_when_not_found(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr("issuekit.agents.adapters.kimi.shutil.which", lambda _cmd: None)
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    adapter = KimiAdapter()
+    with pytest.raises(RuntimeError, match="not found"):
+        adapter.resolve_binary()
