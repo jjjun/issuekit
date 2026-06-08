@@ -66,8 +66,10 @@ class ConfigAgentAdapter(AgentAdapter):
     def build_argv(self, prompt: str, plan_path: Path) -> list[str]:
         argv = list(self.run_config.headless_argv)
         argv.append(prompt)
-        if self.run_config.approval_flag and self.run_config.approval_value:
-            argv.extend([self.run_config.approval_flag, self.run_config.approval_value])
+        if self.run_config.approval_flag:
+            argv.append(self.run_config.approval_flag)
+            if self.run_config.approval_value:
+                argv.append(self.run_config.approval_value)
         if self.run_config.output_format_flag and self.run_config.output_format:
             argv.extend(
                 [self.run_config.output_format_flag, self.run_config.output_format]

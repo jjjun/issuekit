@@ -42,8 +42,7 @@ def test_codex_adapter_argv_contains_exec() -> None:
     argv = adapter.build_argv("prompt", Path("/plan.md"))
     assert "exec" in argv
     assert "prompt" in argv
-    assert "--approval-mode" in argv
-    assert argv[argv.index("--approval-mode") + 1] == "auto-edit"
+    assert "--full-auto" in argv
 
 
 def test_codex_adapter_argv_includes_model() -> None:
@@ -58,6 +57,25 @@ def test_codex_adapter_parse_output_returns_streams() -> None:
     parsed = adapter.parse_output("stdout text", "stderr text")
     assert parsed["stdout"] == "stdout text"
     assert parsed["stderr"] == "stderr text"
+
+
+def test_codex_adapter_argv_value_less_approval_flag() -> None:
+    config = IssuekitConfig(
+        agents=(
+            (
+                "codex",
+                AgentRunConfig(
+                    binary="codex",
+                    headless_argv=("exec",),
+                    approval_flag="--full-auto",
+                    model_flag="--model",
+                ),
+            ),
+        )
+    )
+    adapter = CodexAdapter(config=config)
+    argv = adapter.build_argv("prompt", Path("/plan.md"))
+    assert argv == ["exec", "prompt", "--full-auto"]
 
 
 def test_config_agent_adapter_resolve_binary_uses_path(monkeypatch, tmp_path: Path) -> None:

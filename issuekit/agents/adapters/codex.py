@@ -9,11 +9,15 @@ from issuekit.config import IssuekitConfig
 class CodexAdapter(ConfigAgentAdapter):
     """Adapter for the OpenAI Codex CLI non-interactive mode.
 
-    Contract (to be verified on Windows and Ubuntu):
+    Verified contract (codex-cli 0.119.0 on Windows and Ubuntu):
     - Non-interactive mode is ``codex exec "<prompt>"``.
-    - ``--approval-mode`` selects the auto-approval level (e.g. ``auto-edit``).
-    - Stdout carries the final response; stderr carries logs / reasoning.
-    - Stdin must be empty/closed or the process can hang.
+    - ``--full-auto`` enables automatic execution with sandbox ``workspace-write``.
+      It is a value-less flag (approval_value is None).
+    - The runner passes ``stdin=subprocess.DEVNULL``; this is safe because
+      ``codex exec`` reads the prompt from its argv when provided.
+    - Stdout carries the final response; stderr carries session metadata,
+      reasoning logs, and errors.
+    - Exit code is 0 on success and non-zero on failure (e.g. 1 for API errors).
     """
 
     def __init__(

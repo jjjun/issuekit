@@ -49,9 +49,12 @@ class IssuekitConfig:
             "codex",
             AgentRunConfig(
                 binary="codex",
+                known_paths=(
+                    "~/.codex/.sandbox-bin/codex",
+                    "~/.codex/.sandbox-bin/codex.exe",
+                ),
                 headless_argv=("exec",),
-                approval_flag="--approval-mode",
-                approval_value="auto-edit",
+                approval_flag="--full-auto",
                 model_flag="--model",
             ),
         ),
