@@ -11,3 +11,4 @@ build/
 .env
 docs/issues/active/.issuekit-claim.lock
 issuekit.local.toml
+.kimi-runs/
