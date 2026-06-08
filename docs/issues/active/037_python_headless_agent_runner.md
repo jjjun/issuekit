@@ -5,7 +5,7 @@ priority: medium
 created: 2026-06-08
 completed: 
 assignee: codex
-stage: implementing
+stage: changes_requested
 implementer: codex
 title: Python headless agent runner with kimi adapter
 ---
@@ -132,3 +132,25 @@ runner must satisfy all of these:
 - Follow-ups: #38 (config-driven agent registry + codex adapter), #39 (CLI
   `issuekit implement`), #40 (review-gate integration)
 - Prior art: stdin-hang fix in `issuekit/commands/propose.py` (`stdin=DEVNULL`)
+
+## Handoff
+
+- Summary: Add Python headless agent runner with kimi adapter. Includes AgentRunner core (DEVNULL stdin, timeout, process-group kill, log capture), AgentAdapter ABC seam, KimiAdapter with verified headless contract, cross-platform binary resolution, and comprehensive tests.
+- Branch: `main`
+- Commit: `738c145`
+
+## Review Feedback
+
+- Overall solid: all 7 Acceptance Criteria pass (verified by tests and a real AgentRunner+KimiAdapter end-to-end run on Windows: hello.txt created, no commit made, logs under .agent-runs/, timeout kill works). 205 passed, validate and check-encoding clean. One in-scope defect must be fixed before approval.
+
+REQUIRED CHANGE - KimiAdapter.parse_output reads the wrong stream for the resume session id.
+
+Implementation Plan step 3 requires capturing the resume session id, but it never works against real kimi output. Empirically verified by running `kimi -p "..." --output-format text` with stdout/stderr separated: the `To resume this session: kimi -r <id>` footer is written to STDERR, while STDOUT carries only the final answer. parse_output (issuekit/agents/adapters/kimi.py:46-57) scans stdout for that line, so resume_session_id is never populated. Confirmed in a real end-to-end run: r.parsed.get('resume_session_id') returned None even though kimi printed the footer.
+
+The unit test test_kimi_adapter_parse_output_extracts_resume_id (tests/test_agents_runner.py:143-150) masks this because it puts the footer in a synthetic stdout string; it passes while the real behavior is broken.
+
+Fix:
+1. In parse_output, scan stderr (or both streams) for the `To resume this session:` line and extract the id. Note that real stdout/stderr lines are prefixed with a bullet glyph and a space, so taking the last whitespace-delimited token still yields the id; please confirm against real output.
+2. Update test_kimi_adapter_parse_output_extracts_resume_id so the footer is on stderr (matching reality), and keep an assertion that resume_session_id is extracted.
+
+NON-BLOCKING (do not need to address for this issue): in an arbitrary target repo, .agent-runs/ is not gitignored, so status_short surfaces it as untracked (it is only gitignored in this repo). Consider handling the log-output location when the CLI lands in #39.
