@@ -1,9 +1,10 @@
 ---
 id: 50
-status: active
+status: completed
 priority: medium
 created: 2026-06-08
-completed:
+completed: 2026-06-08
+stage: done
 origin: py_cr_wrapper#0@3f071a8
 title: Show status and stage in info active issue listings
 ---
@@ -64,3 +65,14 @@ point 5 in #51.
 
 - Origin: `py_cr_wrapper#0@3f071a8`
 - Split siblings: #49 (progress visibility), #51 (rename err.log)
+
+## Handoff
+
+- Summary: Implemented by kimi via issuekit implement.
+
+**Completed**: 2026-06-08
+
+## Completion Notes
+
+- Show stage alongside status in info active-issue listings (#50: proposal point 4). Text and JSON both carry stage.
+- Verification: `uv run pytest tests/test_info.py (10 passed). info.py adds stage to activeIssues JSON and renders [status, stage=X] when stage set, [status] otherwise. Confirmed queue.py already prints stage (line 29), so no gap there - correctly left unchanged. No tests/test_queue.py exists. No stray files.`

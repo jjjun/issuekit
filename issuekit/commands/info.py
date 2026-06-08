@@ -43,6 +43,7 @@ def run(args) -> int:
                 "title": issue.title,
                 "priority": issue.priority or None,
                 "status": issue.issue_status or issue.status,
+                "stage": issue.stage or None,
                 "file": issue.relative_path,
             }
             for issue in active_issues
@@ -83,7 +84,8 @@ def run(args) -> int:
         print()
         print("Active issues")
         for issue in summary["activeIssues"]:
-            print(f"- #{issue['id']}: {issue['title']} [{issue['status']}] ({issue['file']})")
+            status_display = f"{issue['status']}, stage={issue['stage']}" if issue.get('stage') else issue['status']
+            print(f"- #{issue['id']}: {issue['title']} [{status_display}] ({issue['file']})")
 
     if summary["incomingProposals"]:
         print()

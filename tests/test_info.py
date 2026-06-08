@@ -4,7 +4,7 @@ from pathlib import Path
 from issuekit import cli
 from issuekit.proposals import Proposal, write_proposal
 
-from tests.issue_helpers import make_issue_tree
+from tests.issue_helpers import issue_text, make_issue_tree, write_issue, write_indexes
 
 
 def test_info_json_shape(tmp_path: Path, monkeypatch) -> None:
@@ -27,6 +27,7 @@ def test_info_json_output(tmp_path: Path, monkeypatch, capsys) -> None:
     assert payload["nextIssueId"] == 3
     assert payload["indexes"]["ok"] is True
     assert payload["activeIssues"][0]["file"] == "active/001_first.md"
+    assert payload["activeIssues"][0]["stage"] is None
     assert payload["incomingProposals"] == []
 
 
@@ -139,3 +140,48 @@ def test_info_counts_non_utf8_issue_file_without_crashing(
     assert payload["counts"] == {"active": 2, "completed": 1, "total": 3}
     assert payload["activeIssues"][1]["file"] == "active/003_cp932.md"
     assert payload["activeIssues"][1]["title"] == "cp932"
+
+
+def test_info_json_includes_stage_when_present(tmp_path: Path, monkeypatch, capsys) -> None:
+    issues_dir = make_issue_tree(tmp_path)
+    write_issue(
+        issues_dir / "active" / "003_review.md",
+        issue_text(3, "Review", status="in_progress", stage="review"),
+    )
+    write_indexes(issues_dir)
+    monkeypatch.chdir(tmp_path)
+
+    cli.main(["info", "--json"])
+    payload = json.loads(capsys.readouterr().out)
+
+    review_issue = next(i for i in payload["activeIssues"] if i["id"] == 3)
+    assert review_issue["status"] == "in_progress"
+    assert review_issue["stage"] == "review"
+
+
+def test_info_text_renders_stage_when_present(tmp_path: Path, monkeypatch, capsys) -> None:
+    issues_dir = make_issue_tree(tmp_path)
+    write_issue(
+        issues_dir / "active" / "003_review.md",
+        issue_text(3, "Review", status="in_progress", stage="review"),
+    )
+    write_indexes(issues_dir)
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = cli.main(["info"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "[in_progress, stage=review]" in captured.out
+
+
+def test_info_text_renders_status_only_when_no_stage(tmp_path: Path, monkeypatch, capsys) -> None:
+    make_issue_tree(tmp_path)
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = cli.main(["info"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "[active]" in captured.out
+    assert "stage=" not in captured.out
