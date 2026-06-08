@@ -1,10 +1,10 @@
 ---
 id: 56
-status: active
+status: completed
 priority: low
 created: 2026-06-09
-completed: 
-stage: todo
+completed: 2026-06-09
+stage: done
 author: claude
 title: Decompose oversized setup and validate command modules
 ---
@@ -70,3 +70,14 @@ focused units.
 - `issuekit/commands/setup.py`, `issuekit/commands/validate.py`,
   `issuekit/commands/init.py`
 - Depends on / pairs with the index-diff consolidation issue.
+
+## Handoff
+
+- Summary: Implemented by codex via issuekit implement.
+
+**Completed**: 2026-06-09
+
+## Completion Notes
+
+- Decompose oversized setup and validate command modules.
+- Verification: `Reviewed diff: setup.py is now a package (setup/__init__.py run+printers+payloads, setup/actions.py collectors, setup/diagnostics.py with which/import_module injection); public surface (run, build_json_payload, build_check_json_payload, collect_diagnostics, collect_setup_actions, SetupAction, Diagnostic) preserved. validate.run() split into _collect_issue_errors/_collect_frontmatter_errors/_collect_workflow_token_errors/_collect_issue_warnings/_collect_duplicate_id_errors/_collect_index_errors. Reviewer restored one guidance line ('global codex MCP store') that drifted. Full suite 281 passed/22 skipped; check-encoding clean; validate clean; setup --check reports current.`
