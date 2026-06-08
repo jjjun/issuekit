@@ -1,12 +1,10 @@
 ---
 id: 36
-status: in_progress
+status: completed
 priority: high
 created: 2026-06-08
-completed: 
-assignee: codex
-stage: implementing
-implementer: codex
+completed: 2026-06-08
+stage: done
 title: Block implementer from self-assigning as reviewer on submit
 ---
 
@@ -105,3 +103,16 @@ breaking same-name (e.g. codex -> codex) review through the open pool.
 - Note: actors are identified only by name, so same-name self-approval in the
   open pool cannot be blocked mechanically without a session-id concept; this
   issue handles the submit-time self-assignment and documents the residual gap.
+
+## Handoff
+
+- Summary: Block implementer from self-assigning as reviewer on submit. Reject explicit reviewer == implementer in submit_for_review regardless of require_distinct_reviewer. Keep open-pool same-name review intact by omitting reviewer. Update protocol text and docs/issues/README.md. Add tests.
+- Branch: `main`
+- Commit: `3d8c0cb`
+
+**Completed**: 2026-06-08
+
+## Completion Notes
+
+- Approved by claude.
+- Verification: `uv run pytest (195 passed, 18 skipped); uv run issuekit validate (40 files, 0 warnings); uv run issuekit check-encoding (clean). Reviewed by claude; implementer was codex (distinct reviewer).`
