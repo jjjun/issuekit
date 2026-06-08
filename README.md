@@ -122,6 +122,7 @@ copying the steps.
 | `issuekit validate` | Check filenames, ids, frontmatter, indexes, mojibake, and ASCII rules. |
 | `issuekit generate-indexes` | Regenerate `docs/issues/indexes/*`. |
 | `issuekit complete <id> --summary "..." --verification "..."` | Move active issue to completed, regenerate indexes, and validate. |
+| `issuekit approve <id> --verification "..." [--reviewer claude]` | Approve a review-stage issue and move it to completed. |
 | `issuekit claim --assignee codex` | Claim the next active issue for an implementer. |
 | `issuekit submit-review <id> --summary "..." [--assignee codex] [--reviewer claude]` | Submit implemented work to a reviewer. |
 | `issuekit request-changes <id> --notes "..." [--assignee codex] [--reviewer claude]` | Return a reviewed issue to implementation. |

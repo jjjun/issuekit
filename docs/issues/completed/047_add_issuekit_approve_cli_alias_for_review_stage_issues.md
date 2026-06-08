@@ -1,10 +1,10 @@
 ---
 id: 47
-status: active
+status: completed
 priority: medium
 created: 2026-06-08
-completed: 
-stage: todo
+completed: 2026-06-08
+stage: done
 author: claude
 title: Add issuekit approve CLI alias for review-stage issues
 ---
@@ -67,3 +67,14 @@ completing a review-stage issue.
 - `issuekit/cli.py`, `issuekit/commands/complete.py`, `issuekit/workflow.py`
 - MCP `approve` tool in `issuekit/mcp/server.py` (CLI parity target)
 - Sibling adoption: the protocol/docs issue references this alias
+
+## Handoff
+
+- Summary: Implemented by codex via issuekit implement.
+
+**Completed**: 2026-06-08
+
+## Completion Notes
+
+- Approved by codex.
+- Verification: `Reviewed by claude (distinct from implementer codex; open review pool). New issuekit/commands/approve.py adds approve_issue() that resolves the reviewer, enforces stage=review unless --force, and reuses complete_issue() (no forked logic); the run wrapper regenerates indexes and validates. The MCP approve tool was refactored to call approve_issue() and the duplicated _resolve_reviewer_for_issue helper removed, so CLI and MCP now share one approval path. CLI registers approve with id, --verification (required), --summary, --reviewer, --force. Docs updated: README command table and docs/issues/README.md now show issuekit approve, resolving the conditional forward-reference left by #46. Noted behavior change: the MCP approve tool now requires stage=review (previously unenforced); this is a sensible tightening and all existing tests still pass. Self-review guard (#36) preserved via the shared path. Tests cover review-stage approve, explicit summary/reviewer, non-review rejection without --force, --force bypass, and the self-review guard. Verified: uv run pytest (248 passed, 22 skipped), uv run issuekit validate (48 files, 0 warnings), uv run issuekit check-encoding clean. A stray .pytest_tmp/ basetemp directory from the agent test run will be cleaned before commit (not part of the change).`

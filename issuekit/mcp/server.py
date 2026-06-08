@@ -8,10 +8,10 @@ from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
-from issuekit.commands.complete import complete_issue
+from issuekit.commands.approve import approve_issue
 from issuekit.commands.generate_indexes import write_index_files
 from issuekit.commands.propose import build_proposal
-from issuekit.config import IssuekitConfig, load_config
+from issuekit.config import load_config
 from issuekit.core import Issue, issue_dict, read_all_issues
 from issuekit.proposals import (
     adopt_proposal as adopt_proposal_file,
@@ -24,8 +24,6 @@ from issuekit.protocol import render_protocol, render_server_instructions
 from issuekit.workflow import (
     AUTO_REVIEWER,
     claim_next,
-    ensure_assigned_reviewer,
-    ensure_not_self_review,
     find_for,
     request_changes as workflow_request_changes,
     resolve_reviewer,
@@ -128,11 +126,9 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
     )
     def approve(id: int, verification: str, reviewer: str | None = None) -> dict[str, Any]:
         config, issues_dir = _context(root)
-        reviewer = _resolve_reviewer_for_issue(issues_dir, id, reviewer, config)
-        issue = complete_issue(
+        issue = approve_issue(
             issues_dir,
             id,
-            summary=f"Approved by {reviewer}.",
             verification=verification,
             reviewer=reviewer,
             config=config,
@@ -206,22 +202,6 @@ def _context(root: Path):
 
 def _refresh_indexes(issues_dir: Path, recent_count: int) -> None:
     write_index_files(issues_dir, recent_count)
-
-
-def _resolve_reviewer_for_issue(
-    issues_dir: Path,
-    issue_id: int,
-    reviewer: str | None,
-    config: IssuekitConfig,
-) -> str:
-    active_issues, _, _ = read_all_issues(issues_dir)
-    issue = next((candidate for candidate in active_issues if candidate.id == issue_id), None)
-    resolved_reviewer = resolve_reviewer(reviewer, config, issue=issue)
-    if issue is not None and issue.stage == "review":
-        ensure_assigned_reviewer(issue, reviewer, resolved_reviewer)
-        if not issue.assignee:
-            ensure_not_self_review(issue, resolved_reviewer, config)
-    return resolved_reviewer
 
 
 def _issue_dict(issue: Issue, *, include_body: bool = False) -> dict[str, Any]:

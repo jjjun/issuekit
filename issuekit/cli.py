@@ -6,6 +6,7 @@ import argparse
 from collections.abc import Sequence
 
 from issuekit.commands import (
+    approve,
     author,
     check_encoding,
     claim,
@@ -31,6 +32,7 @@ COMMANDS = (
     "validate",
     "generate-indexes",
     "complete",
+    "approve",
     "claim",
     "submit-review",
     "request-changes",
@@ -134,6 +136,21 @@ def build_parser() -> argparse.ArgumentParser:
         help="Bypass the review-stage requirement.",
     )
     complete_parser.set_defaults(func=complete.run)
+
+    approve_parser = subparsers.add_parser(
+        "approve",
+        help="Approve a review-stage issue.",
+    )
+    approve_parser.add_argument("id", help="Issue id to approve.")
+    approve_parser.add_argument("--verification", required=True, help="Verification notes.")
+    approve_parser.add_argument("--summary", help="Approval summary.")
+    approve_parser.add_argument("--reviewer", help="Reviewer approving this issue.")
+    approve_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Bypass the review-stage requirement.",
+    )
+    approve_parser.set_defaults(func=approve.run)
 
     claim_parser = subparsers.add_parser(
         "claim",

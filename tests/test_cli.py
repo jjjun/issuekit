@@ -12,6 +12,7 @@ EXPECTED_COMMANDS = {
     "validate",
     "generate-indexes",
     "complete",
+    "approve",
     "claim",
     "submit-review",
     "request-changes",
@@ -66,6 +67,17 @@ def test_subcommand_help_exits_zero(capsys: pytest.CaptureFixture[str]) -> None:
     assert "--verification" in captured.out
 
 
+def test_approve_help_exits_zero(capsys: pytest.CaptureFixture[str]) -> None:
+    exit_code = cli.main(["approve", "--help"])
+
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "id" in captured.out
+    assert "--verification" in captured.out
+    assert "--reviewer" in captured.out
+
+
 def test_complete_requires_id(capsys: pytest.CaptureFixture[str]) -> None:
     exit_code = cli.main(["complete"])
 
@@ -79,6 +91,7 @@ def test_complete_requires_id(capsys: pytest.CaptureFixture[str]) -> None:
 def test_handlers_are_stubs(command: str) -> None:
     if command in {
         "check-encoding",
+        "approve",
         "claim",
         "complete",
         "generate-indexes",

@@ -270,10 +270,15 @@ The `NNN` id must be unique across both `active/` and `completed/`.
 ## Completing An Issue
 
 Issues normally reach `completed/` through the reviewer's `approve` step after
-`submit_for_review`. The reviewer MCP flow uses `approve`; the CLI completion
-spelling is `issuekit complete <id>` until the `issuekit approve` alias is
-available. To close an issue directly without review, for example abandoned or
-trivial issues, use:
+`submit_for_review`. The reviewer MCP flow uses `approve`; the matching CLI
+spelling is:
+
+```bash
+issuekit approve <id> --verification "..."
+```
+
+To close an issue directly without review, for example abandoned or trivial
+issues, use:
 
 ```bash
 issuekit complete <id> --force --summary "..." --verification "..."
