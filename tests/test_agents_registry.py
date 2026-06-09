@@ -57,7 +57,7 @@ def test_codex_adapter_argv_contains_exec() -> None:
     adapter = CodexAdapter()
     argv = adapter.build_argv("prompt", Path("/plan.md"))
     assert "exec" in argv
-    assert "prompt" in argv
+    assert argv[1].startswith("prompt")
     assert "--full-auto" in argv
 
 

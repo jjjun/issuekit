@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from pathlib import Path
+import subprocess
 import sys
 
 import pytest
@@ -40,6 +41,20 @@ class FakeRunner:
     ) -> FakeResult:
         self.calls.append((adapter, plan_path, repo, timeout, agent_name, issue_id))
         return FakeResult(parsed={"resume_session_id": "abc123"})
+
+
+def _init_git_repo(path: Path) -> None:
+    subprocess.run(["git", "init"], cwd=str(path), check=True, stdout=subprocess.DEVNULL)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=str(path), check=True)
+    subprocess.run(["git", "config", "user.name", "Test User"], cwd=str(path), check=True)
+    subprocess.run(["git", "config", "core.autocrlf", "false"], cwd=str(path), check=True)
+    subprocess.run(["git", "add", "."], cwd=str(path), check=True)
+    subprocess.run(
+        ["git", "commit", "-m", "baseline"],
+        cwd=str(path),
+        check=True,
+        stdout=subprocess.DEVNULL,
+    )
 
 
 def test_implement_command_resolves_issue_and_invokes_runner(
@@ -193,6 +208,12 @@ def test_implement_command_does_not_commit_or_push(
     def reject_commit_or_push(argv, *args, **kwargs):
         if list(argv[:2]) in (["git", "commit"], ["git", "push"]):
             raise AssertionError(f"unexpected git write command: {argv}")
+        if list(argv[:2]) == ["git", "rev-parse"]:
+            return subprocess.CompletedProcess(argv, 1, "", "")
+        if list(argv[:3]) == ["git", "--no-pager", "diff"]:
+            return subprocess.CompletedProcess(argv, 1, "", "")
+        if list(argv[:3]) == ["git", "--no-pager", "status"]:
+            return subprocess.CompletedProcess(argv, 1, "", "")
         raise AssertionError(f"unexpected subprocess call: {argv}")
 
     monkeypatch.setattr("subprocess.run", reject_commit_or_push)
@@ -215,6 +236,188 @@ def test_implement_command_does_not_commit_or_push(
     monkeypatch.setattr("issuekit.commands.implement.AgentRunner", ModifyingRunner)
 
     assert cli.main(["implement", "1", "--agent", "codex"]) == 0
+
+
+def test_implement_command_mojibake_gate_blocks_submit(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "default_reviewer = 'auto'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    issues_dir = make_issue_tree(tmp_path)
+    (tmp_path / "code.py").write_text("print('clean')\n", encoding="utf-8", newline="\n")
+    _init_git_repo(tmp_path)
+
+    class MojibakeRunner(FakeRunner):
+        def run(
+            self,
+            adapter,
+            plan_path: Path,
+            repo: Path,
+            timeout: float,
+            agent_name: str | None = None,
+            issue_id: int | None = None,
+            follow: bool = False,
+            **kwargs,
+        ) -> FakeResult:
+            (repo / "code.py").write_text(
+                "comment = '\u7e67'\n",
+                encoding="utf-8",
+                newline="\n",
+            )
+            return FakeResult(status_short=" M code.py")
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", MojibakeRunner)
+
+    exit_code = cli.main(["implement", "1", "--agent", "codex"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "mojibake gate blocked submit_for_review" in captured.err
+    assert "- code.py" in captured.err
+    [issue] = read_issues(issues_dir, "active")
+    assert issue.assignee == "codex"
+    assert issue.stage == "implementing"
+
+
+def test_implement_command_mojibake_gate_ignores_tracker_paths(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "default_reviewer = 'auto'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    issues_dir = make_issue_tree(tmp_path)
+    _init_git_repo(tmp_path)
+
+    class TrackerOnlyRunner(FakeRunner):
+        def run(
+            self,
+            adapter,
+            plan_path: Path,
+            repo: Path,
+            timeout: float,
+            agent_name: str | None = None,
+            issue_id: int | None = None,
+            follow: bool = False,
+            **kwargs,
+        ) -> FakeResult:
+            (issues_dir / "active" / "tracker_note.txt").write_text(
+                "\u7e67\n",
+                encoding="utf-8",
+                newline="\n",
+            )
+            return FakeResult(status_short="?? docs/issues/active/tracker_note.txt")
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", TrackerOnlyRunner)
+
+    assert cli.main(["implement", "1", "--agent", "codex"]) == 0
+    [issue] = read_issues(issues_dir, "active")
+    assert issue.stage == "review"
+
+
+def test_implement_command_diff_shape_warning_does_not_block(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "default_reviewer = 'auto'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    issues_dir = make_issue_tree(tmp_path)
+    (tmp_path / "code.py").write_text(
+        "".join(f"line {index}\n" for index in range(50)),
+        encoding="utf-8",
+        newline="\n",
+    )
+    _init_git_repo(tmp_path)
+
+    class DeletingRunner(FakeRunner):
+        def run(
+            self,
+            adapter,
+            plan_path: Path,
+            repo: Path,
+            timeout: float,
+            agent_name: str | None = None,
+            issue_id: int | None = None,
+            follow: bool = False,
+            **kwargs,
+        ) -> FakeResult:
+            (repo / "code.py").write_text("line 0\n", encoding="utf-8", newline="\n")
+            return FakeResult(status_short=" M code.py")
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", DeletingRunner)
+
+    exit_code = cli.main(["implement", "1", "--agent", "codex"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "WARNING: heavy deletion diff detected: code.py deletes 49 lines" in captured.err
+    [issue] = read_issues(issues_dir, "active")
+    assert issue.stage == "review"
+
+
+def test_implement_command_reinjects_review_feedback(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "default_reviewer = 'auto'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    issues_dir = tmp_path / "docs" / "issues"
+    write_issue(
+        issues_dir / "active" / "001_first.md",
+        issue_text(
+            1,
+            "First",
+            status="in_progress",
+            assignee="codex",
+            stage="changes_requested",
+            implementer="codex",
+        )
+        + "\n## Review Feedback\n\n- Add tests only.\n",
+    )
+    write_indexes(issues_dir)
+
+    class PromptRunner(FakeRunner):
+        prompt_suffix: str | None = None
+
+        def run(
+            self,
+            adapter,
+            plan_path: Path,
+            repo: Path,
+            timeout: float,
+            agent_name: str | None = None,
+            issue_id: int | None = None,
+            follow: bool = False,
+            **kwargs,
+        ) -> FakeResult:
+            self.prompt_suffix = kwargs.get("prompt_suffix")
+            return FakeResult(status_short="")
+
+    runner = PromptRunner()
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", lambda: runner)
+
+    assert cli.main(["implement", "1", "--agent", "codex"]) == 0
+    assert runner.prompt_suffix is not None
+    assert "Address ONLY these notes" in runner.prompt_suffix
+    assert "- Add tests only." in runner.prompt_suffix
 
 
 def test_implement_command_omits_uncommitted_warning_when_no_changes(

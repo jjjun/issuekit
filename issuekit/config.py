@@ -21,6 +21,11 @@ class AgentRunConfig:
     output_format_flag: str | None = None
     output_format: str | None = None
     model_flag: str | None = None
+    model: str | None = None
+    prompt_suffix: str | None = None
+    model_prompts: tuple[tuple[str, str], ...] = ()
+    mojibake_gate: bool = False
+    diff_shape_warn_deletions: int | None = None
 
 
 @dataclass(frozen=True)
@@ -56,6 +61,19 @@ class IssuekitConfig:
                 headless_argv=("exec",),
                 approval_flag="--full-auto",
                 model_flag="--model",
+                prompt_suffix=(
+                    "Make minimal, additive diffs. Do not reformat, re-quote, "
+                    "re-order imports, or rewrite/translate comments on lines "
+                    "unrelated to your change.\n"
+                    "Never alter existing non-ASCII (e.g. Japanese) text. Preserve "
+                    "existing comments byte-for-byte unless the task is specifically "
+                    "to change them. After editing, verify you introduced no mojibake.\n"
+                    "When a task says 'add X alongside Y, do not change Y,' the diff "
+                    "must touch only the added region; if you cannot, stop and report "
+                    "instead of reformatting."
+                ),
+                mojibake_gate=True,
+                diff_shape_warn_deletions=40,
             ),
         ),
     )
@@ -153,6 +171,13 @@ def _load_agents(raw: dict[str, object]) -> tuple[tuple[str, AgentRunConfig], ..
                         output_format_flag=_optional_str(cfg.get("output_format_flag")),
                         output_format=_optional_str(cfg.get("output_format")),
                         model_flag=_optional_str(cfg.get("model_flag")),
+                        model=_optional_str(cfg.get("model")),
+                        prompt_suffix=_optional_str(cfg.get("prompt_suffix")),
+                        model_prompts=_model_prompts(cfg.get("model_prompts", {})),
+                        mojibake_gate=_bool_value(cfg.get("mojibake_gate", False)),
+                        diff_shape_warn_deletions=_optional_int(
+                            cfg.get("diff_shape_warn_deletions")
+                        ),
                     ),
                 )
             )
@@ -164,6 +189,18 @@ def _optional_str(value: object) -> str | None:
         return None
     s = str(value).strip()
     return s if s else None
+
+
+def _optional_int(value: object) -> int | None:
+    if value is None:
+        return None
+    return int(value)
+
+
+def _model_prompts(value: object) -> tuple[tuple[str, str], ...]:
+    if not isinstance(value, dict):
+        return ()
+    return tuple((str(model), str(prompt)) for model, prompt in value.items())
 
 
 def _bool_value(value: object) -> bool:

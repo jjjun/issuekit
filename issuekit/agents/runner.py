@@ -67,6 +67,8 @@ class ConfigAgentAdapter(AgentAdapter):
         )
 
     def build_argv(self, prompt: str, plan_path: Path) -> list[str]:
+        resolved_model = self.model or self.run_config.model
+        prompt = self._append_prompt_suffixes(prompt, resolved_model)
         argv = list(self.run_config.headless_argv)
         argv.append(prompt)
         if self.run_config.approval_flag:
@@ -77,8 +79,8 @@ class ConfigAgentAdapter(AgentAdapter):
             argv.extend(
                 [self.run_config.output_format_flag, self.run_config.output_format]
             )
-        if self.model and self.run_config.model_flag:
-            argv.extend([self.run_config.model_flag, self.model])
+        if resolved_model and self.run_config.model_flag:
+            argv.extend([self.run_config.model_flag, resolved_model])
         return argv
 
     def parse_output(self, stdout: str, stderr: str) -> dict[str, str]:
@@ -87,6 +89,16 @@ class ConfigAgentAdapter(AgentAdapter):
             "stdout": stdout,
             "stderr": stderr,
         }
+
+    def _append_prompt_suffixes(self, prompt: str, resolved_model: str | None) -> str:
+        parts = [prompt]
+        if self.run_config.prompt_suffix:
+            parts.append(self.run_config.prompt_suffix)
+        if resolved_model:
+            model_prompt = dict(self.run_config.model_prompts).get(resolved_model)
+            if model_prompt:
+                parts.append(model_prompt)
+        return "\n\n".join(parts)
 
 
 def resolve_adapter(
@@ -365,6 +377,7 @@ class AgentRunner:
         issue_id: int | None = None,
         follow: bool = False,
         tracker_dir: Path | None = None,
+        prompt_suffix: str | None = None,
     ) -> AgentResult:
         plan_path = plan_path.resolve()
         repo = repo.resolve()
@@ -383,6 +396,8 @@ class AgentRunner:
             "issuekit owns the tracker lifecycle, not the implementer. If the plan "
             "is ambiguous, make the most reasonable choice and note it at the end."
         )
+        if prompt_suffix:
+            prompt = f"{prompt}\n\n{prompt_suffix}"
         argv = [str(binary)] + adapter.build_argv(prompt, plan_path)
         tracker_snapshot = (
             _TrackerSnapshot.capture(tracker_dir)

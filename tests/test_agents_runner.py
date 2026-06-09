@@ -9,7 +9,8 @@ from pathlib import Path
 import pytest
 
 from issuekit.agents.adapters.kimi import KimiAdapter
-from issuekit.agents.runner import AgentAdapter, AgentResult, AgentRunner
+from issuekit.agents.runner import AgentAdapter, AgentResult, AgentRunner, ConfigAgentAdapter
+from issuekit.config import AgentRunConfig, IssuekitConfig
 
 
 class FakeAdapter(AgentAdapter):
@@ -262,6 +263,81 @@ def test_kimi_adapter_argv_includes_model() -> None:
     argv = adapter.build_argv("prompt", Path("/plan.md"))
     assert "-m" in argv
     assert argv[argv.index("-m") + 1] == "k2"
+
+
+def test_config_adapter_uses_configured_model_and_prompt_suffix() -> None:
+    config = IssuekitConfig(
+        agents=(
+            (
+                "codex",
+                AgentRunConfig(
+                    binary="codex",
+                    headless_argv=("exec",),
+                    model_flag="--model",
+                    model="gpt-5.3-codex-spark",
+                    prompt_suffix="General guardrail.",
+                    model_prompts=(("gpt-5.3-codex-spark", "Spark guardrail."),),
+                ),
+            ),
+        )
+    )
+
+    argv = ConfigAgentAdapter("codex", config=config).build_argv("base", Path("/plan.md"))
+
+    assert argv[:2] == ["exec", "base\n\nGeneral guardrail.\n\nSpark guardrail."]
+    assert argv[argv.index("--model") + 1] == "gpt-5.3-codex-spark"
+
+
+def test_config_adapter_cli_model_overrides_config_model_for_argv_and_prompt() -> None:
+    config = IssuekitConfig(
+        agents=(
+            (
+                "codex",
+                AgentRunConfig(
+                    binary="codex",
+                    headless_argv=("exec",),
+                    model_flag="--model",
+                    model="configured",
+                    prompt_suffix="General guardrail.",
+                    model_prompts=(
+                        ("configured", "Configured-only."),
+                        ("cli-model", "CLI-only."),
+                    ),
+                ),
+            ),
+        )
+    )
+
+    argv = ConfigAgentAdapter("codex", config=config, model="cli-model").build_argv(
+        "base",
+        Path("/plan.md"),
+    )
+
+    assert argv[1] == "base\n\nGeneral guardrail.\n\nCLI-only."
+    assert "Configured-only." not in argv[1]
+    assert argv[argv.index("--model") + 1] == "cli-model"
+
+
+def test_config_adapter_model_prompt_requires_exact_match() -> None:
+    config = IssuekitConfig(
+        agents=(
+            (
+                "codex",
+                AgentRunConfig(
+                    binary="codex",
+                    headless_argv=("exec",),
+                    model_flag="--model",
+                    model="gpt-5.3-codex-spark-variant",
+                    model_prompts=(("gpt-5.3-codex-spark", "Spark guardrail."),),
+                ),
+            ),
+        )
+    )
+
+    argv = ConfigAgentAdapter("codex", config=config).build_argv("base", Path("/plan.md"))
+
+    assert argv[1] == "base"
+    assert "Spark guardrail." not in argv[1]
 
 
 def test_kimi_adapter_parse_output_extracts_resume_id_from_stderr() -> None:

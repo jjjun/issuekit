@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from issuekit.config import IssuekitConfig, load_config
+from issuekit.config import AgentRunConfig, IssuekitConfig, load_config
 
 
 def test_load_config_reads_standalone_issuekit_toml(tmp_path: Path) -> None:
@@ -153,3 +153,59 @@ def test_load_config_reads_require_review_before_complete(tmp_path: Path) -> Non
 
 def test_load_config_defaults_require_review_before_complete_true(tmp_path: Path) -> None:
     assert load_config(tmp_path).require_review_before_complete is True
+
+
+def test_load_config_reads_agent_guardrail_fields(tmp_path: Path) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        (
+            "[agents.codex]\n"
+            "binary = 'codex'\n"
+            "headless_argv = ['exec']\n"
+            "model_flag = '--model'\n"
+            "model = 'gpt-5.3-codex-spark'\n"
+            "prompt_suffix = 'Keep diffs small.'\n"
+            "mojibake_gate = true\n"
+            "diff_shape_warn_deletions = 12\n"
+            "[agents.codex.model_prompts]\n"
+            "'gpt-5.3-codex-spark' = 'Spark-only guardrail.'\n"
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    config = load_config(tmp_path)
+
+    assert config.agents == (
+        (
+            "codex",
+            AgentRunConfig(
+                binary="codex",
+                headless_argv=("exec",),
+                model_flag="--model",
+                model="gpt-5.3-codex-spark",
+                prompt_suffix="Keep diffs small.",
+                model_prompts=(("gpt-5.3-codex-spark", "Spark-only guardrail."),),
+                mojibake_gate=True,
+                diff_shape_warn_deletions=12,
+            ),
+        ),
+    )
+
+
+def test_shipped_codex_defaults_enable_guardrails() -> None:
+    codex = dict(IssuekitConfig.agents)["codex"]
+
+    assert codex.model is None
+    assert codex.prompt_suffix is not None
+    assert "minimal, additive diffs" in codex.prompt_suffix
+    assert "mojibake" in codex.prompt_suffix
+    assert codex.mojibake_gate is True
+    assert codex.diff_shape_warn_deletions == 40
+
+
+def test_shipped_kimi_defaults_do_not_enable_guardrails() -> None:
+    kimi = dict(IssuekitConfig.agents)["kimi"]
+
+    assert kimi.prompt_suffix is None
+    assert kimi.mojibake_gate is False
+    assert kimi.diff_shape_warn_deletions is None
