@@ -76,6 +76,37 @@ class IssuekitConfig:
                 diff_shape_warn_deletions=40,
             ),
         ),
+        (
+            "claude",
+            AgentRunConfig(
+                binary="claude",
+                known_paths=(
+                    "~/.claude/local/claude",
+                    "~/.claude/local/claude.exe",
+                    "~/.local/bin/claude",
+                    "~/.local/bin/claude.exe",
+                ),
+                headless_argv=("-p",),
+                approval_flag="--permission-mode",
+                approval_value="acceptEdits",
+                output_format_flag="--output-format",
+                output_format="text",
+                model_flag="--model",
+                prompt_suffix=(
+                    "Make minimal, additive diffs. Do not reformat, re-quote, "
+                    "re-order imports, or rewrite/translate comments on lines "
+                    "unrelated to your change.\n"
+                    "Never alter existing non-ASCII (e.g. Japanese) text. Preserve "
+                    "existing comments byte-for-byte unless the task is specifically "
+                    "to change them. After editing, verify you introduced no mojibake.\n"
+                    "When a task says 'add X alongside Y, do not change Y,' the diff "
+                    "must touch only the added region; if you cannot, stop and report "
+                    "instead of reformatting."
+                ),
+                mojibake_gate=True,
+                diff_shape_warn_deletions=40,
+            ),
+        ),
     )
 
     def issues_path(self, cwd: Path | str = ".") -> Path:

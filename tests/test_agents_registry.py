@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pytest
 
+from issuekit.agents.adapters.claude import ClaudeAdapter
 from issuekit.agents.adapters.codex import CodexAdapter
 from issuekit.agents.adapters.kimi import KimiAdapter
 from issuekit.agents.runner import ConfigAgentAdapter, resolve_adapter
@@ -17,6 +18,13 @@ def test_default_config_includes_kimi_and_codex() -> None:
     assert agents_dict["codex"].binary == "codex"
 
 
+def test_default_config_includes_claude() -> None:
+    config = IssuekitConfig()
+    agents_dict = dict(config.agents)
+    assert "claude" in agents_dict
+    assert agents_dict["claude"].binary == "claude"
+
+
 def test_resolve_adapter_returns_kimi() -> None:
     adapter = resolve_adapter("kimi")
     assert isinstance(adapter, KimiAdapter)
@@ -25,6 +33,39 @@ def test_resolve_adapter_returns_kimi() -> None:
 def test_resolve_adapter_returns_codex() -> None:
     adapter = resolve_adapter("codex")
     assert isinstance(adapter, CodexAdapter)
+
+
+def test_resolve_adapter_returns_claude() -> None:
+    adapter = resolve_adapter("claude")
+    assert isinstance(adapter, ClaudeAdapter)
+
+
+def test_claude_adapter_argv_contains_print_and_accept_edits() -> None:
+    adapter = ClaudeAdapter()
+    argv = adapter.build_argv("prompt", Path("/plan.md"))
+    assert argv[0] == "-p"
+    assert argv[1].startswith("prompt")
+    assert argv[2:6] == [
+        "--permission-mode",
+        "acceptEdits",
+        "--output-format",
+        "text",
+    ]
+    assert "bypassPermissions" not in argv
+
+
+def test_claude_adapter_argv_includes_model() -> None:
+    adapter = ClaudeAdapter(model="claude-opus-4-8")
+    argv = adapter.build_argv("prompt", Path("/plan.md"))
+    assert "--model" in argv
+    assert argv[argv.index("--model") + 1] == "claude-opus-4-8"
+
+
+def test_claude_adapter_parse_output_returns_streams() -> None:
+    adapter = ClaudeAdapter()
+    parsed = adapter.parse_output("stdout text", "stderr text")
+    assert parsed["stdout"] == "stdout text"
+    assert parsed["stderr"] == "stderr text"
 
 
 def test_resolve_adapter_unknown_raises() -> None:

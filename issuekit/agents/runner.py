@@ -116,6 +116,10 @@ def resolve_adapter(
         from issuekit.agents.adapters.codex import CodexAdapter
 
         return CodexAdapter(config=config, model=model)
+    if agent_name == "claude":
+        from issuekit.agents.adapters.claude import ClaudeAdapter
+
+        return ClaudeAdapter(config=config, model=model)
     if agent_name in dict(config.agents):
         return ConfigAgentAdapter(agent_name, config=config, model=model)
     raise ValueError(f"Unknown agent: {agent_name}")

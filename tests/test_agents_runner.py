@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from issuekit.agents.adapters.claude import ClaudeAdapter
 from issuekit.agents.adapters.kimi import KimiAdapter
 from issuekit.agents.runner import AgentAdapter, AgentResult, AgentRunner, ConfigAgentAdapter
 from issuekit.config import AgentRunConfig, IssuekitConfig
@@ -263,6 +264,33 @@ def test_kimi_adapter_argv_includes_model() -> None:
     argv = adapter.build_argv("prompt", Path("/plan.md"))
     assert "-m" in argv
     assert argv[argv.index("-m") + 1] == "k2"
+
+
+def test_claude_adapter_argv_build_full_shape() -> None:
+    adapter = ClaudeAdapter()
+    argv = adapter.build_argv("prompt", Path("/plan.md"))
+    assert argv[0] == "-p"
+    assert argv[1].startswith("prompt")
+    assert argv[2:] == [
+        "--permission-mode",
+        "acceptEdits",
+        "--output-format",
+        "text",
+    ]
+
+
+def test_claude_adapter_argv_appends_model_when_supplied() -> None:
+    adapter = ClaudeAdapter(model="claude-opus-4-8")
+    argv = adapter.build_argv("prompt", Path("/plan.md"))
+    assert argv[:6] == [
+        "-p",
+        argv[1],
+        "--permission-mode",
+        "acceptEdits",
+        "--output-format",
+        "text",
+    ]
+    assert argv[6:] == ["--model", "claude-opus-4-8"]
 
 
 def test_config_adapter_uses_configured_model_and_prompt_suffix() -> None:
