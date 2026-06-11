@@ -13,3 +13,4 @@ build/
 docs/issues/active/.issuekit-claim.lock
 issuekit.local.toml
 .agent-runs/
+.claude/settings.local.json
