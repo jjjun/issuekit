@@ -408,6 +408,40 @@ def test_runner_status_gains_last_log_fields_during_run(tmp_path: Path) -> None:
     assert final_status["heartbeat_at"] is not None
 
 
+def test_runner_writer_survives_a_failing_tick(tmp_path: Path, monkeypatch) -> None:
+    from issuekit.agents.runner import _RunWatcher
+
+    real_tick = _RunWatcher._tick
+    state = {"failed_once": False}
+
+    def flaky_tick(self):
+        if not state["failed_once"]:
+            state["failed_once"] = True
+            raise PermissionError("WinError 5: Access is denied")
+        return real_tick(self)
+
+    monkeypatch.setattr(_RunWatcher, "_tick", flaky_tick)
+
+    script = tmp_path / "script.py"
+    script.write_text("import time; time.sleep(1.5)")
+    plan = tmp_path / "plan.md"
+    plan.write_text("plan")
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / ".git").mkdir()
+
+    adapter = FakeAdapter([sys.executable, str(script)])
+    result = AgentRunner().run(adapter, plan, repo, timeout=10.0)
+
+    # The first tick raised, but the loop kept going and the run completed normally.
+    assert state["failed_once"] is True
+    assert result.exit_code == 0
+    assert result.status_path is not None
+    final_status = json.loads(result.status_path.read_text(encoding="utf-8"))
+    assert final_status["status"] == "completed"
+    assert final_status["heartbeat_at"] is not None
+
+
 def test_runner_prints_agent_runs_note_when_dir_is_created(
     tmp_path: Path, monkeypatch, capsys
 ) -> None:

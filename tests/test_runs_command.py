@@ -1,4 +1,5 @@
 import json
+from datetime import datetime
 from pathlib import Path
 
 from issuekit import cli
@@ -150,6 +151,12 @@ def _write_run(
     stdout_log: str | None = None,
     agent_log: str | None = None,
 ) -> None:
+    # A live running record has a fresh heartbeat; only deliberately old ones are stale.
+    heartbeat_at = (
+        datetime.now().replace(microsecond=0).isoformat()
+        if status == "running"
+        else None
+    )
     write_status(
         status_path(run_dir, run_id),
         RunStatus(
@@ -165,8 +172,49 @@ def _write_run(
             plan="docs/issues/active/001_first.md",
             stdout_log=stdout_log or f".agent-runs/{run_id}.out.log",
             agent_log=agent_log or f".agent-runs/{run_id}.agent.log",
+            heartbeat_at=heartbeat_at,
         ),
     )
+
+
+def test_runs_marks_stale_running_in_table_but_not_json(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    from datetime import datetime, timedelta
+
+    from issuekit.agents.status import STALE_AFTER_SEC
+
+    run_dir = tmp_path / ".agent-runs"
+    old = (datetime.now() - timedelta(seconds=STALE_AFTER_SEC + 30)).replace(
+        microsecond=0
+    ).isoformat()
+    write_status(
+        status_path(run_dir, "frozen"),
+        RunStatus(
+            run_id="frozen",
+            agent="codex",
+            issue=61,
+            status="running",
+            pid=123,
+            started_at=old,
+            ended_at=None,
+            elapsed_sec=None,
+            exit_code=None,
+            plan="docs/issues/active/061_x.md",
+            stdout_log=".agent-runs/frozen.out.log",
+            agent_log=".agent-runs/frozen.agent.log",
+            heartbeat_at=old,
+        ),
+    )
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["runs"]) == 0
+    table = capsys.readouterr().out
+    assert "stale" in table
+
+    assert cli.main(["runs", "--json"]) == 0
+    records = json.loads(capsys.readouterr().out)
+    assert records[0]["status"] == "running"
 
 
 def test_runs_list_shows_last_log_line(tmp_path: Path, monkeypatch, capsys) -> None:

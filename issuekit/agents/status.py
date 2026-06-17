@@ -4,12 +4,22 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from dataclasses import asdict, dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
 
 
 RunStatusValue = Literal["running", "completed", "failed", "timed_out"]
+
+# Cadence of the background status writer loop (seconds).
+HEARTBEAT_INTERVAL_SEC = 1.0
+# A running record whose heartbeat is older than this is considered stale.
+STALE_AFTER_SEC = 60.0
+# Atomic-replace retry budget for write_status (Windows tolerates rename poorly).
+_REPLACE_MAX_ATTEMPTS = 5
+_REPLACE_BACKOFF_SEC = 0.05
 
 
 @dataclass(frozen=True)
@@ -65,12 +75,43 @@ def status_path(run_dir: Path, run_id: str) -> Path:
 
 
 def write_status(path: Path, status: RunStatus) -> None:
-    """Atomically write a status record as UTF-8 JSON."""
+    """Write a status record as UTF-8 JSON, resiliently.
+
+    Prefers an atomic temp-file rename. On Windows ``os.replace`` can raise
+    ``PermissionError`` (WinError 5) or a sharing violation (WinError 32) when the
+    destination is momentarily open by another handle (a concurrent reader, an
+    editor, or antivirus scanning the temp file). We retry the rename with a short
+    backoff and, if it still fails, fall back to a best-effort in-place write so the
+    status is at least eventually consistent. This never raises on lock contention;
+    a failed status write must not be allowed to kill the heartbeat writer.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     temp_path = path.with_name(f".{path.name}.{os.getpid()}.tmp")
     content = json.dumps(status.to_dict(), indent=2) + "\n"
     temp_path.write_text(content, encoding="utf-8", newline="\n")
-    temp_path.replace(path)
+
+    for attempt in range(_REPLACE_MAX_ATTEMPTS):
+        try:
+            temp_path.replace(path)
+            return
+        except OSError:
+            if attempt == _REPLACE_MAX_ATTEMPTS - 1:
+                break
+            time.sleep(_REPLACE_BACKOFF_SEC * (attempt + 1))
+
+    # Atomic swap kept failing: write the destination directly and drop the temp.
+    # The destination may still be held by another handle, so guard this write too:
+    # write_status must never raise on IO contention. If even this fails, the record
+    # stays as last written on disk and is_stale surfaces it after STALE_AFTER_SEC.
+    try:
+        path.write_text(content, encoding="utf-8", newline="\n")
+    except OSError:
+        pass
+    finally:
+        try:
+            temp_path.unlink()
+        except OSError:
+            pass
 
 
 def read_status(path: Path) -> RunStatus:
@@ -91,6 +132,33 @@ def find_status(run_dir: Path, run_id: str) -> RunStatus | None:
     if not path.exists():
         return None
     return read_status(path)
+
+
+def is_stale(status: RunStatus, *, now: datetime | None = None) -> bool:
+    """Return True when a running record's heartbeat has gone stale.
+
+    Stale means the run is recorded as ``running`` but its most recent heartbeat
+    (falling back to ``started_at``) is older than ``STALE_AFTER_SEC``. Detection is
+    purely heartbeat-age based -- no process/pid inspection -- so it stays
+    cross-platform and dependency-free. Missing or unparseable timestamps are treated
+    as not stale.
+    """
+    if status.status != "running":
+        return False
+    stamp = status.heartbeat_at or status.started_at
+    if not stamp:
+        return False
+    try:
+        last = datetime.fromisoformat(stamp)
+    except ValueError:
+        return False
+    reference = now or datetime.now()
+    try:
+        elapsed = (reference - last).total_seconds()
+    except TypeError:
+        # Mismatched naive/aware datetimes; treat as not stale rather than crash runs.
+        return False
+    return elapsed > STALE_AFTER_SEC
 
 
 def repo_relative(path: Path, repo: Path) -> str:

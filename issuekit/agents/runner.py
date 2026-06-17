@@ -15,7 +15,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from issuekit.agents.status import RunStatus, read_status, repo_relative, status_path, write_status
+from issuekit.agents.status import (
+    HEARTBEAT_INTERVAL_SEC,
+    RunStatus,
+    read_status,
+    repo_relative,
+    status_path,
+    write_status,
+)
 from issuekit.config import AgentRunConfig, IssuekitConfig
 
 
@@ -304,8 +311,12 @@ class _RunWatcher:
 
     def _loop(self) -> None:
         while not self._stop_event.is_set():
-            self._tick()
-            self._stop_event.wait(timeout=1.0)
+            try:
+                self._tick()
+            except Exception as exc:  # noqa: BLE001 - a tick must never kill the writer
+                sys.stderr.write(f"\nstatus writer tick failed (continuing): {exc}\n")
+                sys.stderr.flush()
+            self._stop_event.wait(timeout=HEARTBEAT_INTERVAL_SEC)
 
     def _tick(self) -> None:
         last_line = self._read_last_log_line(self.agent_log_path)

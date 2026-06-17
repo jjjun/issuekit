@@ -7,7 +7,7 @@ from datetime import datetime
 from pathlib import Path
 import sys
 
-from issuekit.agents.status import RunStatus, find_status, list_statuses
+from issuekit.agents.status import RunStatus, find_status, is_stale, list_statuses
 
 
 TAIL_LINES = 40
@@ -38,7 +38,7 @@ def _print_list(run_dir: Path, *, active_only: bool, json_output: bool) -> int:
             status.run_id,
             status.agent,
             str(status.issue) if status.issue is not None else "-",
-            status.status,
+            "stale" if is_stale(status) else status.status,
             _format_elapsed(status),
             _format_last_log(status),
         )
