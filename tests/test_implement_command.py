@@ -285,9 +285,10 @@ def test_implement_command_mojibake_gate_blocks_submit(
     assert issue.stage == "implementing"
 
 
-def test_implement_command_mojibake_gate_ignores_tracker_paths(
+def test_implement_command_blocks_tracker_only_git_changes(
     tmp_path: Path,
     monkeypatch,
+    capsys,
 ) -> None:
     (tmp_path / "issuekit.toml").write_text(
         "default_reviewer = 'auto'\n",
@@ -310,7 +311,7 @@ def test_implement_command_mojibake_gate_ignores_tracker_paths(
             **kwargs,
         ) -> FakeResult:
             (issues_dir / "active" / "tracker_note.txt").write_text(
-                "\u7e67\n",
+                "tracker only\n",
                 encoding="utf-8",
                 newline="\n",
             )
@@ -318,6 +319,86 @@ def test_implement_command_mojibake_gate_ignores_tracker_paths(
 
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr("issuekit.commands.implement.AgentRunner", TrackerOnlyRunner)
+
+    exit_code = cli.main(["implement", "1", "--agent", "codex"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "agent produced no implementation changes; not submitting for review" in captured.err
+    [issue] = read_issues(issues_dir, "active")
+    assert issue.assignee == "codex"
+    assert issue.stage == "implementing"
+
+
+def test_implement_command_git_non_tracker_change_still_submits(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "default_reviewer = 'auto'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    issues_dir = make_issue_tree(tmp_path)
+    _init_git_repo(tmp_path)
+
+    class CodeChangingRunner(FakeRunner):
+        def run(
+            self,
+            adapter,
+            plan_path: Path,
+            repo: Path,
+            timeout: float,
+            agent_name: str | None = None,
+            issue_id: int | None = None,
+            follow: bool = False,
+            **kwargs,
+        ) -> FakeResult:
+            (repo / "new.py").write_text("print('changed')\n", encoding="utf-8", newline="\n")
+            return FakeResult(status_short="?? new.py")
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", CodeChangingRunner)
+
+    assert cli.main(["implement", "1", "--agent", "codex"]) == 0
+    [issue] = read_issues(issues_dir, "active")
+    assert issue.stage == "review"
+
+
+def test_implement_command_mojibake_gate_ignores_tracker_paths_with_code_change(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "default_reviewer = 'auto'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    issues_dir = make_issue_tree(tmp_path)
+    _init_git_repo(tmp_path)
+
+    class TrackerAndCodeRunner(FakeRunner):
+        def run(
+            self,
+            adapter,
+            plan_path: Path,
+            repo: Path,
+            timeout: float,
+            agent_name: str | None = None,
+            issue_id: int | None = None,
+            follow: bool = False,
+            **kwargs,
+        ) -> FakeResult:
+            (issues_dir / "active" / "tracker_note.txt").write_text(
+                "\u7e67\n",
+                encoding="utf-8",
+                newline="\n",
+            )
+            (repo / "new.py").write_text("print('clean')\n", encoding="utf-8", newline="\n")
+            return FakeResult(status_short="?? docs/issues/active/tracker_note.txt\n?? new.py")
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", TrackerAndCodeRunner)
 
     assert cli.main(["implement", "1", "--agent", "codex"]) == 0
     [issue] = read_issues(issues_dir, "active")

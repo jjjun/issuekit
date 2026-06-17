@@ -100,6 +100,14 @@ def run(args) -> int:
             "Review the diff, then stage and commit the changes after review."
         )
 
+    if _git_root(cwd) == cwd.resolve() and not _touched_implementation_paths(cwd, issues_dir):
+        print(
+            "ERROR: agent produced no implementation changes; not submitting for review. "
+            "The issue remains claimed in implementation.",
+            file=sys.stderr,
+        )
+        return 1
+
     run_config = dict(config.agents).get(args.agent)
     if run_config is not None and run_config.diff_shape_warn_deletions is not None:
         _warn_heavy_deletions(
@@ -171,9 +179,9 @@ def _review_feedback_prompt(issue_body: str) -> str | None:
 
 def _mojibake_touched_files(repo: Path, issues_dir: Path) -> list[str]:
     hits: list[str] = []
-    for rel_path in _touched_paths(repo):
+    for rel_path in _touched_implementation_paths(repo, issues_dir):
         path = repo / rel_path
-        if _is_under_issues_dir(path, issues_dir) or not path.exists() or not path.is_file():
+        if not path.exists() or not path.is_file():
             continue
         try:
             text = path.read_bytes().decode("utf-8")
@@ -183,6 +191,14 @@ def _mojibake_touched_files(repo: Path, issues_dir: Path) -> list[str]:
         if has_mojibake(text):
             hits.append(rel_path.as_posix())
     return hits
+
+
+def _touched_implementation_paths(repo: Path, issues_dir: Path) -> tuple[Path, ...]:
+    return tuple(
+        rel_path
+        for rel_path in _touched_paths(repo)
+        if not _is_under_issues_dir(repo / rel_path, issues_dir)
+    )
 
 
 def _warn_heavy_deletions(
