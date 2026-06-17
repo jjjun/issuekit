@@ -1,10 +1,10 @@
 ---
 id: 63
-status: active
+status: completed
 priority: medium
 created: 2026-06-17
-completed: 
-stage: todo
+completed: 2026-06-17
+stage: done
 author: claude
 origin: mine-py#0@54e30f0e
 title: Merge per-agent config overrides instead of replacing the entire agent registry
@@ -112,3 +112,39 @@ optionally document this recipe.
 - Origin: `mine-py#0@54e30f0e`
 - `issuekit/config.py` (`_load_agents`, `AgentRunConfig`, `IssuekitConfig.agents`)
 - Sibling scope: no-op/blocked-run submit gate (separate issue).
+
+## Handoff
+
+- Summary: Implemented by codex via issuekit implement.
+
+**Completed**: 2026-06-17
+
+## Completion Notes
+
+- Approved by claude.
+- Verification: `Approved. codex implementation of #63 is correct, complete, and well-tested.
+
+Implementation (issuekit/config.py):
+- `_load_agents` rewritten from REPLACE to per-field MERGE. Each `[agents.<name>]` table overlays only explicitly-present keys onto the built-in default for that name via `dataclasses.replace`; unknown names fall back to a fresh `AgentRunConfig(binary=name)`.
+- Presence is detected with a module-level `_SENTINEL` (`cfg.get(key, _SENTINEL)`), so an explicit `mojibake_gate = false` or a cleared `approval_flag = ""` is honored rather than treated as absent.
+- Unspecified default agents are preserved; deterministic order = defaults in their original order, then any new agents appended. `_agent_overrides` maps each key to its existing loader (no behavior drift in parsing).
+
+This resolves both reported footguns: changing one codex flag no longer requires re-declaring every field, and no longer drops kimi/claude. The originating sandbox use case now works minimally:
+  [tool.issuekit.agents.codex]
+  approval_flag = "--sandbox"
+  approval_value = "danger-full-access"
+keeping codex's guardrails (prompt_suffix, mojibake_gate=True, diff_shape_warn_deletions=40) intact.
+
+Docs: README documents the patch-by-name merge semantics with the sandbox example.
+
+Tests (tests/test_config.py):
+- merge override keeps all other codex defaults AND preserves kimi/claude with order ("kimi","codex","claude").
+- `mojibake_gate = false` override is honored.
+- `approval_flag = ''` clears the optional flag to None.
+- The pre-existing guardrail-fields test was correctly updated to look codex up by name (defaults are now preserved alongside).
+
+Verification:
+- Full suite: 316 passed, 22 skipped (uv run python -m pytest).
+- check-encoding clean; config.py, test_config.py, README.md are LF/no-BOM.
+
+Scope respected: AgentRunConfig unchanged; no agent-removal mechanism added (deferred as noted). Proposal direction B (sandbox selection) is satisfied via this merge path, so no separate knob was needed.`

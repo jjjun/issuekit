@@ -251,6 +251,17 @@ When both files exist, `[tool.issuekit]` in `pyproject.toml` takes precedence.
 If `pyproject.toml` exists without `[tool.issuekit]`, issuekit falls back to
 `issuekit.toml`.
 
+Built-in agent configs can be patched by name. A table such as
+`[tool.issuekit.agents.codex]` overlays only the keys it specifies and leaves
+other built-in agents unchanged. For standalone `issuekit.toml`, use the same
+table without the `tool.issuekit` prefix:
+
+```toml
+[tool.issuekit.agents.codex]
+approval_flag = "--sandbox"
+approval_value = "danger-full-access"
+```
+
 `default_reviewer` controls where MCP and CLI review handoffs go when no
 reviewer is specified. It must be one of the configured `assignees`, or `auto`.
 With `auto`, issuekit keeps the current review assignee when possible and

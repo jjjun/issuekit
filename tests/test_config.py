@@ -174,22 +174,83 @@ def test_load_config_reads_agent_guardrail_fields(tmp_path: Path) -> None:
     )
 
     config = load_config(tmp_path)
+    codex = dict(config.agents)["codex"]
 
-    assert config.agents == (
-        (
-            "codex",
-            AgentRunConfig(
-                binary="codex",
-                headless_argv=("exec",),
-                model_flag="--model",
-                model="gpt-5.3-codex-spark",
-                prompt_suffix="Keep diffs small.",
-                model_prompts=(("gpt-5.3-codex-spark", "Spark-only guardrail."),),
-                mojibake_gate=True,
-                diff_shape_warn_deletions=12,
-            ),
+    assert codex == AgentRunConfig(
+        binary="codex",
+        known_paths=(
+            "~/.codex/.sandbox-bin/codex",
+            "~/.codex/.sandbox-bin/codex.exe",
         ),
+        headless_argv=("exec",),
+        approval_flag="--full-auto",
+        model_flag="--model",
+        model="gpt-5.3-codex-spark",
+        prompt_suffix="Keep diffs small.",
+        model_prompts=(("gpt-5.3-codex-spark", "Spark-only guardrail."),),
+        mojibake_gate=True,
+        diff_shape_warn_deletions=12,
     )
+
+
+def test_load_config_merges_builtin_agent_overrides(tmp_path: Path) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        (
+            "[agents.codex]\n"
+            "approval_flag = '--sandbox'\n"
+            "approval_value = 'danger-full-access'\n"
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    config = load_config(tmp_path)
+    agents = dict(config.agents)
+    codex_default = dict(IssuekitConfig.agents)["codex"]
+
+    assert tuple(agents) == ("kimi", "codex", "claude")
+    assert agents["codex"] == AgentRunConfig(
+        binary=codex_default.binary,
+        known_paths=codex_default.known_paths,
+        headless_argv=codex_default.headless_argv,
+        approval_flag="--sandbox",
+        approval_value="danger-full-access",
+        output_format_flag=codex_default.output_format_flag,
+        output_format=codex_default.output_format,
+        model_flag=codex_default.model_flag,
+        model=codex_default.model,
+        prompt_suffix=codex_default.prompt_suffix,
+        model_prompts=codex_default.model_prompts,
+        mojibake_gate=True,
+        diff_shape_warn_deletions=40,
+    )
+    assert agents["kimi"] == dict(IssuekitConfig.agents)["kimi"]
+    assert agents["claude"] == dict(IssuekitConfig.agents)["claude"]
+
+
+def test_load_config_honors_false_builtin_agent_override(tmp_path: Path) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "[agents.codex]\nmojibake_gate = false\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    codex = dict(load_config(tmp_path).agents)["codex"]
+
+    assert codex.mojibake_gate is False
+    assert codex.prompt_suffix == dict(IssuekitConfig.agents)["codex"].prompt_suffix
+
+
+def test_load_config_empty_agent_string_clears_optional_default(tmp_path: Path) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "[agents.codex]\napproval_flag = ''\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    codex = dict(load_config(tmp_path).agents)["codex"]
+
+    assert codex.approval_flag is None
 
 
 def test_shipped_codex_defaults_enable_guardrails() -> None:

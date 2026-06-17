@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 import tomllib
 
 from issuekit.core import is_valid_workflow_token
+
+
+_SENTINEL = object()
 
 
 @dataclass(frozen=True)
@@ -187,32 +190,48 @@ def _validate_default_reviewer(default_reviewer: str, assignees: tuple[str, ...]
 def _load_agents(raw: dict[str, object]) -> tuple[tuple[str, AgentRunConfig], ...]:
     if not raw:
         return IssuekitConfig.agents
-    result: list[tuple[str, AgentRunConfig]] = []
+    default_agents = IssuekitConfig.agents
+    default_by_name = dict(default_agents)
+    configured: dict[str, AgentRunConfig] = {}
+    new_agent_names: list[str] = []
     for name, cfg in raw.items():
-        if isinstance(cfg, dict):
-            result.append(
-                (
-                    name,
-                    AgentRunConfig(
-                        binary=str(cfg.get("binary", name)),
-                        known_paths=_string_tuple(cfg.get("known_paths", ())),
-                        headless_argv=_string_tuple(cfg.get("headless_argv", ())),
-                        approval_flag=_optional_str(cfg.get("approval_flag")),
-                        approval_value=_optional_str(cfg.get("approval_value")),
-                        output_format_flag=_optional_str(cfg.get("output_format_flag")),
-                        output_format=_optional_str(cfg.get("output_format")),
-                        model_flag=_optional_str(cfg.get("model_flag")),
-                        model=_optional_str(cfg.get("model")),
-                        prompt_suffix=_optional_str(cfg.get("prompt_suffix")),
-                        model_prompts=_model_prompts(cfg.get("model_prompts", {})),
-                        mojibake_gate=_bool_value(cfg.get("mojibake_gate", False)),
-                        diff_shape_warn_deletions=_optional_int(
-                            cfg.get("diff_shape_warn_deletions")
-                        ),
-                    ),
-                )
-            )
+        if not isinstance(cfg, dict):
+            continue
+        base = default_by_name.get(name, AgentRunConfig(binary=name))
+        configured[name] = replace(base, **_agent_overrides(cfg))
+        if name not in default_by_name:
+            new_agent_names.append(name)
+
+    result: list[tuple[str, AgentRunConfig]] = []
+    for name, default_config in default_agents:
+        result.append((name, configured.get(name, default_config)))
+    for name in new_agent_names:
+        result.append((name, configured[name]))
     return tuple(result)
+
+
+def _agent_overrides(cfg: dict[str, object]) -> dict[str, object]:
+    loaders = {
+        "binary": str,
+        "known_paths": _string_tuple,
+        "headless_argv": _string_tuple,
+        "approval_flag": _optional_str,
+        "approval_value": _optional_str,
+        "output_format_flag": _optional_str,
+        "output_format": _optional_str,
+        "model_flag": _optional_str,
+        "model": _optional_str,
+        "prompt_suffix": _optional_str,
+        "model_prompts": _model_prompts,
+        "mojibake_gate": _bool_value,
+        "diff_shape_warn_deletions": _optional_int,
+    }
+    overrides: dict[str, object] = {}
+    for key, loader in loaders.items():
+        value = cfg.get(key, _SENTINEL)
+        if value is not _SENTINEL:
+            overrides[key] = loader(value)
+    return overrides
 
 
 def _optional_str(value: object) -> str | None:
