@@ -95,3 +95,29 @@ def test_migrate_to_api_import_is_rerunnable_with_fake_client(
     assert [issue["id"] for issue in client.list_issues()] == [1]
     assert [call["method"] for call in client.calls] == ["import_issues", "import_issues"]
     assert "Migrated 1 issue(s) to project demo." in capsys.readouterr().out
+
+
+def test_migrate_to_api_verifies_completed_imports_with_fake_client(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    issues_dir = tmp_path / "docs" / "issues"
+    write_issue(
+        issues_dir / "completed" / "001_done.md",
+        issue_text(1, "Done", status="completed", completed="2026-01-02"),
+    )
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'demo'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    client = FakeIssuekitClient()
+    monkeypatch.setattr(migrate_to_api, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["migrate-to-api"]) == 0
+
+    assert client.list_issues() == []
+    assert [issue["id"] for issue in client.list_issues(status="completed")] == [1]
+    assert "Migrated 1 issue(s) to project demo." in capsys.readouterr().out

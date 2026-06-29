@@ -95,9 +95,9 @@ class ApiStore:
         return [issue for issue in self._list_issues(status="completed") if issue.issue_status == "completed"]
 
     def read_all_issues(self) -> tuple[list[Issue], list[Issue], list[Issue]]:
-        all_issues = self._list_issues()
-        active_issues = [issue for issue in all_issues if issue.issue_status != "completed"]
-        completed_issues = [issue for issue in all_issues if issue.issue_status == "completed"]
+        active_issues = self.read_active_issues()
+        completed_issues = self.read_completed_issues()
+        all_issues = sorted(active_issues + completed_issues, key=lambda issue: (issue.id or 0, issue.relative_path))
         return active_issues, completed_issues, all_issues
 
     def get_issue(self, issue_id: int) -> Issue | None:

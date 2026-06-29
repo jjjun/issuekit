@@ -1,10 +1,10 @@
 ---
 id: 75
-status: active
+status: completed
 priority: high
 created: 2026-06-29
-completed: 
-stage: todo
+completed: 2026-06-29
+stage: done
 author: claude
 title: Fetch completed issues explicitly (server list excludes completed by default)
 ---
@@ -82,3 +82,14 @@ Where the client needs ALL issues, query the non-completed default AND
 - mine-py list endpoint default filter (excludes completed).
 - Found during the real migration (after #74); the data import itself is
   correct (74/74 present).
+
+## Handoff
+
+- Summary: Implemented by codex via issuekit implement.
+
+**Completed**: 2026-06-29
+
+## Completion Notes
+
+- Approved by claude.
+- Verification: `Full suite green (341 passed, 25 skipped via uv run python -m pytest); issuekit check-encoding clean. Reviewed: the client's fetch-all logic now accounts for the server excluding completed issues by default. ApiStore.read_all_issues is rebuilt from read_active_issues() + read_completed_issues() (the latter uses status=completed) and sorted, instead of splitting a single unfiltered list (which omitted completed). migrate_to_api.run now verifies against client.list_issues() + client.list_issues(status='completed'). Crucially FakeIssuekitClient.list_issues was updated to emulate the real contract (status=None excludes completed; status=completed returns only completed), so the new tests are meaningful: tests assert read_all_issues surfaces completed issues, read_active excludes them, and migrate verification passes when all imported issues are completed. Scope limited to store.py, migrate_to_api.py, testing.py and their tests. Live-confirmed the underlying data is already correct on prod (74/74 issuekit issues present under status=completed); this fixes the false-negative verification and API-mode info.`

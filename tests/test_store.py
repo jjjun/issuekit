@@ -105,4 +105,6 @@ def test_api_store_partitions_and_filters_active_issues() -> None:
     assert [issue.id for issue in active] == [1]
     assert [issue.id for issue in completed] == [2]
     assert [issue.id for issue in all_issues] == [1, 2]
+    assert [issue.id for issue in store.read_active_issues()] == [1]
+    assert [issue.id for issue in store.read_completed_issues()] == [2]
     assert [issue.id for issue in store.find_for("claude", "review")] == [1]

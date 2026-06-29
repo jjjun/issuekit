@@ -39,7 +39,10 @@ class FakeIssuekitClient:
             issues = [
                 issue
                 for issue in sorted(self._issues.values(), key=lambda item: int(item["id"]))
-                if (status is None or issue.get("status") == status)
+                if (
+                    (status is None and issue.get("status") != "completed")
+                    or (status is not None and issue.get("status") == status)
+                )
                 and (stage is None or issue.get("stage") == stage)
                 and (assignee is None or issue.get("assignee") == assignee)
             ]
