@@ -249,6 +249,7 @@ class ApiStore:
             "stage": _string(raw.get("stage")),
             "implementer": _string(raw.get("implementer")),
             "author": _string(raw.get("author")),
+            "origin": _string(raw.get("origin")),
             "title": _title(raw, body, issue_id),
         }
         synthetic_ref = f"{self.config.project}#{issue_id}"

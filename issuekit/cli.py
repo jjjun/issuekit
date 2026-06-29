@@ -34,6 +34,7 @@ COMMANDS = (
     "implement",
     "validate",
     "migrate-to-api",
+    "migrate-proposals-to-api",
     "complete",
     "approve",
     "claim",
@@ -145,6 +146,21 @@ def build_parser() -> argparse.ArgumentParser:
         help="Build and validate the import payload without posting it.",
     )
     migrate_parser.set_defaults(func=migrate_to_api.run)
+
+    migrate_proposals_parser = subparsers.add_parser(
+        "migrate-proposals-to-api",
+        help="Import legacy docs/issues incoming proposal files into the API backend.",
+    )
+    migrate_proposals_parser.add_argument(
+        "--issues-dir",
+        help="Legacy issue directory containing incoming proposals (defaults to configured issues_dir).",
+    )
+    migrate_proposals_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Build and validate the proposal import payload without posting it.",
+    )
+    migrate_proposals_parser.set_defaults(func=migrate_to_api.run_proposals)
 
     complete_parser = subparsers.add_parser(
         "complete",
@@ -378,7 +394,7 @@ def build_parser() -> argparse.ArgumentParser:
         "adopt",
         help="Adopt an incoming proposal as a local active issue.",
     )
-    adopt_parser.add_argument("proposal", help="Proposal id in API mode, or incoming file name in filesystem mode.")
+    adopt_parser.add_argument("proposal", help="Proposal id.")
     adopt_parser.add_argument(
         "--priority",
         choices=("high", "medium", "low"),
@@ -392,7 +408,7 @@ def build_parser() -> argparse.ArgumentParser:
         "discard",
         help="Discard an incoming proposal.",
     )
-    discard_parser.add_argument("proposal", help="Proposal id in API mode, or incoming file name in filesystem mode.")
+    discard_parser.add_argument("proposal", help="Proposal id.")
     discard_parser.add_argument("--json", action="store_true", help="Print JSON output.")
     discard_parser.set_defaults(func=propose.run_discard)
 

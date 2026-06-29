@@ -1,9 +1,8 @@
 # issuekit
 
 `issuekit` is a language-neutral CLI for sharing an API-backed issue handoff
-workflow across repositories. Issue lifecycle state lives in a mine-py API
-project; local `docs/issues/incoming/` files remain for cross-project proposals
-that have not yet moved to the API.
+workflow across repositories. Issue lifecycle state and cross-project proposals
+live in a mine-py API project.
 
 ## Install
 
@@ -86,8 +85,7 @@ The repo scaffold writes `.mcp.json`, appends `.codex/config.toml` when needed,
 and adds thin handoff references to `AGENTS.md` and `CLAUDE.md`. The generated
 MCP entries run the global `issuekit-mcp` binary; they do not use `uv run`, so
 they work outside the issuekit checkout. Launch codex or Claude Code from the
-target repo root so the server resolves repo configuration and local proposal
-files.
+target repo root so the server resolves repo configuration.
 
 For local development, install the optional MCP group and start the stdio server
 from a checkout with:
@@ -122,6 +120,7 @@ copying the steps.
 | `issuekit info [--json]` | Show API tracker status. |
 | `issuekit validate` | Check API connectivity and issue response shape. |
 | `issuekit migrate-to-api [--dry-run]` | Import legacy `docs/issues/{active,completed}` files into the API backend. |
+| `issuekit migrate-proposals-to-api [--dry-run]` | Import legacy proposal inbox files into the API backend. |
 | `issuekit complete <id> --summary "..." --verification "..."` | Complete an issue through the API. |
 | `issuekit approve <id> --verification "..." [--reviewer claude]` | Approve a review-stage issue and move it to completed. |
 | `issuekit claim --assignee codex` | Claim the next active issue for an implementer. |
@@ -133,24 +132,27 @@ copying the steps.
 | `issuekit init [--with-mcp]` | Install tracker templates, encoding hooks, and optional MCP handoff scaffolding. |
 | `issuekit setup [--force] [--json]` | Run per-repo MCP handoff scaffolding and setup diagnostics. |
 | `issuekit setup check --json` | Check setup state without writing files. |
-| `issuekit add-ref <name> --path <repo> [--scope local\|workspace]` | Register a related repository ref. |
-| `issuekit list-refs` | List effective related repository refs and their source. |
-| `issuekit propose --to <name> --title "..."` | Send a proposal to a related repo's `incoming/` directory. |
-| `issuekit incoming [--json]` | List inbound cross-project proposals. |
-| `issuekit adopt <proposal-file>` | Adopt an incoming proposal as a local active issue. |
-| `issuekit discard <proposal-file>` | Move an incoming proposal to `incoming/discarded/`. |
+| `issuekit add-ref <name> --path <repo> [--scope local\|workspace]` | Register an optional local project alias. |
+| `issuekit list-refs` | List effective local project aliases and their source. |
+| `issuekit propose --to <project> --title "..."` | Send a proposal to a project API inbox. |
+| `issuekit incoming [--json]` | List inbound API proposals. |
+| `issuekit adopt <proposal-id>` | Adopt an incoming API proposal as a local issue. |
+| `issuekit discard <proposal-id>` | Discard an incoming API proposal. |
 
-Legacy issue file parsing is used only by `migrate-to-api` and the explicit
-filesystem escape hatch.
+Legacy file parsing is used only by `migrate-to-api`,
+`migrate-proposals-to-api`, and the explicit filesystem issue-store escape
+hatch.
 
 ## Cross-Project Proposals
 
-Related repositories can exchange suggestions through files under
-`docs/issues/incoming/`. Proposals are not workflow items until they are adopted,
-so the API-backed issue queue is separate from proposal triage.
+Related projects exchange suggestions through API proposal inboxes. Proposals
+are not workflow items until they are adopted, so the API-backed issue queue is
+separate from proposal triage.
 
-Refs resolve from a shared workspace registry plus optional per-repo local
-overrides. For a set of sibling repos, place one `issuekit.workspace.toml` above
+`--to` takes the target API project key. The old workspace ref registry is kept
+only as an optional local alias map for operators who want to remember sibling
+project names; proposal delivery no longer resolves a target repo path or writes
+files. For a set of sibling repos, place one `issuekit.workspace.toml` above
 them:
 
 ```toml
@@ -198,27 +200,22 @@ Triage inbound proposals:
 
 ```powershell
 issuekit incoming
-issuekit adopt mine-py__42__short_proposal_title.md
-issuekit discard mine-py__42__short_proposal_title.md
+issuekit adopt 42
+issuekit discard 43
 ```
 
-Adopted issues record the proposal `origin:` in frontmatter. To reply after
-implementing an adopted issue, make sure the origin repo resolves as a ref and
-run:
+To reply after implementing an adopted issue, run:
 
 ```powershell
 issuekit propose --reply 42 --title "Implemented fast-domain support" --body-file reply.md
 ```
 
-By default `--reply` derives the destination ref from the recorded `origin`
-value, so the ref name must match the sender ref segment before `#`. Use the
-repo directory name as the shared ref name for each project; `propose --reply`
-then works from every repo without per-repo bookkeeping. Pass `--to <name>` with
-`--reply` to override that destination when your local ref uses a different
-name.
+By default `--reply` derives the destination project from the recorded `origin`
+value before `#`. Pass `--to <project>` with `--reply` to override that
+destination.
 
 Proposal de-duplication is keyed by the full `origin`, including `@commit`.
-Re-sending the same source issue after a new commit creates a new proposal file.
+Re-sending the same source issue after a new commit creates a new proposal.
 
 ## Configuration
 
@@ -259,9 +256,9 @@ default_reviewer = "auto"
 require_distinct_reviewer = true
 ```
 
-For one-off legacy access, set `use_filesystem_store = true` or
-`ISSUEKIT_USE_FILESYSTEM=1`. That path exists for migration and proposal
-compatibility; new issue lifecycle operations should use the API.
+For one-off legacy issue access, set `use_filesystem_store = true` or
+`ISSUEKIT_USE_FILESYSTEM=1`. That path exists for issue migration; proposal
+commands use the API.
 
 At startup, issuekit also reads a repo-local `.env` file from the current repo
 root and loads values such as `ISSUEKIT_API_URL`, `ISSUEKIT_API_USER`,
@@ -294,5 +291,5 @@ same-name review is rejected.
 
 ## Development
 
-This repo dogfoods issuekit. Implementation tasks live in the configured API
-project; `docs/issues/incoming/` remains the local cross-project proposal area.
+This repo dogfoods issuekit. Implementation tasks and cross-project proposals
+live in the configured API project.

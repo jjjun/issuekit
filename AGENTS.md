@@ -12,8 +12,9 @@ from the repo root so the MCP server resolves the repo configuration.
 
 ## Project notes
 
-- Implementation tasks live in the configured API project.
-- `docs/issues/incoming/` is still the local cross-project proposal area.
+- Implementation tasks and cross-project proposals live in the configured API project.
+- Run `issuekit migrate-proposals-to-api` once per legacy repo before deleting
+  its old `docs/issues/` tree.
 - This repo dogfoods its own issue tracker.
 - Write all files as UTF-8 without a BOM and with LF line endings.
 - Build and test with `uv sync`, `uv run pytest`, and

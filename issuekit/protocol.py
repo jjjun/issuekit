@@ -23,9 +23,8 @@ The model is pull-based: authors publish work to a pool, implementers pull from
 that pool, and reviewers pull from the review pool. No central orchestrator is
 required for the normal author -> implement -> review cycle.
 
-Issue lifecycle state is stored in the configured mine-py API project. Local
-`docs/issues/incoming/` files remain only for cross-project proposals that have
-not yet moved to the API.
+Issue lifecycle and cross-project proposal state are stored in the configured
+mine-py API project.
 
 When an orchestrator or author needs to drive a configured external
 implementer instead of waiting for the pull model, use
@@ -53,27 +52,27 @@ agent assigned at stage=review and defaults to `default_reviewer`, which may be
 Same-name review is allowed through the open review pool by omitting `reviewer`;
 an implementer may not explicitly assign itself as reviewer at submit time.
 
-Cross-project proposals are local suggestions under `docs/issues/incoming/`.
+Cross-project proposals are API inbox entries.
 Before claiming normal work, inspect `issuekit incoming` when cross-repo
 exchange is relevant. Adopt proposals only after local triage. When completing
 an adopted issue with an `origin:` field, optionally send `issuekit propose
 --reply <id>` so the origin repo receives a new inbound proposal; do not mutate
 state in the origin repo.
 
-When work reveals that a needed change belongs to another registered repo,
+When work reveals that a needed change belongs to another project,
 originate a proposal instead of only working around it locally or reporting it.
-Use `issuekit list-refs` to find the target ref, then
-`issuekit propose --to <ref> --title <t> --body <b>` (or the MCP `propose`
-tool). Proposals are non-destructive suggestions in the target repo's
-`incoming/`; the target repo owns triage, so do not mutate its state directly.
+Use `issuekit propose --to <project> --title <t> --body <b>` (or the MCP
+`propose` tool). Proposals are non-destructive suggestions in the target
+project's API inbox; the target project owns triage, so do not mutate its state
+directly.
 
 Proposal-system MCP and CLI share one implementation, so the CLI is a drop-in
 fallback when the MCP tools hang or error. Equivalents (add `--json` for the
 same structured output the MCP tools return):
 
-- `propose(to, title, body)` -> `issuekit propose --to <ref> --title <t> --body <b> --json`
+- `propose(to, title, body)` -> `issuekit propose --to <project> --title <t> --body <b> --json`
 - `list_incoming()` -> `issuekit incoming --json`
-- `adopt_proposal(file, priority)` -> `issuekit adopt <file> --priority <p> --json`
+- `adopt_proposal(proposal_id, priority)` -> `issuekit adopt <id> --priority <p> --json`
 
 When the user asks an implementer to work on an issue in open-ended terms, such
 as "handle the next issue" or "take the queue", do not wait for explicit
@@ -113,15 +112,15 @@ AUTHOR_PROTOCOL = """# Handoff protocol (author)
 An author writes implementation-ready issues and proposals. The author does not
 implement issues.
 
-When a needed change belongs to another registered repo, originate a proposal
-instead of only reporting it. Use `issuekit list-refs` to find the target ref,
-then `issuekit propose --to <ref> --title <t> --body <b>` (or the MCP
-`propose` tool). Proposals are non-destructive suggestions in the target repo's
-`incoming/`; the target repo owns triage, so do not mutate its state directly.
+When a needed change belongs to another project, originate a proposal instead
+of only reporting it. Use `issuekit propose --to <project> --title <t> --body
+<b>` (or the MCP `propose` tool). Proposals are non-destructive suggestions in
+the target project's API inbox; the target project owns triage, so do not mutate
+its state directly.
 
 When the proposal-system MCP tools hang or error, fall back to the equivalent
-CLI: `issuekit propose --to <ref> --title <t> --body <b> --json`,
-`issuekit incoming --json`, and `issuekit adopt <file> --json`. They share the
+CLI: `issuekit propose --to <project> --title <t> --body <b> --json`,
+`issuekit incoming --json`, and `issuekit adopt <id> --json`. They share the
 same implementation and emit the same structured output.
 
 When asked to write or plan an issue:
@@ -142,12 +141,11 @@ assigned at stage=review and defaults to `default_reviewer`, which may be
 `auto`. Same-name review is allowed through the open review pool; an
 implementer may not explicitly assign itself as reviewer at submit time.
 
-When review reveals that a needed change belongs to another registered repo,
-originate a proposal instead of only reporting it. Use
-`issuekit list-refs` to find the target ref, then
-`issuekit propose --to <ref> --title <t> --body <b>` (or the MCP `propose`
-tool). Proposals are non-destructive suggestions in the target repo's
-`incoming/`; the target repo owns triage, so do not mutate its state directly.
+When review reveals that a needed change belongs to another project, originate
+a proposal instead of only reporting it. Use `issuekit propose --to <project>
+--title <t> --body <b>` (or the MCP `propose` tool). Proposals are
+non-destructive suggestions in the target project's API inbox; the target
+project owns triage, so do not mutate its state directly.
 
 1. Call the issuekit MCP tool `next_review(reviewer=None)`. Omit reviewer to
    use `default_reviewer`, or pass the reviewer assignee to inspect. With
@@ -169,8 +167,8 @@ same-name review is allowed only when the issue was routed through the open
 review pool.
 
 When the proposal-system MCP tools hang or error, fall back to the equivalent
-CLI: `issuekit propose --to <ref> --title <t> --body <b> --json`,
-`issuekit incoming --json`, and `issuekit adopt <file> --json`. They share the
+CLI: `issuekit propose --to <project> --title <t> --body <b> --json`,
+`issuekit incoming --json`, and `issuekit adopt <id> --json`. They share the
 same implementation and emit the same structured output.
 """
 

@@ -47,7 +47,7 @@ def test_setup_empty_repo_scaffolds_mcp_and_prints_checklist(
     assert (tmp_path / ".codex" / "config.toml").exists()
     assert (tmp_path / "AGENTS.md").exists()
     assert (tmp_path / "CLAUDE.md").exists()
-    assert (tmp_path / "docs" / "issues" / "incoming" / ".gitkeep").exists()
+    assert not (tmp_path / "docs" / "issues" / "incoming").exists()
     assert cli.main(["migrate-to-api", "--dry-run"]) == 0
 
 

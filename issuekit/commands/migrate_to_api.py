@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 import sys
 from typing import Any
 
@@ -11,6 +12,7 @@ from issuekit.config import load_config
 from issuekit.core import (
     MANAGED_FRONTMATTER_KEYS,
     Issue,
+    parse_issue_frontmatter,
     parse_frontmatter_id,
     read_all_issues,
 )
@@ -64,11 +66,71 @@ def run(args) -> int:
     return 0
 
 
+def run_proposals(args) -> int:
+    config = load_config(Path.cwd())
+    issues_dir = Path(args.issues_dir) if args.issues_dir else config.issues_path(Path.cwd())
+    try:
+        payload = build_proposal_import_payload(issues_dir)
+    except (OSError, ValueError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+
+    if args.dry_run:
+        print(
+            f"Dry run: built proposal import payload for {len(payload)} proposal(s) "
+            f"from {issues_dir.as_posix()}."
+        )
+        return 0
+
+    if not config.api_url:
+        print(
+            "migrate-proposals-to-api requires api_url in issuekit.toml/[tool.issuekit] "
+            "or ISSUEKIT_API_URL.",
+            file=sys.stderr,
+        )
+        return 1
+
+    try:
+        client = IssuekitClient(
+            config.api_url,
+            project=config.project,
+            timeout=config.api_timeout,
+        )
+        stored = client.import_proposals(payload)
+        verify_proposal_import(payload, stored)
+    except (WorkflowError, ValueError) as exc:
+        print(f"Proposal migration failed: {exc}", file=sys.stderr)
+        return 1
+    finally:
+        close = getattr(locals().get("client"), "close", None)
+        if callable(close):
+            close()
+
+    print(f"Migrated {len(payload)} proposal(s) to project {config.project}.")
+    return 0
+
+
 def build_import_payload(issues_dir: Path | str) -> list[dict[str, Any]]:
     active_issues, completed_issues, all_issues = read_all_issues(issues_dir)
     _validate_source_issues(all_issues)
     payload = [_issue_payload(issue) for issue in [*active_issues, *completed_issues]]
     return sorted(payload, key=lambda item: int(item["number"]))
+
+
+def build_proposal_import_payload(issues_dir: Path | str) -> list[dict[str, Any]]:
+    root = Path(issues_dir)
+    adopted_numbers = _adopted_issue_numbers(root)
+    payload: list[dict[str, Any]] = []
+    for status, directory in (
+        ("pending", root / "incoming"),
+        ("adopted", root / "incoming" / "adopted"),
+        ("discarded", root / "incoming" / "discarded"),
+    ):
+        if not directory.exists():
+            continue
+        for path in sorted(directory.glob("*.md")):
+            payload.append(_proposal_import_item(path, status, adopted_numbers))
+    return payload
 
 
 def verify_import(source_payload: list[dict[str, Any]], server_issues: list[dict[str, Any]]) -> None:
@@ -84,6 +146,17 @@ def verify_import(source_payload: list[dict[str, Any]], server_issues: list[dict
         raise ValueError(
             f"Server returned fewer issues than source payload ({len(server_ids)} < {len(source_ids)})."
         )
+
+
+def verify_proposal_import(source_payload: list[dict[str, Any]], stored_proposals: list[dict[str, Any]]) -> None:
+    source_keys = _proposal_keys(source_payload)
+    stored_keys = _proposal_keys(stored_proposals)
+    missing = sorted(source_keys - stored_keys)
+    if missing:
+        joined = ", ".join(f"{origin} ({status})" for origin, status in missing)
+        raise ValueError(f"Imported proposal(s) missing from response: {joined}")
+    if len(source_keys) != len(source_payload):
+        raise ValueError("Source payload contains duplicate proposal origin/status pairs.")
 
 
 def _validate_source_issues(issues: list[Issue]) -> None:
@@ -132,6 +205,70 @@ def _issue_payload(issue: Issue) -> dict[str, Any]:
         },
     }
     return payload
+
+
+def _proposal_import_item(
+    path: Path,
+    status: str,
+    adopted_numbers: dict[str, int],
+) -> dict[str, Any]:
+    content = path.read_text(encoding="utf-8-sig")
+    frontmatter = parse_issue_frontmatter(content)
+    if not frontmatter.has_frontmatter:
+        raise ValueError(f"Proposal is missing frontmatter: {path}")
+    data = frontmatter.data
+    origin = _required(data, "origin", path)
+    item: dict[str, Any] = {
+        "origin": origin,
+        "reply_to": _empty_to_none(data.get("reply_to")),
+        "created": _date_or_none(data.get("created")),
+        "title": _required(data, "title", path),
+        "body": frontmatter.body.strip("\n"),
+        "status": status,
+        "adopted_issue_number": None,
+    }
+    if status == "adopted":
+        item["adopted_issue_number"] = adopted_numbers.get(origin) or _adopted_number_from_name(path)
+    return item
+
+
+def _adopted_issue_numbers(issues_dir: Path) -> dict[str, int]:
+    try:
+        _, _, issues = read_all_issues(issues_dir)
+    except (OSError, ValueError):
+        return {}
+    numbers: dict[str, int] = {}
+    for issue in issues:
+        origin = str(issue.frontmatter.data.get("origin", "")).strip()
+        if origin and issue.id is not None:
+            numbers[origin] = issue.id
+    return numbers
+
+
+def _adopted_number_from_name(path: Path) -> int | None:
+    match = re.match(r"^(\d+)[_-]", path.stem)
+    if not match:
+        return None
+    return int(match.group(1))
+
+
+def _required(data: dict[str, str], key: str, path: Path) -> str:
+    value = str(data.get(key, "")).strip()
+    if not value:
+        raise ValueError(f"Proposal {path} is missing required field: {key}")
+    return value
+
+
+def _empty_to_none(value: object) -> str | None:
+    normalized = "" if value is None else str(value).strip()
+    return normalized or None
+
+
+def _proposal_keys(proposals: list[dict[str, Any]]) -> set[tuple[str, str]]:
+    return {
+        (str(proposal.get("origin", "")), str(proposal.get("status", "")))
+        for proposal in proposals
+    }
 
 
 def _first_non_empty(*values: object) -> str:

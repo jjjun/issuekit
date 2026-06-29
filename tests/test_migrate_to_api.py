@@ -140,6 +140,97 @@ def test_build_import_payload_has_no_empty_date_strings(tmp_path: Path) -> None:
     assert all(issue["completed"] != "" for issue in payload)
 
 
+def test_build_proposal_import_payload_maps_legacy_inboxes(tmp_path: Path) -> None:
+    issues_dir = tmp_path / "docs" / "issues"
+    _write_proposal_file(
+        issues_dir / "incoming" / "pending.md",
+        origin="source#1@abc123",
+        created="",
+        title="Pending",
+        body="Pending body.",
+    )
+    _write_proposal_file(
+        issues_dir / "incoming" / "adopted" / "adopted.md",
+        origin="source#2@abc123",
+        created="2026-06-01",
+        title="Adopted",
+        body="Adopted body.",
+    )
+    _write_proposal_file(
+        issues_dir / "incoming" / "discarded" / "discarded.md",
+        origin="source#3@abc123",
+        reply_to="source#0@old",
+        created="2026-06-02",
+        title="Discarded",
+        body="Discarded body.",
+    )
+    write_issue(
+        issues_dir / "active" / "004_adopted.md",
+        issue_text(4, "Adopted").replace("title: Adopted\n", "origin: source#2@abc123\ntitle: Adopted\n"),
+    )
+
+    payload = migrate_to_api.build_proposal_import_payload(issues_dir)
+
+    assert [(item["title"], item["status"]) for item in payload] == [
+        ("Pending", "pending"),
+        ("Adopted", "adopted"),
+        ("Discarded", "discarded"),
+    ]
+    assert payload[0]["created"] is None
+    assert payload[0]["reply_to"] is None
+    assert payload[1]["adopted_issue_number"] == 4
+    assert payload[2]["reply_to"] == "source#0@old"
+
+
+def test_migrate_proposals_to_api_dry_run_does_not_require_api_url(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    issues_dir = tmp_path / "docs" / "issues"
+    _write_proposal_file(
+        issues_dir / "incoming" / "pending.md",
+        origin="source#1@abc123",
+        title="Pending",
+        body="Pending body.",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = cli.main(["migrate-proposals-to-api", "--dry-run"])
+
+    assert exit_code == 0
+    assert "Dry run: built proposal import payload for 1 proposal(s)" in capsys.readouterr().out
+
+
+def test_migrate_proposals_to_api_import_is_rerunnable_with_fake_client(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    issues_dir = tmp_path / "docs" / "issues"
+    _write_proposal_file(
+        issues_dir / "incoming" / "pending.md",
+        origin="source#1@abc123",
+        title="Pending",
+        body="Pending body.",
+    )
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'demo'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    client = FakeIssuekitClient()
+    monkeypatch.setattr(migrate_to_api, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["migrate-proposals-to-api"]) == 0
+    assert cli.main(["migrate-proposals-to-api"]) == 0
+
+    assert [proposal["title"] for proposal in client.list_proposals(status="pending")] == ["Pending"]
+    assert [call["method"] for call in client.calls] == ["import_proposals", "import_proposals"]
+    assert "Migrated 1 proposal(s) to project demo." in capsys.readouterr().out
+
+
 def test_migrate_to_api_dry_run_does_not_require_api_url(
     tmp_path: Path,
     monkeypatch,
@@ -234,3 +325,29 @@ def test_migrate_to_api_verification_reads_all_completed_pages(
 
     assert len(client.list_all_issues(status="completed")) == 125
     assert "Migrated 125 issue(s) to project demo." in capsys.readouterr().out
+
+
+def _write_proposal_file(
+    path: Path,
+    *,
+    origin: str,
+    title: str,
+    body: str,
+    reply_to: str = "",
+    created: str = "2026-06-01",
+) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        (
+            "---\n"
+            f"origin: {origin}\n"
+            "to: demo\n"
+            f"reply_to: {reply_to}\n"
+            f"created: {created}\n"
+            f"title: {title}\n"
+            "---\n\n"
+            f"{body}\n"
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )

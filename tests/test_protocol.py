@@ -17,9 +17,9 @@ def test_render_protocol_returns_each_agent_and_both() -> None:
         assert "author role and implementer role must be different sessions" in rendered
         assert "implementer and reviewer must be different sessions" in rendered
         assert "author may also be the reviewer" in rendered
-        assert "belongs to another registered repo" in rendered
-        assert "issuekit list-refs" in rendered
-        assert "target repo owns triage" in rendered
+        assert "belongs to another project" in rendered
+        assert "issuekit propose --to <project>" in rendered
+        assert "owns triage" in rendered
         assert "issuekit implement <id> --agent <agent> --timeout-sec <n>" in rendered
         assert "launches the configured agent" in rendered
         assert "submits the completed work for review" in rendered

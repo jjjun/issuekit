@@ -13,6 +13,7 @@ EXPECTED_COMMANDS = {
     "implement",
     "validate",
     "migrate-to-api",
+    "migrate-proposals-to-api",
     "complete",
     "approve",
     "claim",
@@ -97,6 +98,7 @@ def test_handlers_are_stubs(command: str) -> None:
         "claim",
         "complete",
         "migrate-to-api",
+        "migrate-proposals-to-api",
         "implement",
         "info",
         "login",
@@ -128,45 +130,37 @@ def test_handlers_are_stubs(command: str) -> None:
 
 
 def test_proposal_cli_round_trip(tmp_path, monkeypatch, capsys) -> None:
-    from tests.issue_helpers import make_issue_tree
+    from issuekit.commands import propose as propose_command
+    from issuekit.testing import FakeIssuekitClient
 
-    source = tmp_path / "source"
-    target = tmp_path / "target"
-    make_issue_tree(source)
-    make_issue_tree(target)
-    body_file = source / "proposal.md"
+    client = FakeIssuekitClient(
+        proposals=[{"id": 1, "origin": "source#1@abc123", "title": "Suggest Thing", "body": "Body"}]
+    )
+    body_file = tmp_path / "proposal.md"
     body_file.write_text("## Suggested Change\n\nDo the thing.\n", encoding="utf-8", newline="\n")
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'source'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setattr(propose_command, "IssuekitClient", lambda *args, **kwargs: client)
 
-    monkeypatch.chdir(source)
-    assert cli.main(["add-ref", "target", "--path", str(target)]) == 0
+    monkeypatch.chdir(tmp_path)
     assert cli.main(
         [
             "propose",
             "--to",
             "target",
-            "--from-issue",
-            "1",
             "--title",
             "Suggest Thing",
             "--body-file",
             str(body_file),
         ]
     ) == 0
-
-    proposal_files = list((target / "docs" / "issues" / "incoming").glob("*.md"))
-    assert len(proposal_files) == 1
-
-    monkeypatch.chdir(target)
     assert cli.main(["incoming", "--json"]) == 0
     assert "Suggest Thing" in capsys.readouterr().out
-    assert cli.main(["adopt", proposal_files[0].name, "--priority", "high"]) == 0
-
-    active_files = list((target / "docs" / "issues" / "active").glob("003_*.md"))
-    assert len(active_files) == 1
-    content = active_files[0].read_text(encoding="utf-8")
-    assert "origin: source#1@" in content
-    assert "Origin: `source#1@" in content
-    assert not proposal_files[0].exists()
+    assert cli.main(["adopt", "1", "--priority", "high"]) == 0
+    assert client.get_proposal(1)["status"] == "adopted"
 
 
 def test_list_refs_shows_effective_source_and_self(tmp_path, monkeypatch, capsys) -> None:
@@ -458,47 +452,38 @@ def test_workspace_refs_drive_propose_and_reply_round_trip(
     tmp_path,
     monkeypatch,
 ) -> None:
-    from issuekit.proposals import list_incoming
+    from issuekit.commands import propose as propose_command
+    from issuekit import store as store_module
+    from issuekit.testing import FakeIssuekitClient
+    from tests.issue_helpers import api_issue
 
-    source = tmp_path / "source"
-    target = tmp_path / "target"
-    source.mkdir()
-    target.mkdir()
-    (target / "issuekit.toml").write_text(
-        "use_filesystem_store = true\n",
+    client = FakeIssuekitClient(
+        issues=[api_issue(1, "Implemented", status="completed", origin="source#0@abc123")]
+    )
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'target'\n",
         encoding="utf-8",
         newline="\n",
     )
-    body_file = source / "proposal.md"
-    reply_file = target / "reply.md"
+    body_file = tmp_path / "proposal.md"
+    reply_file = tmp_path / "reply.md"
     body_file.write_text("## Suggested Change\n\nDo the thing.\n", encoding="utf-8", newline="\n")
     reply_file.write_text("## Suggested Change\n\nImplemented.\n", encoding="utf-8", newline="\n")
-    (tmp_path / "issuekit.workspace.toml").write_text(
-        "[projects]\nsource = \"source\"\ntarget = \"target\"\n",
-        encoding="utf-8",
-        newline="\n",
-    )
+    monkeypatch.setattr(propose_command, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
 
-    monkeypatch.chdir(source)
+    monkeypatch.chdir(tmp_path)
     assert cli.main(
         [
             "propose",
             "--to",
-            "target",
+            "source",
             "--title",
             "Workspace Proposal",
             "--body-file",
             str(body_file),
         ]
     ) == 0
-
-    proposal_files = list((target / "docs" / "issues" / "incoming").glob("*.md"))
-    assert len(proposal_files) == 1
-
-    monkeypatch.chdir(target)
-    assert cli.main(["adopt", proposal_files[0].name]) == 0
-    assert cli.main(["claim", "--assignee", "codex"]) == 0
-    assert cli.main(["complete", "1", "--force", "--summary", "Implemented.", "--verification", "pytest"]) == 0
     assert cli.main(
         [
             "propose",
@@ -511,9 +496,7 @@ def test_workspace_refs_drive_propose_and_reply_round_trip(
         ]
     ) == 0
 
-    replies = list_incoming(source / "docs" / "issues")
-
-    assert len(replies) == 1
-    assert replies[0].to == "source"
-    assert replies[0].reply_to.startswith("source#0@")
-    assert replies[0].origin.startswith("target#1@")
+    proposals = client.list_proposals(status="pending")
+    assert [proposal["title"] for proposal in proposals] == ["Workspace Proposal", "Implemented Reply"]
+    assert proposals[1]["reply_to"].startswith("source#0@")
+    assert proposals[1]["origin"].startswith("target#1@")

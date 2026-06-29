@@ -18,5 +18,7 @@ from the repo root so the MCP server resolves the repo configuration.
   different implementer did the work.
 - If the proposal-system MCP tools hang or error, use the equivalent CLI with
   `--json` (`issuekit propose/incoming/adopt`); they share one implementation.
-- `docs/issues/incoming/` is still the local cross-project proposal area.
+- Cross-project proposals live in the configured API project. Use
+  `issuekit migrate-proposals-to-api` once per legacy repo before removing old
+  `docs/issues/` proposal files.
 - Write all files as UTF-8 without a BOM and with LF line endings.

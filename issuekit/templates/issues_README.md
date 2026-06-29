@@ -31,7 +31,10 @@ Legacy migration:
 ```powershell
 issuekit migrate-to-api --dry-run
 issuekit migrate-to-api
+issuekit migrate-proposals-to-api --dry-run
+issuekit migrate-proposals-to-api
 ```
 
-Cross-project proposals are still local files under `docs/issues/incoming/`.
-They are outside the API issue lifecycle until the proposal flow is migrated.
+Cross-project proposals live in the configured API project inbox. After running
+`issuekit migrate-proposals-to-api` for a legacy repository, remove its old
+file-backed proposal inbox.

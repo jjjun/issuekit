@@ -7,36 +7,28 @@ import json
 from pathlib import Path
 import subprocess
 import sys
+from dataclasses import replace
 
 from issuekit.client import IssuekitClient
-from issuekit.commands.generate_indexes import write_index_files
 from issuekit.config import load_config
 from issuekit.core import (
     Issue,
     VALID_ISSUE_PRIORITIES,
     find_issue_by_id,
-    issue_dict,
     parse_issue_id_arg,
-    read_all_issues,
 )
 from issuekit.proposals import (
     Proposal,
     ProposalError,
-    adopt_proposal,
-    discard_proposal,
-    list_incoming,
     origin_destination,
-    proposal_dict,
-    write_proposal,
 )
 from issuekit.refs import (
     RefError,
     add_ref,
     add_workspace_ref,
-    current_repo_ref,
     list_effective_refs,
-    resolve_ref,
 )
+from issuekit.store import get_store
 from issuekit.workflow import WorkflowError
 
 
@@ -72,6 +64,7 @@ def run_list_refs(_args) -> int:
 
 
 def run_propose(args) -> int:
+    config = load_config(Path.cwd())
     try:
         proposal = build_proposal(
             Path.cwd(),
@@ -82,40 +75,26 @@ def run_propose(args) -> int:
             from_issue=args.from_issue,
             reply=args.reply,
         )
-        config = load_config(Path.cwd())
-        if _use_api(config):
-            created = _api_client(config, project=proposal.to).create_proposal(
-                origin=proposal.origin,
-                title=proposal.title,
-                body=proposal.body,
-                reply_to=proposal.reply_to or None,
-            )
-        else:
-            target = resolve_ref(proposal.to, Path.cwd())
-            path = write_proposal(target.issues_dir, proposal)
+        created = _api_client(config, project=proposal.to).create_proposal(
+            origin=proposal.origin,
+            title=proposal.title,
+            body=proposal.body,
+            reply_to=proposal.reply_to or None,
+        )
     except (LookupError, ProposalError, RefError, ValueError, WorkflowError) as exc:
         print(str(exc), file=sys.stderr)
         return 1
     if args.json:
-        if _use_api(load_config(Path.cwd())):
-            print(json.dumps(created, indent=2))
-        else:
-            print(json.dumps({**proposal_dict(proposal), "path": path.as_posix()}, indent=2))
+        print(json.dumps(created, indent=2))
         return 0
-    if _use_api(load_config(Path.cwd())):
-        print(f"Sent proposal #{created.get('id')}: {created.get('title', proposal.title)}")
-    else:
-        print(f"Wrote proposal: {path}")
+    print(f"Sent proposal #{created.get('id')}: {created.get('title', proposal.title)}")
     return 0
 
 
 def run_incoming(args) -> int:
     config = load_config(Path.cwd())
     try:
-        if _use_api(config):
-            incoming = _api_client(config).list_proposals(status="pending")
-        else:
-            incoming = [proposal_dict(proposal) for proposal in list_incoming(config.issues_path(Path.cwd()))]
+        incoming = _api_client(config).list_proposals(status="pending")
     except (ProposalError, WorkflowError, ValueError) as exc:
         print(str(exc), file=sys.stderr)
         return 1
@@ -126,15 +105,8 @@ def run_incoming(args) -> int:
         print("No incoming proposals.")
         return 0
     for proposal in incoming:
-        if _use_api(config):
-            prefix = "reply" if proposal.get("reply_to") else "proposal"
-            print(f"{proposal['id']}\t{prefix}\t{proposal['origin']}\t{proposal['title']}")
-        else:
-            prefix = "reply" if proposal["reply_to"] else "proposal"
-            print(
-                f"{proposal['file']}\t{prefix}\t{proposal['origin']}\t"
-                f"{proposal['title']}"
-            )
+        prefix = "reply" if proposal.get("reply_to") else "proposal"
+        print(f"{proposal['id']}\t{prefix}\t{proposal['origin']}\t{proposal['title']}")
     return 0
 
 
@@ -143,52 +115,32 @@ def run_adopt(args) -> int:
         print(f"Invalid priority: {args.priority}", file=sys.stderr)
         return 1
     config = load_config(Path.cwd())
-    issues_dir = config.issues_path(Path.cwd())
     try:
-        if _use_api(config):
-            issue = _api_client(config).adopt_proposal(
-                _proposal_id_arg(args.proposal),
-                priority=args.priority,
-            )
-        else:
-            path = adopt_proposal(issues_dir, args.proposal, priority=args.priority)
+        issue = _api_client(config).adopt_proposal(
+            _proposal_id_arg(args.proposal),
+            priority=args.priority,
+        )
     except (ProposalError, WorkflowError, ValueError) as exc:
         print(str(exc), file=sys.stderr)
         return 1
-    if _use_api(config):
-        if args.json:
-            print(json.dumps(issue, indent=2))
-            return 0
-        print(f"Adopted proposal #{args.proposal} as issue #{issue.get('id')}.")
-        return 0
-
-    write_index_files(issues_dir, config.recent_count)
     if args.json:
-        _, _, issues = read_all_issues(issues_dir)
-        issue = next(candidate for candidate in issues if candidate.file_path == path)
-        print(json.dumps(issue_dict(issue, include_body=True), indent=2))
+        print(json.dumps(issue, indent=2))
         return 0
-    print(f"Adopted proposal as: {path}")
+    print(f"Adopted proposal #{args.proposal} as issue #{issue.get('id')}.")
     return 0
 
 
 def run_discard(args) -> int:
     config = load_config(Path.cwd())
     try:
-        if _use_api(config):
-            discarded = _api_client(config).discard_proposal(_proposal_id_arg(args.proposal))
-        else:
-            path = discard_proposal(config.issues_path(Path.cwd()), args.proposal)
+        discarded = _api_client(config).discard_proposal(_proposal_id_arg(args.proposal))
     except (ProposalError, WorkflowError, ValueError) as exc:
         print(str(exc), file=sys.stderr)
         return 1
     if getattr(args, "json", False):
-        print(json.dumps(discarded if _use_api(config) else {"path": path.as_posix()}, indent=2))
+        print(json.dumps(discarded, indent=2))
         return 0
-    if _use_api(config):
-        print(f"Discarded proposal #{discarded.get('id')}.")
-    else:
-        print(f"Discarded proposal: {path}")
+    print(f"Discarded proposal #{discarded.get('id')}.")
     return 0
 
 
@@ -203,6 +155,10 @@ def build_proposal(
     reply: str | None,
 ) -> Proposal:
     config = load_config(cwd)
+    if not config.api_url:
+        raise ProposalError(
+            "Proposal commands require api_url in issuekit.toml/[tool.issuekit] or ISSUEKIT_API_URL."
+        )
 
     source_issue: Issue | None = None
     reply_to = ""
@@ -226,7 +182,7 @@ def build_proposal(
 
     proposal_body = _proposal_body(body, body_file, source_issue)
     origin_id = str(source_issue.id) if source_issue is not None and source_issue.id is not None else "0"
-    origin_project = config.project if _use_api(config) else current_repo_ref(cwd)
+    origin_project = config.project
     origin = f"{origin_project}#{origin_id}@{_git_commit(cwd)}"
     return Proposal(
         origin=origin,
@@ -240,20 +196,16 @@ def build_proposal(
 
 def _read_all_issues(cwd: Path, config) -> list[Issue]:
     issues_dir = config.issues_path(cwd)
-    if _use_api(config):
-        from issuekit.store import get_store
-
-        _, _, all_issues = get_store(config, issues_dir).read_all_issues()
-        return all_issues
-    _, _, all_issues = read_all_issues(issues_dir)
+    api_config = replace(config, use_filesystem_store=False)
+    _, _, all_issues = get_store(api_config, issues_dir).read_all_issues()
     return all_issues
 
 
-def _use_api(config) -> bool:
-    return bool(config.api_url) and not config.use_filesystem_store
-
-
 def _api_client(config, *, project: str | None = None) -> IssuekitClient:
+    if not config.api_url:
+        raise ProposalError(
+            "Proposal commands require api_url in issuekit.toml/[tool.issuekit] or ISSUEKIT_API_URL."
+        )
     return IssuekitClient(
         config.api_url,
         project=project or config.project,

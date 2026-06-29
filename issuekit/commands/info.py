@@ -5,8 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from issuekit.commands.propose import _api_client
 from issuekit.config import load_config
-from issuekit.proposals import list_incoming
 from issuekit.store import get_store
 
 
@@ -15,7 +15,7 @@ def run(args) -> int:
     issues_dir = config.issues_path(Path.cwd())
     store = get_store(config, issues_dir)
     active_issues, completed_issues, all_issues = store.read_all_issues()
-    incoming_proposals = list_incoming(issues_dir)
+    incoming_proposals = _incoming_proposals(config)
     summary = {
         "counts": {
             "active": len(active_issues),
@@ -37,10 +37,10 @@ def run(args) -> int:
         ],
         "incomingProposals": [
             {
-                "origin": proposal.origin,
-                "title": proposal.title,
-                "created": proposal.created,
-                "file": _proposal_relative_path(issues_dir, proposal.file_path),
+                "id": proposal.get("id"),
+                "origin": proposal.get("origin", ""),
+                "title": proposal.get("title", ""),
+                "created": proposal.get("created"),
             }
             for proposal in incoming_proposals
         ],
@@ -71,12 +71,12 @@ def run(args) -> int:
         print()
         print("Incoming proposals")
         for proposal in summary["incomingProposals"]:
-            print(f"- {proposal['origin']}: {proposal['title']} ({proposal['file']})")
+            print(f"- #{proposal['id']} {proposal['origin']}: {proposal['title']}")
 
     return 0
 
 
-def _proposal_relative_path(issues_dir: Path, proposal_path: Path | None) -> str:
-    if proposal_path is None:
-        return ""
-    return proposal_path.relative_to(issues_dir).as_posix()
+def _incoming_proposals(config) -> list[dict]:
+    if not config.api_url:
+        return []
+    return _api_client(config).list_proposals(status="pending")

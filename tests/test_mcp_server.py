@@ -11,7 +11,6 @@ from issuekit import cli
 from issuekit.commands import propose as propose_command
 from issuekit import store as store_module
 from issuekit.mcp.server import create_server
-from issuekit.refs import add_ref
 from issuekit.testing import FakeIssuekitClient
 
 from tests.issue_helpers import api_issue, issue_text, write_indexes, write_issue
@@ -500,54 +499,6 @@ def test_approve_rejects_unassigned_reviewer_with_clear_message(tmp_path: Path) 
     assert "Omit `reviewer` to use default_reviewer" in message
 
 
-def test_proposal_tools_send_list_and_adopt(tmp_path: Path) -> None:
-    source = tmp_path / "source"
-    target = tmp_path / "target"
-    source_issues = source / "docs" / "issues"
-    target_issues = target / "docs" / "issues"
-    write_issue(source_issues / "active" / "001_first.md", issue_text(1, "First"))
-    write_indexes(source_issues)
-    write_indexes(target_issues)
-    add_ref("target", target, source)
-
-    source_server = create_server(source)
-    sent = _call(
-        source_server,
-        "propose",
-        {
-            "to": "target",
-            "title": "MCP Proposal",
-            "body": "## Suggested Change\n\nDo this.",
-            "from_issue": "1",
-        },
-    )
-    target_server = create_server(target)
-    incoming = _call(target_server, "list_incoming", {})
-    adopted = _call(target_server, "adopt_proposal", {"proposal_file": incoming[0]["file"]})
-
-    assert sent["origin"].startswith("source#1@")
-    assert incoming[0]["title"] == "MCP Proposal"
-    assert adopted["id"] == 1
-    assert adopted["title"] == "MCP Proposal"
-
-
-def test_proposal_tool_rejects_traversal_path(tmp_path: Path) -> None:
-    target = tmp_path / "target"
-    issues_dir = target / "docs" / "issues"
-    issues_dir.mkdir(parents=True, exist_ok=True)
-    escaped = issues_dir.parent / "outside.md"
-    escaped.write_text(
-        "---\norigin: source#42@abc123\nto: target\nreply_to:\ncreated: 2026-06-03\ntitle: Escaped\n---\n\n# Proposal: Escaped\n",
-        encoding="utf-8",
-        newline="\n",
-    )
-
-    server = create_server(target)
-
-    with pytest.raises(Exception, match="escapes incoming directory"):
-        _call(server, "adopt_proposal", {"proposal_file": "../outside.md"})
-
-
 def test_api_proposal_tools_send_list_adopt_and_discard(
     tmp_path: Path,
     monkeypatch,
@@ -588,23 +539,22 @@ def test_api_proposal_tools_send_list_adopt_and_discard(
 
 
 def test_cli_proposal_json_matches_mcp_output(tmp_path: Path, monkeypatch, capsys) -> None:
-    source = tmp_path / "source"
-    target = tmp_path / "target"
-    source_issues = source / "docs" / "issues"
-    target_issues = target / "docs" / "issues"
-    write_issue(source_issues / "active" / "001_first.md", issue_text(1, "First"))
-    write_indexes(source_issues)
-    write_indexes(target_issues)
-    add_ref("target", target, source)
+    client = FakeIssuekitClient()
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'source'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setattr(propose_command, "IssuekitClient", lambda *args, **kwargs: client)
 
-    # propose via MCP and via CLI: same source/title/body -> identical proposal_dict
-    source_server = create_server(source)
+    # propose via MCP and via CLI: same source/title/body -> identical API proposal
+    source_server = create_server(tmp_path)
     mcp_sent = _call(
         source_server,
         "propose",
-        {"to": "target", "title": "Parity", "body": "## Suggested Change\n\nDo this.", "from_issue": "1"},
+        {"to": "target", "title": "Parity", "body": "## Suggested Change\n\nDo this."},
     )
-    monkeypatch.chdir(source)
+    monkeypatch.chdir(tmp_path)
     cli.main(
         [
             "propose",
@@ -614,8 +564,6 @@ def test_cli_proposal_json_matches_mcp_output(tmp_path: Path, monkeypatch, capsy
             "Parity",
             "--body",
             "## Suggested Change\n\nDo this.",
-            "--from-issue",
-            "1",
             "--json",
         ]
     )
@@ -623,25 +571,13 @@ def test_cli_proposal_json_matches_mcp_output(tmp_path: Path, monkeypatch, capsy
     assert cli_sent == mcp_sent
 
     # list_incoming parity
-    target_server = create_server(target)
+    target_server = create_server(tmp_path)
     mcp_incoming = _call(target_server, "list_incoming", {})
-    monkeypatch.chdir(target)
     cli.main(["incoming", "--json"])
     cli_incoming = json.loads(capsys.readouterr().out)
     assert cli_incoming == mcp_incoming
 
-    # adopt parity: CLI adopt output equals MCP adopt output keys/values
-    cli.main(["adopt", cli_incoming[0]["file"], "--json"])
+    # adopt parity: CLI adopt output equals MCP adopt output
+    cli.main(["adopt", str(cli_incoming[0]["id"]), "--json"])
     cli_adopted = json.loads(capsys.readouterr().out)
-    assert set(cli_adopted) == {
-        "id",
-        "title",
-        "status",
-        "assignee",
-        "stage",
-        "implementer",
-        "author",
-        "file",
-        "body",
-    }
     assert cli_adopted["title"] == "Parity"

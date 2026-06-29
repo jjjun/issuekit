@@ -358,6 +358,13 @@ class IssuekitClient:
         payload = self._proposal_request("POST", f"/{proposal_id}/discard")
         return _ensure_dict(payload, "Discard proposal response")
 
+    def import_proposals(self, proposals: list[Mapping[str, Any]] | Mapping[str, Any]) -> list[JsonDict]:
+        items = [dict(proposal) for proposal in proposals] if isinstance(proposals, list) else [dict(proposals)]
+        payload = self._proposal_request("POST", "/import", json={"proposals": items})
+        if not isinstance(payload, list):
+            raise WorkflowError("Proposal import response was not a JSON array.", code="invalid_response")
+        return [_ensure_dict(item, "Proposal import response item") for item in payload]
+
     def _request(
         self,
         method: str,

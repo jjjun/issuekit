@@ -20,7 +20,7 @@ def test_init_fresh_dir_gets_full_scaffold(tmp_path: Path, monkeypatch, capsys) 
     )
     assert (tmp_path / ".pre-commit-config.yaml").exists()
     assert (tmp_path / "docs" / "issues" / "README.md").exists()
-    assert (tmp_path / "docs" / "issues" / "incoming" / ".gitkeep").exists()
+    assert not (tmp_path / "docs" / "issues" / "incoming").exists()
     assert not (tmp_path / "docs" / "issues" / "active").exists()
     assert not (tmp_path / "docs" / "issues" / "indexes").exists()
     assert cli.main(["migrate-to-api", "--dry-run"]) == 0
@@ -90,7 +90,6 @@ def test_init_written_files_have_no_bom_or_crlf(tmp_path: Path, monkeypatch) -> 
         tmp_path / ".editorconfig",
         tmp_path / ".pre-commit-config.yaml",
         tmp_path / "docs" / "issues" / "README.md",
-        tmp_path / "docs" / "issues" / "incoming" / ".gitkeep",
     ]:
         content = path.read_bytes()
         assert not content.startswith(b"\xef\xbb\xbf")

@@ -51,9 +51,6 @@ def init_repo(cwd: Path, *, force: bool = False, with_mcp: bool = False) -> Init
     config = load_config(cwd)
     issues_dir = config.issues_path(cwd)
 
-    (issues_dir / "incoming").mkdir(parents=True, exist_ok=True)
-    _write_incoming_placeholder(cwd, issues_dir, force, result)
-
     _write_template(cwd, cwd / ".gitattributes", "gitattributes", force, result)
     _write_template(cwd, cwd / ".editorconfig", "editorconfig", force, result)
     _write_template(cwd, issues_dir / "README.md", "issues_README.md", force, result)
@@ -91,20 +88,6 @@ def _write_pre_commit(cwd: Path, force: bool, result: InitResult) -> None:
         return
     path.write_text(_template_text("pre-commit-config.yaml"), encoding="utf-8", newline="\n")
     result.written.append(".pre-commit-config.yaml")
-
-
-def _write_incoming_placeholder(
-    cwd: Path,
-    issues_dir: Path,
-    force: bool,
-    result: InitResult,
-) -> None:
-    path = issues_dir / "incoming" / ".gitkeep"
-    if path.exists() and not force:
-        result.skipped.append(_display_path(cwd, path))
-        return
-    path.write_text("", encoding="utf-8", newline="\n")
-    result.written.append(_display_path(cwd, path))
 
 
 def _write_local_config_ignore(cwd: Path, result: InitResult) -> None:

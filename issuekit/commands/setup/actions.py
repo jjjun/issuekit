@@ -28,7 +28,6 @@ def collect_setup_actions(cwd: Path) -> list[SetupAction]:
         cwd,
         actions,
         (
-            "docs/issues/incoming/.gitkeep",
             ".gitattributes",
             ".editorconfig",
             "docs/issues/README.md",

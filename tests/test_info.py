@@ -2,8 +2,8 @@ import json
 from pathlib import Path
 
 from issuekit import cli
+from issuekit.commands import info as info_command
 from issuekit import store as store_module
-from issuekit.proposals import Proposal, write_proposal
 from issuekit.testing import FakeIssuekitClient
 
 from tests.issue_helpers import api_issue, issue_text, make_issue_tree, write_issue, write_indexes
@@ -34,18 +34,24 @@ def test_info_json_output(tmp_path: Path, monkeypatch, capsys) -> None:
 
 
 def test_info_json_lists_incoming_proposals(tmp_path: Path, monkeypatch, capsys) -> None:
-    issues_dir = make_issue_tree(tmp_path)
-    write_proposal(
-        issues_dir,
-        Proposal(
-            origin="mine-js-monorepo#0@f8b6c5b3",
-            to="issuekit",
-            reply_to="",
-            created="2026-06-03",
-            title="Show Pending Proposal",
-            body="## Suggested Change\n\nSurface this in info.",
-        ),
+    make_issue_tree(tmp_path)
+    client = FakeIssuekitClient(
+        proposals=[
+            {
+                "id": 9,
+                "origin": "mine-js-monorepo#0@f8b6c5b3",
+                "created": "2026-06-03",
+                "title": "Show Pending Proposal",
+                "body": "Body",
+            }
+        ]
     )
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'issuekit'\nuse_filesystem_store = true\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setattr(info_command, "_api_client", lambda config: client)
     monkeypatch.chdir(tmp_path)
 
     cli.main(["info", "--json"])
@@ -57,24 +63,30 @@ def test_info_json_lists_incoming_proposals(tmp_path: Path, monkeypatch, capsys)
             "origin": "mine-js-monorepo#0@f8b6c5b3",
             "title": "Show Pending Proposal",
             "created": "2026-06-03",
-            "file": "incoming/mine_js_monorepo__0__show_pending_proposal.md",
+            "id": 9,
         }
     ]
 
 
 def test_info_text_lists_incoming_proposals(tmp_path: Path, monkeypatch, capsys) -> None:
-    issues_dir = make_issue_tree(tmp_path)
-    write_proposal(
-        issues_dir,
-        Proposal(
-            origin="mine-js-monorepo#0@f8b6c5b3",
-            to="issuekit",
-            reply_to="",
-            created="2026-06-03",
-            title="Show Pending Proposal",
-            body="## Suggested Change\n\nSurface this in info.",
-        ),
+    make_issue_tree(tmp_path)
+    client = FakeIssuekitClient(
+        proposals=[
+            {
+                "id": 9,
+                "origin": "mine-js-monorepo#0@f8b6c5b3",
+                "created": "2026-06-03",
+                "title": "Show Pending Proposal",
+                "body": "Body",
+            }
+        ]
     )
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'issuekit'\nuse_filesystem_store = true\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setattr(info_command, "_api_client", lambda config: client)
     monkeypatch.chdir(tmp_path)
 
     exit_code = cli.main(["info"])
@@ -82,27 +94,29 @@ def test_info_text_lists_incoming_proposals(tmp_path: Path, monkeypatch, capsys)
     captured = capsys.readouterr()
     assert exit_code == 0
     assert "Incoming proposals: 1" in captured.out
-    assert "Incoming proposals\n- mine-js-monorepo#0@f8b6c5b3: Show Pending Proposal" in captured.out
+    assert "Incoming proposals\n- #9 mine-js-monorepo#0@f8b6c5b3: Show Pending Proposal" in captured.out
 
 
 def test_info_ignores_triaged_incoming_proposals(tmp_path: Path, monkeypatch, capsys) -> None:
-    issues_dir = make_issue_tree(tmp_path)
-    write_proposal(
-        issues_dir,
-        Proposal(
-            origin="mine-js-monorepo#0@f8b6c5b3",
-            to="issuekit",
-            reply_to="",
-            created="2026-06-03",
-            title="Show Pending Proposal",
-            body="## Suggested Change\n\nSurface this in info.",
-        ),
+    make_issue_tree(tmp_path)
+    client = FakeIssuekitClient(
+        proposals=[
+            {
+                "id": 9,
+                "origin": "mine-js-monorepo#0@f8b6c5b3",
+                "created": "2026-06-03",
+                "title": "Show Pending Proposal",
+                "body": "Body",
+                "status": "adopted",
+            }
+        ]
     )
-    adopted_dir = issues_dir / "incoming" / "adopted"
-    adopted_dir.mkdir()
-    (issues_dir / "incoming" / "mine_js_monorepo__0__show_pending_proposal.md").replace(
-        adopted_dir / "mine_js_monorepo__0__show_pending_proposal.md"
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'issuekit'\nuse_filesystem_store = true\n",
+        encoding="utf-8",
+        newline="\n",
     )
+    monkeypatch.setattr(info_command, "_api_client", lambda config: client)
     monkeypatch.chdir(tmp_path)
 
     cli.main(["info", "--json"])
@@ -202,6 +216,7 @@ def test_info_json_uses_api_store_when_configured(tmp_path: Path, monkeypatch, c
         newline="\n",
     )
     monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.setattr(info_command, "_api_client", lambda config: client)
     monkeypatch.chdir(tmp_path)
 
     exit_code = cli.main(["info", "--json"])
