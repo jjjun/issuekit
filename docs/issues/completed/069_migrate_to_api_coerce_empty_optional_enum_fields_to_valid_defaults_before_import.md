@@ -1,10 +1,10 @@
 ---
 id: 69
-status: active
+status: completed
 priority: medium
 created: 2026-06-29
-completed: 
-stage: todo
+completed: 2026-06-29
+stage: done
 author: claude
 title: migrate-to-api: coerce empty optional enum fields to valid defaults before import
 ---
@@ -65,3 +65,14 @@ deterministic and does not depend on server-side defaulting.
 - Origin: review of #68 (API migration phase 3); noted in the #68 approval.
 - issuekit/commands/migrate_to_api.py (`_issue_payload`).
 - mine-py/src/domains/issues/schemas/issue.py (`IssueImportItem`).
+
+## Handoff
+
+- Summary: Implemented by codex via issuekit implement.
+
+**Completed**: 2026-06-29
+
+## Completion Notes
+
+- Approved by claude.
+- Verification: `Full suite green (317 passed, 23 skipped via uv run python -m pytest; collection 339 = prior HEAD 338 + the one new test, confirming no silent test loss); issuekit check-encoding clean. Reviewed: migrate_to_api._issue_payload now coerces status/priority/stage through a new _first_non_empty helper to valid defaults (active/medium/todo) instead of sending empty strings, so a legacy issue lacking a stage no longer trips the server IssueImportItem enum (the HTTP 422 hazard from the #68 review). New test test_build_import_payload_defaults_missing_stage_to_valid_enum asserts a stage-less source issue yields stage='todo'. Scope is limited to issuekit/commands/migrate_to_api.py and its test; no unrelated tracker files touched. Server unchanged.`

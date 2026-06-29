@@ -108,9 +108,14 @@ def _issue_payload(issue: Issue) -> dict[str, Any]:
         "number": issue_id,
         "title": data.get("title") or issue.title,
         "body": issue.frontmatter.body.lstrip("\n"),
-        "status": data.get("status") or issue.issue_status or issue.status,
-        "priority": data.get("priority") or issue.priority or "medium",
-        "stage": data.get("stage") or issue.stage,
+        "status": _first_non_empty(
+            data.get("status"),
+            issue.issue_status,
+            issue.status,
+            "active",
+        ),
+        "priority": _first_non_empty(data.get("priority"), issue.priority, "medium"),
+        "stage": _first_non_empty(data.get("stage"), issue.stage, "todo"),
         "assignee": data.get("assignee") or issue.assignee,
         "implementer": data.get("implementer") or issue.implementer,
         "author": data.get("author") or issue.author,
@@ -125,6 +130,14 @@ def _issue_payload(issue: Issue) -> dict[str, Any]:
         },
     }
     return payload
+
+
+def _first_non_empty(*values: object) -> str:
+    for value in values:
+        normalized = "" if value is None else str(value).strip()
+        if normalized:
+            return normalized
+    return ""
 
 
 def _server_issue_id(issue: dict[str, Any]) -> int:
