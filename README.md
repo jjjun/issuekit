@@ -263,6 +263,13 @@ For one-off legacy access, set `use_filesystem_store = true` or
 `ISSUEKIT_USE_FILESYSTEM=1`. That path exists for migration and proposal
 compatibility; new issue lifecycle operations should use the API.
 
+At startup, issuekit also reads a repo-local `.env` file from the current repo
+root and loads values such as `ISSUEKIT_API_URL`, `ISSUEKIT_API_USER`,
+`ISSUEKIT_API_PASSWORD`, `ISSUEKIT_API_TOKEN`, `ISSUEKIT_TOKEN_CACHE`, and
+`ISSUEKIT_PROJECT`. Existing process environment variables are not overwritten.
+Overall precedence is process environment, then `.env`, then `[tool.issuekit]`
+or `issuekit.toml`, then built-in defaults.
+
 When both files exist, `[tool.issuekit]` in `pyproject.toml` takes precedence.
 If `pyproject.toml` exists without `[tool.issuekit]`, issuekit falls back to
 `issuekit.toml`.

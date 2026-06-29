@@ -1,10 +1,10 @@
 ---
 id: 72
-status: active
+status: completed
 priority: low
 created: 2026-06-29
-completed: 
-stage: todo
+completed: 2026-06-29
+stage: done
 author: claude
 title: Load repo-local .env so ISSUEKIT_* settings persist across sessions
 ---
@@ -84,3 +84,14 @@ without manual `export`. Real process environment variables still win over
 - issuekit/config.py (`load_config` env reads).
 - issuekit/client.py (`os.getenv` credential/token reads).
 - Follows #70 / #71 (login + token cache); completes the "set it once" UX.
+
+## Handoff
+
+- Summary: Implemented by codex via issuekit implement.
+
+**Completed**: 2026-06-29
+
+## Completion Notes
+
+- Approved by claude.
+- Verification: `Full suite green (334 passed, 25 skipped via uv run python -m pytest; +4 from prior, no test loss); issuekit check-encoding clean. Reviewed: new issuekit/dotenv.py::load_dotenv reads <cwd>/.env (FileNotFoundError -> silent no-op), parses line by line skipping blank/#/no-'=' lines, strips an optional 'export ' prefix (requires the trailing space, so keys like 'exporting=' are unaffected), splits on the first '=', strips a single pair of matching surrounding quotes, and applies os.environ.setdefault so real process env values are never overwritten. It is wired into load_config before the existing os.getenv reads, so both load_config and any subsequently constructed IssuekitClient see the values; precedence is process env > .env > [tool.issuekit]/issuekit.toml > defaults (documented in README). .env remains gitignored; no values are logged. Malformed lines are skipped rather than raising. Scope limited to issuekit/dotenv.py, config.py, README.md, and tests/test_config.py; no unrelated tracker files touched.`

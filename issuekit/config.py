@@ -8,6 +8,7 @@ from pathlib import Path
 import tomllib
 
 from issuekit.core import is_valid_workflow_token
+from issuekit.dotenv import load_dotenv
 
 
 _SENTINEL = object()
@@ -129,7 +130,9 @@ class IssuekitConfig:
 
 
 def load_config(cwd: Path | str = ".") -> IssuekitConfig:
-    raw_config = _load_raw_config(Path(cwd))
+    config_cwd = Path(cwd)
+    load_dotenv(config_cwd)
+    raw_config = _load_raw_config(config_cwd)
     api_url = str(
         os.getenv("ISSUEKIT_API_URL", raw_config.get("api_url", IssuekitConfig.api_url))
     ).strip()

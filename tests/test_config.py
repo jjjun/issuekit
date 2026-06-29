@@ -1,8 +1,37 @@
+from collections.abc import Iterator
+import os
 from pathlib import Path
 
 import pytest
 
 from issuekit.config import AgentRunConfig, IssuekitConfig, load_config
+
+
+_ENV_KEYS = (
+    "ISSUEKIT_API_PASSWORD",
+    "ISSUEKIT_API_TIMEOUT",
+    "ISSUEKIT_API_TOKEN",
+    "ISSUEKIT_API_URL",
+    "ISSUEKIT_API_USER",
+    "ISSUEKIT_PROJECT",
+    "ISSUEKIT_TOKEN_CACHE",
+    "ISSUEKIT_USE_FILESYSTEM",
+    "DOTENV_EXTRA",
+    "MALFORMED_LINE",
+)
+
+
+@pytest.fixture(autouse=True)
+def restore_config_env() -> Iterator[None]:
+    original = {key: os.environ.get(key) for key in _ENV_KEYS}
+    for key in _ENV_KEYS:
+        os.environ.pop(key, None)
+    yield
+    for key, value in original.items():
+        if value is None:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = value
 
 
 def test_load_config_reads_standalone_issuekit_toml(tmp_path: Path) -> None:
@@ -56,6 +85,85 @@ def test_load_config_reads_api_fields_from_pyproject(tmp_path: Path) -> None:
     assert config.api_timeout == 12.5
     assert config.default_reviewer == "auto"
     assert config.require_distinct_reviewer is True
+
+
+def test_load_config_reads_api_url_from_dotenv(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("ISSUEKIT_API_URL", raising=False)
+    (tmp_path / ".env").write_text(
+        "ISSUEKIT_API_URL=https://mine.env\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    config = load_config(tmp_path)
+
+    assert config.api_url == "https://mine.env"
+    assert config.use_filesystem_store is False
+
+
+def test_load_config_real_environment_overrides_dotenv(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ISSUEKIT_API_URL", "https://mine.real-env")
+    (tmp_path / ".env").write_text(
+        "ISSUEKIT_API_URL=https://mine.dotenv\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    config = load_config(tmp_path)
+
+    assert config.api_url == "https://mine.real-env"
+
+
+def test_load_config_dotenv_parses_comments_quotes_export_and_skips_malformed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for key in (
+        "ISSUEKIT_API_URL",
+        "ISSUEKIT_PROJECT",
+        "ISSUEKIT_API_TIMEOUT",
+        "DOTENV_EXTRA",
+        "MALFORMED_LINE",
+    ):
+        monkeypatch.delenv(key, raising=False)
+    (tmp_path / ".env").write_text(
+        (
+            "\n"
+            "  # comment\n"
+            "export ISSUEKIT_API_URL = 'https://mine.quoted'\n"
+            'ISSUEKIT_PROJECT = "quoted_project"\n'
+            "ISSUEKIT_API_TIMEOUT = 7.5\n"
+            "DOTENV_EXTRA = extra value\n"
+            "MALFORMED_LINE\n"
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    config = load_config(tmp_path)
+
+    assert config.api_url == "https://mine.quoted"
+    assert config.project == "quoted_project"
+    assert config.api_timeout == 7.5
+    assert os.environ["DOTENV_EXTRA"] == "extra value"
+    assert "MALFORMED_LINE" not in os.environ
+
+
+def test_load_config_missing_dotenv_is_noop(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("ISSUEKIT_API_URL", raising=False)
+
+    config = load_config(tmp_path)
+
+    assert config == IssuekitConfig(use_filesystem_store=False)
 
 
 def test_load_config_api_mode_uses_server_reviewer_policy(tmp_path: Path) -> None:
