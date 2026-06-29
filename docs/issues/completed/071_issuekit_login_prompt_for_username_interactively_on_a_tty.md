@@ -1,10 +1,10 @@
 ---
 id: 71
-status: active
+status: completed
 priority: low
 created: 2026-06-29
-completed: 
-stage: todo
+completed: 2026-06-29
+stage: done
 author: claude
 title: issuekit login: prompt for username interactively on a TTY
 ---
@@ -65,3 +65,14 @@ token.
 
 - issuekit/commands/auth.py (`run_login`).
 - Follows #70 (token cache + login/logout commands).
+
+## Handoff
+
+- Summary: Implemented by codex via issuekit implement.
+
+**Completed**: 2026-06-29
+
+## Completion Notes
+
+- Approved by claude.
+- Verification: `Full suite green (330 passed, 25 skipped via uv run python -m pytest; +4 from prior, no test loss); issuekit check-encoding clean. Reviewed: run_login now prompts for the username with input("Issuekit API username: ").strip() only when it is unset (no --user, no ISSUEKIT_API_USER) and sys.stdin.isatty(), placed before the unchanged getpass password handling so the prompt order is username then password. Non-TTY behavior is unchanged: input() is not called and the existing "API username is required" error stands; --user/ISSUEKIT_API_USER still bypass the prompt. Password is never echoed and the token is never printed. Scope limited to issuekit/commands/auth.py and tests/test_cli.py; no client/cache/logout changes and no unrelated tracker files touched.`

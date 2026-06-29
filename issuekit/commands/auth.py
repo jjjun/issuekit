@@ -18,6 +18,8 @@ def run_login(args) -> int:
         config = load_config(Path.cwd())
         username = args.user or os.getenv("ISSUEKIT_API_USER")
         password = os.getenv("ISSUEKIT_API_PASSWORD")
+        if not username and sys.stdin.isatty():
+            username = input("Issuekit API username: ").strip()
         if not username:
             print("Error: API username is required; pass --user or set ISSUEKIT_API_USER.", file=sys.stderr)
             return 1

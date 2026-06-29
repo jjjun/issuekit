@@ -275,6 +275,147 @@ def test_login_command_uses_credentials_and_ignores_env_token(
     assert "Logged in to https://mine.example as svc" in capsys.readouterr().out
 
 
+def test_login_command_prompts_for_username_on_tty(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    from issuekit.commands import auth
+
+    class TtyStdin:
+        def isatty(self):
+            return True
+
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("ISSUEKIT_API_USER", raising=False)
+    monkeypatch.delenv("ISSUEKIT_API_PASSWORD", raising=False)
+    monkeypatch.setattr(auth.sys, "stdin", TtyStdin())
+    monkeypatch.setattr("builtins.input", lambda prompt: "  prompted-user  ")
+    monkeypatch.setattr(auth.getpass, "getpass", lambda prompt: "secret")
+    created = []
+
+    class FakeClient:
+        def __init__(self, *args, **kwargs):
+            created.append((args, kwargs))
+            self.token_expiry = 1780000000.0
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc_info):
+            return None
+
+        def login(self, *, force=False):
+            assert force is True
+            return "token"
+
+    monkeypatch.setattr(auth, "IssuekitClient", FakeClient)
+
+    assert cli.main(["login"]) == 0
+
+    assert created[0][1]["username"] == "prompted-user"
+    assert created[0][1]["password"] == "secret"
+    assert "Logged in to https://mine.example as prompted-user" in capsys.readouterr().out
+
+
+def test_login_command_non_tty_missing_username_does_not_prompt(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    from issuekit.commands import auth
+
+    class NonTtyStdin:
+        def isatty(self):
+            return False
+
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("ISSUEKIT_API_USER", raising=False)
+    monkeypatch.setenv("ISSUEKIT_API_PASSWORD", "secret")
+    monkeypatch.setattr(auth.sys, "stdin", NonTtyStdin())
+    monkeypatch.setattr(
+        "builtins.input",
+        lambda prompt: pytest.fail("input should not be called for non-TTY login"),
+    )
+
+    assert cli.main(["login"]) == 1
+
+    assert (
+        "Error: API username is required; pass --user or set ISSUEKIT_API_USER."
+        in capsys.readouterr().err
+    )
+
+
+@pytest.mark.parametrize(
+    ("argv", "env_user", "expected_username"),
+    [
+        (["login", "--user", "cli-user"], None, "cli-user"),
+        (["login"], "env-user", "env-user"),
+    ],
+)
+def test_login_command_existing_username_sources_bypass_prompt(
+    tmp_path,
+    monkeypatch,
+    argv,
+    env_user,
+    expected_username,
+) -> None:
+    from issuekit.commands import auth
+
+    class TtyStdin:
+        def isatty(self):
+            return True
+
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.chdir(tmp_path)
+    if env_user is None:
+        monkeypatch.delenv("ISSUEKIT_API_USER", raising=False)
+    else:
+        monkeypatch.setenv("ISSUEKIT_API_USER", env_user)
+    monkeypatch.setenv("ISSUEKIT_API_PASSWORD", "secret")
+    monkeypatch.setattr(auth.sys, "stdin", TtyStdin())
+    monkeypatch.setattr(
+        "builtins.input",
+        lambda prompt: pytest.fail("input should not be called when username is already set"),
+    )
+    created = []
+
+    class FakeClient:
+        def __init__(self, *args, **kwargs):
+            created.append((args, kwargs))
+            self.token_expiry = 1780000000.0
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc_info):
+            return None
+
+        def login(self, *, force=False):
+            assert force is True
+            return "token"
+
+    monkeypatch.setattr(auth, "IssuekitClient", FakeClient)
+
+    assert cli.main(argv) == 0
+
+    assert created[0][1]["username"] == expected_username
+
+
 def test_logout_command_ignores_env_token(
     tmp_path,
     monkeypatch,
