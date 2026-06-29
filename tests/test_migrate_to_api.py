@@ -91,6 +91,55 @@ def test_build_import_payload_preserves_explicit_stage_for_completed_issue(
     assert payload[0]["stage"] == "review"
 
 
+def test_build_import_payload_converts_empty_dates_to_none(tmp_path: Path) -> None:
+    issues_dir = tmp_path / "docs" / "issues"
+    write_issue(
+        issues_dir / "active" / "001_first.md",
+        issue_text(1, "First", created="", completed=""),
+    )
+
+    payload = migrate_to_api.build_import_payload(issues_dir)
+
+    assert payload[0]["created"] is None
+    assert payload[0]["completed"] is None
+
+
+def test_build_import_payload_preserves_non_empty_dates(tmp_path: Path) -> None:
+    issues_dir = tmp_path / "docs" / "issues"
+    write_issue(
+        issues_dir / "completed" / "001_done.md",
+        issue_text(
+            1,
+            "Done",
+            status="completed",
+            created="2026-01-01",
+            completed="2026-01-02",
+        ),
+    )
+
+    payload = migrate_to_api.build_import_payload(issues_dir)
+
+    assert payload[0]["created"] == "2026-01-01"
+    assert payload[0]["completed"] == "2026-01-02"
+
+
+def test_build_import_payload_has_no_empty_date_strings(tmp_path: Path) -> None:
+    issues_dir = tmp_path / "docs" / "issues"
+    write_issue(
+        issues_dir / "active" / "001_first.md",
+        issue_text(1, "First", created="", completed=""),
+    )
+    write_issue(
+        issues_dir / "completed" / "002_done.md",
+        issue_text(2, "Done", status="completed", completed="2026-01-02"),
+    )
+
+    payload = migrate_to_api.build_import_payload(issues_dir)
+
+    assert all(issue["created"] != "" for issue in payload)
+    assert all(issue["completed"] != "" for issue in payload)
+
+
 def test_migrate_to_api_dry_run_does_not_require_api_url(
     tmp_path: Path,
     monkeypatch,

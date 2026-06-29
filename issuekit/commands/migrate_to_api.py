@@ -122,8 +122,8 @@ def _issue_payload(issue: Issue) -> dict[str, Any]:
         "implementer": data.get("implementer") or issue.implementer,
         "author": data.get("author") or issue.author,
         "reviewer": data.get("reviewer", ""),
-        "created": data.get("created") or issue.created,
-        "completed": data.get("completed") or issue.completed,
+        "created": _date_or_none(data.get("created"), issue.created),
+        "completed": _date_or_none(data.get("completed"), issue.completed),
         "origin": data.get("origin", ""),
         "extra": {
             key: value
@@ -140,6 +140,14 @@ def _first_non_empty(*values: object) -> str:
         if normalized:
             return normalized
     return ""
+
+
+def _date_or_none(*values: object) -> str | None:
+    for value in values:
+        normalized = "" if value is None else str(value).strip()
+        if normalized:
+            return normalized
+    return None
 
 
 def _server_issue_id(issue: dict[str, Any]) -> int:
