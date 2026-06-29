@@ -14,10 +14,8 @@ from issuekit.commands.propose import build_proposal
 from issuekit.config import load_config
 from issuekit.core import (
     Issue,
-    find_issue_by_id,
     issue_dict,
     read_active_issues,
-    read_completed_issues,
 )
 from issuekit.proposals import (
     adopt_proposal as adopt_proposal_file,
@@ -27,6 +25,7 @@ from issuekit.proposals import (
 )
 from issuekit.refs import resolve_ref
 from issuekit.protocol import render_protocol, render_server_instructions
+from issuekit.store import get_store
 from issuekit.workflow import (
     AUTO_REVIEWER,
     claim_next,
@@ -144,10 +143,8 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
 
     @server.tool(description="Read one active or completed issue by id.")
     def get_issue(id: int) -> dict[str, Any]:
-        _, issues_dir = _context(root)
-        issue = find_issue_by_id(read_active_issues(issues_dir), id)
-        if issue is None:
-            issue = find_issue_by_id(read_completed_issues(issues_dir), id)
+        config, issues_dir = _context(root)
+        issue = get_store(config, issues_dir).get_issue(id)
         if issue is None:
             return {"status": "none", "id": id}
         return _issue_dict(issue, include_body=True)

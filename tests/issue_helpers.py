@@ -44,6 +44,35 @@ def issue_text(
     )
 
 
+def api_issue(
+    issue_id: int,
+    title: str,
+    *,
+    status: str = "active",
+    priority: str = "medium",
+    created: str = "2026-01-01",
+    completed: str = "",
+    assignee: str = "",
+    stage: str = "",
+    implementer: str = "",
+    author: str = "",
+    body: str | None = None,
+) -> dict[str, object]:
+    return {
+        "id": issue_id,
+        "title": title,
+        "status": status,
+        "priority": priority,
+        "created": created,
+        "completed": completed,
+        "assignee": assignee,
+        "stage": stage,
+        "implementer": implementer,
+        "author": author,
+        "body": body if body is not None else f"# Issue #{issue_id}: {title}\n",
+    }
+
+
 def make_issue_tree(tmp_path: Path) -> Path:
     issues_dir = tmp_path / "docs" / "issues"
     write_issue(issues_dir / "active" / "001_first.md", issue_text(1, "First", priority="high"))

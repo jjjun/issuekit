@@ -2,9 +2,11 @@ import json
 from pathlib import Path
 
 from issuekit import cli
+from issuekit import store as store_module
 from issuekit.proposals import Proposal, write_proposal
+from issuekit.testing import FakeIssuekitClient
 
-from tests.issue_helpers import issue_text, make_issue_tree, write_issue, write_indexes
+from tests.issue_helpers import api_issue, issue_text, make_issue_tree, write_issue, write_indexes
 
 
 def test_info_json_shape(tmp_path: Path, monkeypatch) -> None:
@@ -185,3 +187,35 @@ def test_info_text_renders_status_only_when_no_stage(tmp_path: Path, monkeypatch
     assert exit_code == 0
     assert "[active]" in captured.out
     assert "stage=" not in captured.out
+
+
+def test_info_json_uses_api_store_when_configured(tmp_path: Path, monkeypatch, capsys) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(1, "Review", status="in_progress", assignee="claude", stage="review"),
+            api_issue(2, "Done", status="completed", completed="2026-01-02"),
+        ]
+    )
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'demo'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = cli.main(["info", "--json"])
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert payload["counts"] == {"active": 1, "completed": 1, "total": 2}
+    assert payload["activeIssues"] == [
+        {
+            "id": 1,
+            "title": "Review",
+            "priority": "medium",
+            "status": "in_progress",
+            "stage": "review",
+            "file": "demo#1",
+        }
+    ]

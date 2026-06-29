@@ -22,11 +22,16 @@ from issuekit.core import (
     read_all_issues,
     read_index_files,
 )
+from issuekit.store import get_store
+from issuekit.workflow import WorkflowError
 
 
 def run(_args) -> int:
     config = load_config(Path.cwd())
     issues_dir = config.issues_path(Path.cwd())
+    if config.api_url:
+        return _run_api_validation(config, issues_dir)
+
     active_issues, completed_issues, issues = read_all_issues(issues_dir)
 
     errors: list[str] = []
@@ -55,6 +60,17 @@ def run(_args) -> int:
         return 1
 
     print(f"Issue validation passed ({len(issues)} files, {len(warnings)} warnings).")
+    return 0
+
+
+def _run_api_validation(config, issues_dir: Path) -> int:
+    try:
+        _, _, issues = get_store(config, issues_dir).read_all_issues()
+    except (WorkflowError, ValueError) as exc:
+        print(f"Error: API validation failed: {exc}", file=sys.stderr)
+        return 1
+
+    print(f"API validation passed ({len(issues)} issues).")
     return 0
 
 

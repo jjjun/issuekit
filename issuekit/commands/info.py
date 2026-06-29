@@ -11,15 +11,16 @@ from issuekit.core import (
     diff_index_files,
     get_next_issue_id,
     group_issues_by_id,
-    read_all_issues,
 )
 from issuekit.proposals import list_incoming
+from issuekit.store import get_store
 
 
 def run(args) -> int:
     config = load_config(Path.cwd())
     issues_dir = config.issues_path(Path.cwd())
-    active_issues, completed_issues, all_issues = read_all_issues(issues_dir)
+    store = get_store(config, issues_dir)
+    active_issues, completed_issues, all_issues = store.read_all_issues()
     incoming_proposals = list_incoming(issues_dir)
     expected_indexes = build_index_files(active_issues, completed_issues, config.recent_count)
     index_diff = diff_index_files(issues_dir, expected_indexes)

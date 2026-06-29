@@ -8,10 +8,12 @@ import pytest
 pytest.importorskip("mcp")
 
 from issuekit import cli
+from issuekit import store as store_module
 from issuekit.mcp.server import create_server
 from issuekit.refs import add_ref
+from issuekit.testing import FakeIssuekitClient
 
-from tests.issue_helpers import issue_text, write_indexes, write_issue
+from tests.issue_helpers import api_issue, issue_text, write_indexes, write_issue
 
 
 def _call(server, name: str, arguments: dict[str, Any]) -> Any:
@@ -259,6 +261,40 @@ def test_request_changes_defaults_to_recorded_implementer(tmp_path: Path) -> Non
 
     assert returned["assignee"] == "claude"
     assert returned["stage"] == "changes_requested"
+
+
+def test_mcp_read_tools_use_api_store_when_configured(tmp_path: Path, monkeypatch) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                1,
+                "Review",
+                status="in_progress",
+                assignee="claude",
+                stage="review",
+                implementer="codex",
+                body="# Issue #1: Review\n\nReview body.\n",
+            ),
+            api_issue(2, "Work", status="in_progress", assignee="codex", stage="implementing"),
+        ]
+    )
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'demo'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    server = create_server(tmp_path)
+
+    review = _call(server, "next_review", {})
+    queue = _call(server, "list_queue", {"assignee": "claude", "stage": "review"})
+    issue = _call(server, "get_issue", {"id": 1})
+
+    assert review["id"] == 1
+    assert review["file"] == "demo#1"
+    assert review["body"] == "# Issue #1: Review\n\nReview body.\n"
+    assert [item["id"] for item in queue] == [1]
+    assert issue["file"] == "demo#1"
 
 
 def test_auto_default_reviewer_opens_review_pool(tmp_path: Path) -> None:

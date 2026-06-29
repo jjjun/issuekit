@@ -1,8 +1,10 @@
 from pathlib import Path
 
 from issuekit import cli
+from issuekit import store as store_module
+from issuekit.testing import FakeIssuekitClient
 
-from tests.issue_helpers import issue_text, write_indexes, write_issue
+from tests.issue_helpers import api_issue, issue_text, write_indexes, write_issue
 
 
 def assert_single_frontmatter_body_gap(content: str) -> None:
@@ -123,6 +125,33 @@ def test_queue_command_lists_matching_issues(tmp_path: Path, monkeypatch, capsys
     captured = capsys.readouterr()
     assert exit_code == 0
     assert "id=1" in captured.out
+    assert "id=2" not in captured.out
+
+
+def test_queue_command_uses_api_store_when_configured(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(1, "Review", status="in_progress", assignee="claude", stage="review"),
+            api_issue(2, "Work", status="in_progress", assignee="codex", stage="implementing"),
+        ]
+    )
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'demo'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = cli.main(["queue", "--assignee", "claude", "--stage", "review"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "id=1 file=demo#1 assignee=claude stage=review" in captured.out
     assert "id=2" not in captured.out
 
 

@@ -259,14 +259,9 @@ def find_for(
     if stage:
         _validate_stage(stage, config)
 
-    issues = read_active_issues(issues_dir)
-    return [
-        issue
-        for issue in issues
-        if not issue.decode_error
-        and (assignee is None or issue.assignee == assignee)
-        and (stage is None or issue.stage == stage)
-    ]
+    from issuekit.store import get_store
+
+    return get_store(config, issues_dir).find_for(assignee, stage)
 
 
 def _write_active_issue(

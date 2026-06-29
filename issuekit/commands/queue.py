@@ -19,7 +19,7 @@ def run(args) -> int:
             stage=args.stage,
             config=config,
         )
-    except WorkflowError as exc:
+    except (WorkflowError, ValueError) as exc:
         print(str(exc), file=sys.stderr)
         return 1
 

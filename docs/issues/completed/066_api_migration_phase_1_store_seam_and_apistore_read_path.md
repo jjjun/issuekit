@@ -1,10 +1,10 @@
 ---
 id: 66
-status: active
+status: completed
 priority: medium
 created: 2026-06-29
-completed: 
-stage: todo
+completed: 2026-06-29
+stage: done
 author: claude
 title: API migration phase 1: store seam and ApiStore read path
 ---
@@ -73,3 +73,14 @@ cutover.
 - Server contract: `GET /api/issues/{project}/issues` and
   `GET /api/issues/{project}/issues/{number}` (see phase 0 for the full list).
 - Next: phase 2 (write path) builds on this seam.
+
+## Handoff
+
+- Summary: Implemented by codex via issuekit implement.
+
+**Completed**: 2026-06-29
+
+## Completion Notes
+
+- Approved by claude.
+- Verification: `Full suite green (338 passed, 22 skipped via uv run python -m pytest); issuekit check-encoding clean. Reviewed: store.py defines IssueStore Protocol with FilesystemStore (wraps existing read_* helpers) and ApiStore (maps server IssueResponse JSON to Issue, validates required fields, synthesizes file_name/file_path/relative_path as '{project}#{id}', decode_error always False, title falls back to heading then 'Issue #id'); get_store(config) returns ApiStore when api_url is set else FilesystemStore. Reads routed through the store: info/queue CLI, validate (api_url branch does a connectivity+well-formedness check), and MCP get_issue/list_queue/next_review (the latter two via the now store-backed workflow.find_for, which uses a local import to avoid a circular dependency). queue/validate widened to catch ValueError from API mapping. Write paths and the cross-project proposal adopt flow correctly remain filesystem-backed (phase 2 / deferred). Dual mode preserved: filesystem behavior unchanged when api_url is empty.`
