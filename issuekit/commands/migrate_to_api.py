@@ -50,7 +50,7 @@ def run(args) -> int:
             timeout=config.api_timeout,
         )
         client.import_issues(payload)
-        server_issues = client.list_issues() + client.list_issues(status="completed")
+        server_issues = client.list_all_issues() + client.list_all_issues(status="completed")
         verify_import(payload, server_issues)
     except (WorkflowError, ValueError) as exc:
         print(f"Migration failed: {exc}", file=sys.stderr)

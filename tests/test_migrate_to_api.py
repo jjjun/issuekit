@@ -203,3 +203,34 @@ def test_migrate_to_api_verifies_completed_imports_with_fake_client(
     assert client.list_issues() == []
     assert [issue["id"] for issue in client.list_issues(status="completed")] == [1]
     assert "Migrated 1 issue(s) to project demo." in capsys.readouterr().out
+
+
+def test_migrate_to_api_verification_reads_all_completed_pages(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    issues_dir = tmp_path / "docs" / "issues"
+    for issue_id in range(1, 126):
+        write_issue(
+            issues_dir / "completed" / f"{issue_id:03d}_done.md",
+            issue_text(
+                issue_id,
+                f"Done {issue_id}",
+                status="completed",
+                completed="2026-01-02",
+            ),
+        )
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'demo'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    client = FakeIssuekitClient()
+    monkeypatch.setattr(migrate_to_api, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["migrate-to-api"]) == 0
+
+    assert len(client.list_all_issues(status="completed")) == 125
+    assert "Migrated 125 issue(s) to project demo." in capsys.readouterr().out

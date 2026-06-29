@@ -45,7 +45,7 @@ def test_validate_api_mode_fails_on_malformed_issue_response(
     capsys,
 ) -> None:
     class MalformedClient:
-        def list_issues(self, **kwargs):
+        def list_all_issues(self, **kwargs):
             return [{"id": 1, "status": "active"}]
 
     (tmp_path / "issuekit.toml").write_text(

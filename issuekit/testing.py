@@ -46,11 +46,36 @@ class FakeIssuekitClient:
                 and (stage is None or issue.get("stage") == stage)
                 and (assignee is None or issue.get("assignee") == assignee)
             ]
-            if offset is not None:
-                issues = issues[offset:]
-            if limit is not None:
-                issues = issues[:limit]
+            start = offset or 0
+            stop = start + (limit if limit is not None else 100)
+            issues = issues[start:stop]
             return deepcopy(issues)
+
+    def list_all_issues(
+        self,
+        *,
+        status: str | None = None,
+        stage: str | None = None,
+        assignee: str | None = None,
+        page_size: int = 500,
+    ) -> list[JsonDict]:
+        if page_size <= 0:
+            raise ValueError("page_size must be greater than zero")
+        page_size = min(page_size, 500)
+        offset = 0
+        issues: list[JsonDict] = []
+        while True:
+            batch = self.list_issues(
+                status=status,
+                stage=stage,
+                assignee=assignee,
+                limit=page_size,
+                offset=offset,
+            )
+            issues.extend(batch)
+            if len(batch) < page_size:
+                return issues
+            offset += page_size
 
     def get_issue(self, number: int) -> JsonDict:
         with self._lock:

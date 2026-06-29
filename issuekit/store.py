@@ -221,7 +221,7 @@ class ApiStore:
     ) -> list[Issue]:
         issues = [
             self._issue_from_response(raw)
-            for raw in self.client.list_issues(status=status, assignee=assignee, stage=stage)
+            for raw in self.client.list_all_issues(status=status, assignee=assignee, stage=stage)
         ]
         return sorted(issues, key=lambda issue: (issue.id or 0, issue.relative_path))
 

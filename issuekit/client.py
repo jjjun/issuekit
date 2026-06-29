@@ -151,6 +151,32 @@ class IssuekitClient:
             raise WorkflowError("List response was not a JSON array.", code="invalid_response")
         return payload
 
+    def list_all_issues(
+        self,
+        *,
+        status: str | None = None,
+        stage: str | None = None,
+        assignee: str | None = None,
+        page_size: int = 500,
+    ) -> list[JsonDict]:
+        if page_size <= 0:
+            raise ValueError("page_size must be greater than zero")
+        page_size = min(page_size, 500)
+        offset = 0
+        issues: list[JsonDict] = []
+        while True:
+            batch = self.list_issues(
+                status=status,
+                stage=stage,
+                assignee=assignee,
+                limit=page_size,
+                offset=offset,
+            )
+            issues.extend(batch)
+            if len(batch) < page_size:
+                return issues
+            offset += page_size
+
     def get_issue(self, number: int) -> JsonDict:
         payload = self._request("GET", f"/{number}")
         return _ensure_dict(payload, "Issue response")

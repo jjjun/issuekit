@@ -80,6 +80,50 @@ def test_client_list_issues_uses_collection_path_without_trailing_slash() -> Non
     assert seen_requests[0].url.path == "/api/issues/demo_project/issues"
 
 
+def test_client_list_all_issues_paginates_until_empty_final_page() -> None:
+    all_issues = [{"id": issue_id} for issue_id in range(1, 7)]
+    seen_pages: list[tuple[int, int]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        params = dict(request.url.params)
+        limit = int(params["limit"])
+        offset = int(params["offset"])
+        seen_pages.append((limit, offset))
+        return httpx.Response(200, json=all_issues[offset : offset + limit])
+
+    client = IssuekitClient(
+        "https://mine.example",
+        project="demo_project",
+        token="static-token",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    assert client.list_all_issues(page_size=3) == all_issues
+    assert seen_pages == [(3, 0), (3, 3), (3, 6)]
+
+
+def test_client_list_all_issues_caps_page_size_at_server_max() -> None:
+    all_issues = [{"id": issue_id} for issue_id in range(1, 502)]
+    seen_pages: list[tuple[int, int]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        params = dict(request.url.params)
+        limit = int(params["limit"])
+        offset = int(params["offset"])
+        seen_pages.append((limit, offset))
+        return httpx.Response(200, json=all_issues[offset : offset + limit])
+
+    client = IssuekitClient(
+        "https://mine.example",
+        project="demo_project",
+        token="static-token",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    assert client.list_all_issues(page_size=999) == all_issues
+    assert seen_pages == [(500, 0), (500, 500)]
+
+
 def test_client_create_issue_uses_collection_path_without_trailing_slash() -> None:
     issue = {"title": "First"}
     seen_requests: list[httpx.Request] = []
