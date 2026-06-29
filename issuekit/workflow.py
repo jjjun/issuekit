@@ -35,6 +35,10 @@ AUTO_REVIEWER = "auto"
 class WorkflowError(RuntimeError):
     """Raised when a workflow transition cannot be completed."""
 
+    def __init__(self, message: str, *, code: str | None = None) -> None:
+        super().__init__(message)
+        self.code = code
+
 
 class WorkflowLockTimeout(TimeoutError):
     """Raised when a workflow lock cannot be acquired before timeout."""

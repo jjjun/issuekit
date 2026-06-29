@@ -1,10 +1,10 @@
 ---
 id: 65
-status: active
+status: completed
 priority: high
 created: 2026-06-29
-completed: 
-stage: todo
+completed: 2026-06-29
+stage: done
 author: claude
 title: API migration phase 0: config and IssuekitClient HTTP client
 ---
@@ -90,3 +90,22 @@ for tests.
 - Contract source on the server: `mine-py/src/domains/issues/`
   (`api/routes.py`, `schemas/issue.py`, `services/issue_workflow_service.py`).
 - Next: phase 1 (read path) depends on this client.
+
+## Handoff
+
+- Summary: Implemented by codex via issuekit implement.
+
+## Review Feedback
+
+- client.py write-method request bodies do not match the shipped server schemas in mine-py/src/domains/issues/schemas/issue.py, which all set extra=forbid. As written, submit/approve/complete would return HTTP 422 in phase 2. Fix the three methods to match the contract exactly: (1) submit(): remove the 'assignee' field from both the body and the signature; IssueSubmitRequest accepts only summary, branch, commit, reviewer. (2) approve(): IssueApproveRequest REQUIRES summary, verification, and reviewer. Add required summary and verification params and send all three. (3) complete(): IssueCompleteRequest accepts only summary, verification, force; reviewer is forbidden. Replace the reviewer param with summary, verification, force and do not send reviewer. Add tests in tests/test_client.py that assert the exact JSON body sent for submit/approve/complete via the mocked transport. Everything else (config, WorkflowError code, login/401-retry, error mapping, FakeIssuekitClient) looks good; keep it. Full suite and issuekit check-encoding must stay green.
+
+## Handoff
+
+- Summary: Implemented by codex via issuekit implement.
+
+**Completed**: 2026-06-29
+
+## Completion Notes
+
+- Approved by claude.
+- Verification: `Full suite green (328 passed, 22 skipped via uv run python -m pytest); issuekit check-encoding clean (no BOM/CRLF/mojibake). Reviewed diff: config.py adds api_url/project/api_timeout with project-token validation; WorkflowError gains an optional code (backward compatible); client.py implements httpx-based IssuekitClient with /auth/login JWT caching, single 401 re-login+retry, and {code,message} (with FastAPI detail fallback) error mapping; paths build as /api/issues/{project}/issues. The three write methods now match the shipped server schemas exactly (submit drops assignee; approve sends required summary+verification+reviewer; complete sends summary+verification+force, no reviewer) with test_client.py asserting exact request bodies. FakeIssuekitClient provides an in-memory double for later phases. httpx pinned >=0.27,<1.`

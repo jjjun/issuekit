@@ -33,6 +33,9 @@ class AgentRunConfig:
 
 @dataclass(frozen=True)
 class IssuekitConfig:
+    api_url: str = ""
+    project: str = "issuekit"
+    api_timeout: float = 30.0
     recent_count: int = 30
     ascii_id_threshold: int = 0
     issues_dir: str = "docs/issues"
@@ -121,6 +124,8 @@ class IssuekitConfig:
 
 def load_config(cwd: Path | str = ".") -> IssuekitConfig:
     raw_config = _load_raw_config(Path(cwd))
+    project = str(raw_config.get("project", IssuekitConfig.project)).strip()
+    _validate_project(project)
     assignees = _string_tuple(raw_config.get("assignees", IssuekitConfig.assignees))
     default_reviewer = str(
         raw_config.get("default_reviewer", IssuekitConfig.default_reviewer)
@@ -128,6 +133,9 @@ def load_config(cwd: Path | str = ".") -> IssuekitConfig:
     _validate_default_reviewer(default_reviewer, assignees)
     agents = _load_agents(raw_config.get("agents", {}))
     return IssuekitConfig(
+        api_url=str(raw_config.get("api_url", IssuekitConfig.api_url)).strip(),
+        project=project,
+        api_timeout=float(raw_config.get("api_timeout", IssuekitConfig.api_timeout)),
         recent_count=int(raw_config.get("recent_count", IssuekitConfig.recent_count)),
         ascii_id_threshold=int(
             raw_config.get("ascii_id_threshold", IssuekitConfig.ascii_id_threshold)
@@ -185,6 +193,11 @@ def _validate_default_reviewer(default_reviewer: str, assignees: tuple[str, ...]
         return
     if default_reviewer not in assignees:
         raise ValueError(f"Unknown default_reviewer: {default_reviewer}")
+
+
+def _validate_project(project: str) -> None:
+    if not project or not is_valid_workflow_token(project):
+        raise ValueError(f"Invalid project token: {project}")
 
 
 def _load_agents(raw: dict[str, object]) -> tuple[tuple[str, AgentRunConfig], ...]:

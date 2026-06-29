@@ -19,11 +19,11 @@ def test_mcp_extra_installs_mcp_dependency() -> None:
     assert any(requirement.startswith("mcp>=") for requirement in mcp_extra)
 
 
-def test_core_project_dependencies_stay_empty() -> None:
+def test_core_project_dependencies_are_intentional() -> None:
     pyproject = load_pyproject()
     project = pyproject["project"]
 
-    assert project["dependencies"] == []
+    assert project["dependencies"] == ["httpx>=0.27,<1"]
 
 
 def test_cli_import_does_not_require_mcp_extra() -> None:

@@ -241,6 +241,9 @@ wheels = [
 name = "issuekit"
 version = "0.1.0"
 source = { editable = "." }
+dependencies = [
+    { name = "httpx" },
+]
 
 [package.optional-dependencies]
 mcp = [
@@ -256,7 +259,10 @@ mcp = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "mcp", marker = "extra == 'mcp'", specifier = ">=1.0" }]
+requires-dist = [
+    { name = "httpx", specifier = ">=0.27,<1" },
+    { name = "mcp", marker = "extra == 'mcp'", specifier = ">=1.0" },
+]
 provides-extras = ["mcp"]
 
 [package.metadata.requires-dev]

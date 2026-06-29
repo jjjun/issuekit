@@ -36,6 +36,36 @@ def test_load_config_prefers_pyproject_tool_issuekit(tmp_path: Path) -> None:
     )
 
 
+def test_load_config_reads_api_fields_from_pyproject(tmp_path: Path) -> None:
+    (tmp_path / "pyproject.toml").write_text(
+        (
+            "[tool.issuekit]\n"
+            "api_url = 'https://mine.example'\n"
+            "project = 'demo_project'\n"
+            "api_timeout = 12.5\n"
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    config = load_config(tmp_path)
+
+    assert config.api_url == "https://mine.example"
+    assert config.project == "demo_project"
+    assert config.api_timeout == 12.5
+
+
+def test_load_config_rejects_invalid_project_token(tmp_path: Path) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "project = 'bad value'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    with pytest.raises(ValueError, match="Invalid project token"):
+        load_config(tmp_path)
+
+
 def test_load_config_uses_issuekit_toml_when_pyproject_has_no_issuekit_table(
     tmp_path: Path,
 ) -> None:
