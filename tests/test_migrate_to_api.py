@@ -49,13 +49,46 @@ def test_build_import_payload_preserves_legacy_metadata_and_body(tmp_path: Path)
     assert "---" not in first["body"]
 
 
-def test_build_import_payload_defaults_missing_stage_to_valid_enum(tmp_path: Path) -> None:
+def test_build_import_payload_defaults_missing_active_stage_to_todo(tmp_path: Path) -> None:
     issues_dir = tmp_path / "docs" / "issues"
     write_issue(issues_dir / "active" / "001_first.md", issue_text(1, "First"))
 
     payload = migrate_to_api.build_import_payload(issues_dir)
 
     assert payload[0]["stage"] == "todo"
+
+
+def test_build_import_payload_defaults_missing_completed_stage_to_done(tmp_path: Path) -> None:
+    issues_dir = tmp_path / "docs" / "issues"
+    write_issue(
+        issues_dir / "completed" / "001_done.md",
+        issue_text(1, "Done", status="completed", completed="2026-01-02"),
+    )
+
+    payload = migrate_to_api.build_import_payload(issues_dir)
+
+    assert payload[0]["status"] == "completed"
+    assert payload[0]["stage"] == "done"
+
+
+def test_build_import_payload_preserves_explicit_stage_for_completed_issue(
+    tmp_path: Path,
+) -> None:
+    issues_dir = tmp_path / "docs" / "issues"
+    write_issue(
+        issues_dir / "completed" / "001_done.md",
+        issue_text(
+            1,
+            "Done",
+            status="completed",
+            completed="2026-01-02",
+            stage="review",
+        ),
+    )
+
+    payload = migrate_to_api.build_import_payload(issues_dir)
+
+    assert payload[0]["stage"] == "review"
 
 
 def test_migrate_to_api_dry_run_does_not_require_api_url(

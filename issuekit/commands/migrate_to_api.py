@@ -104,18 +104,20 @@ def _issue_payload(issue: Issue) -> dict[str, Any]:
     issue_id = parse_frontmatter_id(data.get("id")) or issue.id
     if issue_id is None:
         raise ValueError(f"Issue file is missing an id: {issue.relative_path}")
+    status = _first_non_empty(
+        data.get("status"),
+        issue.issue_status,
+        issue.status,
+        "active",
+    )
+    default_stage = "done" if status == "completed" else "todo"
     payload: dict[str, Any] = {
         "number": issue_id,
         "title": data.get("title") or issue.title,
         "body": issue.frontmatter.body.lstrip("\n"),
-        "status": _first_non_empty(
-            data.get("status"),
-            issue.issue_status,
-            issue.status,
-            "active",
-        ),
+        "status": status,
         "priority": _first_non_empty(data.get("priority"), issue.priority, "medium"),
-        "stage": _first_non_empty(data.get("stage"), issue.stage, "todo"),
+        "stage": _first_non_empty(data.get("stage"), issue.stage, default_stage),
         "assignee": data.get("assignee") or issue.assignee,
         "implementer": data.get("implementer") or issue.implementer,
         "author": data.get("author") or issue.author,
