@@ -6,7 +6,7 @@ MockTransport-backed client without requiring a live API server.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 import base64
 import json
 import os
@@ -21,6 +21,7 @@ from issuekit.workflow import WorkflowError
 
 
 JsonDict = dict[str, Any]
+JsonBody = Mapping[str, Any] | Sequence[Mapping[str, Any]]
 _TOKEN_CACHE_ENV = "ISSUEKIT_TOKEN_CACHE"
 _LOGIN_GUIDANCE = (
     "API credentials are required; run `issuekit login` or set "
@@ -245,8 +246,8 @@ class IssuekitClient:
         return _ensure_dict(payload, "Complete response")
 
     def import_issues(self, issues: list[Mapping[str, Any]] | Mapping[str, Any]) -> JsonDict | list[JsonDict]:
-        body: Any = [dict(issue) for issue in issues] if isinstance(issues, list) else dict(issues)
-        payload = self._request("POST", "/import", json=body)
+        items = [dict(issue) for issue in issues] if isinstance(issues, list) else [dict(issues)]
+        payload = self._request("POST", "/import", json={"issues": items})
         if not isinstance(payload, (dict, list)):
             raise WorkflowError("Import response was not JSON data.", code="invalid_response")
         return payload
@@ -256,14 +257,14 @@ class IssuekitClient:
         method: str,
         path: str,
         *,
-        json: Mapping[str, Any] | None = None,
+        json: JsonBody | None = None,
         params: Mapping[str, Any] | None = None,
     ) -> Any:
         token = self.login()
         response = self._send(
             method,
             self._issue_path(path),
-            json=dict(json) if json is not None else None,
+            json=json,
             params=dict(params) if params is not None else None,
             headers={
                 "Accept": "application/json",
@@ -277,7 +278,7 @@ class IssuekitClient:
             response = self._send(
                 method,
                 self._issue_path(path),
-                json=dict(json) if json is not None else None,
+                json=json,
                 params=dict(params) if params is not None else None,
                 headers={
                     "Accept": "application/json",

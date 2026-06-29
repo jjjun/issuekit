@@ -1,10 +1,10 @@
 ---
 id: 73
-status: active
+status: completed
 priority: high
 created: 2026-06-29
-completed: 
-stage: todo
+completed: 2026-06-29
+stage: done
 author: claude
 title: Fix API import request: pass list body through and wrap as issues object
 ---
@@ -83,3 +83,14 @@ valid dict bodies and must keep working.
 - mine-py/src/domains/issues/schemas/issue.py (`IssueImportRequest`,
   `IssueImportItem`), routes `import_issues` (response is list[IssueResponse]).
 - Found during the first real migration run (epic #64 cutover).
+
+## Handoff
+
+- Summary: Implemented by codex via issuekit implement.
+
+**Completed**: 2026-06-29
+
+## Completion Notes
+
+- Approved by claude.
+- Verification: `Full suite green (337 passed, 25 skipped via uv run python -m pytest; +3 from prior, no test loss); issuekit check-encoding clean. Reviewed: the two import-path bugs are fixed. (1) _request no longer coerces the body with dict(json) at either the initial send or the 401-retry send; it now passes json=json straight to httpx (type hint widened to JsonBody = Mapping | Sequence[Mapping]), so a list body no longer raises the 'dictionary update sequence element #0 has length 14' ValueError. (2) import_issues now posts json={"issues": items} (normalizing a single mapping to a one-element list), matching the server's IssueImportRequest (extra=forbid) instead of a bare list. Other call sites (create_issue, transitions) still pass plain dict bodies and are unaffected. New tests assert the import request URL path and that request content equals {"issues": items}, plus a regression that a list body passes through _request returning the server list. Scope limited to issuekit/client.py and tests/test_client.py. This unblocks issuekit migrate-to-api.`

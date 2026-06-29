@@ -336,6 +336,83 @@ def test_client_claim_next_204_returns_none() -> None:
     assert client.claim_next(assignee="codex") is None
 
 
+def test_client_import_issues_posts_wrapped_issues_body() -> None:
+    items = [
+        {
+            "id": 73,
+            "title": "Fix API import",
+            "status": "in_progress",
+            "priority": "high",
+        }
+    ]
+    imported = [{"id": 73, "title": "Fix API import", "stage": "done"}]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "POST"
+        assert request.url.path == "/api/issues/issuekit/issues/import"
+        assert json.loads(request.content) == {"issues": items}
+        return httpx.Response(200, json=imported)
+
+    client = IssuekitClient(
+        "https://mine.example",
+        token="static-token",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    assert client.import_issues(items) == imported
+
+
+def test_client_request_passes_list_json_body_without_dict_coercion() -> None:
+    body = [
+        {
+            "id": 73,
+            "status": "in_progress",
+            "priority": "high",
+            "created": "2026-06-29",
+            "completed": None,
+            "assignee": "codex",
+            "stage": "implementing",
+            "implementer": "codex",
+            "author": "claude",
+            "title": "Fix API import",
+            "body": "Issue body",
+            "labels": ["api"],
+            "comments": [],
+            "metadata": {"source": "test"},
+        }
+    ]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/issues/issuekit/issues/import"
+        assert json.loads(request.content) == body
+        return httpx.Response(200, json=[])
+
+    client = IssuekitClient(
+        "https://mine.example",
+        token="static-token",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    assert client._request("POST", "/import", json=body) == []
+
+
+def test_client_create_issue_still_posts_dict_body() -> None:
+    issue = {"title": "First", "priority": "high"}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/issues/issuekit/issues/"
+        assert json.loads(request.content) == issue
+        return httpx.Response(201, json={"id": 1, **issue})
+
+    client = IssuekitClient(
+        "https://mine.example",
+        token="static-token",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    assert client.create_issue(issue) == {"id": 1, **issue}
+
+
 def test_client_submit_sends_exact_server_body() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/api/issues/issuekit/issues/7/submit"
