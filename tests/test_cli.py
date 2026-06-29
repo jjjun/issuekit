@@ -10,7 +10,7 @@ EXPECTED_COMMANDS = {
     "author",
     "implement",
     "validate",
-    "generate-indexes",
+    "migrate-to-api",
     "complete",
     "approve",
     "claim",
@@ -94,7 +94,7 @@ def test_handlers_are_stubs(command: str) -> None:
         "approve",
         "claim",
         "complete",
-        "generate-indexes",
+        "migrate-to-api",
         "implement",
         "info",
         "init",
@@ -170,6 +170,11 @@ def test_list_refs_shows_effective_source_and_self(tmp_path, monkeypatch, capsys
     target = tmp_path / "target"
     source.mkdir()
     target.mkdir()
+    (target / "issuekit.toml").write_text(
+        "use_filesystem_store = true\n",
+        encoding="utf-8",
+        newline="\n",
+    )
     (tmp_path / "issuekit.workspace.toml").write_text(
         "[projects]\nsource = \"source\"\ntarget = \"target\"\n",
         encoding="utf-8",
@@ -233,6 +238,11 @@ def test_workspace_refs_drive_propose_and_reply_round_trip(
     target = tmp_path / "target"
     source.mkdir()
     target.mkdir()
+    (target / "issuekit.toml").write_text(
+        "use_filesystem_store = true\n",
+        encoding="utf-8",
+        newline="\n",
+    )
     body_file = source / "proposal.md"
     reply_file = target / "reply.md"
     body_file.write_text("## Suggested Change\n\nDo the thing.\n", encoding="utf-8", newline="\n")

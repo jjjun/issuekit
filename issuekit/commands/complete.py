@@ -55,7 +55,7 @@ def run(args) -> int:
         print(str(exc), file=sys.stderr)
         return 1
 
-    if not config.api_url:
+    if config.use_filesystem_store:
         generate_indexes.write_index_files(issues_dir, config.recent_count)
     validate_result = validate.run(args)
     if validate_result != 0:
@@ -79,7 +79,7 @@ def complete_issue(
         raise ValueError("--summary and --verification must be ASCII-only.")
 
     config = config or IssuekitConfig()
-    if config.api_url:
+    if not config.use_filesystem_store:
         from issuekit.store import get_store
 
         store = get_store(config, issues_dir)

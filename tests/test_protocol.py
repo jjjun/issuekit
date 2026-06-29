@@ -54,8 +54,8 @@ def test_render_protocol_returns_role_for_kimi() -> None:
 def test_render_protocol_returns_author_role() -> None:
     author = render_protocol(role="author")
     assert "Delegation cycle overview" in author
-    assert "issuekit info" in author
-    assert "docs/issues/active/" in author
+    assert "issuekit author" in author
+    assert "API allocates the issue id" in author
     assert "Do not call `claim_next_task`" in author
     assert "implementation-ready issues" in author
     author.encode("ascii")

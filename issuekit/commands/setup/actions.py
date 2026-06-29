@@ -11,10 +11,7 @@ from issuekit.commands.init import (
     CODEX_MCP_HEADER,
     HANDOFF_HEADER,
     LOCAL_GITIGNORE_ENTRIES,
-    _display_path,
 )
-from issuekit.config import load_config
-from issuekit.core import build_index_files, diff_index_files, read_all_issues
 
 
 @dataclass(frozen=True)
@@ -39,7 +36,6 @@ def collect_setup_actions(cwd: Path) -> list[SetupAction]:
         ),
     )
     _add_gitignore_action(cwd, actions)
-    _add_index_actions(cwd, actions)
     _add_mcp_json_action(cwd, actions)
     _add_codex_config_action(cwd, actions)
     _add_handoff_action(cwd, actions, "AGENTS.md")
@@ -90,49 +86,6 @@ def _add_gitignore_action(cwd: Path, actions: list[SetupAction]) -> None:
                 "stale",
                 "update",
                 "issuekit setup would add missing issuekit local entries.",
-            )
-        )
-
-
-def _add_index_actions(cwd: Path, actions: list[SetupAction]) -> None:
-    config = load_config(cwd)
-    issues_dir = config.issues_path(cwd)
-    indexes_dir = issues_dir / "indexes"
-    active_issues, completed_issues, _ = read_all_issues(issues_dir)
-    expected = build_index_files(active_issues, completed_issues, config.recent_count)
-    index_diff = diff_index_files(issues_dir, expected)
-    stale_set = set(index_diff.stale)
-    missing_set = set(index_diff.missing)
-    for name in expected:
-        if name in missing_set:
-            path = indexes_dir / name
-            actions.append(
-                SetupAction(
-                    _display_path(cwd, path),
-                    "missing",
-                    "write",
-                    "issuekit setup would generate this index.",
-                )
-            )
-            continue
-        if name in stale_set:
-            path = indexes_dir / name
-            actions.append(
-                SetupAction(
-                    _display_path(cwd, path),
-                    "stale",
-                    "update",
-                    "issuekit setup would refresh this index.",
-                )
-            )
-    for name in index_diff.extra:
-        path = indexes_dir / name
-        actions.append(
-            SetupAction(
-                _display_path(cwd, path),
-                "stale",
-                "remove",
-                "issuekit setup would remove this obsolete generated index.",
             )
         )
 

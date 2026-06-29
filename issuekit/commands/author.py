@@ -19,7 +19,7 @@ from issuekit.core import (
     read_all_issues,
     write_issue_atomic,
 )
-from issuekit.workflow import WorkflowError, claim_lock
+from issuekit.workflow import WorkflowError
 
 
 def run(args) -> int:
@@ -41,7 +41,7 @@ def run(args) -> int:
         print(str(exc), file=sys.stderr)
         return 1
 
-    if not config.api_url:
+    if config.use_filesystem_store:
         generate_indexes.write_index_files(issues_dir, config.recent_count)
     validate_result = validate.run(args)
     if validate_result != 0:
@@ -73,7 +73,7 @@ def author_issue(
     issue_body = _read_body(body=body, body_file=body_file)
     if has_non_ascii(issue_body):
         raise ValueError("--body and --body-file must be ASCII-only.")
-    if config.api_url:
+    if not config.use_filesystem_store:
         from issuekit.store import get_store
 
         store = get_store(config, issues_dir)
@@ -86,31 +86,30 @@ def author_issue(
         )
 
     issues_path = Path(issues_dir)
-    with claim_lock(issues_path / "active"):
-        _, _, all_issues = read_all_issues(issues_path)
-        issue_id = get_next_issue_id(all_issues)
-        slug = _slugify(title)
-        issue_path = issues_path / "active" / f"{issue_id:03d}_{slug}.md"
-        if issue_path.exists():
-            raise WorkflowError(f"Issue file already exists: {issue_path}")
+    _, _, all_issues = read_all_issues(issues_path)
+    issue_id = get_next_issue_id(all_issues)
+    slug = _slugify(title)
+    issue_path = issues_path / "active" / f"{issue_id:03d}_{slug}.md"
+    if issue_path.exists():
+        raise WorkflowError(f"Issue file already exists: {issue_path}")
 
-        frontmatter = format_issue_frontmatter(
-            {
-                "id": issue_id,
-                "status": "active",
-                "priority": priority,
-                "created": date.today().isoformat(),
-                "completed": "",
-                "assignee": assign or "",
-                "stage": "todo",
-                "implementer": "",
-                "author": agent,
-                "title": title.strip(),
-            }
-        )
-        content = f"{frontmatter}# Issue #{issue_id}: {title.strip()}\n\n{issue_body.strip()}\n"
-        write_issue_atomic(issue_path, content)
-        return issue_path
+    frontmatter = format_issue_frontmatter(
+        {
+            "id": issue_id,
+            "status": "active",
+            "priority": priority,
+            "created": date.today().isoformat(),
+            "completed": "",
+            "assignee": assign or "",
+            "stage": "todo",
+            "implementer": "",
+            "author": agent,
+            "title": title.strip(),
+        }
+    )
+    content = f"{frontmatter}# Issue #{issue_id}: {title.strip()}\n\n{issue_body.strip()}\n"
+    write_issue_atomic(issue_path, content)
+    return issue_path
 
 
 def _validate_author_input(

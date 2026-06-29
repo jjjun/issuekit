@@ -20,10 +20,10 @@ def test_init_fresh_dir_gets_full_scaffold(tmp_path: Path, monkeypatch, capsys) 
     )
     assert (tmp_path / ".pre-commit-config.yaml").exists()
     assert (tmp_path / "docs" / "issues" / "README.md").exists()
-    assert (tmp_path / "docs" / "issues" / "active").is_dir()
-    assert (tmp_path / "docs" / "issues" / "completed").is_dir()
-    assert (tmp_path / "docs" / "issues" / "indexes" / "active.md").exists()
-    assert cli.main(["validate"]) == 0
+    assert (tmp_path / "docs" / "issues" / "incoming" / ".gitkeep").exists()
+    assert not (tmp_path / "docs" / "issues" / "active").exists()
+    assert not (tmp_path / "docs" / "issues" / "indexes").exists()
+    assert cli.main(["migrate-to-api", "--dry-run"]) == 0
 
 
 def test_init_rerun_preserves_existing_files(tmp_path: Path, monkeypatch) -> None:
@@ -90,7 +90,7 @@ def test_init_written_files_have_no_bom_or_crlf(tmp_path: Path, monkeypatch) -> 
         tmp_path / ".editorconfig",
         tmp_path / ".pre-commit-config.yaml",
         tmp_path / "docs" / "issues" / "README.md",
-        tmp_path / "docs" / "issues" / "indexes" / "active.md",
+        tmp_path / "docs" / "issues" / "incoming" / ".gitkeep",
     ]:
         content = path.read_bytes()
         assert not content.startswith(b"\xef\xbb\xbf")
@@ -115,7 +115,8 @@ def test_init_sets_ascii_threshold_for_legacy_non_ascii_issues(
     pyproject = (tmp_path / "pyproject.toml").read_text(encoding="utf-8")
     assert "[tool.issuekit]" in pyproject
     assert "ascii_id_threshold = 4" in pyproject
-    assert cli.main(["validate"]) == 0
+    assert "api_url" in pyproject
+    assert cli.main(["migrate-to-api", "--dry-run"]) == 0
 
 
 def test_init_prints_threshold_block_when_pyproject_missing(

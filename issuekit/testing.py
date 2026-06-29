@@ -205,6 +205,7 @@ class FakeIssuekitClient:
         if not isinstance(raw_issues, list):
             raise WorkflowError("Import payload must be a list of issues.", code="invalid_value")
         with self._lock:
+            self._record("import_issues", body={"issues": deepcopy(raw_issues)})
             imported = [self._store_issue(issue) for issue in raw_issues]
             return deepcopy(imported)
 
@@ -216,7 +217,7 @@ class FakeIssuekitClient:
 
     def _store_issue(self, issue: JsonDict, *, allocate: bool = False) -> JsonDict:
         stored = deepcopy(issue)
-        raw_id = stored.get("id")
+        raw_id = stored.get("id", stored.get("number"))
         if allocate or raw_id is None:
             issue_id = self._next_id
             self._next_id += 1
@@ -224,6 +225,7 @@ class FakeIssuekitClient:
             issue_id = int(raw_id)
             self._next_id = max(self._next_id, issue_id + 1)
         stored["id"] = issue_id
+        stored.pop("number", None)
         stored.setdefault("title", f"Issue #{issue_id}")
         stored.setdefault("status", "active")
         stored.setdefault("priority", "medium")

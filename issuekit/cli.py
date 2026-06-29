@@ -11,11 +11,11 @@ from issuekit.commands import (
     check_encoding,
     claim,
     complete,
-    generate_indexes,
     handoff,
     implement,
     info,
     init,
+    migrate_to_api,
     propose,
     protocol,
     queue,
@@ -30,7 +30,7 @@ COMMANDS = (
     "author",
     "implement",
     "validate",
-    "generate-indexes",
+    "migrate-to-api",
     "complete",
     "approve",
     "claim",
@@ -54,7 +54,7 @@ COMMANDS = (
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="issuekit",
-        description="Manage docs/issues local issue trackers.",
+        description="Manage API-backed issuekit trackers.",
     )
     subparsers = parser.add_subparsers(
         title="commands",
@@ -111,15 +111,24 @@ def build_parser() -> argparse.ArgumentParser:
 
     validate_parser = subparsers.add_parser(
         "validate",
-        help="Validate issue files and generated indexes.",
+        help="Validate API connectivity and issue response shape.",
     )
     validate_parser.set_defaults(func=validate.run)
 
-    generate_indexes_parser = subparsers.add_parser(
-        "generate-indexes",
-        help="Generate docs/issues index files.",
+    migrate_parser = subparsers.add_parser(
+        "migrate-to-api",
+        help="Import legacy docs/issues issue files into the API backend.",
     )
-    generate_indexes_parser.set_defaults(func=generate_indexes.run)
+    migrate_parser.add_argument(
+        "--issues-dir",
+        help="Legacy issue directory to import (defaults to configured issues_dir).",
+    )
+    migrate_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Build and validate the import payload without posting it.",
+    )
+    migrate_parser.set_defaults(func=migrate_to_api.run)
 
     complete_parser = subparsers.add_parser(
         "complete",

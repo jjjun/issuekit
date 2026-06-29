@@ -23,6 +23,10 @@ The model is pull-based: authors publish work to a pool, implementers pull from
 that pool, and reviewers pull from the review pool. No central orchestrator is
 required for the normal author -> implement -> review cycle.
 
+Issue lifecycle state is stored in the configured mine-py API project. Local
+`docs/issues/incoming/` files remain only for cross-project proposals that have
+not yet moved to the API.
+
 When an orchestrator or author needs to drive a configured external
 implementer instead of waiting for the pull model, use
 `issuekit implement <id> --agent <agent> --timeout-sec <n>`. That command
@@ -42,9 +46,10 @@ Separation-of-duties invariants:
 
 IMPLEMENTER_PROTOCOL = """# Handoff protocol (implementer)
 
-The implementer handles issuekit tasks from docs/issues/active/. Any configured
-agent can be the implementer or the reviewer. The reviewer is the agent assigned
-at stage=review and defaults to `default_reviewer`, which may be `auto`.
+The implementer handles issuekit tasks from the API-backed project queue. Any
+configured agent can be the implementer or the reviewer. The reviewer is the
+agent assigned at stage=review and defaults to `default_reviewer`, which may be
+`auto`.
 Same-name review is allowed through the open review pool by omitting `reviewer`;
 an implementer may not explicitly assign itself as reviewer at submit time.
 
@@ -121,9 +126,9 @@ same implementation and emit the same structured output.
 
 When asked to write or plan an issue:
 
-1. Run `issuekit info` to find the next issue id.
-2. Create the issue under `docs/issues/active/` with `status: active`, an
-   unstarted stage (empty or `todo`), and no assignee.
+1. Create the issue with `issuekit author`; the API allocates the issue id.
+2. Leave the issue unstarted with no assignee unless a specific implementer is
+   required.
 3. STOP. Do not call `claim_next_task` or implement the issue in the same
    session. An implementer claims it later via `claim_next_task`.
 """

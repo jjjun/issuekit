@@ -2,12 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
-from contextlib import contextmanager
-import json
-import os
 from pathlib import Path
-import time
 
 from issuekit.config import IssuekitConfig
 from issuekit.core import (
@@ -28,7 +23,6 @@ from issuekit.core import (
 READY_STAGES = {"", "todo", "changes_requested"}
 CLAIMABLE_STATUSES = {"active", "in_progress"}
 PRIORITY_RANK = {"high": 0, "medium": 1, "low": 2}
-LOCK_FILE_NAME = ".issuekit-claim.lock"
 AUTO_REVIEWER = "auto"
 
 
@@ -38,49 +32,6 @@ class WorkflowError(RuntimeError):
     def __init__(self, message: str, *, code: str | None = None) -> None:
         super().__init__(message)
         self.code = code
-
-
-class WorkflowLockTimeout(TimeoutError):
-    """Raised when a workflow lock cannot be acquired before timeout."""
-
-
-@contextmanager
-def claim_lock(
-    active_dir: Path | str,
-    *,
-    timeout: float = 10.0,
-    stale_after: float = 60.0,
-) -> Iterator[Path]:
-    active_path = Path(active_dir)
-    active_path.mkdir(parents=True, exist_ok=True)
-    lock_path = active_path / LOCK_FILE_NAME
-    deadline = time.monotonic() + timeout
-    owns_lock = False
-
-    while True:
-        try:
-            fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-        except FileExistsError:
-            if _is_stale_lock(lock_path, stale_after=stale_after):
-                lock_path.unlink(missing_ok=True)
-                continue
-            if time.monotonic() >= deadline:
-                raise WorkflowLockTimeout(f"Timed out waiting for workflow lock: {lock_path}")
-            time.sleep(0.05)
-            continue
-
-        payload = json.dumps({"pid": os.getpid(), "ts": time.time()}, sort_keys=True)
-        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
-            handle.write(payload)
-            handle.write("\n")
-        owns_lock = True
-        break
-
-    try:
-        yield lock_path
-    finally:
-        if owns_lock:
-            lock_path.unlink(missing_ok=True)
 
 
 def claim_next(
@@ -96,38 +47,35 @@ def claim_next(
     _validate_stage("implementing", config)
     if priority is not None and priority not in VALID_ISSUE_PRIORITIES:
         raise WorkflowError(f"Invalid priority: {priority}")
-    if config.api_url:
+    if not config.use_filesystem_store:
         from issuekit.store import get_store
 
         store = get_store(config, issues_dir)
         return store.claim_next(assignee=assignee, priority=priority)  # type: ignore[attr-defined]
 
     issues_path = Path(issues_dir)
-    with claim_lock(issues_path / "active", timeout=timeout):
-        issues = read_active_issues(issues_path)
-        candidates = [
-            issue
-            for issue in issues
-            if not issue.decode_error
-            and issue.issue_status in CLAIMABLE_STATUSES
-            and issue.stage in READY_STAGES
-            and issue.assignee in {"", assignee}
-            and (priority is None or issue.priority == priority)
-        ]
-        if not candidates:
-            return None
-        issue = sorted(candidates, key=lambda item: (PRIORITY_RANK.get(item.priority, 99), item.id or 0))[
-            0
-        ]
-        ensure_not_author_self_claim(issue, assignee)
-        return _write_active_issue(
-            issues_path,
-            issue,
-            status="in_progress",
-            assignee=assignee,
-            stage="implementing",
-            implementer=assignee,
-        )
+    issues = read_active_issues(issues_path)
+    candidates = [
+        issue
+        for issue in issues
+        if not issue.decode_error
+        and issue.issue_status in CLAIMABLE_STATUSES
+        and issue.stage in READY_STAGES
+        and issue.assignee in {"", assignee}
+        and (priority is None or issue.priority == priority)
+    ]
+    if not candidates:
+        return None
+    issue = sorted(candidates, key=lambda item: (PRIORITY_RANK.get(item.priority, 99), item.id or 0))[0]
+    ensure_not_author_self_claim(issue, assignee)
+    return _write_active_issue(
+        issues_path,
+        issue,
+        status="in_progress",
+        assignee=assignee,
+        stage="implementing",
+        implementer=assignee,
+    )
 
 
 def claim_issue(
@@ -141,38 +89,35 @@ def claim_issue(
     config = config or IssuekitConfig()
     _validate_assignee(assignee, config)
     _validate_stage("implementing", config)
-    if config.api_url:
+    if not config.use_filesystem_store:
         from issuekit.store import get_store
 
         store = get_store(config, issues_dir)
         return store.claim_issue(issue_id, assignee=assignee)  # type: ignore[attr-defined]
 
     issues_path = Path(issues_dir)
-    with claim_lock(issues_path / "active", timeout=timeout):
-        issue = _find_active_issue(issues_path, issue_id, active_issues=read_active_issues(issues_path))
-        if issue.issue_status not in CLAIMABLE_STATUSES:
-            raise WorkflowError(
-                f"Issue #{issue_id} has status {issue.issue_status or issue.status}; "
-                "only active or in_progress issues can be implemented."
-            )
-        if issue.stage not in READY_STAGES | {"implementing"}:
-            raise WorkflowError(
-                f"Issue #{issue_id} is at stage {issue.stage or 'todo'}, "
-                "not ready for implementation."
-            )
-        if issue.assignee not in {"", assignee}:
-            raise WorkflowError(
-                f"Issue #{issue_id} is assigned to {issue.assignee}, not {assignee}."
-            )
-        ensure_not_author_self_claim(issue, assignee)
-        return _write_active_issue(
-            issues_path,
-            issue,
-            status="in_progress",
-            assignee=assignee,
-            stage="implementing",
-            implementer=assignee,
+    issue = _find_active_issue(issues_path, issue_id, active_issues=read_active_issues(issues_path))
+    if issue.issue_status not in CLAIMABLE_STATUSES:
+        raise WorkflowError(
+            f"Issue #{issue_id} has status {issue.issue_status or issue.status}; "
+            "only active or in_progress issues can be implemented."
         )
+    if issue.stage not in READY_STAGES | {"implementing"}:
+        raise WorkflowError(
+            f"Issue #{issue_id} is at stage {issue.stage or 'todo'}, "
+            "not ready for implementation."
+        )
+    if issue.assignee not in {"", assignee}:
+        raise WorkflowError(f"Issue #{issue_id} is assigned to {issue.assignee}, not {assignee}.")
+    ensure_not_author_self_claim(issue, assignee)
+    return _write_active_issue(
+        issues_path,
+        issue,
+        status="in_progress",
+        assignee=assignee,
+        stage="implementing",
+        implementer=assignee,
+    )
 
 
 def submit_for_review(
@@ -193,7 +138,7 @@ def submit_for_review(
     _validate_ascii_text(summary, "--summary")
     _validate_ascii_text(branch or "", "--branch")
     _validate_ascii_text(commit or "", "--commit")
-    if config.api_url:
+    if not config.use_filesystem_store:
         from issuekit.store import get_store
 
         store = get_store(config, issues_dir)
@@ -206,31 +151,30 @@ def submit_for_review(
         )
 
     issues_path = Path(issues_dir)
-    with claim_lock(issues_path / "active", timeout=timeout):
-        issue = _find_active_issue(issues_path, issue_id, active_issues=read_active_issues(issues_path))
-        if issue.assignee != assignee:
-            raise WorkflowError(
-                f"Issue #{issue_id} is assigned to {issue.assignee or 'no one'}, not {assignee}."
-            )
-        if reviewer is None and config.default_reviewer == AUTO_REVIEWER:
-            resolved_reviewer = ""
-        else:
-            resolved_reviewer = resolve_reviewer(reviewer, config, issue=issue)
-            if resolved_reviewer and issue.implementer and resolved_reviewer == issue.implementer:
-                raise WorkflowError(
-                    f"Issue #{issue_id} was implemented by {issue.implementer}; "
-                    "omit `reviewer` if default_reviewer is auto to use the open "
-                    "review pool, otherwise name a different reviewer."
-                )
-            ensure_not_self_review(issue, resolved_reviewer, config)
-        note = _handoff_note(summary=summary, branch=branch or "", commit=commit or "")
-        return _write_active_issue(
-            issues_path,
-            issue,
-            assignee=resolved_reviewer,
-            stage="review",
-            extra_body=note,
+    issue = _find_active_issue(issues_path, issue_id, active_issues=read_active_issues(issues_path))
+    if issue.assignee != assignee:
+        raise WorkflowError(
+            f"Issue #{issue_id} is assigned to {issue.assignee or 'no one'}, not {assignee}."
         )
+    if reviewer is None and config.default_reviewer == AUTO_REVIEWER:
+        resolved_reviewer = ""
+    else:
+        resolved_reviewer = resolve_reviewer(reviewer, config, issue=issue)
+        if resolved_reviewer and issue.implementer and resolved_reviewer == issue.implementer:
+            raise WorkflowError(
+                f"Issue #{issue_id} was implemented by {issue.implementer}; "
+                "omit `reviewer` if default_reviewer is auto to use the open "
+                "review pool, otherwise name a different reviewer."
+            )
+        ensure_not_self_review(issue, resolved_reviewer, config)
+    note = _handoff_note(summary=summary, branch=branch or "", commit=commit or "")
+    return _write_active_issue(
+        issues_path,
+        issue,
+        assignee=resolved_reviewer,
+        stage="review",
+        extra_body=note,
+    )
 
 
 def request_changes(
@@ -248,7 +192,7 @@ def request_changes(
         _validate_assignee(assignee, config)
     _validate_stage("changes_requested", config)
     _validate_ascii_text(notes, "--notes")
-    if config.api_url:
+    if not config.use_filesystem_store:
         from issuekit.store import get_store
 
         store = get_store(config, issues_dir)
@@ -260,21 +204,20 @@ def request_changes(
         )
 
     issues_path = Path(issues_dir)
-    with claim_lock(issues_path / "active", timeout=timeout):
-        issue = _find_active_issue(issues_path, issue_id, active_issues=read_active_issues(issues_path))
-        resolved_reviewer = resolve_reviewer(reviewer, config, issue=issue)
-        ensure_assigned_reviewer(issue, reviewer, resolved_reviewer)
-        if not issue.assignee:
-            ensure_not_self_review(issue, resolved_reviewer, config)
-        assignee = assignee or issue.implementer or "codex"
-        _validate_assignee(assignee, config)
-        return _write_active_issue(
-            issues_path,
-            issue,
-            assignee=assignee,
-            stage="changes_requested",
-            extra_body=_review_feedback_note(notes),
-        )
+    issue = _find_active_issue(issues_path, issue_id, active_issues=read_active_issues(issues_path))
+    resolved_reviewer = resolve_reviewer(reviewer, config, issue=issue)
+    ensure_assigned_reviewer(issue, reviewer, resolved_reviewer)
+    if not issue.assignee:
+        ensure_not_self_review(issue, resolved_reviewer, config)
+    assignee = assignee or issue.implementer or "codex"
+    _validate_assignee(assignee, config)
+    return _write_active_issue(
+        issues_path,
+        issue,
+        assignee=assignee,
+        stage="changes_requested",
+        extra_body=_review_feedback_note(notes),
+    )
 
 
 def find_for(
@@ -498,12 +441,3 @@ def _handoff_note(*, summary: str, branch: str, commit: str) -> str:
 
 def _review_feedback_note(notes: str) -> str:
     return "\n".join(["", "## Review Feedback", "", f"- {notes}"])
-
-
-def _is_stale_lock(lock_path: Path, *, stale_after: float) -> bool:
-    try:
-        payload = json.loads(lock_path.read_text(encoding="utf-8-sig"))
-        ts = float(payload.get("ts", 0))
-    except (OSError, ValueError, TypeError, json.JSONDecodeError):
-        return time.time() - lock_path.stat().st_mtime > stale_after
-    return time.time() - ts > stale_after

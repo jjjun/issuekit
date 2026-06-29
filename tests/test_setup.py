@@ -47,8 +47,8 @@ def test_setup_empty_repo_scaffolds_mcp_and_prints_checklist(
     assert (tmp_path / ".codex" / "config.toml").exists()
     assert (tmp_path / "AGENTS.md").exists()
     assert (tmp_path / "CLAUDE.md").exists()
-    assert (tmp_path / "docs" / "issues" / "indexes" / "active.md").exists()
-    assert cli.main(["validate"]) == 0
+    assert (tmp_path / "docs" / "issues" / "incoming" / ".gitkeep").exists()
+    assert cli.main(["migrate-to-api", "--dry-run"]) == 0
 
 
 def test_setup_reports_missing_and_present_mcp_json_issuekit_server(tmp_path: Path) -> None:
@@ -181,8 +181,6 @@ def test_setup_check_json_stale_repo_reports_updates_without_writing(
     _force_mcp_available(monkeypatch)
     init_repo(tmp_path, with_mcp=True)
     (tmp_path / "AGENTS.md").write_text("# AGENTS.md\n", encoding="utf-8", newline="\n")
-    index_path = tmp_path / "docs" / "issues" / "indexes" / "active.md"
-    index_path.write_text("stale\n", encoding="utf-8", newline="\n")
     before = _file_snapshot(tmp_path)
     monkeypatch.chdir(tmp_path)
 
@@ -196,7 +194,7 @@ def test_setup_check_json_stale_repo_reports_updates_without_writing(
     assert payload["would_update"] is True
     paths = {item["path"] for item in payload["actions"]}
     assert "AGENTS.md" in paths
-    assert "docs/issues/indexes/active.md" in paths
+    assert "docs/issues/indexes/active.md" not in paths
     assert _file_snapshot(tmp_path) == before
 
 

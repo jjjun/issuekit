@@ -36,7 +36,9 @@ BOM = b"\xef\xbb\xbf"
 
 def run(args) -> int:
     tracked_files = list_tracked_files(Path.cwd())
-    source_files = [file for file in tracked_files if _has_source_extension(file)]
+    source_files = [
+        file for file in tracked_files if _has_source_extension(file) and not _is_issue_file(file)
+    ]
     bom_files: list[str] = []
     mojibake_files: list[str] = []
     fixed_files: list[str] = []
@@ -141,6 +143,10 @@ def list_crlf_files(cwd: Path) -> list[str]:
 def _has_source_extension(file: str) -> bool:
     suffix = Path(file).suffix
     return bool(suffix) and suffix[1:].lower() in SOURCE_EXTENSIONS
+
+
+def _is_issue_file(file: str) -> bool:
+    return Path(file).as_posix().startswith("docs/issues/")
 
 
 def _starts_with_bom(path: Path) -> bool:

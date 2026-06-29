@@ -1,7 +1,7 @@
 [project]
 name = "issuekit"
 version = "0.1.0"
-description = "Shared local issue tracker CLI and encoding guard for docs/issues conventions"
+description = "Shared API-backed issue handoff CLI and encoding guard"
 authors = [
     { name = "jj", email = "11153631+jjjun@users.noreply.github.com" },
 ]
@@ -41,5 +41,7 @@ packages = ["issuekit"]
 # recent_count = 30
 # ascii_id_threshold = 0        # issue ids >= this value must be ASCII-only
 # issues_dir = "docs/issues"
+# api_url = "https://mine.example"
+# project = "issuekit"
 assignees = ["codex", "claude", "kimi"]
 default_reviewer = "auto"

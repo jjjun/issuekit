@@ -8,17 +8,15 @@ This repo uses the issuekit multi-agent handoff. For the current steps, run
 the issuekit MCP server instructions / `get_protocol` tool.
 
 Do not copy the steps here; issuekit is the source of truth. Launch your agent
-from the repo root so the MCP server resolves the correct `docs/issues/`
-directory.
+from the repo root so the MCP server resolves the repo configuration.
 
 ## Project notes
 
 - Authors write proposals and implementation-ready issues, then stop.
-- Implementers claim active issues from `docs/issues/active/`.
+- Implementers claim active issues from the configured API project.
 - Reviewers decide submitted issues and may also be the original author when a
   different implementer did the work.
 - If the proposal-system MCP tools hang or error, use the equivalent CLI with
   `--json` (`issuekit propose/incoming/adopt`); they share one implementation.
-- Tracker conventions live in `docs/issues/README.md`.
+- `docs/issues/incoming/` is still the local cross-project proposal area.
 - Write all files as UTF-8 without a BOM and with LF line endings.
-- `docs/issues/` content must be English ASCII only.

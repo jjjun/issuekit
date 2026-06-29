@@ -7,7 +7,6 @@ from importlib import resources
 import json
 from pathlib import Path
 
-from issuekit.commands.generate_indexes import write_index_files
 from issuekit.config import IssuekitConfig, load_config
 from issuekit.core import has_non_ascii, read_all_issues
 
@@ -52,13 +51,7 @@ def init_repo(cwd: Path, *, force: bool = False, with_mcp: bool = False) -> Init
     config = load_config(cwd)
     issues_dir = config.issues_path(cwd)
 
-    for directory in (
-        issues_dir / "active",
-        issues_dir / "completed",
-        issues_dir / "indexes",
-        issues_dir / "incoming",
-    ):
-        directory.mkdir(parents=True, exist_ok=True)
+    (issues_dir / "incoming").mkdir(parents=True, exist_ok=True)
     _write_incoming_placeholder(cwd, issues_dir, force, result)
 
     _write_template(cwd, cwd / ".gitattributes", "gitattributes", force, result)
@@ -70,10 +63,6 @@ def init_repo(cwd: Path, *, force: bool = False, with_mcp: bool = False) -> Init
         _write_mcp_scaffold(cwd, force, result)
     _handle_ascii_threshold(cwd, issues_dir, result)
 
-    config = load_config(cwd)
-    write_index_files(config.issues_path(cwd), config.recent_count)
-    for name in sorted((config.issues_path(cwd) / "indexes").glob("*.md")):
-        result.written.append(name.relative_to(cwd).as_posix())
     return result
 
 
@@ -270,9 +259,9 @@ def _issuekit_block(threshold: int) -> str:
     defaults = IssuekitConfig()
     return (
         "[tool.issuekit]\n"
-        f"recent_count = {defaults.recent_count}\n"
+        "# api_url = \"https://mine.example\"\n"
+        f"project = \"{defaults.project}\"\n"
         f"ascii_id_threshold = {threshold}\n"
-        f"issues_dir = \"{defaults.issues_dir}\"\n"
     )
 
 

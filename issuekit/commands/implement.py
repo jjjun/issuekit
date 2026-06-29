@@ -16,6 +16,7 @@ from issuekit.core import (
     read_active_issues,
     read_completed_issues,
 )
+from issuekit.store import get_store
 from issuekit.workflow import WorkflowError, claim_issue, submit_for_review
 
 
@@ -29,8 +30,15 @@ def run(args) -> int:
     cwd = Path.cwd()
     config = load_config(cwd)
     issues_dir = config.issues_path(cwd)
-    active_issues = read_active_issues(issues_dir)
-    issue = find_issue_by_id(active_issues, issue_id)
+    if config.use_filesystem_store:
+        active_issues = read_active_issues(issues_dir)
+        issue = find_issue_by_id(active_issues, issue_id)
+    else:
+        try:
+            issue = get_store(config, issues_dir).get_issue(issue_id)
+        except (WorkflowError, ValueError) as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
     if issue is None:
         print(f"Active issue #{issue_id} was not found.", file=sys.stderr)
         return 1
@@ -49,15 +57,20 @@ def run(args) -> int:
     try:
         issue = claim_issue(issues_dir, issue.id or issue_id, args.agent, config=config)
         adapter = resolve_adapter(args.agent, config=config, model=args.model)
+        plan_path = issue.file_path
+        if not config.use_filesystem_store:
+            run_dir = cwd / ".agent-runs"
+            run_dir.mkdir(exist_ok=True)
+            plan_path = run_dir / f"issue-{issue.id}.md"
+            plan_path.write_text(issue.content, encoding="utf-8", newline="\n")
         result = AgentRunner().run(
             adapter,
-            issue.file_path,
+            plan_path,
             cwd,
             timeout=float(args.timeout_sec),
             agent_name=args.agent,
             issue_id=issue.id,
             follow=getattr(args, "follow", False),
-            tracker_dir=issues_dir,
             prompt_suffix=reviewer_prompt,
         )
     except (FileNotFoundError, RuntimeError, ValueError, TimeoutError, WorkflowError) as exc:
@@ -139,7 +152,7 @@ def run(args) -> int:
         print(_submit_for_review_error(issues_dir, issue.id or issue_id, exc), file=sys.stderr)
         return 1
 
-    if not config.api_url:
+    if config.use_filesystem_store:
         write_index_files(issues_dir, config.recent_count)
     print(
         f"submitted_review id={reviewed_issue.id} file={reviewed_issue.relative_path} "

@@ -4,12 +4,22 @@ from issuekit.config import IssuekitConfig
 from issuekit.core import issue_dict
 from issuekit.store import ApiStore, FilesystemStore, get_store
 from issuekit.testing import FakeIssuekitClient
+from issuekit.workflow import WorkflowError
 
 from tests.issue_helpers import api_issue, issue_text, write_issue
 
 
-def test_get_store_uses_filesystem_without_api_url(tmp_path: Path) -> None:
-    store = get_store(IssuekitConfig(), tmp_path / "docs" / "issues")
+def test_get_store_requires_api_url_for_runtime_default(tmp_path: Path) -> None:
+    try:
+        get_store(IssuekitConfig(use_filesystem_store=False), tmp_path / "docs" / "issues")
+    except WorkflowError as exc:
+        assert exc.code == "missing_api_url"
+    else:
+        raise AssertionError("get_store should require api_url by default")
+
+
+def test_get_store_uses_filesystem_with_explicit_escape_hatch(tmp_path: Path) -> None:
+    store = get_store(IssuekitConfig(use_filesystem_store=True), tmp_path / "docs" / "issues")
 
     assert isinstance(store, FilesystemStore)
 

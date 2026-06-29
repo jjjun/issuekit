@@ -276,9 +276,15 @@ class ApiStore:
 
 
 def get_store(config: IssuekitConfig, issues_dir: Path | str | None = None) -> IssueStore:
-    if config.api_url:
-        return ApiStore(config)
-    return FilesystemStore(issues_dir or config.issues_path(Path.cwd()))
+    if config.use_filesystem_store:
+        return FilesystemStore(issues_dir or config.issues_path(Path.cwd()))
+    if not config.api_url:
+        raise WorkflowError(
+            "API store requires api_url. Set api_url in issuekit.toml/[tool.issuekit] "
+            "or ISSUEKIT_API_URL; set use_filesystem_store = true only for legacy local tracker access.",
+            code="missing_api_url",
+        )
+    return ApiStore(config)
 
 
 def _string(value: object) -> str:

@@ -144,139 +144,6 @@ class AgentResult:
     parsed: dict[str, str] | None = None
     status_short: str | None = None
     status_path: Path | None = None
-    tracker_mutation_restored: bool = False
-    tracker_mutation_paths: tuple[str, ...] = ()
-
-
-@dataclass(frozen=True)
-class _TrackerSnapshot:
-    """Pre-agent file contents for the issue tracker subtree."""
-
-    root: Path
-    file_states: dict[Path, tuple[int, int]]
-    files: dict[Path, bytes]
-    git_root: Path | None = None
-
-    _CACHED_PREFIXES = ("active", "indexes")
-
-    @classmethod
-    def capture(cls, root: Path) -> "_TrackerSnapshot":
-        root = root.resolve()
-        git_root = cls._find_git_root(root)
-        file_states: dict[Path, tuple[int, int]] = {}
-        files: dict[Path, bytes] = {}
-        if root.exists():
-            for path in root.rglob("*"):
-                if path.is_file():
-                    rel = path.relative_to(root)
-                    try:
-                        stat = path.stat()
-                    except OSError:
-                        continue
-                    file_states[rel] = (stat.st_size, stat.st_mtime_ns)
-                    if rel.parts and (git_root is None or rel.parts[0] in cls._CACHED_PREFIXES):
-                        try:
-                            files[rel] = path.read_bytes()
-                        except OSError:
-                            continue
-        return cls(root=root, file_states=file_states, files=files, git_root=git_root)
-
-    def changed_paths(self) -> tuple[str, ...]:
-        current = self._scan_file_states(self.root)
-        changed = {
-            rel
-            for rel in set(self.file_states) | set(current)
-            if self.file_states.get(rel) != current.get(rel)
-        }
-        return tuple(sorted(rel.as_posix() for rel in changed))
-
-    def restore(self) -> tuple[str, ...]:
-        changed = self.changed_paths()
-        if not changed:
-            return ()
-
-        self.root.mkdir(parents=True, exist_ok=True)
-        changed_paths = [Path(path) for path in changed]
-        for path in (
-            path
-            for path in self.root.rglob("*")
-            if path.is_file() and path.relative_to(self.root) not in self.file_states
-        ):
-            try:
-                path.unlink()
-            except OSError:
-                pass
-
-        for rel in changed_paths:
-            path = self.root / rel
-            if rel in self.files:
-                path.parent.mkdir(parents=True, exist_ok=True)
-                try:
-                    path.write_bytes(self.files[rel])
-                except OSError:
-                    continue
-                continue
-
-            if rel in self.file_states:
-                if not self._restore_from_git(path):
-                    continue
-
-        for path in sorted(
-            (candidate for candidate in self.root.rglob("*") if candidate.is_dir()),
-            key=lambda candidate: len(candidate.parts),
-            reverse=True,
-        ):
-            try:
-                path.rmdir()
-            except OSError:
-                pass
-
-        return changed
-
-    @staticmethod
-    def _scan_file_states(root: Path) -> dict[Path, tuple[int, int]]:
-        states: dict[Path, tuple[int, int]] = {}
-        if not root.exists():
-            return states
-        for path in root.rglob("*"):
-            if path.is_file():
-                try:
-                    stat = path.stat()
-                except OSError:
-                    continue
-                states[path.relative_to(root)] = (stat.st_size, stat.st_mtime_ns)
-        return states
-
-    def _restore_from_git(self, path: Path) -> bool:
-        if self.git_root is None:
-            return False
-        try:
-            rel_path = path.resolve().relative_to(self.git_root).as_posix()
-        except ValueError:
-            return False
-        try:
-            result = subprocess.run(
-                ["git", "--no-pager", "restore", "--", rel_path],
-                cwd=str(self.git_root),
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-        except (OSError, subprocess.SubprocessError):
-            return False
-        if result.returncode != 0:
-            return False
-        return path.exists()
-
-    @staticmethod
-    def _find_git_root(start: Path) -> Path | None:
-        candidate = start
-        while True:
-            if (candidate / ".git").exists():
-                return candidate
-            if candidate.parent == candidate:
-                return None
-            candidate = candidate.parent
 
 
 
@@ -391,7 +258,6 @@ class AgentRunner:
         agent_name: str | None = None,
         issue_id: int | None = None,
         follow: bool = False,
-        tracker_dir: Path | None = None,
         prompt_suffix: str | None = None,
     ) -> AgentResult:
         plan_path = plan_path.resolve()
@@ -414,11 +280,6 @@ class AgentRunner:
         if prompt_suffix:
             prompt = f"{prompt}\n\n{prompt_suffix}"
         argv = [str(binary)] + adapter.build_argv(prompt, plan_path)
-        tracker_snapshot = (
-            _TrackerSnapshot.capture(tracker_dir)
-            if tracker_dir is not None
-            else None
-        )
 
         run_dir = repo / ".agent-runs"
         run_dir_existed = run_dir.exists()
@@ -522,27 +383,6 @@ class AgentRunner:
         agent_log_text = agent_log_path.read_text(encoding="utf-8", errors="replace")
         parsed = adapter.parse_output(stdout_text, agent_log_text)
 
-        tracker_mutation_paths: tuple[str, ...] = ()
-        if tracker_snapshot is not None:
-            try:
-                tracker_mutation_paths = tracker_snapshot.restore()
-            except OSError as exc:
-                rel_tracker = repo_relative(tracker_snapshot.root, repo)
-                raise RuntimeError(
-                    f"Implementer modified issue tracker under {rel_tracker}, "
-                    f"and issuekit could not restore it: {exc}"
-                ) from exc
-            if tracker_mutation_paths:
-                rel_tracker = repo_relative(tracker_snapshot.root, repo)
-                preview = ", ".join(tracker_mutation_paths[:5])
-                if len(tracker_mutation_paths) > 5:
-                    preview += ", ..."
-                print(
-                    f"WARNING: implementer modified issue tracker under {rel_tracker}; "
-                    f"restored pre-agent tracker state. Changed tracker paths: {preview}",
-                    file=sys.stderr,
-                )
-
         status_short = self._git_status_short(repo)
 
         return AgentResult(
@@ -554,8 +394,6 @@ class AgentRunner:
             parsed=parsed,
             status_short=status_short,
             status_path=run_status_path,
-            tracker_mutation_restored=bool(tracker_mutation_paths),
-            tracker_mutation_paths=tracker_mutation_paths,
         )
 
     def _reserve_run_id(self, run_dir: Path) -> tuple[str, Path]:

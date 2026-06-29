@@ -39,7 +39,7 @@ def test_author_command_creates_valid_open_active_issue(
 
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert "Issue validation passed" in captured.out
+    assert "API validation passed" in captured.out
     assert "Authored issue: active/003_add_author_command.md" in captured.out
 
     issue_path = issues_dir / "active" / "003_add_author_command.md"

@@ -1,9 +1,9 @@
 # issuekit
 
-`issuekit` is a language-neutral CLI for sharing the `docs/issues/` local issue
-tracker convention across repositories. It consolidates the original
-mine-js-monorepo Node scripts into a Python package that can be installed once
-and reused from each repo.
+`issuekit` is a language-neutral CLI for sharing an API-backed issue handoff
+workflow across repositories. Issue lifecycle state lives in a mine-py API
+project; local `docs/issues/incoming/` files remain for cross-project proposals
+that have not yet moved to the API.
 
 ## Install
 
@@ -86,7 +86,8 @@ The repo scaffold writes `.mcp.json`, appends `.codex/config.toml` when needed,
 and adds thin handoff references to `AGENTS.md` and `CLAUDE.md`. The generated
 MCP entries run the global `issuekit-mcp` binary; they do not use `uv run`, so
 they work outside the issuekit checkout. Launch codex or Claude Code from the
-target repo root so the server resolves the correct `docs/issues/` directory.
+target repo root so the server resolves repo configuration and local proposal
+files.
 
 For local development, install the optional MCP group and start the stdio server
 from a checkout with:
@@ -118,10 +119,10 @@ copying the steps.
 
 | Command | Purpose |
 |---------|---------|
-| `issuekit info [--json]` | Show tracker status and the next issue id. |
-| `issuekit validate` | Check filenames, ids, frontmatter, indexes, mojibake, and ASCII rules. |
-| `issuekit generate-indexes` | Regenerate `docs/issues/indexes/*`. |
-| `issuekit complete <id> --summary "..." --verification "..."` | Move active issue to completed, regenerate indexes, and validate. |
+| `issuekit info [--json]` | Show API tracker status. |
+| `issuekit validate` | Check API connectivity and issue response shape. |
+| `issuekit migrate-to-api [--dry-run]` | Import legacy `docs/issues/{active,completed}` files into the API backend. |
+| `issuekit complete <id> --summary "..." --verification "..."` | Complete an issue through the API. |
 | `issuekit approve <id> --verification "..." [--reviewer claude]` | Approve a review-stage issue and move it to completed. |
 | `issuekit claim --assignee codex` | Claim the next active issue for an implementer. |
 | `issuekit submit-review <id> --summary "..." [--assignee codex] [--reviewer claude]` | Submit implemented work to a reviewer. |
@@ -139,14 +140,14 @@ copying the steps.
 | `issuekit adopt <proposal-file>` | Adopt an incoming proposal as a local active issue. |
 | `issuekit discard <proposal-file>` | Move an incoming proposal to `incoming/discarded/`. |
 
-The issue file specification lives in `docs/issues/README.md`.
+Legacy issue file parsing is used only by `migrate-to-api` and the explicit
+filesystem escape hatch.
 
 ## Cross-Project Proposals
 
 Related repositories can exchange suggestions through files under
 `docs/issues/incoming/`. Proposals are not workflow items until they are adopted,
-so `validate`, `generate-indexes`, and the claim queue continue to scan only
-`active/` and `completed/`.
+so the API-backed issue queue is separate from proposal triage.
 
 Refs resolve from a shared workspace registry plus optional per-repo local
 overrides. For a set of sibling repos, place one `issuekit.workspace.toml` above
@@ -225,32 +226,30 @@ Python repositories can configure issuekit in `pyproject.toml`:
 
 ```toml
 [tool.issuekit]
-issues_dir = "docs/issues"
-ascii_id_threshold = 407
-recent_count = 30
+api_url = "https://mine.example"
+project = "issuekit"
 assignees = ["codex", "claude"]
 stages = ["todo", "implementing", "review", "changes_requested", "done"]
-default_reviewer = "claude"
-require_distinct_reviewer = false
+default_reviewer = "auto"
+require_distinct_reviewer = true
 ```
 
 Non-Python repositories can use a standalone `issuekit.toml` at the repo root
 with the same keys at the top level:
 
 ```toml
-issues_dir = "docs/issues"
-ascii_id_threshold = 407
-recent_count = 30
+api_url = "https://mine.example"
+project = "issuekit"
 assignees = ["codex", "claude"]
 stages = ["todo", "implementing", "review", "changes_requested", "done"]
-default_reviewer = "claude"
-require_distinct_reviewer = false
+default_reviewer = "auto"
+require_distinct_reviewer = true
 ```
 
-API-backed projects add `api_url` and `project`. In API mode the mine-py server
-owns the reviewer policy, so issuekit always treats review handoff as
-`default_reviewer = "auto"` and `require_distinct_reviewer = true` for local
-decisions, regardless of local reviewer-policy keys:
+The mine-py server owns issue ids and reviewer policy. When `api_url` is set,
+issuekit always treats review handoff as `default_reviewer = "auto"` and
+`require_distinct_reviewer = true` for local decisions, regardless of local
+reviewer-policy keys:
 
 ```toml
 [tool.issuekit]
@@ -259,6 +258,10 @@ project = "issuekit"
 default_reviewer = "auto"
 require_distinct_reviewer = true
 ```
+
+For one-off legacy access, set `use_filesystem_store = true` or
+`ISSUEKIT_USE_FILESYSTEM=1`. That path exists for migration and proposal
+compatibility; new issue lifecycle operations should use the API.
 
 When both files exist, `[tool.issuekit]` in `pyproject.toml` takes precedence.
 If `pyproject.toml` exists without `[tool.issuekit]`, issuekit falls back to
@@ -284,5 +287,5 @@ same-name review is rejected.
 
 ## Development
 
-This repo dogfoods issuekit. Implementation tasks live in `docs/issues/active/`
-as implementation-ready issues.
+This repo dogfoods issuekit. Implementation tasks live in the configured API
+project; `docs/issues/incoming/` remains the local cross-project proposal area.

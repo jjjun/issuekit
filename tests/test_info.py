@@ -26,8 +26,8 @@ def test_info_json_output(tmp_path: Path, monkeypatch, capsys) -> None:
     payload = json.loads(capsys.readouterr().out)
 
     assert payload["counts"] == {"active": 1, "completed": 1, "total": 2}
-    assert payload["nextIssueId"] == 3
-    assert payload["indexes"]["ok"] is True
+    assert payload["nextIssueId"] is None
+    assert payload["indexes"] is None
     assert payload["activeIssues"][0]["file"] == "active/001_first.md"
     assert payload["activeIssues"][0]["stage"] is None
     assert payload["incomingProposals"] == []
@@ -111,7 +111,7 @@ def test_info_ignores_triaged_incoming_proposals(tmp_path: Path, monkeypatch, ca
     assert payload["incomingProposals"] == []
 
 
-def test_info_text_reports_index_mismatch(tmp_path: Path, monkeypatch, capsys) -> None:
+def test_info_text_ignores_retired_index_mismatch(tmp_path: Path, monkeypatch, capsys) -> None:
     issues_dir = make_issue_tree(tmp_path)
     (issues_dir / "indexes" / "active.md").write_text("stale\n", encoding="utf-8")
     monkeypatch.chdir(tmp_path)
@@ -120,8 +120,8 @@ def test_info_text_reports_index_mismatch(tmp_path: Path, monkeypatch, capsys) -
 
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert "Indexes: needs regeneration" in captured.out
-    assert "Stale: active.md" in captured.out
+    assert "Indexes:" not in captured.out
+    assert "Stale: active.md" not in captured.out
     assert "Incoming proposals: 0" in captured.out
     assert "\nIncoming proposals\n" not in captured.out
 

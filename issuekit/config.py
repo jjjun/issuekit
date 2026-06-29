@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+import os
 from pathlib import Path
 import tomllib
 
@@ -36,6 +37,7 @@ class IssuekitConfig:
     api_url: str = ""
     project: str = "issuekit"
     api_timeout: float = 30.0
+    use_filesystem_store: bool | None = None
     recent_count: int = 30
     ascii_id_threshold: int = 0
     issues_dir: str = "docs/issues"
@@ -115,6 +117,10 @@ class IssuekitConfig:
         ),
     )
 
+    def __post_init__(self) -> None:
+        if self.use_filesystem_store is None:
+            object.__setattr__(self, "use_filesystem_store", not bool(self.api_url))
+
     def issues_path(self, cwd: Path | str = ".") -> Path:
         path = Path(self.issues_dir)
         if path.is_absolute():
@@ -124,8 +130,18 @@ class IssuekitConfig:
 
 def load_config(cwd: Path | str = ".") -> IssuekitConfig:
     raw_config = _load_raw_config(Path(cwd))
-    api_url = str(raw_config.get("api_url", IssuekitConfig.api_url)).strip()
-    project = str(raw_config.get("project", IssuekitConfig.project)).strip()
+    api_url = str(
+        os.getenv("ISSUEKIT_API_URL", raw_config.get("api_url", IssuekitConfig.api_url))
+    ).strip()
+    project = str(
+        os.getenv("ISSUEKIT_PROJECT", raw_config.get("project", IssuekitConfig.project))
+    ).strip()
+    use_filesystem_store = _bool_value(
+        os.getenv(
+            "ISSUEKIT_USE_FILESYSTEM",
+            raw_config.get("use_filesystem_store", False),
+        )
+    )
     _validate_project(project)
     assignees = _string_tuple(raw_config.get("assignees", IssuekitConfig.assignees))
     default_reviewer = (
@@ -138,7 +154,10 @@ def load_config(cwd: Path | str = ".") -> IssuekitConfig:
     return IssuekitConfig(
         api_url=api_url,
         project=project,
-        api_timeout=float(raw_config.get("api_timeout", IssuekitConfig.api_timeout)),
+        api_timeout=float(
+            os.getenv("ISSUEKIT_API_TIMEOUT", raw_config.get("api_timeout", IssuekitConfig.api_timeout))
+        ),
+        use_filesystem_store=use_filesystem_store,
         recent_count=int(raw_config.get("recent_count", IssuekitConfig.recent_count)),
         ascii_id_threshold=int(
             raw_config.get("ascii_id_threshold", IssuekitConfig.ascii_id_threshold)

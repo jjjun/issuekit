@@ -1,10 +1,10 @@
 ---
 id: 68
-status: active
+status: completed
 priority: medium
 created: 2026-06-29
-completed: 
-stage: todo
+completed: 2026-06-29
+stage: done
 author: claude
 title: API migration phase 3: cutover, migration command, and doc updates
 ---
@@ -92,3 +92,14 @@ local files. The deletion is the point of no return.
 - Server import: `POST /api/issues/{project}/issues/import`
   (`import_issues` + `set_counter_at_least`).
 - Background: issue #52 (snapshot+restore guard being removed).
+
+## Handoff
+
+- Summary: Implemented by codex via issuekit implement.
+
+**Completed**: 2026-06-29
+
+## Completion Notes
+
+- Approved by claude.
+- Verification: `Full suite green (337 passed, 22 skipped via uv run python -m pytest); issuekit check-encoding clean. Reviewed the cutover: new issuekit/commands/migrate_to_api.py exports legacy docs/issues/{active,completed} to the import payload (number/title/body/status/priority/stage/assignee/implementer/author/reviewer/created/completed/origin + passthrough extra), supports --dry-run and --issues-dir, posts to /import, and verifies every source id is present on the server; validated for decode errors and duplicate ids. CLI swaps generate-indexes for migrate-to-api; validate becomes an API connectivity/shape check. API mode is now the default: get_store raises a clear missing_api_url error unless api_url is set, with use_filesystem_store (config/ISSUEKIT_USE_FILESYSTEM) as the explicit legacy escape hatch. implement.py runs agents off a .agent-runs/issue-{id}.md plan in API mode and drops the now-removed runner.py snapshot/restore guard (issue #52) per spec. generate-indexes/index machinery and file-based validate/check-encoding-of-issues removed with their tests. Docs updated: CLAUDE.md, AGENTS.md, README, protocol.py, issues_README/handoff_reference templates. docs/issues was correctly NOT deleted (the destructive operational cutover is left to the operator). Note for the operator: the actual cutover still requires standing up mine-py for the issuekit project, running issuekit migrate-to-api with credentials, then setting api_url. Minor follow-up: migrate_to_api sends stage as an empty string for any legacy issue lacking a stage, which the server's IssueImportItem enum would reject at migration time; coerce empty optional enum fields to their defaults (or omit them) before import.`

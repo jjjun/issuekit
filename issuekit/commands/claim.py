@@ -28,7 +28,7 @@ def run(args) -> int:
         print(f"status=none assignee={args.assignee}")
         return 0
 
-    if not config.api_url:
+    if config.use_filesystem_store:
         write_index_files(issues_dir, config.recent_count)
     print(
         f"id={issue.id} file={issue.relative_path} "

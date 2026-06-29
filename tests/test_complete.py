@@ -118,6 +118,11 @@ def test_complete_rejects_non_utf8_issue_without_modifying_it(
     monkeypatch,
     capsys,
 ) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "use_filesystem_store = true\n",
+        encoding="utf-8",
+        newline="\n",
+    )
     issues_dir = tmp_path / "docs" / "issues"
     bad_issue = issues_dir / "active" / "001_cp932.md"
     bad_issue.parent.mkdir(parents=True, exist_ok=True)

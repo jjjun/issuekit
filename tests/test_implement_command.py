@@ -100,7 +100,7 @@ def test_implement_command_resolves_issue_and_invokes_runner(
     assert "## Handoff" in issue.file_path.read_text(encoding="utf-8")
 
 
-def test_implement_command_restores_agent_tracker_mutations(
+def test_implement_command_no_longer_restores_agent_tracker_mutations(
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -148,15 +148,11 @@ def test_implement_command_restores_agent_tracker_mutations(
     exit_code = cli.main(["implement", "1", "--agent", "kimi", "--timeout-sec", "12"])
 
     captured = capsys.readouterr()
-    assert exit_code == 0
-    assert "WARNING: implementer modified issue tracker under docs/issues" in captured.err
-    assert not (issues_dir / "completed" / "001_first.md").exists()
-    assert not (issues_dir / "indexes" / "stray.md").exists()
-    [issue] = read_issues(issues_dir, "active")
-    assert issue.assignee == ""
-    assert issue.stage == "review"
-    assert issue.implementer == "kimi"
-    assert "## Handoff" in issue.file_path.read_text(encoding="utf-8")
+    assert exit_code == 1
+    assert "WARNING: implementer modified issue tracker" not in captured.err
+    assert (issues_dir / "completed" / "001_first.md").exists()
+    assert (issues_dir / "indexes" / "stray.md").exists()
+    assert "moved to completed/001_first.md during implementation" in captured.err
 
 
 def test_implement_command_reports_completed_move_when_submit_cannot_find_issue(
