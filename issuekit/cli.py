@@ -378,7 +378,7 @@ def build_parser() -> argparse.ArgumentParser:
         "adopt",
         help="Adopt an incoming proposal as a local active issue.",
     )
-    adopt_parser.add_argument("proposal_file", help="Incoming proposal file name or path.")
+    adopt_parser.add_argument("proposal", help="Proposal id in API mode, or incoming file name in filesystem mode.")
     adopt_parser.add_argument(
         "--priority",
         choices=("high", "medium", "low"),
@@ -390,9 +390,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     discard_parser = subparsers.add_parser(
         "discard",
-        help="Move an incoming proposal to incoming/discarded.",
+        help="Discard an incoming proposal.",
     )
-    discard_parser.add_argument("proposal_file", help="Incoming proposal file name or path.")
+    discard_parser.add_argument("proposal", help="Proposal id in API mode, or incoming file name in filesystem mode.")
+    discard_parser.add_argument("--json", action="store_true", help="Print JSON output.")
     discard_parser.set_defaults(func=propose.run_discard)
 
     return parser

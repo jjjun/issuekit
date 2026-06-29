@@ -280,6 +280,84 @@ class IssuekitClient:
             raise WorkflowError("Import response was not JSON data.", code="invalid_response")
         return payload
 
+    def create_proposal(
+        self,
+        *,
+        origin: str,
+        title: str,
+        body: str,
+        reply_to: str | None = None,
+        priority: str | None = None,
+    ) -> JsonDict:
+        payload = self._proposal_request(
+            "POST",
+            "/",
+            json=_drop_none(
+                {
+                    "origin": origin,
+                    "title": title,
+                    "body": body,
+                    "reply_to": reply_to,
+                    "priority": priority,
+                }
+            ),
+        )
+        return _ensure_dict(payload, "Proposal response")
+
+    def list_proposals(
+        self,
+        *,
+        status: str | None = None,
+        page_size: int = 500,
+    ) -> list[JsonDict]:
+        if page_size <= 0:
+            raise ValueError("page_size must be greater than zero")
+        page_size = min(page_size, 500)
+        offset = 0
+        proposals: list[JsonDict] = []
+        while True:
+            payload = self._proposal_request(
+                "GET",
+                "/",
+                params=_drop_none({"status": status, "limit": page_size, "offset": offset}),
+            )
+            page = _ensure_dict(payload, "Proposal list response")
+            items = page.get("items")
+            if not isinstance(items, list):
+                raise WorkflowError(
+                    "Proposal list response items was not a JSON array.",
+                    code="invalid_response",
+                )
+            proposals.extend(_ensure_dict(item, "Proposal response") for item in items)
+
+            total = page.get("total")
+            limit = page.get("limit", page_size)
+            current_offset = page.get("offset", offset)
+            if not isinstance(total, int) or not isinstance(limit, int) or not isinstance(current_offset, int):
+                raise WorkflowError(
+                    "Proposal list response pagination fields were invalid.",
+                    code="invalid_response",
+                )
+            if current_offset + len(items) >= total or len(items) < limit:
+                return proposals
+            offset = current_offset + limit
+
+    def get_proposal(self, proposal_id: int) -> JsonDict:
+        payload = self._proposal_request("GET", f"/{proposal_id}")
+        return _ensure_dict(payload, "Proposal response")
+
+    def adopt_proposal(self, proposal_id: int, *, priority: str | None = None) -> JsonDict:
+        payload = self._proposal_request(
+            "POST",
+            f"/{proposal_id}/adopt",
+            json=_drop_none({"priority": priority}),
+        )
+        return _ensure_dict(payload, "Adopt proposal response")
+
+    def discard_proposal(self, proposal_id: int) -> JsonDict:
+        payload = self._proposal_request("POST", f"/{proposal_id}/discard")
+        return _ensure_dict(payload, "Discard proposal response")
+
     def _request(
         self,
         method: str,
@@ -306,6 +384,41 @@ class IssuekitClient:
             response = self._send(
                 method,
                 self._issue_path(path),
+                json=json,
+                params=dict(params) if params is not None else None,
+                headers={
+                    "Accept": "application/json",
+                    "Authorization": f"Bearer {token}",
+                },
+        )
+        return self._parse_response(response)
+
+    def _proposal_request(
+        self,
+        method: str,
+        path: str,
+        *,
+        json: JsonBody | None = None,
+        params: Mapping[str, Any] | None = None,
+    ) -> Any:
+        token = self.login()
+        response = self._send(
+            method,
+            self._proposal_path(path),
+            json=json,
+            params=dict(params) if params is not None else None,
+            headers={
+                "Accept": "application/json",
+                "Authorization": f"Bearer {token}",
+            },
+        )
+        if response.status_code == 401:
+            if not self.username or not self.password:
+                raise WorkflowError(_LOGIN_GUIDANCE, code="unauthorized")
+            token = self.login(force=True)
+            response = self._send(
+                method,
+                self._proposal_path(path),
                 json=json,
                 params=dict(params) if params is not None else None,
                 headers={
@@ -352,6 +465,15 @@ class IssuekitClient:
         else:
             suffix = f"/{path}"
         return f"/api/issues/{self.project}/issues{suffix}"
+
+    def _proposal_path(self, path: str) -> str:
+        if path in ("", "/"):
+            suffix = ""
+        elif path.startswith("/"):
+            suffix = path
+        else:
+            suffix = f"/{path}"
+        return f"/api/issues/{self.project}/proposals{suffix}"
 
     def _url(self, path: str) -> str:
         suffix = path if path.startswith("/") else f"/{path}"

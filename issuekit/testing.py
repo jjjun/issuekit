@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from datetime import date
 from threading import Lock
 from typing import Any
 
@@ -18,13 +19,21 @@ PRIORITY_RANK = {"high": 0, "medium": 1, "low": 2}
 class FakeIssuekitClient:
     """In-memory implementation of the IssuekitClient method surface."""
 
-    def __init__(self, issues: list[JsonDict] | None = None) -> None:
+    def __init__(
+        self,
+        issues: list[JsonDict] | None = None,
+        proposals: list[JsonDict] | None = None,
+    ) -> None:
         self._lock = Lock()
         self._issues: dict[int, JsonDict] = {}
+        self._proposals: dict[int, JsonDict] = {}
         self._next_id = 1
+        self._next_proposal_id = 1
         self.calls: list[JsonDict] = []
         for issue in issues or []:
             self._store_issue(issue)
+        for proposal in proposals or []:
+            self._store_proposal(proposal)
 
     def list_issues(
         self,
@@ -237,11 +246,127 @@ class FakeIssuekitClient:
             imported = [self._store_issue(issue) for issue in raw_issues]
             return deepcopy(imported)
 
+    def create_proposal(
+        self,
+        *,
+        origin: str,
+        title: str,
+        body: str,
+        reply_to: str | None = None,
+        priority: str | None = None,
+    ) -> JsonDict:
+        request = {
+            key: value
+            for key, value in {
+                "origin": origin,
+                "title": title,
+                "body": body,
+                "reply_to": reply_to,
+                "priority": priority,
+            }.items()
+            if value is not None
+        }
+        with self._lock:
+            self._record("create_proposal", body=deepcopy(request))
+            for proposal in sorted(self._proposals.values(), key=lambda item: int(item["id"])):
+                if proposal.get("origin") == origin and proposal.get("status") == "pending":
+                    return deepcopy(proposal)
+            return deepcopy(self._store_proposal(request, allocate=True))
+
+    def list_proposals(
+        self,
+        *,
+        status: str | None = None,
+        page_size: int = 500,
+    ) -> list[JsonDict]:
+        if page_size <= 0:
+            raise ValueError("page_size must be greater than zero")
+        proposals: list[JsonDict] = []
+        offset = 0
+        while True:
+            page = self.list_proposals_page(status=status, limit=min(page_size, 500), offset=offset)
+            proposals.extend(page["items"])
+            if page["offset"] + len(page["items"]) >= page["total"] or len(page["items"]) < page["limit"]:
+                return deepcopy(proposals)
+            offset = page["offset"] + page["limit"]
+
+    def list_proposals_page(
+        self,
+        *,
+        status: str | None = None,
+        limit: int = 500,
+        offset: int = 0,
+    ) -> JsonDict:
+        with self._lock:
+            filtered = [
+                proposal
+                for proposal in sorted(self._proposals.values(), key=lambda item: int(item["id"]))
+                if (status or "pending") == proposal.get("status")
+            ]
+            items = deepcopy(filtered[offset : offset + limit])
+            return {
+                "items": items,
+                "total": len(filtered),
+                "limit": limit,
+                "offset": offset,
+            }
+
+    def get_proposal(self, proposal_id: int) -> JsonDict:
+        with self._lock:
+            return deepcopy(self._find_proposal(proposal_id))
+
+    def adopt_proposal(self, proposal_id: int, *, priority: str | None = None) -> JsonDict:
+        with self._lock:
+            self._record(
+                "adopt_proposal",
+                number=proposal_id,
+                body={key: value for key, value in {"priority": priority}.items() if value is not None},
+            )
+            proposal = self._find_proposal(proposal_id)
+            if proposal.get("status") != "pending":
+                raise WorkflowError(
+                    f"Proposal #{proposal_id} has already been {proposal.get('status')}.",
+                    code="invalid_transition",
+                )
+            issue = self._store_issue(
+                {
+                    "title": proposal["title"],
+                    "body": proposal["body"],
+                    "priority": priority or proposal.get("priority") or "medium",
+                    "author": "proposal",
+                    "origin": proposal["origin"],
+                },
+                allocate=True,
+            )
+            proposal["status"] = "adopted"
+            proposal["adopted_issue_number"] = issue["id"]
+            proposal["updated"] = date.today().isoformat()
+            return deepcopy(issue)
+
+    def discard_proposal(self, proposal_id: int) -> JsonDict:
+        with self._lock:
+            self._record("discard_proposal", number=proposal_id)
+            proposal = self._find_proposal(proposal_id)
+            if proposal.get("status") != "pending":
+                raise WorkflowError(
+                    f"Proposal #{proposal_id} has already been {proposal.get('status')}.",
+                    code="invalid_transition",
+                )
+            proposal["status"] = "discarded"
+            proposal["updated"] = date.today().isoformat()
+            return deepcopy(proposal)
+
     def _find(self, number: int) -> JsonDict:
         issue = self._issues.get(number)
         if issue is None:
             raise WorkflowError(f"Issue #{number} was not found.", code="not_found")
         return issue
+
+    def _find_proposal(self, proposal_id: int) -> JsonDict:
+        proposal = self._proposals.get(proposal_id)
+        if proposal is None:
+            raise WorkflowError(f"Proposal #{proposal_id} was not found.", code="not_found")
+        return proposal
 
     def _store_issue(self, issue: JsonDict, *, allocate: bool = False) -> JsonDict:
         stored = deepcopy(issue)
@@ -265,6 +390,29 @@ class FakeIssuekitClient:
         stored.setdefault("author", "")
         stored.setdefault("body", "")
         self._issues[issue_id] = stored
+        return stored
+
+    def _store_proposal(self, proposal: JsonDict, *, allocate: bool = False) -> JsonDict:
+        stored = deepcopy(proposal)
+        raw_id = stored.get("id")
+        if allocate or raw_id is None:
+            proposal_id = self._next_proposal_id
+            self._next_proposal_id += 1
+        else:
+            proposal_id = int(raw_id)
+            self._next_proposal_id = max(self._next_proposal_id, proposal_id + 1)
+        stored["id"] = proposal_id
+        stored.setdefault("target_project", "issuekit")
+        stored.setdefault("origin", f"source#0@{proposal_id}")
+        stored.setdefault("reply_to", None)
+        stored.setdefault("title", f"Proposal #{proposal_id}")
+        stored.setdefault("body", "")
+        stored.setdefault("priority", None)
+        stored.setdefault("status", "pending")
+        stored.setdefault("created", date.today().isoformat())
+        stored.setdefault("adopted_issue_number", None)
+        stored.setdefault("updated", stored["created"])
+        self._proposals[proposal_id] = stored
         return stored
 
     def _claim_issue(self, issue: JsonDict, assignee: str) -> None:

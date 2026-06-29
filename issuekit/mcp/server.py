@@ -9,7 +9,7 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 
 from issuekit.commands.approve import approve_issue
-from issuekit.commands.propose import build_proposal
+from issuekit.commands.propose import _api_client, _proposal_id_arg, _use_api, build_proposal
 from issuekit.config import load_config
 from issuekit.core import (
     Issue,
@@ -18,6 +18,7 @@ from issuekit.core import (
 )
 from issuekit.proposals import (
     adopt_proposal as adopt_proposal_file,
+    discard_proposal as discard_proposal_file,
     list_incoming as list_incoming_files,
     proposal_dict,
     write_proposal,
@@ -169,22 +170,53 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
             from_issue=from_issue,
             reply=reply,
         )
+        config, _ = _context(root)
+        if _use_api(config):
+            return _api_client(config, project=proposal.to).create_proposal(
+                origin=proposal.origin,
+                title=proposal.title,
+                body=proposal.body,
+                reply_to=proposal.reply_to or None,
+            )
         target = resolve_ref(proposal.to, root)
         path = write_proposal(target.issues_dir, proposal)
         return {**proposal_dict(proposal), "path": path.as_posix()}
 
     @server.tool(description="List incoming cross-repository proposals.")
     def list_incoming() -> list[dict[str, Any]]:
-        _, issues_dir = _context(root)
+        config, issues_dir = _context(root)
+        if _use_api(config):
+            return _api_client(config).list_proposals(status="pending")
         return [proposal_dict(proposal) for proposal in list_incoming_files(issues_dir)]
 
     @server.tool(description="Adopt an incoming proposal as a local active issue.")
-    def adopt_proposal(proposal_file: str, priority: str = "medium") -> dict[str, Any]:
+    def adopt_proposal(
+        proposal_id: int | None = None,
+        proposal_file: str | None = None,
+        priority: str = "medium",
+    ) -> dict[str, Any]:
         config, issues_dir = _context(root)
-        path = adopt_proposal_file(issues_dir, proposal_file, priority=priority)
+        if _use_api(config):
+            raw_id = proposal_id if proposal_id is not None else _proposal_id_arg(proposal_file or "")
+            return _api_client(config).adopt_proposal(int(raw_id), priority=priority)
+        raw_file = proposal_file if proposal_file is not None else str(proposal_id or "")
+        path = adopt_proposal_file(issues_dir, raw_file, priority=priority)
         issues = read_active_issues(issues_dir)
         issue = next(candidate for candidate in issues if candidate.file_path == path)
         return _issue_dict(issue, include_body=True)
+
+    @server.tool(description="Discard an incoming cross-repository proposal.")
+    def discard_proposal(
+        proposal_id: int | None = None,
+        proposal_file: str | None = None,
+    ) -> dict[str, Any]:
+        config, issues_dir = _context(root)
+        if _use_api(config):
+            raw_id = proposal_id if proposal_id is not None else _proposal_id_arg(proposal_file or "")
+            return _api_client(config).discard_proposal(int(raw_id))
+        raw_file = proposal_file if proposal_file is not None else str(proposal_id or "")
+        path = discard_proposal_file(issues_dir, raw_file)
+        return {"path": path.as_posix()}
 
     return server
 

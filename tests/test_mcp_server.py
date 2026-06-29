@@ -8,6 +8,7 @@ import pytest
 pytest.importorskip("mcp")
 
 from issuekit import cli
+from issuekit.commands import propose as propose_command
 from issuekit import store as store_module
 from issuekit.mcp.server import create_server
 from issuekit.refs import add_ref
@@ -55,6 +56,7 @@ def test_server_registers_expected_tools(tmp_path: Path) -> None:
         "propose",
         "list_incoming",
         "adopt_proposal",
+        "discard_proposal",
     }
 
 
@@ -544,6 +546,45 @@ def test_proposal_tool_rejects_traversal_path(tmp_path: Path) -> None:
 
     with pytest.raises(Exception, match="escapes incoming directory"):
         _call(server, "adopt_proposal", {"proposal_file": "../outside.md"})
+
+
+def test_api_proposal_tools_send_list_adopt_and_discard(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    client = FakeIssuekitClient(
+        proposals=[
+            {"id": 10, "origin": "source#10@abc123", "title": "Adopt", "body": "Adopt body."},
+            {"id": 11, "origin": "source#11@abc123", "title": "Discard", "body": "Discard body."},
+        ]
+    )
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'target'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setattr(propose_command, "IssuekitClient", lambda *args, **kwargs: client)
+    server = create_server(tmp_path)
+
+    sent = _call(
+        server,
+        "propose",
+        {
+            "to": "other_project",
+            "title": "MCP API Proposal",
+            "body": "## Suggested Change\n\nDo this.",
+        },
+    )
+    incoming = _call(server, "list_incoming", {})
+    adopted = _call(server, "adopt_proposal", {"proposal_id": 10, "priority": "low"})
+    discarded = _call(server, "discard_proposal", {"proposal_id": 11})
+
+    assert sent["origin"] == "target#0@unknown"
+    assert sent["title"] == "MCP API Proposal"
+    assert [proposal["id"] for proposal in incoming] == [10, 11, sent["id"]]
+    assert adopted["title"] == "Adopt"
+    assert adopted["priority"] == "low"
+    assert discarded["status"] == "discarded"
 
 
 def test_cli_proposal_json_matches_mcp_output(tmp_path: Path, monkeypatch, capsys) -> None:

@@ -458,6 +458,118 @@ def test_client_import_issues_posts_wrapped_issues_body() -> None:
     assert client.import_issues(items) == imported
 
 
+def test_client_create_proposal_accepts_dedup_200_response() -> None:
+    response = {
+        "id": 3,
+        "target_project": "target",
+        "origin": "source#0@abc123",
+        "reply_to": None,
+        "title": "Proposal",
+        "body": "Body",
+        "priority": None,
+        "status": "pending",
+        "created": "2026-06-30",
+        "adopted_issue_number": None,
+        "updated": "2026-06-30",
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "POST"
+        assert request.url.path == "/api/issues/target/proposals"
+        assert json.loads(request.content) == {
+            "origin": "source#0@abc123",
+            "title": "Proposal",
+            "body": "Body",
+        }
+        return httpx.Response(200, json=response)
+
+    client = IssuekitClient(
+        "https://mine.example",
+        project="target",
+        token="static-token",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    assert client.create_proposal(origin="source#0@abc123", title="Proposal", body="Body") == response
+
+
+def test_client_list_proposals_pages_wrapped_response() -> None:
+    proposals = [{"id": proposal_id, "status": "pending"} for proposal_id in range(1, 6)]
+    seen_pages: list[tuple[int, int, str]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        params = dict(request.url.params)
+        limit = int(params["limit"])
+        offset = int(params["offset"])
+        seen_pages.append((limit, offset, params["status"]))
+        return httpx.Response(
+            200,
+            json={
+                "items": proposals[offset : offset + limit],
+                "total": len(proposals),
+                "limit": limit,
+                "offset": offset,
+            },
+        )
+
+    client = IssuekitClient(
+        "https://mine.example",
+        project="target",
+        token="static-token",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    assert client.list_proposals(status="pending", page_size=2) == proposals
+    assert seen_pages == [(2, 0, "pending"), (2, 2, "pending"), (2, 4, "pending")]
+
+
+def test_client_proposal_get_adopt_and_discard_paths() -> None:
+    seen: list[tuple[str, str, object]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content) if request.content else None
+        seen.append((request.method, request.url.path, body))
+        if request.url.path.endswith("/adopt"):
+            return httpx.Response(200, json={"id": 9, "title": "Adopted"})
+        if request.url.path.endswith("/discard"):
+            return httpx.Response(200, json={"id": 4, "status": "discarded"})
+        return httpx.Response(200, json={"id": 4, "status": "pending"})
+
+    client = IssuekitClient(
+        "https://mine.example",
+        project="target",
+        token="static-token",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    assert client.get_proposal(4) == {"id": 4, "status": "pending"}
+    assert client.adopt_proposal(4, priority="high") == {"id": 9, "title": "Adopted"}
+    assert client.discard_proposal(4) == {"id": 4, "status": "discarded"}
+    assert seen == [
+        ("GET", "/api/issues/target/proposals/4", None),
+        ("POST", "/api/issues/target/proposals/4/adopt", {"priority": "high"}),
+        ("POST", "/api/issues/target/proposals/4/discard", None),
+    ]
+
+
+def test_client_proposal_errors_use_server_code_and_message() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(404, json={"code": "not_found", "message": "missing proposal"})
+
+    client = IssuekitClient(
+        "https://mine.example",
+        project="target",
+        token="static-token",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    with pytest.raises(WorkflowError) as excinfo:
+        client.get_proposal(4)
+
+    assert str(excinfo.value) == "missing proposal"
+    assert excinfo.value.code == "not_found"
+
+
 def test_client_request_passes_list_json_body_without_dict_coercion() -> None:
     body = [
         {
@@ -596,6 +708,33 @@ def test_fake_issuekit_client_round_trips_create_list_get_claim() -> None:
     assert claimed["stage"] == "implementing"
     assert claimed["implementer"] == "codex"
     assert client.claim_next(assignee="codex") is None
+
+
+def test_fake_issuekit_client_round_trips_proposal_lifecycle() -> None:
+    client = FakeIssuekitClient()
+
+    created = client.create_proposal(
+        origin="source#0@abc123",
+        title="Proposal",
+        body="## Suggested Change\n\nDo this.",
+    )
+    duplicate = client.create_proposal(
+        origin="source#0@abc123",
+        title="Proposal",
+        body="## Suggested Change\n\nDo this.",
+    )
+    listed = client.list_proposals(status="pending")
+    adopted = client.adopt_proposal(created["id"], priority="low")
+    discarded = client.create_proposal(origin="source#1@abc123", title="Discard", body="No.")
+    discarded = client.discard_proposal(discarded["id"])
+
+    assert duplicate["id"] == created["id"]
+    assert listed == [created]
+    assert adopted["title"] == "Proposal"
+    assert adopted["priority"] == "low"
+    assert client.get_proposal(created["id"])["status"] == "adopted"
+    assert discarded["status"] == "discarded"
+    assert client.list_proposals(status="pending") == []
 
 
 def _jwt(*, exp: float, subject: str = "svc") -> str:
