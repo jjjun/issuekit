@@ -139,7 +139,8 @@ def run(args) -> int:
         print(_submit_for_review_error(issues_dir, issue.id or issue_id, exc), file=sys.stderr)
         return 1
 
-    write_index_files(issues_dir, config.recent_count)
+    if not config.api_url:
+        write_index_files(issues_dir, config.recent_count)
     print(
         f"submitted_review id={reviewed_issue.id} file={reviewed_issue.relative_path} "
         f"assignee={reviewed_issue.assignee} stage={reviewed_issue.stage}"

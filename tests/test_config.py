@@ -53,6 +53,25 @@ def test_load_config_reads_api_fields_from_pyproject(tmp_path: Path) -> None:
     assert config.api_url == "https://mine.example"
     assert config.project == "demo_project"
     assert config.api_timeout == 12.5
+    assert config.default_reviewer == "auto"
+    assert config.require_distinct_reviewer is True
+
+
+def test_load_config_api_mode_uses_server_reviewer_policy(tmp_path: Path) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        (
+            "api_url = 'https://mine.example'\n"
+            "default_reviewer = 'claude'\n"
+            "require_distinct_reviewer = false\n"
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    config = load_config(tmp_path)
+
+    assert config.default_reviewer == "auto"
+    assert config.require_distinct_reviewer is True
 
 
 def test_load_config_rejects_invalid_project_token(tmp_path: Path) -> None:

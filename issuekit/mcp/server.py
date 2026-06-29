@@ -55,7 +55,7 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
         issue = claim_next(issues_dir, assignee, priority=priority, config=config)
         if issue is None:
             return {"status": "none", "assignee": assignee}
-        _refresh_indexes(issues_dir, config.recent_count)
+        _refresh_indexes(issues_dir, config)
         return _issue_dict(issue, include_body=True)
 
     @server.tool(
@@ -83,7 +83,7 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
             reviewer=reviewer,
             config=config,
         )
-        _refresh_indexes(issues_dir, config.recent_count)
+        _refresh_indexes(issues_dir, config)
         return _issue_dict(issue)
 
     @server.tool(
@@ -123,7 +123,7 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
             assignee=assignee,
             config=config,
         )
-        _refresh_indexes(issues_dir, config.recent_count)
+        _refresh_indexes(issues_dir, config)
         return _issue_dict(issue)
 
     @server.tool(
@@ -138,7 +138,7 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
             reviewer=reviewer,
             config=config,
         )
-        _refresh_indexes(issues_dir, config.recent_count)
+        _refresh_indexes(issues_dir, config)
         return _issue_dict(issue)
 
     @server.tool(description="Read one active or completed issue by id.")
@@ -187,7 +187,7 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
     def adopt_proposal(proposal_file: str, priority: str = "medium") -> dict[str, Any]:
         config, issues_dir = _context(root)
         path = adopt_proposal_file(issues_dir, proposal_file, priority=priority)
-        _refresh_indexes(issues_dir, config.recent_count)
+        _refresh_indexes(issues_dir, config)
         issues = read_active_issues(issues_dir)
         issue = next(candidate for candidate in issues if candidate.file_path == path)
         return _issue_dict(issue, include_body=True)
@@ -204,8 +204,9 @@ def _context(root: Path):
     return config, config.issues_path(root)
 
 
-def _refresh_indexes(issues_dir: Path, recent_count: int) -> None:
-    write_index_files(issues_dir, recent_count)
+def _refresh_indexes(issues_dir: Path, config) -> None:
+    if not config.api_url:
+        write_index_files(issues_dir, config.recent_count)
 
 
 def _issue_dict(issue: Issue, *, include_body: bool = False) -> dict[str, Any]:

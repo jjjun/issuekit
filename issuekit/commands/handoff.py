@@ -35,7 +35,8 @@ def run_submit_review(args) -> int:
         print(str(exc), file=sys.stderr)
         return 1
 
-    write_index_files(issues_dir, config.recent_count)
+    if not config.api_url:
+        write_index_files(issues_dir, config.recent_count)
     print(
         f"id={issue.id} file={issue.relative_path} "
         f"assignee={issue.assignee} stage={issue.stage}"
@@ -65,7 +66,8 @@ def run_request_changes(args) -> int:
         print(str(exc), file=sys.stderr)
         return 1
 
-    write_index_files(issues_dir, config.recent_count)
+    if not config.api_url:
+        write_index_files(issues_dir, config.recent_count)
     print(
         f"id={issue.id} file={issue.relative_path} "
         f"assignee={issue.assignee} stage={issue.stage}"

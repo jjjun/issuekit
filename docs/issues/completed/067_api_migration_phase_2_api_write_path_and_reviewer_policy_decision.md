@@ -1,10 +1,10 @@
 ---
 id: 67
-status: active
+status: completed
 priority: medium
 created: 2026-06-29
-completed: 
-stage: todo
+completed: 2026-06-29
+stage: done
 author: claude
 title: API migration phase 2: API write path and reviewer-policy decision
 ---
@@ -88,3 +88,22 @@ submitting for review.
   issue_workflow_service.py` (transitions, `IssueWorkflowConfig`, self-review /
   self-implement guards).
 - Next: phase 3 (cutover + migration + docs).
+
+## Handoff
+
+- Summary: Implemented by codex via issuekit implement.
+
+## Review Feedback
+
+- One contract regression to fix; the rest of the phase looks good (write paths gated on api_url, dual mode preserved, server-rendered notes, Option A reviewer policy in config + README). Issue: client.approve was changed to make reviewer optional and _drop_none it, but the server's IssueApproveRequest requires reviewer (str, min_length=1) in mine-py/src/domains/issues/schemas/issue.py. In API mode an approve without a concrete reviewer would return HTTP 422; tests only pass because FakeIssuekitClient.approve was made lenient. Fix: (1) Revert client.approve so reviewer is a required str again and is always sent (summary + verification + reviewer), restoring the phase-0 contract. (2) Ensure a concrete, non-'auto' reviewer always reaches the server in the API approve path. Pick one: either require an explicit reviewer in approve's API-mode branch and raise a clear WorkflowError when it is missing, OR resolve auto to a concrete distinct reviewer client-side (fetch the issue to get its implementer, then choose a configured assignee != implementer). Never send 'auto' or None as the reviewer. (3) Keep FakeIssuekitClient.approve's reviewer required so it mirrors the server, and add/adjust a test asserting the approve body always carries a concrete reviewer. Also please record the reviewer-policy decision (Option A) and its one-line rationale in this issue body, since the issue explicitly asked for that. Keep the full suite and issuekit check-encoding green.
+
+## Handoff
+
+- Summary: Implemented by codex via issuekit implement.
+
+**Completed**: 2026-06-29
+
+## Completion Notes
+
+- Approved by claude.
+- Verification: `Full suite green (344 passed, 22 skipped via uv run python -m pytest); issuekit check-encoding clean. Reviewed: all write transitions (author create, claim/claim_next, submit, request_changes, approve, complete) delegate to store/ApiStore->IssuekitClient when config.api_url is set, with the filesystem path (and claim_lock) unchanged in non-API mode (dual mode preserved). Notes are no longer appended locally in API mode; the server renders Handoff/Review Feedback/Completion from its event log. Reviewer-policy decision = Option A: in API mode config forces default_reviewer=auto and require_distinct_reviewer=true (load_config), documented in README; the server owns the policy. The phase-0 contract regression I flagged was fixed: client.approve requires reviewer again and always sends summary+verification+reviewer, FakeIssuekitClient.approve mirrors it (reviewer required), and approve's API branch resolves a concrete non-'auto' reviewer via _resolve_api_approval_reviewer (explicit --reviewer validated, else the issue assignee, else auto->distinct) and rejects 'auto'/None. index regeneration is skipped in API mode across author/approve/complete. New tests in test_workflow_cli.py cover the API write flows.`

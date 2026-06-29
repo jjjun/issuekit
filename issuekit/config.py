@@ -124,16 +124,19 @@ class IssuekitConfig:
 
 def load_config(cwd: Path | str = ".") -> IssuekitConfig:
     raw_config = _load_raw_config(Path(cwd))
+    api_url = str(raw_config.get("api_url", IssuekitConfig.api_url)).strip()
     project = str(raw_config.get("project", IssuekitConfig.project)).strip()
     _validate_project(project)
     assignees = _string_tuple(raw_config.get("assignees", IssuekitConfig.assignees))
-    default_reviewer = str(
-        raw_config.get("default_reviewer", IssuekitConfig.default_reviewer)
-    ).strip()
+    default_reviewer = (
+        "auto"
+        if api_url
+        else str(raw_config.get("default_reviewer", IssuekitConfig.default_reviewer)).strip()
+    )
     _validate_default_reviewer(default_reviewer, assignees)
     agents = _load_agents(raw_config.get("agents", {}))
     return IssuekitConfig(
-        api_url=str(raw_config.get("api_url", IssuekitConfig.api_url)).strip(),
+        api_url=api_url,
         project=project,
         api_timeout=float(raw_config.get("api_timeout", IssuekitConfig.api_timeout)),
         recent_count=int(raw_config.get("recent_count", IssuekitConfig.recent_count)),
@@ -145,7 +148,9 @@ def load_config(cwd: Path | str = ".") -> IssuekitConfig:
         stages=_string_tuple(raw_config.get("stages", IssuekitConfig.stages)),
         default_reviewer=default_reviewer,
         require_distinct_reviewer=_bool_value(
-            raw_config.get(
+            True
+            if api_url
+            else raw_config.get(
                 "require_distinct_reviewer",
                 IssuekitConfig.require_distinct_reviewer,
             )

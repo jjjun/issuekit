@@ -9,6 +9,7 @@ import sys
 from issuekit.commands import generate_indexes, validate
 from issuekit.config import IssuekitConfig, load_config
 from issuekit.core import (
+    Issue,
     VALID_ISSUE_PRIORITIES,
     format_issue_frontmatter,
     get_next_issue_id,
@@ -26,7 +27,7 @@ def run(args) -> int:
     issues_dir = config.issues_path(Path.cwd())
 
     try:
-        issue_path = author_issue(
+        authored = author_issue(
             issues_dir,
             title=args.title,
             body=args.body,
@@ -40,12 +41,13 @@ def run(args) -> int:
         print(str(exc), file=sys.stderr)
         return 1
 
-    generate_indexes.write_index_files(issues_dir, config.recent_count)
+    if not config.api_url:
+        generate_indexes.write_index_files(issues_dir, config.recent_count)
     validate_result = validate.run(args)
     if validate_result != 0:
         return validate_result
 
-    print(f"Authored issue: {issue_path.relative_to(issues_dir).as_posix()}")
+    print(f"Authored issue: {_authored_ref(authored, issues_dir)}")
     return 0
 
 
@@ -59,7 +61,7 @@ def author_issue(
     agent: str,
     assign: str | None = None,
     config: IssuekitConfig | None = None,
-) -> Path:
+) -> Path | Issue:
     config = config or IssuekitConfig()
     _validate_author_input(
         title=title,
@@ -71,6 +73,17 @@ def author_issue(
     issue_body = _read_body(body=body, body_file=body_file)
     if has_non_ascii(issue_body):
         raise ValueError("--body and --body-file must be ASCII-only.")
+    if config.api_url:
+        from issuekit.store import get_store
+
+        store = get_store(config, issues_dir)
+        return store.create_issue(  # type: ignore[attr-defined]
+            title=title.strip(),
+            body=issue_body.strip(),
+            priority=priority,
+            author=agent,
+            assignee=assign,
+        )
 
     issues_path = Path(issues_dir)
     with claim_lock(issues_path / "active"):
@@ -136,3 +149,9 @@ def _read_body(*, body: str | None, body_file: str | None) -> str:
 
 def _slugify(title: str) -> str:
     return _core_slugify(title.strip(), default="issue")
+
+
+def _authored_ref(authored: Path | Issue, issues_dir: Path) -> str:
+    if isinstance(authored, Issue):
+        return authored.relative_path
+    return authored.relative_to(issues_dir).as_posix()

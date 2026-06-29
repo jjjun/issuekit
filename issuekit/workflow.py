@@ -96,6 +96,11 @@ def claim_next(
     _validate_stage("implementing", config)
     if priority is not None and priority not in VALID_ISSUE_PRIORITIES:
         raise WorkflowError(f"Invalid priority: {priority}")
+    if config.api_url:
+        from issuekit.store import get_store
+
+        store = get_store(config, issues_dir)
+        return store.claim_next(assignee=assignee, priority=priority)  # type: ignore[attr-defined]
 
     issues_path = Path(issues_dir)
     with claim_lock(issues_path / "active", timeout=timeout):
@@ -136,6 +141,11 @@ def claim_issue(
     config = config or IssuekitConfig()
     _validate_assignee(assignee, config)
     _validate_stage("implementing", config)
+    if config.api_url:
+        from issuekit.store import get_store
+
+        store = get_store(config, issues_dir)
+        return store.claim_issue(issue_id, assignee=assignee)  # type: ignore[attr-defined]
 
     issues_path = Path(issues_dir)
     with claim_lock(issues_path / "active", timeout=timeout):
@@ -183,6 +193,17 @@ def submit_for_review(
     _validate_ascii_text(summary, "--summary")
     _validate_ascii_text(branch or "", "--branch")
     _validate_ascii_text(commit or "", "--commit")
+    if config.api_url:
+        from issuekit.store import get_store
+
+        store = get_store(config, issues_dir)
+        return store.submit_for_review(  # type: ignore[attr-defined]
+            issue_id,
+            summary=summary,
+            branch=branch,
+            commit=commit,
+            reviewer=reviewer,
+        )
 
     issues_path = Path(issues_dir)
     with claim_lock(issues_path / "active", timeout=timeout):
@@ -227,6 +248,16 @@ def request_changes(
         _validate_assignee(assignee, config)
     _validate_stage("changes_requested", config)
     _validate_ascii_text(notes, "--notes")
+    if config.api_url:
+        from issuekit.store import get_store
+
+        store = get_store(config, issues_dir)
+        return store.request_changes(  # type: ignore[attr-defined]
+            issue_id,
+            notes=notes,
+            reviewer=reviewer,
+            assignee=assignee,
+        )
 
     issues_path = Path(issues_dir)
     with claim_lock(issues_path / "active", timeout=timeout):

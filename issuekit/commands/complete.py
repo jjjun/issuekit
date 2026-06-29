@@ -55,7 +55,8 @@ def run(args) -> int:
         print(str(exc), file=sys.stderr)
         return 1
 
-    generate_indexes.write_index_files(issues_dir, config.recent_count)
+    if not config.api_url:
+        generate_indexes.write_index_files(issues_dir, config.recent_count)
     validate_result = validate.run(args)
     if validate_result != 0:
         return validate_result
@@ -78,6 +79,17 @@ def complete_issue(
         raise ValueError("--summary and --verification must be ASCII-only.")
 
     config = config or IssuekitConfig()
+    if config.api_url:
+        from issuekit.store import get_store
+
+        store = get_store(config, issues_dir)
+        return store.complete_issue(  # type: ignore[attr-defined]
+            issue_id,
+            summary=summary,
+            verification=verification,
+            force=force,
+        )
+
     issues_path = Path(issues_dir)
     active_issues = read_active_issues(issues_path)
     issue = find_issue_by_id(active_issues, issue_id)

@@ -112,6 +112,106 @@ class ApiStore:
         issues = self._list_issues(assignee=assignee, stage=stage)
         return [issue for issue in issues if issue.issue_status != "completed"]
 
+    def create_issue(
+        self,
+        *,
+        title: str,
+        body: str,
+        priority: str,
+        author: str,
+        assignee: str | None = None,
+    ) -> Issue:
+        return self._issue_from_response(
+            self.client.create_issue(
+                _drop_none(
+                    {
+                        "title": title,
+                        "body": body,
+                        "priority": priority,
+                        "author": author,
+                        "assignee": assignee,
+                    }
+                )
+            )
+        )
+
+    def claim_issue(self, issue_id: int, *, assignee: str) -> Issue:
+        return self._issue_from_response(self.client.claim(issue_id, assignee=assignee))
+
+    def claim_next(self, *, assignee: str, priority: str | None = None) -> Issue | None:
+        raw = self.client.claim_next(assignee=assignee, priority=priority)
+        return None if raw is None else self._issue_from_response(raw)
+
+    def submit_for_review(
+        self,
+        issue_id: int,
+        *,
+        summary: str,
+        branch: str | None = None,
+        commit: str | None = None,
+        reviewer: str | None = None,
+    ) -> Issue:
+        return self._issue_from_response(
+            self.client.submit(
+                issue_id,
+                summary=summary,
+                branch=branch,
+                commit=commit,
+                reviewer=reviewer,
+            )
+        )
+
+    def request_changes(
+        self,
+        issue_id: int,
+        *,
+        notes: str,
+        reviewer: str | None = None,
+        assignee: str | None = None,
+    ) -> Issue:
+        return self._issue_from_response(
+            self.client.request_changes(
+                issue_id,
+                notes=notes,
+                reviewer=reviewer,
+                assignee=assignee,
+            )
+        )
+
+    def approve_issue(
+        self,
+        issue_id: int,
+        *,
+        summary: str,
+        verification: str,
+        reviewer: str,
+    ) -> Issue:
+        return self._issue_from_response(
+            self.client.approve(
+                issue_id,
+                summary=summary,
+                verification=verification,
+                reviewer=reviewer,
+            )
+        )
+
+    def complete_issue(
+        self,
+        issue_id: int,
+        *,
+        summary: str,
+        verification: str,
+        force: bool = False,
+    ) -> Issue:
+        return self._issue_from_response(
+            self.client.complete(
+                issue_id,
+                summary=summary,
+                verification=verification,
+                force=force,
+            )
+        )
+
     def _list_issues(
         self,
         *,
@@ -187,6 +287,10 @@ def _string(value: object) -> str:
 
 def _body(value: object) -> str:
     return "" if value is None else str(value)
+
+
+def _drop_none(values: dict[str, Any]) -> dict[str, Any]:
+    return {key: value for key, value in values.items() if value is not None}
 
 
 def _title(raw: dict[str, Any], body: str, issue_id: int) -> str:

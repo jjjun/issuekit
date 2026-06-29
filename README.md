@@ -247,6 +247,19 @@ default_reviewer = "claude"
 require_distinct_reviewer = false
 ```
 
+API-backed projects add `api_url` and `project`. In API mode the mine-py server
+owns the reviewer policy, so issuekit always treats review handoff as
+`default_reviewer = "auto"` and `require_distinct_reviewer = true` for local
+decisions, regardless of local reviewer-policy keys:
+
+```toml
+[tool.issuekit]
+api_url = "https://mine.example"
+project = "issuekit"
+default_reviewer = "auto"
+require_distinct_reviewer = true
+```
+
 When both files exist, `[tool.issuekit]` in `pyproject.toml` takes precedence.
 If `pyproject.toml` exists without `[tool.issuekit]`, issuekit falls back to
 `issuekit.toml`.

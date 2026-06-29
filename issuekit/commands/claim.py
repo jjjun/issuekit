@@ -28,7 +28,8 @@ def run(args) -> int:
         print(f"status=none assignee={args.assignee}")
         return 0
 
-    write_index_files(issues_dir, config.recent_count)
+    if not config.api_url:
+        write_index_files(issues_dir, config.recent_count)
     print(
         f"id={issue.id} file={issue.relative_path} "
         f"assignee={issue.assignee} stage={issue.stage}"

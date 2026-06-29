@@ -178,7 +178,14 @@ class IssuekitClient:
         )
         return _ensure_dict(payload, "Request-changes response")
 
-    def approve(self, number: int, *, summary: str, verification: str, reviewer: str) -> JsonDict:
+    def approve(
+        self,
+        number: int,
+        *,
+        summary: str,
+        verification: str,
+        reviewer: str,
+    ) -> JsonDict:
         payload = self._request(
             "POST",
             f"/{number}/approve",

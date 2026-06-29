@@ -22,6 +22,7 @@ class FakeIssuekitClient:
         self._lock = Lock()
         self._issues: dict[int, JsonDict] = {}
         self._next_id = 1
+        self.calls: list[JsonDict] = []
         for issue in issues or []:
             self._store_issue(issue)
 
@@ -54,10 +55,12 @@ class FakeIssuekitClient:
 
     def create_issue(self, issue: JsonDict) -> JsonDict:
         with self._lock:
+            self._record("create_issue", body=deepcopy(issue))
             return deepcopy(self._store_issue(issue, allocate=True))
 
     def claim(self, number: int, *, assignee: str) -> JsonDict:
         with self._lock:
+            self._record("claim", number=number, body={"assignee": assignee})
             issue = self._find(number)
             self._claim_issue(issue, assignee)
             return deepcopy(issue)
@@ -69,6 +72,14 @@ class FakeIssuekitClient:
         priority: str | None = None,
     ) -> JsonDict | None:
         with self._lock:
+            self._record(
+                "claim_next",
+                body={
+                    key: value
+                    for key, value in {"assignee": assignee, "priority": priority}.items()
+                    if value is not None
+                },
+            )
             candidates = [
                 issue
                 for issue in self._issues.values()
@@ -95,9 +106,27 @@ class FakeIssuekitClient:
         commit: str | None = None,
         reviewer: str | None = None,
     ) -> JsonDict:
-        del summary, branch, commit
         with self._lock:
+            self._record(
+                "submit",
+                number=number,
+                body={
+                    key: value
+                    for key, value in {
+                        "summary": summary,
+                        "branch": branch,
+                        "commit": commit,
+                        "reviewer": reviewer,
+                    }.items()
+                    if value is not None
+                },
+            )
             issue = self._find(number)
+            if reviewer and issue.get("implementer") == reviewer:
+                raise WorkflowError(
+                    f"Issue #{number} was implemented by {reviewer}; self-review is not allowed.",
+                    code="invalid_transition",
+                )
             issue["stage"] = "review"
             issue["assignee"] = reviewer or ""
             return deepcopy(issue)
@@ -110,25 +139,61 @@ class FakeIssuekitClient:
         reviewer: str | None = None,
         assignee: str | None = None,
     ) -> JsonDict:
-        del notes, reviewer
         with self._lock:
+            self._record(
+                "request_changes",
+                number=number,
+                body={
+                    key: value
+                    for key, value in {
+                        "notes": notes,
+                        "reviewer": reviewer,
+                        "assignee": assignee,
+                    }.items()
+                    if value is not None
+                },
+            )
             issue = self._find(number)
             issue["stage"] = "changes_requested"
             issue["assignee"] = assignee or issue.get("implementer") or "codex"
             return deepcopy(issue)
 
-    def approve(self, number: int, *, summary: str, verification: str, reviewer: str) -> JsonDict:
-        del summary, verification, reviewer
+    def approve(
+        self,
+        number: int,
+        *,
+        summary: str,
+        verification: str,
+        reviewer: str,
+    ) -> JsonDict:
         with self._lock:
+            self._record(
+                "approve",
+                number=number,
+                body={
+                    "summary": summary,
+                    "verification": verification,
+                    "reviewer": reviewer,
+                },
+            )
             issue = self._find(number)
+            if issue.get("implementer") == reviewer:
+                raise WorkflowError(
+                    f"Issue #{number} was implemented by {reviewer}; self-review is not allowed.",
+                    code="invalid_transition",
+                )
             issue["status"] = "completed"
             issue["stage"] = "done"
             issue["assignee"] = ""
             return deepcopy(issue)
 
     def complete(self, number: int, *, summary: str, verification: str, force: bool = False) -> JsonDict:
-        del summary, verification, force
         with self._lock:
+            self._record(
+                "complete",
+                number=number,
+                body={"summary": summary, "verification": verification, "force": force},
+            )
             issue = self._find(number)
             issue["status"] = "completed"
             issue["stage"] = "done"
@@ -159,8 +224,11 @@ class FakeIssuekitClient:
             issue_id = int(raw_id)
             self._next_id = max(self._next_id, issue_id + 1)
         stored["id"] = issue_id
+        stored.setdefault("title", f"Issue #{issue_id}")
         stored.setdefault("status", "active")
         stored.setdefault("priority", "medium")
+        stored.setdefault("created", "2026-01-01")
+        stored.setdefault("completed", "")
         stored.setdefault("assignee", "")
         stored.setdefault("stage", "todo")
         stored.setdefault("implementer", "")
@@ -173,7 +241,8 @@ class FakeIssuekitClient:
         issue_id = issue["id"]
         if issue.get("status") not in CLAIMABLE_STATUSES:
             raise WorkflowError(
-                f"Issue #{issue_id} has status {issue.get('status')}; only active or in_progress issues can be implemented.",
+                f"Issue #{issue_id} has status {issue.get('status')}; "
+                "only active or in_progress issues can be implemented.",
                 code="invalid_transition",
             )
         if issue.get("stage", "") not in READY_STAGES | {"implementing"}:
@@ -186,7 +255,24 @@ class FakeIssuekitClient:
                 f"Issue #{issue_id} is assigned to {issue.get('assignee')}, not {assignee}.",
                 code="invalid_transition",
             )
+        if issue.get("author") == assignee:
+            raise WorkflowError(
+                f"Issue #{issue_id} was authored by {assignee}; self-implementation is not allowed.",
+                code="invalid_transition",
+            )
         issue["status"] = "in_progress"
         issue["assignee"] = assignee
         issue["stage"] = "implementing"
         issue["implementer"] = assignee
+
+    def _record(
+        self,
+        method: str,
+        *,
+        number: int | None = None,
+        body: JsonDict | None = None,
+    ) -> None:
+        call: JsonDict = {"method": method, "body": deepcopy(body or {})}
+        if number is not None:
+            call["number"] = number
+        self.calls.append(call)
