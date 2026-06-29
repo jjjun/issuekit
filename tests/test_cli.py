@@ -7,6 +7,8 @@ from issuekit import cli
 
 EXPECTED_COMMANDS = {
     "info",
+    "login",
+    "logout",
     "author",
     "implement",
     "validate",
@@ -97,6 +99,8 @@ def test_handlers_are_stubs(command: str) -> None:
         "migrate-to-api",
         "implement",
         "info",
+        "login",
+        "logout",
         "init",
         "queue",
         "protocol",
@@ -226,6 +230,87 @@ def test_add_ref_scope_workspace_fails_without_workspace(
     ) == 1
 
     assert "No issuekit.workspace.toml found" in capsys.readouterr().err
+
+
+def test_login_command_uses_credentials_and_ignores_env_token(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    from issuekit.commands import auth
+
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("ISSUEKIT_API_PASSWORD", "secret")
+    monkeypatch.setenv("ISSUEKIT_API_TOKEN", "external")
+    created = []
+
+    class FakeClient:
+        def __init__(self, *args, **kwargs):
+            created.append((args, kwargs))
+            self.token_expiry = 1780000000.0
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc_info):
+            return None
+
+        def login(self, *, force=False):
+            assert force is True
+            return "token"
+
+    monkeypatch.setattr(auth, "IssuekitClient", FakeClient)
+
+    assert cli.main(["login", "--user", "svc"]) == 0
+
+    assert created[0][0] == ("https://mine.example",)
+    assert created[0][1]["username"] == "svc"
+    assert created[0][1]["password"] == "secret"
+    assert created[0][1]["use_env_token"] is False
+    assert "Logged in to https://mine.example as svc" in capsys.readouterr().out
+
+
+def test_logout_command_ignores_env_token(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    from issuekit.commands import auth
+
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("ISSUEKIT_API_TOKEN", "external")
+    created = []
+
+    class FakeClient:
+        def __init__(self, *args, **kwargs):
+            created.append((args, kwargs))
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc_info):
+            return None
+
+        def logout(self):
+            return None
+
+    monkeypatch.setattr(auth, "IssuekitClient", FakeClient)
+
+    assert cli.main(["logout"]) == 0
+
+    assert created[0][0] == ("https://mine.example",)
+    assert created[0][1]["use_env_token"] is False
+    assert "Logged out of https://mine.example." in capsys.readouterr().out
 
 
 def test_workspace_refs_drive_propose_and_reply_round_trip(

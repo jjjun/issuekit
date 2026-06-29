@@ -7,6 +7,7 @@ from collections.abc import Sequence
 
 from issuekit.commands import (
     approve,
+    auth,
     author,
     check_encoding,
     claim,
@@ -27,6 +28,8 @@ from issuekit.commands import (
 
 COMMANDS = (
     "info",
+    "login",
+    "logout",
     "author",
     "implement",
     "validate",
@@ -66,6 +69,19 @@ def build_parser() -> argparse.ArgumentParser:
     info_parser = subparsers.add_parser("info", help="Show issue tracker status.")
     info_parser.add_argument("--json", action="store_true", help="Print JSON output.")
     info_parser.set_defaults(func=info.run)
+
+    login_parser = subparsers.add_parser(
+        "login",
+        help="Authenticate to the API and cache the access token.",
+    )
+    login_parser.add_argument("--user", help="API username (defaults to ISSUEKIT_API_USER).")
+    login_parser.set_defaults(func=auth.run_login)
+
+    logout_parser = subparsers.add_parser(
+        "logout",
+        help="Log out of the API and remove the cached access token.",
+    )
+    logout_parser.set_defaults(func=auth.run_logout)
 
     author_parser = subparsers.add_parser(
         "author",

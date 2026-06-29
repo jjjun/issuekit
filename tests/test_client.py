@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 import time
+from pathlib import Path
 from urllib.parse import parse_qs
 
 import httpx
@@ -11,6 +13,11 @@ import pytest
 from issuekit.client import IssuekitClient
 from issuekit.testing import FakeIssuekitClient
 from issuekit.workflow import WorkflowError
+
+
+@pytest.fixture(autouse=True)
+def isolated_token_cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ISSUEKIT_TOKEN_CACHE", str(tmp_path / "token.json"))
 
 
 def test_client_logs_in_once_and_sends_expected_request_shape() -> None:
@@ -82,6 +89,215 @@ def test_client_reauthenticates_once_after_401() -> None:
     assert client.get_issue(7) == {"id": 7}
     assert login_count == 2
     assert issue_count == 2
+
+
+def test_login_writes_token_cache_with_expiry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cache_path = tmp_path / "token.json"
+    monkeypatch.setenv("ISSUEKIT_TOKEN_CACHE", str(cache_path))
+    expires_at = time.time() + 3600
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/auth/login"
+        return httpx.Response(200, json={"access_token": "cached-token", "expires_at": expires_at})
+
+    client = IssuekitClient(
+        "https://mine.example/",
+        username="svc",
+        password="secret",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    assert client.login() == "cached-token"
+
+    payload = json.loads(cache_path.read_text(encoding="utf-8"))
+    assert payload == {
+        "https://mine.example": {
+            "token": "cached-token",
+            "expires_at": expires_at,
+        }
+    }
+    if os.name != "nt":
+        assert cache_path.stat().st_mode & 0o777 == 0o600
+
+
+def test_second_client_reuses_cached_token_without_login(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cache_path = tmp_path / "token.json"
+    monkeypatch.setenv("ISSUEKIT_TOKEN_CACHE", str(cache_path))
+    monkeypatch.delenv("ISSUEKIT_API_USER", raising=False)
+    monkeypatch.delenv("ISSUEKIT_API_PASSWORD", raising=False)
+    monkeypatch.delenv("ISSUEKIT_API_TOKEN", raising=False)
+    login_count = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal login_count
+        if request.url.path == "/auth/login":
+            login_count += 1
+            return httpx.Response(
+                200,
+                json={"access_token": _jwt(exp=time.time() + 3600, subject="cached")},
+            )
+        assert "cached" in _decode_payload(request.headers["authorization"].split(" ", 1)[1])
+        return httpx.Response(200, json=[])
+
+    http_client = httpx.Client(transport=httpx.MockTransport(handler))
+    first = IssuekitClient(
+        "https://mine.example",
+        username="svc",
+        password="secret",
+        http_client=http_client,
+    )
+    first.login()
+
+    second = IssuekitClient("https://mine.example", http_client=http_client)
+
+    assert second.list_issues() == []
+    assert login_count == 1
+
+
+def test_expired_cached_token_triggers_relogin_and_refreshes_cache(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cache_path = tmp_path / "token.json"
+    monkeypatch.setenv("ISSUEKIT_TOKEN_CACHE", str(cache_path))
+    cache_path.write_text(
+        json.dumps(
+            {
+                "https://mine.example": {
+                    "token": _jwt(exp=time.time() - 3600, subject="old"),
+                    "expires_at": time.time() - 3600,
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/auth/login"
+        return httpx.Response(
+            200,
+            json={"access_token": _jwt(exp=time.time() + 3600, subject="new")},
+        )
+
+    client = IssuekitClient(
+        "https://mine.example",
+        username="svc",
+        password="secret",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    token = client.login()
+
+    assert "new" in _decode_payload(token)
+    payload = json.loads(cache_path.read_text(encoding="utf-8"))
+    assert "new" in _decode_payload(payload["https://mine.example"]["token"])
+
+
+def test_no_cache_and_no_credentials_names_login_command(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ISSUEKIT_TOKEN_CACHE", str(tmp_path / "token.json"))
+    monkeypatch.delenv("ISSUEKIT_API_USER", raising=False)
+    monkeypatch.delenv("ISSUEKIT_API_PASSWORD", raising=False)
+    monkeypatch.delenv("ISSUEKIT_API_TOKEN", raising=False)
+    client = IssuekitClient(
+        "https://mine.example",
+        http_client=httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(500))),
+    )
+
+    with pytest.raises(WorkflowError, match="issuekit login"):
+        client.login()
+
+
+def test_logout_removes_cache_entry_and_calls_api(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cache_path = tmp_path / "token.json"
+    monkeypatch.setenv("ISSUEKIT_TOKEN_CACHE", str(cache_path))
+    monkeypatch.delenv("ISSUEKIT_API_USER", raising=False)
+    monkeypatch.delenv("ISSUEKIT_API_PASSWORD", raising=False)
+    monkeypatch.delenv("ISSUEKIT_API_TOKEN", raising=False)
+    token = _jwt(exp=time.time() + 3600)
+    cache_path.write_text(
+        json.dumps({"https://mine.example": {"token": token, "expires_at": time.time() + 3600}}),
+        encoding="utf-8",
+    )
+    logout_count = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal logout_count
+        assert request.url.path == "/auth/logout"
+        assert request.headers["authorization"] == f"Bearer {token}"
+        logout_count += 1
+        return httpx.Response(204)
+
+    client = IssuekitClient(
+        "https://mine.example",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    client.logout()
+
+    assert logout_count == 1
+    assert not cache_path.exists()
+
+
+def test_cache_is_keyed_by_api_url(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cache_path = tmp_path / "token.json"
+    monkeypatch.setenv("ISSUEKIT_TOKEN_CACHE", str(cache_path))
+    monkeypatch.delenv("ISSUEKIT_API_USER", raising=False)
+    monkeypatch.delenv("ISSUEKIT_API_PASSWORD", raising=False)
+    monkeypatch.delenv("ISSUEKIT_API_TOKEN", raising=False)
+    cache_path.write_text(
+        json.dumps(
+            {
+                "https://mine.example": {
+                    "token": _jwt(exp=time.time() + 3600),
+                    "expires_at": time.time() + 3600,
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    client = IssuekitClient(
+        "https://other.example",
+        http_client=httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(500))),
+    )
+
+    with pytest.raises(WorkflowError, match="issuekit login"):
+        client.login()
+
+
+def test_issuekit_api_token_is_not_written_to_cache(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cache_path = tmp_path / "token.json"
+    monkeypatch.setenv("ISSUEKIT_TOKEN_CACHE", str(cache_path))
+    monkeypatch.setenv("ISSUEKIT_API_TOKEN", "externally-managed-token")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.headers["authorization"] == "Bearer externally-managed-token"
+        return httpx.Response(200, json=[])
+
+    client = IssuekitClient(
+        "https://mine.example",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    assert client.list_issues() == []
+    assert not cache_path.exists()
 
 
 @pytest.mark.parametrize(

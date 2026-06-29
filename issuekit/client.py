@@ -10,6 +10,7 @@ from collections.abc import Mapping
 import base64
 import json
 import os
+from pathlib import Path
 import time
 from typing import Any
 
@@ -20,6 +21,11 @@ from issuekit.workflow import WorkflowError
 
 
 JsonDict = dict[str, Any]
+_TOKEN_CACHE_ENV = "ISSUEKIT_TOKEN_CACHE"
+_LOGIN_GUIDANCE = (
+    "API credentials are required; run `issuekit login` or set "
+    "ISSUEKIT_API_USER and ISSUEKIT_API_PASSWORD or ISSUEKIT_API_TOKEN."
+)
 
 
 class IssuekitClient:
@@ -34,6 +40,7 @@ class IssuekitClient:
         username: str | None = None,
         password: str | None = None,
         token: str | None = None,
+        use_env_token: bool = True,
         http_client: httpx.Client | None = None,
     ) -> None:
         if not api_url.strip():
@@ -45,15 +52,25 @@ class IssuekitClient:
         self.timeout = timeout
         self.username = username if username is not None else os.getenv("ISSUEKIT_API_USER")
         self.password = password if password is not None else os.getenv("ISSUEKIT_API_PASSWORD")
-        env_token = os.getenv("ISSUEKIT_API_TOKEN")
+        env_token = os.getenv("ISSUEKIT_API_TOKEN") if use_env_token else None
+        self._external_token = token is not None or env_token is not None
         self._token = token if token is not None else env_token
         self._token_expiry = _jwt_expiry(self._token)
+        if self._token is None:
+            cached = _read_cached_token(self.api_url)
+            if cached is not None:
+                self._token = cached["token"]
+                self._token_expiry = cached["expires_at"]
         self._owns_http_client = http_client is None
         self._http = http_client or httpx.Client(timeout=timeout)
 
     def close(self) -> None:
         if self._owns_http_client:
             self._http.close()
+
+    @property
+    def token_expiry(self) -> float | None:
+        return self._token_expiry
 
     def __enter__(self) -> "IssuekitClient":
         return self
@@ -62,17 +79,13 @@ class IssuekitClient:
         self.close()
 
     def login(self, *, force: bool = False) -> str:
-        """Log in with service-account credentials and cache the JWT in memory."""
+        """Log in with service-account credentials and cache the JWT."""
         if not force and self._token and not _is_expired(self._token_expiry):
             return self._token
         if not self.username or not self.password:
-            if self._token:
+            if self._external_token and self._token and not _is_expired(self._token_expiry):
                 return self._token
-            raise WorkflowError(
-                "API credentials are required; set ISSUEKIT_API_USER and "
-                "ISSUEKIT_API_PASSWORD or ISSUEKIT_API_TOKEN.",
-                code="unauthorized",
-            )
+            raise WorkflowError(_LOGIN_GUIDANCE, code="unauthorized")
 
         response = self._send(
             "POST",
@@ -88,7 +101,29 @@ class IssuekitClient:
             raise WorkflowError("Login response did not include an access token.", code="invalid_response")
         self._token = token
         self._token_expiry = _response_expiry(payload) or _jwt_expiry(token)
+        if not self._external_token:
+            _write_cached_token(self.api_url, token, self._token_expiry)
         return token
+
+    def logout(self) -> None:
+        """Best-effort API logout followed by local token-cache removal."""
+        token = self._token
+        if token and not _is_expired(self._token_expiry):
+            try:
+                response = self._send(
+                    "POST",
+                    "/auth/logout",
+                    headers={
+                        "Accept": "application/json",
+                        "Authorization": f"Bearer {token}",
+                    },
+                )
+                self._parse_response(response)
+            except WorkflowError:
+                pass
+        _delete_cached_token(self.api_url)
+        self._token = None
+        self._token_expiry = None
 
     def list_issues(
         self,
@@ -236,6 +271,8 @@ class IssuekitClient:
             },
         )
         if response.status_code == 401:
+            if not self.username or not self.password:
+                raise WorkflowError(_LOGIN_GUIDANCE, code="unauthorized")
             token = self.login(force=True)
             response = self._send(
                 method,
@@ -299,6 +336,101 @@ def _drop_none(values: Mapping[str, Any]) -> JsonDict:
 
 def _is_expired(expiry: float | None) -> bool:
     return expiry is not None and expiry <= time.time() + 30
+
+
+def _token_cache_path() -> Path:
+    override = os.getenv(_TOKEN_CACHE_ENV)
+    if override:
+        return Path(override).expanduser()
+    return Path.home() / ".issuekit" / "token.json"
+
+
+def _read_cached_token(api_url: str) -> dict[str, Any] | None:
+    entry = _read_token_cache().get(api_url)
+    if not isinstance(entry, dict):
+        return None
+    token = entry.get("token")
+    expires_at = entry.get("expires_at")
+    if not isinstance(token, str) or not token:
+        return None
+    if expires_at is not None and not isinstance(expires_at, (int, float)):
+        return None
+    expiry = float(expires_at) if isinstance(expires_at, (int, float)) else _jwt_expiry(token)
+    if _is_expired(expiry):
+        return None
+    return {"token": token, "expires_at": expiry}
+
+
+def _write_cached_token(api_url: str, token: str, expires_at: float | None) -> None:
+    cache = _read_token_cache()
+    cache[api_url] = {"token": token, "expires_at": expires_at}
+    _write_token_cache(cache)
+
+
+def _delete_cached_token(api_url: str) -> None:
+    path = _token_cache_path()
+    cache = _read_token_cache()
+    if api_url not in cache:
+        return
+    del cache[api_url]
+    if cache:
+        _write_token_cache(cache)
+        return
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        pass
+    except OSError as exc:
+        raise WorkflowError(f"Failed to remove API token cache: {exc}", code="token_cache_error") from exc
+
+
+def _read_token_cache() -> dict[str, Any]:
+    path = _token_cache_path()
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return {}
+    except OSError:
+        return {}
+    try:
+        payload = json.loads(raw)
+    except ValueError:
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _write_token_cache(cache: Mapping[str, Any]) -> None:
+    path = _token_cache_path()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise WorkflowError(f"Failed to create API token cache directory: {exc}", code="token_cache_error") from exc
+
+    temp_path = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    data = json.dumps(dict(cache), sort_keys=True, separators=(",", ":")) + "\n"
+    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+    if hasattr(os, "O_BINARY"):
+        flags |= os.O_BINARY
+    try:
+        fd = os.open(temp_path, flags, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
+            handle.write(data)
+        _chmod_600(temp_path)
+        os.replace(temp_path, path)
+        _chmod_600(path)
+    except OSError as exc:
+        try:
+            temp_path.unlink()
+        except OSError:
+            pass
+        raise WorkflowError(f"Failed to write API token cache: {exc}", code="token_cache_error") from exc
+
+
+def _chmod_600(path: Path) -> None:
+    try:
+        os.chmod(path, 0o600)
+    except OSError:
+        pass
 
 
 def _response_expiry(payload: Mapping[str, Any]) -> float | None:

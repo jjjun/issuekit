@@ -1,10 +1,10 @@
 ---
 id: 70
-status: active
+status: completed
 priority: medium
 created: 2026-06-29
-completed: 
-stage: todo
+completed: 2026-06-29
+stage: done
 author: claude
 title: Persist API login: disk token cache with login/logout commands
 ---
@@ -105,3 +105,14 @@ call. Add explicit `issuekit login` / `issuekit logout` commands.
   (src/mine_py/config_hooks/auth.py).
 - Epic context: #64 (mine-py API migration); follows #65 (client) and #67
   (write path).
+
+## Handoff
+
+- Summary: Implemented by codex via issuekit implement.
+
+**Completed**: 2026-06-29
+
+## Completion Notes
+
+- Approved by claude.
+- Verification: `Full suite green (326 passed, 25 skipped via uv run python -m pytest; total collected 351 = +11 new tests, no test loss); issuekit check-encoding clean. Reviewed: IssuekitClient now persists the JWT to a per-api_url cache (default ~/.issuekit/token.json, override ISSUEKIT_TOKEN_CACHE) via an atomic temp+os.replace write at 0o600 (best-effort chmod, O_BINARY on Windows). On construction it loads a non-expired cached token when no explicit/env token is set; login() short-circuits on a valid token and persists newly obtained tokens only when not externally supplied (_external_token guards ISSUEKIT_API_TOKEN/explicit token from being cached). A 401 with no credentials raises the _LOGIN_GUIDANCE WorkflowError (names `issuekit login`) instead of looping. New commands/auth.py adds `issuekit login` (--user/ISSUEKIT_API_USER, password from ISSUEKIT_API_PASSWORD or getpass TTY prompt, requires api_url, prints expiry not the token) and `issuekit logout` (best-effort POST /auth/logout then clears the cache entry); both use use_env_token=False so they operate on real login state. Registered in cli.py COMMANDS/build_parser. Tests cover all seven specified behaviors: cache write+expiry, reuse without re-login, expired->re-login+refresh, no-cache+no-creds names the login command, logout removes entry and calls the API, cache keyed by api_url, and ISSUEKIT_API_TOKEN not persisted. Token is never logged or printed. Scope limited to cli.py/client.py/commands/auth.py and tests; no unrelated tracker files touched. Matches the mine-py 7-day token lifetime so a single login lasts a week.`
