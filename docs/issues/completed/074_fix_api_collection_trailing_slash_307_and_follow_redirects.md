@@ -1,10 +1,10 @@
 ---
 id: 74
-status: active
+status: completed
 priority: high
 created: 2026-06-29
-completed: 
-stage: todo
+completed: 2026-06-29
+stage: done
 author: claude
 title: Fix API collection trailing-slash 307 and follow redirects
 ---
@@ -88,3 +88,14 @@ Keep `_url` (used for `/auth/login`, `/auth/logout`) unchanged.
 - issuekit/client.py (`_issue_path`, `list_issues`, `create_issue`, httpx.Client).
 - Found during the real migration (after #73). Server routes:
   mine-py/src/domains/issues/api/routes.py (`GET/POST /{project}/issues`).
+
+## Handoff
+
+- Summary: Implemented by codex via issuekit implement.
+
+**Completed**: 2026-06-29
+
+## Completion Notes
+
+- Approved by claude.
+- Verification: `Full suite green (340 passed, 25 skipped via uv run python -m pytest; +3 from prior, no test loss); issuekit check-encoding clean. Reviewed: _issue_path now maps an empty or "/" path to no suffix, so list_issues (GET) and create_issue (POST) hit /api/issues/{project}/issues with no trailing slash and no longer trigger the server's 307 redirect; item/sub-resource paths (/{number}, /claim, /claim-next, /import, /submit, etc.) are unchanged. The internal httpx.Client is now created with follow_redirects=True as defense-in-depth (preserves method+body and same-origin Authorization on 307/308), and the docstring tells injected clients to match. _url (auth login/logout) is unchanged. New tests assert the list and create request paths have no trailing slash. Scope limited to issuekit/client.py and tests/test_client.py. This unblocks migrate-to-api's verify step and all API-mode reads/creates against the real server. Verified live earlier: GET .../issues/ returns 307 to the no-slash route while .../issues and .../import behave correctly.`

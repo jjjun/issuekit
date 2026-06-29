@@ -36,7 +36,7 @@ def test_client_logs_in_once_and_sends_expected_request_shape() -> None:
 
         seen_api_requests.append(request)
         assert request.headers["authorization"].startswith("Bearer ")
-        assert request.url.path == "/api/issues/demo_project/issues/"
+        assert request.url.path == "/api/issues/demo_project/issues"
         if request.method == "POST":
             assert json.loads(request.content) == {"title": "First"}
             return httpx.Response(201, json={"id": 1, "title": "First"})
@@ -57,6 +57,58 @@ def test_client_logs_in_once_and_sends_expected_request_shape() -> None:
 
     assert login_count == 1
     assert [request.method for request in seen_api_requests] == ["POST", "GET"]
+
+
+def test_client_list_issues_uses_collection_path_without_trailing_slash() -> None:
+    seen_requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen_requests.append(request)
+        return httpx.Response(200, json=[])
+
+    client = IssuekitClient(
+        "https://mine.example",
+        project="demo_project",
+        token="static-token",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    assert client.list_issues() == []
+
+    assert len(seen_requests) == 1
+    assert seen_requests[0].method == "GET"
+    assert seen_requests[0].url.path == "/api/issues/demo_project/issues"
+
+
+def test_client_create_issue_uses_collection_path_without_trailing_slash() -> None:
+    issue = {"title": "First"}
+    seen_requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen_requests.append(request)
+        assert json.loads(request.content) == issue
+        return httpx.Response(201, json={"id": 1, **issue})
+
+    client = IssuekitClient(
+        "https://mine.example",
+        project="demo_project",
+        token="static-token",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    assert client.create_issue(issue) == {"id": 1, **issue}
+
+    assert len(seen_requests) == 1
+    assert seen_requests[0].method == "POST"
+    assert seen_requests[0].url.path == "/api/issues/demo_project/issues"
+
+
+def test_client_owned_http_client_follows_redirects() -> None:
+    client = IssuekitClient("https://mine.example", token="static-token")
+    try:
+        assert client._http.follow_redirects is True
+    finally:
+        client.close()
 
 
 def test_client_reauthenticates_once_after_401() -> None:
@@ -400,7 +452,7 @@ def test_client_create_issue_still_posts_dict_body() -> None:
     issue = {"title": "First", "priority": "high"}
 
     def handler(request: httpx.Request) -> httpx.Response:
-        assert request.url.path == "/api/issues/issuekit/issues/"
+        assert request.url.path == "/api/issues/issuekit/issues"
         assert json.loads(request.content) == issue
         return httpx.Response(201, json={"id": 1, **issue})
 

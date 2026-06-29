@@ -1,7 +1,9 @@
 """HTTP client for the issuekit API backend.
 
 The client uses httpx as the transport so tests and later phases can inject a
-MockTransport-backed client without requiring a live API server.
+MockTransport-backed client without requiring a live API server. Injected
+clients should be configured with follow_redirects=True to match the default
+client created here.
 """
 
 from __future__ import annotations
@@ -63,7 +65,7 @@ class IssuekitClient:
                 self._token = cached["token"]
                 self._token_expiry = cached["expires_at"]
         self._owns_http_client = http_client is None
-        self._http = http_client or httpx.Client(timeout=timeout)
+        self._http = http_client or httpx.Client(timeout=timeout, follow_redirects=True)
 
     def close(self) -> None:
         if self._owns_http_client:
@@ -317,7 +319,12 @@ class IssuekitClient:
         raise WorkflowError(message, code=code)
 
     def _issue_path(self, path: str) -> str:
-        suffix = path if path.startswith("/") else f"/{path}"
+        if path in ("", "/"):
+            suffix = ""
+        elif path.startswith("/"):
+            suffix = path
+        else:
+            suffix = f"/{path}"
         return f"/api/issues/{self.project}/issues{suffix}"
 
     def _url(self, path: str) -> str:
