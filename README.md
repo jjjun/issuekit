@@ -266,6 +266,12 @@ root and loads values such as `ISSUEKIT_API_URL`, `ISSUEKIT_API_USER`,
 Overall precedence is process environment, then `.env`, then `[tool.issuekit]`
 or `issuekit.toml`, then built-in defaults.
 
+When `ISSUEKIT_API_URL` uses plain `http://` for a non-loopback host, issuekit
+prints a stderr warning because credentials and bearer tokens are sent without
+transport encryption. For a temporary trusted endpoint, set
+`ISSUEKIT_ALLOW_INSECURE=1` in the process environment or repo-local `.env` to
+suppress that warning.
+
 When both files exist, `[tool.issuekit]` in `pyproject.toml` takes precedence.
 If `pyproject.toml` exists without `[tool.issuekit]`, issuekit falls back to
 `issuekit.toml`.
