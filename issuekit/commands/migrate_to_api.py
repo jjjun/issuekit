@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from pathlib import Path
 import re
 import sys
@@ -149,14 +150,17 @@ def verify_import(source_payload: list[dict[str, Any]], server_issues: list[dict
 
 
 def verify_proposal_import(source_payload: list[dict[str, Any]], stored_proposals: list[dict[str, Any]]) -> None:
-    source_keys = _proposal_keys(source_payload)
-    stored_keys = _proposal_keys(stored_proposals)
+    duplicate_pending_origins = _duplicate_pending_origins(source_payload)
+    if duplicate_pending_origins:
+        joined = ", ".join(duplicate_pending_origins)
+        raise ValueError(f"Source payload contains duplicate pending proposal origin(s): {joined}")
+
+    source_keys = Counter(_proposal_keys(source_payload))
+    stored_keys = Counter(_proposal_keys(stored_proposals))
     missing = sorted(source_keys - stored_keys)
     if missing:
-        joined = ", ".join(f"{origin} ({status})" for origin, status in missing)
+        joined = ", ".join(_format_proposal_key(key) for key in missing)
         raise ValueError(f"Imported proposal(s) missing from response: {joined}")
-    if len(source_keys) != len(source_payload):
-        raise ValueError("Source payload contains duplicate proposal origin/status pairs.")
 
 
 def _validate_source_issues(issues: list[Issue]) -> None:
@@ -264,11 +268,36 @@ def _empty_to_none(value: object) -> str | None:
     return normalized or None
 
 
-def _proposal_keys(proposals: list[dict[str, Any]]) -> set[tuple[str, str]]:
-    return {
-        (str(proposal.get("origin", "")), str(proposal.get("status", "")))
+def _proposal_keys(proposals: list[dict[str, Any]]) -> list[tuple[str, str, str, str, str, str]]:
+    return [
+        (
+            _proposal_value(proposal.get("origin")),
+            _proposal_value(proposal.get("status")),
+            _proposal_value(proposal.get("title")),
+            _proposal_value(proposal.get("body")),
+            _proposal_value(proposal.get("reply_to")),
+            _proposal_value(proposal.get("adopted_issue_number")),
+        )
         for proposal in proposals
-    }
+    ]
+
+
+def _duplicate_pending_origins(proposals: list[dict[str, Any]]) -> list[str]:
+    origins = Counter(
+        _proposal_value(proposal.get("origin"))
+        for proposal in proposals
+        if _proposal_value(proposal.get("status")) == "pending"
+    )
+    return sorted(origin for origin, count in origins.items() if origin and count > 1)
+
+
+def _format_proposal_key(key: tuple[str, str, str, str, str, str]) -> str:
+    origin, status, title, *_ = key
+    return f"{origin} ({status}): {title}"
+
+
+def _proposal_value(value: object) -> str:
+    return "" if value is None else str(value)
 
 
 def _first_non_empty(*values: object) -> str:

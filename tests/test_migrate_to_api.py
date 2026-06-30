@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from issuekit import cli
 from issuekit.commands import migrate_to_api
 from issuekit.testing import FakeIssuekitClient
@@ -182,6 +184,40 @@ def test_build_proposal_import_payload_maps_legacy_inboxes(tmp_path: Path) -> No
     assert payload[2]["reply_to"] == "source#0@old"
 
 
+def test_verify_proposal_import_allows_duplicate_adopted_origins() -> None:
+    source = [
+        _proposal_payload("source#0@abc123", "adopted", "First"),
+        _proposal_payload("source#0@abc123", "adopted", "Second"),
+    ]
+    stored = [
+        {**source[0], "id": 1},
+        {**source[1], "id": 2},
+    ]
+
+    migrate_to_api.verify_proposal_import(source, stored)
+
+
+def test_verify_proposal_import_rejects_duplicate_pending_origins() -> None:
+    source = [
+        _proposal_payload("source#0@abc123", "pending", "First"),
+        _proposal_payload("source#0@abc123", "pending", "Second"),
+    ]
+
+    with pytest.raises(ValueError, match="duplicate pending proposal origin"):
+        migrate_to_api.verify_proposal_import(source, source)
+
+
+def test_verify_proposal_import_rejects_missing_source_proposal() -> None:
+    source = [
+        _proposal_payload("source#0@abc123", "adopted", "First"),
+        _proposal_payload("source#0@abc123", "adopted", "Second"),
+    ]
+    stored = [{**source[0], "id": 1}]
+
+    with pytest.raises(ValueError, match="Imported proposal\\(s\\) missing from response"):
+        migrate_to_api.verify_proposal_import(source, stored)
+
+
 def test_migrate_proposals_to_api_dry_run_does_not_require_api_url(
     tmp_path: Path,
     monkeypatch,
@@ -351,3 +387,15 @@ def _write_proposal_file(
         encoding="utf-8",
         newline="\n",
     )
+
+
+def _proposal_payload(origin: str, status: str, title: str) -> dict[str, object]:
+    return {
+        "origin": origin,
+        "reply_to": None,
+        "created": "2026-06-01",
+        "title": title,
+        "body": f"{title} body.",
+        "status": status,
+        "adopted_issue_number": None,
+    }
