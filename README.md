@@ -256,9 +256,8 @@ default_reviewer = "auto"
 require_distinct_reviewer = true
 ```
 
-For one-off legacy issue access, set `use_filesystem_store = true` or
-`ISSUEKIT_USE_FILESYSTEM=1`. That path exists for issue migration; proposal
-commands use the API.
+Legacy `docs/issues/` files are read only by the migration commands. Runtime
+issue lifecycle commands use the API store.
 
 At startup, issuekit also reads a repo-local `.env` file from the current repo
 root and loads values such as `ISSUEKIT_API_URL`, `ISSUEKIT_API_USER`,

@@ -7,14 +7,10 @@ import subprocess
 import sys
 
 from issuekit.agents.runner import AgentRunner, resolve_adapter
-from issuekit.commands.generate_indexes import write_index_files
 from issuekit.config import load_config
 from issuekit.core import (
-    find_issue_by_id,
     has_mojibake,
     parse_issue_id_arg,
-    read_active_issues,
-    read_completed_issues,
 )
 from issuekit.store import get_store
 from issuekit.workflow import WorkflowError, claim_issue, submit_for_review
@@ -30,15 +26,11 @@ def run(args) -> int:
     cwd = Path.cwd()
     config = load_config(cwd)
     issues_dir = config.issues_path(cwd)
-    if config.use_filesystem_store:
-        active_issues = read_active_issues(issues_dir)
-        issue = find_issue_by_id(active_issues, issue_id)
-    else:
-        try:
-            issue = get_store(config, issues_dir).get_issue(issue_id)
-        except (WorkflowError, ValueError) as exc:
-            print(str(exc), file=sys.stderr)
-            return 1
+    try:
+        issue = get_store(config, issues_dir).get_issue(issue_id)
+    except (WorkflowError, ValueError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
     if issue is None:
         print(f"Active issue #{issue_id} was not found.", file=sys.stderr)
         return 1
@@ -57,12 +49,10 @@ def run(args) -> int:
     try:
         issue = claim_issue(issues_dir, issue.id or issue_id, args.agent, config=config)
         adapter = resolve_adapter(args.agent, config=config, model=args.model)
-        plan_path = issue.file_path
-        if not config.use_filesystem_store:
-            run_dir = cwd / ".agent-runs"
-            run_dir.mkdir(exist_ok=True)
-            plan_path = run_dir / f"issue-{issue.id}.md"
-            plan_path.write_text(issue.content, encoding="utf-8", newline="\n")
+        run_dir = cwd / ".agent-runs"
+        run_dir.mkdir(exist_ok=True)
+        plan_path = run_dir / f"issue-{issue.id}.md"
+        plan_path.write_text(issue.content, encoding="utf-8", newline="\n")
         result = AgentRunner().run(
             adapter,
             plan_path,
@@ -149,11 +139,9 @@ def run(args) -> int:
             config=config,
         )
     except (TimeoutError, WorkflowError) as exc:
-        print(_submit_for_review_error(issues_dir, issue.id or issue_id, exc), file=sys.stderr)
+        print(str(exc), file=sys.stderr)
         return 1
 
-    if config.use_filesystem_store:
-        write_index_files(issues_dir, config.recent_count)
     print(
         f"submitted_review id={reviewed_issue.id} file={reviewed_issue.relative_path} "
         f"assignee={reviewed_issue.assignee} stage={reviewed_issue.stage}"
@@ -308,23 +296,3 @@ def _is_under_issues_dir(path: Path, issues_dir: Path) -> bool:
     except ValueError:
         return False
 
-
-def _submit_for_review_error(issues_dir: Path, issue_id: int, exc: Exception) -> str:
-    generic_missing = f"Active issue #{issue_id} was not found."
-    if str(exc) != generic_missing:
-        return str(exc)
-
-    completed_issues = read_completed_issues(issues_dir)
-    completed_issue = next(
-        (candidate for candidate in completed_issues if candidate.id == issue_id),
-        None,
-    )
-    if completed_issue is None:
-        return str(exc)
-
-    return (
-        f"Active issue #{issue_id} was not found because it appears to have been "
-        f"moved to {completed_issue.relative_path} during implementation. "
-        "Implementers must not mutate docs/issues/ tracker state; restore the "
-        "issue to active/ and submit it for review."
-    )

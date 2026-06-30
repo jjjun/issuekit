@@ -2,42 +2,26 @@ from pathlib import Path
 
 from issuekit.config import IssuekitConfig
 from issuekit.core import issue_dict
-from issuekit.store import ApiStore, FilesystemStore, get_store
+from issuekit.store import ApiStore, get_store
 from issuekit.testing import FakeIssuekitClient
 from issuekit.workflow import WorkflowError
 
-from tests.issue_helpers import api_issue, issue_text, write_issue
+from tests.issue_helpers import api_issue
 
 
 def test_get_store_requires_api_url_for_runtime_default(tmp_path: Path) -> None:
     try:
-        get_store(IssuekitConfig(use_filesystem_store=False), tmp_path / "docs" / "issues")
+        get_store(IssuekitConfig(), tmp_path / "docs" / "issues")
     except WorkflowError as exc:
         assert exc.code == "missing_api_url"
     else:
         raise AssertionError("get_store should require api_url by default")
 
 
-def test_get_store_uses_filesystem_with_explicit_escape_hatch(tmp_path: Path) -> None:
-    store = get_store(IssuekitConfig(use_filesystem_store=True), tmp_path / "docs" / "issues")
-
-    assert isinstance(store, FilesystemStore)
-
-
 def test_get_store_uses_api_when_api_url_is_set() -> None:
     store = get_store(IssuekitConfig(api_url="https://mine.example"))
 
     assert isinstance(store, ApiStore)
-
-
-def test_filesystem_store_wraps_existing_read_behavior(tmp_path: Path) -> None:
-    issues_dir = tmp_path / "docs" / "issues"
-    write_issue(issues_dir / "active" / "001_first.md", issue_text(1, "First"))
-
-    store = FilesystemStore(issues_dir)
-
-    assert store.get_issue(1).relative_path == "active/001_first.md"
-    assert [issue.id for issue in store.find_for()] == [1]
 
 
 def test_api_store_maps_json_to_issue_and_issue_dict() -> None:

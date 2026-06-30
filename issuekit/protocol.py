@@ -85,22 +85,21 @@ commands. Run this protocol end to end:
    Plan. Lay out a short plan with the files to change and the order of steps.
    Confirm the plan matches the issue scope before writing code; do not expand
    beyond it.
-3. Implement the claimed issue on the current branch and make focused commits.
-   Do not create or switch branches. The local workflow commits directly to
-   main for speed; only create a branch when the user explicitly asks for one.
+3. Implement the claimed issue on the current branch by editing only the code,
+   tests, and supporting project files needed for the task. Do not create or
+   switch branches. When driven by `issuekit implement`, do not run git commit
+   or git push; leave implementation changes unstaged for review.
 4. Run the relevant tests and `uv run issuekit check-encoding`.
 5. Call `submit_for_review(id, summary, branch, commit, assignee="<agent>",
-   reviewer=None)` with an ASCII summary, the current branch name, and the
-   implementation commit. Set assignee to the implementer. Omit reviewer to use
-   `default_reviewer`, or pass another configured assignee. If
-   `default_reviewer` is `auto`, the issue enters the open review pool so any
-   agent (including another session of the same name) may review it. An
-   implementer may not name itself as the explicit reviewer; use the open pool
-   for same-name review.
+   reviewer=None)` with an ASCII summary and optional branch/commit metadata.
+   Set assignee to the implementer. Omit reviewer to use `default_reviewer`, or
+   pass another configured assignee. If `default_reviewer` is `auto`, the issue
+   enters the open review pool so any agent (including another session of the
+   same name) may review it. An implementer may not name itself as the explicit
+   reviewer; use the open pool for same-name review.
 6. If a reviewer returns the issue with stage=changes_requested, call
    `claim_next_task(assignee="<agent>")` again, read the Review Feedback note,
-   re-plan for just that feedback, address it, commit, and submit for review
-   again.
+   re-plan for just that feedback, address it, and submit for review again.
 
 The assigned implementer owns implementation unless assigned as reviewer. The
 reviewer owns the review decision for issues assigned to them at stage=review.

@@ -15,7 +15,6 @@ _ENV_KEYS = (
     "ISSUEKIT_API_USER",
     "ISSUEKIT_PROJECT",
     "ISSUEKIT_TOKEN_CACHE",
-    "ISSUEKIT_USE_FILESYSTEM",
     "DOTENV_EXTRA",
     "MALFORMED_LINE",
 )
@@ -62,7 +61,6 @@ def test_load_config_prefers_pyproject_tool_issuekit(tmp_path: Path) -> None:
     assert load_config(tmp_path) == IssuekitConfig(
         ascii_id_threshold=100,
         issues_dir="py/issues",
-        use_filesystem_store=False,
     )
 
 
@@ -101,7 +99,7 @@ def test_load_config_reads_api_url_from_dotenv(
     config = load_config(tmp_path)
 
     assert config.api_url == "https://mine.env"
-    assert config.use_filesystem_store is False
+    assert config.api_url == "https://mine.env"
 
 
 def test_load_config_real_environment_overrides_dotenv(
@@ -163,7 +161,7 @@ def test_load_config_missing_dotenv_is_noop(
 
     config = load_config(tmp_path)
 
-    assert config == IssuekitConfig(use_filesystem_store=False)
+    assert config == IssuekitConfig()
 
 
 def test_load_config_api_mode_uses_server_reviewer_policy(tmp_path: Path) -> None:
@@ -211,22 +209,11 @@ def test_load_config_uses_issuekit_toml_when_pyproject_has_no_issuekit_table(
     assert load_config(tmp_path) == IssuekitConfig(
         ascii_id_threshold=407,
         issues_dir="standalone/issues",
-        use_filesystem_store=False,
     )
 
 
 def test_load_config_uses_defaults_without_config_files(tmp_path: Path) -> None:
-    assert load_config(tmp_path) == IssuekitConfig(use_filesystem_store=False)
-
-
-def test_load_config_reads_filesystem_escape_hatch(tmp_path: Path) -> None:
-    (tmp_path / "issuekit.toml").write_text(
-        "use_filesystem_store = true\n",
-        encoding="utf-8",
-        newline="\n",
-    )
-
-    assert load_config(tmp_path).use_filesystem_store is True
+    assert load_config(tmp_path) == IssuekitConfig()
 
 
 def test_default_assignees_includes_kimi() -> None:
@@ -262,7 +249,6 @@ def test_load_config_reads_workflow_sets_from_issuekit_toml(tmp_path: Path) -> N
         stages=("draft", "review"),
         default_reviewer="bob",
         require_distinct_reviewer=True,
-        use_filesystem_store=False,
     )
 
 
@@ -276,7 +262,6 @@ def test_load_config_accepts_auto_default_reviewer(tmp_path: Path) -> None:
     assert load_config(tmp_path) == IssuekitConfig(
         assignees=("alice", "bob"),
         default_reviewer="auto",
-        use_filesystem_store=False,
     )
 
 

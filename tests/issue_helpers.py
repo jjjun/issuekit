@@ -1,10 +1,7 @@
 from pathlib import Path
 
-from issuekit.core import build_index_files, read_all_issues
-
 
 def write_issue(path: Path, text: str) -> None:
-    _ensure_filesystem_config(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8", newline="\n")
 
@@ -78,38 +75,15 @@ def api_issue(
 
 def make_issue_tree(tmp_path: Path) -> Path:
     issues_dir = tmp_path / "docs" / "issues"
-    _ensure_filesystem_config(issues_dir / "active" / "001_first.md")
     write_issue(issues_dir / "active" / "001_first.md", issue_text(1, "First", priority="high"))
     write_issue(
         issues_dir / "completed" / "002_done.md",
         issue_text(2, "Done", status="completed", priority="low", completed="2026-01-02"),
     )
-    write_indexes(issues_dir)
     return issues_dir
 
 
 def write_indexes(issues_dir: Path, recent_count: int = 30) -> None:
-    _ensure_filesystem_config(issues_dir / "active" / "001_first.md")
-    active, completed, _ = read_all_issues(issues_dir)
-    indexes = build_index_files(active, completed, recent_count)
     indexes_dir = issues_dir / "indexes"
     indexes_dir.mkdir(parents=True, exist_ok=True)
-    for name, content in indexes.items():
-        (indexes_dir / name).write_text(content, encoding="utf-8", newline="\n")
-
-
-def _ensure_filesystem_config(path: Path) -> None:
-    parts = path.parts
-    for index in range(len(parts) - 2):
-        if parts[index : index + 2] == ("docs", "issues"):
-            repo = Path(*parts[:index]) if index else Path(".")
-            repo.mkdir(parents=True, exist_ok=True)
-            config = repo / "issuekit.toml"
-            line = "use_filesystem_store = true\n"
-            if config.exists():
-                text = config.read_text(encoding="utf-8-sig")
-                if "use_filesystem_store" not in text:
-                    config.write_text(f"{text.rstrip()}\n{line}", encoding="utf-8", newline="\n")
-                return
-            config.write_text(line, encoding="utf-8", newline="\n")
-            return
+    (indexes_dir / "active.md").write_text("", encoding="utf-8", newline="\n")

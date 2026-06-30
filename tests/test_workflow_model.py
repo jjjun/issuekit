@@ -25,101 +25,6 @@ def test_read_issues_reads_optional_workflow_fields(tmp_path: Path) -> None:
     assert issues[1].author == "claude"
 
 
-def test_format_issue_frontmatter_omits_empty_workflow_fields() -> None:
-    data = {
-        "id": 1,
-        "status": "active",
-        "priority": "high",
-        "created": "2026-01-01",
-        "completed": "",
-        "title": "First",
-    }
-
-    assert core.format_issue_frontmatter(data) == (
-        "---\n"
-        "id: 1\n"
-        "status: active\n"
-        "priority: high\n"
-        "created: 2026-01-01\n"
-        "completed: \n"
-        "title: First\n"
-        "---\n\n"
-    )
-
-
-def test_format_issue_frontmatter_orders_workflow_fields() -> None:
-    data = {
-        "id": 1,
-        "status": "in_progress",
-        "priority": "high",
-        "created": "2026-01-01",
-        "completed": "",
-        "assignee": "codex",
-        "stage": "implementing",
-        "implementer": "codex",
-        "title": "First",
-    }
-
-    assert core.format_issue_frontmatter(data).splitlines()[:10] == [
-        "---",
-        "id: 1",
-        "status: in_progress",
-        "priority: high",
-        "created: 2026-01-01",
-        "completed: ",
-        "assignee: codex",
-        "stage: implementing",
-        "implementer: codex",
-        "title: First",
-    ]
-
-
-def test_format_issue_frontmatter_orders_author_before_title() -> None:
-    data = {
-        "id": 1,
-        "status": "active",
-        "priority": "high",
-        "created": "2026-01-01",
-        "completed": "",
-        "author": "codex",
-        "title": "First",
-    }
-
-    assert core.format_issue_frontmatter(data).splitlines()[:8] == [
-        "---",
-        "id: 1",
-        "status: active",
-        "priority: high",
-        "created: 2026-01-01",
-        "completed: ",
-        "author: codex",
-        "title: First",
-    ]
-
-
-def test_format_issue_frontmatter_preserves_extra_fields_before_title() -> None:
-    data = {
-        "id": 1,
-        "status": "active",
-        "priority": "high",
-        "created": "2026-01-01",
-        "completed": "",
-        "origin": "source#42@abc123",
-        "title": "First",
-    }
-
-    assert core.format_issue_frontmatter(data).splitlines()[:8] == [
-        "---",
-        "id: 1",
-        "status: active",
-        "priority: high",
-        "created: 2026-01-01",
-        "completed: ",
-        "origin: source#42@abc123",
-        "title: First",
-    ]
-
-
 def test_workflow_token_shape_rejects_frontmatter_injection() -> None:
     assert core.is_valid_workflow_token("")
     assert core.is_valid_workflow_token("codex")
@@ -140,16 +45,4 @@ def test_load_config_reads_workflow_sets(tmp_path: Path) -> None:
         assignees=("alice",),
         stages=("draft",),
         default_reviewer="alice",
-        use_filesystem_store=False,
     )
-
-
-def test_write_issue_atomic_writes_utf8_lf_without_bom(tmp_path: Path) -> None:
-    path = tmp_path / "docs" / "issues" / "active" / "001_first.md"
-    core.write_issue_atomic(path, "line 1\r\nline 2\r\n")
-    core.write_issue_atomic(path, "next\r\n")
-
-    content = path.read_bytes()
-    assert content == b"next\n"
-    assert not content.startswith(b"\xef\xbb\xbf")
-    assert b"\r\n" not in content

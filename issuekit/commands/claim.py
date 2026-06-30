@@ -5,7 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 import sys
 
-from issuekit.commands.generate_indexes import write_index_files
 from issuekit.config import load_config
 from issuekit.workflow import WorkflowError, claim_next
 
@@ -28,8 +27,6 @@ def run(args) -> int:
         print(f"status=none assignee={args.assignee}")
         return 0
 
-    if config.use_filesystem_store:
-        write_index_files(issues_dir, config.recent_count)
     print(
         f"id={issue.id} file={issue.relative_path} "
         f"assignee={issue.assignee} stage={issue.stage}"

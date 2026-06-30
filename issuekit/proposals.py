@@ -6,10 +6,7 @@ from dataclasses import dataclass
 import re
 from pathlib import Path
 
-from issuekit.core import (
-    has_non_ascii,
-    slugify as _core_slugify,
-)
+from issuekit.core import has_non_ascii
 
 
 class ProposalError(RuntimeError):
@@ -29,20 +26,6 @@ class Proposal:
     @property
     def file_name(self) -> str:
         return "" if self.file_path is None else self.file_path.name
-
-def proposal_dict(proposal: Proposal) -> dict[str, str]:
-    return {
-        "file": proposal.file_name,
-        "origin": proposal.origin,
-        "to": proposal.to,
-        "reply_to": proposal.reply_to,
-        "created": proposal.created,
-        "title": proposal.title,
-    }
-
-
-def slugify(value: str) -> str:
-    return _core_slugify(value, default="proposal", max_len=64)
 
 
 def origin_destination(origin: str) -> str:
@@ -87,4 +70,3 @@ def _validate_proposal(proposal: Proposal) -> None:
     _origin_parts(proposal.origin)
     if proposal.reply_to:
         _origin_parts(proposal.reply_to)
-

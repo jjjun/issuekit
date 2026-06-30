@@ -272,10 +272,11 @@ class AgentRunner:
             f"Read the plan file at: {plan_path} . Implement it fully by editing "
             "files directly in this repository. Do NOT run git commit or git push - "
             "leave all changes unstaged for review. Edit only code, tests, and "
-            "supporting project files needed for the implementation. Never move, "
-            "create, delete, or edit files under docs/issues/ or its indexes; "
-            "issuekit owns the tracker lifecycle, not the implementer. If the plan "
-            "is ambiguous, make the most reasonable choice and note it at the end."
+            "supporting project files needed for the implementation. Issuekit owns "
+            "the API-backed issue lifecycle, including claim, submit, review, "
+            "approval, and completion state; do not mutate tracker state or issue "
+            "lifecycle metadata directly. If the plan is ambiguous, make the most "
+            "reasonable choice and note it at the end."
         )
         if prompt_suffix:
             prompt = f"{prompt}\n\n{prompt_suffix}"

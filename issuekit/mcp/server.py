@@ -9,13 +9,13 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 
 from issuekit.commands.approve import approve_issue
-from issuekit.commands.propose import _api_client, _proposal_id_arg, build_proposal
 from issuekit.config import load_config
 from issuekit.core import (
     Issue,
     issue_dict,
 )
 from issuekit.protocol import render_protocol, render_server_instructions
+from issuekit.proposals_api import api_client, build_proposal, proposal_id_arg
 from issuekit.store import get_store
 from issuekit.workflow import (
     AUTO_REVIEWER,
@@ -51,7 +51,7 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
     @server.tool(
         description=(
             "Implementation protocol step 2: submit an implemented task for reviewer "
-            "handoff with summary, branch, and commit."
+            "handoff with summary and optional branch/commit metadata."
         )
     )
     def submit_for_review(
@@ -162,7 +162,7 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
             reply=reply,
         )
         config, _ = _context(root)
-        return _api_client(config, project=proposal.to).create_proposal(
+        return api_client(config, project=proposal.to).create_proposal(
             origin=proposal.origin,
             title=proposal.title,
             body=proposal.body,
@@ -172,7 +172,7 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
     @server.tool(description="List incoming cross-repository proposals.")
     def list_incoming() -> list[dict[str, Any]]:
         config, issues_dir = _context(root)
-        return _api_client(config).list_proposals(status="pending")
+        return api_client(config).list_proposals(status="pending")
 
     @server.tool(description="Adopt an incoming proposal as a local active issue.")
     def adopt_proposal(
@@ -181,8 +181,8 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
         priority: str = "medium",
     ) -> dict[str, Any]:
         config, issues_dir = _context(root)
-        raw_id = proposal_id if proposal_id is not None else _proposal_id_arg(proposal_file or "")
-        return _api_client(config).adopt_proposal(int(raw_id), priority=priority)
+        raw_id = proposal_id if proposal_id is not None else proposal_id_arg(proposal_file or "")
+        return api_client(config).adopt_proposal(int(raw_id), priority=priority)
 
     @server.tool(description="Discard an incoming cross-repository proposal.")
     def discard_proposal(
@@ -190,8 +190,8 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
         proposal_file: str | None = None,
     ) -> dict[str, Any]:
         config, issues_dir = _context(root)
-        raw_id = proposal_id if proposal_id is not None else _proposal_id_arg(proposal_file or "")
-        return _api_client(config).discard_proposal(int(raw_id))
+        raw_id = proposal_id if proposal_id is not None else proposal_id_arg(proposal_file or "")
+        return api_client(config).discard_proposal(int(raw_id))
 
     return server
 

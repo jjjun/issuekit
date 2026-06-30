@@ -3,18 +3,12 @@ import subprocess
 from pathlib import Path
 
 from issuekit import cli
-from issuekit.commands import propose as propose_command
-from issuekit.commands.propose import _git_commit
-from issuekit.proposals import ProposalError, origin_destination, slugify
+from issuekit import proposals_api
+from issuekit.proposals_api import _git_commit
+from issuekit.proposals import ProposalError, origin_destination
 from issuekit.testing import FakeIssuekitClient
 
 from tests.issue_helpers import api_issue
-
-
-def test_slugify_cap_and_default_from_proposals() -> None:
-    assert slugify("Draft: New Proposal!!!") == "draft_new_proposal"
-    assert slugify("###") == "proposal"
-    assert slugify("A" * 80) == ("a" * 64)
 
 
 def test_origin_destination_uses_project_segment() -> None:
@@ -38,7 +32,7 @@ def test_api_cli_propose_posts_expected_body_and_dedupes(
         created_projects.append(kwargs["project"])
         return client
 
-    monkeypatch.setattr(propose_command, "IssuekitClient", fake_client)
+    monkeypatch.setattr(proposals_api, "IssuekitClient", fake_client)
     monkeypatch.chdir(tmp_path)
 
     argv = [
@@ -76,7 +70,11 @@ def test_api_cli_propose_from_issue_reads_api_store(
     monkeypatch,
     capsys,
 ) -> None:
-    client = FakeIssuekitClient(
+    class NoListClient(FakeIssuekitClient):
+        def list_all_issues(self, *args, **kwargs):
+            raise AssertionError("build_proposal should fetch the source issue directly")
+
+    client = NoListClient(
         issues=[
             api_issue(
                 7,
@@ -90,7 +88,7 @@ def test_api_cli_propose_from_issue_reads_api_store(
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(propose_command, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
     monkeypatch.setattr("issuekit.store.IssuekitClient", lambda *args, **kwargs: client)
     monkeypatch.chdir(tmp_path)
 
@@ -124,7 +122,7 @@ def test_api_cli_incoming_lists_pending_large_inbox(
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(propose_command, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
     monkeypatch.chdir(tmp_path)
 
     assert cli.main(["incoming", "--json"]) == 0
@@ -151,7 +149,7 @@ def test_api_cli_adopt_and_discard_use_proposal_ids(
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(propose_command, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
     monkeypatch.chdir(tmp_path)
 
     assert cli.main(["adopt", "1", "--priority", "high", "--json"]) == 0

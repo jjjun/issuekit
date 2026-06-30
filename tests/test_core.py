@@ -35,8 +35,7 @@ def test_read_issues_and_next_id(tmp_path: Path) -> None:
 
     assert [issue.title for issue in active] == ["First"]
     assert [issue.title for issue in completed] == ["Second"]
-    assert core.get_next_issue_id(all_issues) == 3
-    assert core.group_issues_by_id(all_issues)[1][0].relative_path == "active/001_first.md"
+    assert [issue.id for issue in all_issues] == [1, 2]
 
 
 def test_read_issues_returns_decode_error_issue_for_non_utf8_file(tmp_path: Path) -> None:
@@ -55,48 +54,6 @@ def test_read_issues_returns_decode_error_issue_for_non_utf8_file(tmp_path: Path
     assert issues[0].content == ""
     assert issues[0].frontmatter == core.Frontmatter(data={}, body="", has_frontmatter=False)
     assert issues[0].decode_error is True
-
-
-def test_build_index_files(tmp_path: Path) -> None:
-    issues_dir = tmp_path / "docs" / "issues"
-    write_issue(
-        issues_dir / "active" / "001_first.md",
-        "---\nid: 1\nstatus: active\npriority: high\ncreated: 2026-01-01\ncompleted:\ntitle: First\n---\n\n# Issue #1: First\n",
-    )
-    write_issue(
-        issues_dir / "completed" / "102_done.md",
-        "---\nid: 102\nstatus: completed\npriority: low\ncreated: 2026-01-01\ncompleted: 2026-01-02\ntitle: Done\n---\n\n# Issue #102: Done\n",
-    )
-    active, completed, _ = core.read_all_issues(issues_dir)
-
-    files = core.build_index_files(active, completed, recent_count=1)
-
-    assert set(files) == {
-        "active.md",
-        "completed-recent.md",
-        "completed-001-099.md",
-        "completed-100-199.md",
-    }
-    assert core.GENERATED_FILE_MARKER in files["active.md"]
-    assert "| 1 | First | high | active | [active/001_first.md](../active/001_first.md) |" in files[
-        "active.md"
-    ]
-    assert "| 102 | Done | 2026-01-02 | [completed/102_done.md](../completed/102_done.md) |" in files[
-        "completed-100-199.md"
-    ]
-
-
-def test_passthrough_frontmatter_omits_managed_keys() -> None:
-    assert core.passthrough_frontmatter(
-        {
-            "id": "123",
-            "status": "active",
-            "title": "Managed",
-            "origin": "source#1",
-            "stage": "review",
-            "assignee": "codex",
-        }
-    ) == {"origin": "source#1"}
 
 
 def test_slugify_defaults_and_limit() -> None:
@@ -123,7 +80,6 @@ def test_load_config_reads_tool_issuekit(tmp_path: Path) -> None:
         recent_count=5,
         ascii_id_threshold=100,
         issues_dir="custom/issues",
-        use_filesystem_store=False,
         assignees=IssuekitConfig.assignees,
         stages=IssuekitConfig.stages,
     )
@@ -145,23 +101,3 @@ def test_find_issue_by_id_matches_by_id(tmp_path: Path) -> None:
     issues = core.read_issues(issues_dir, "active")
     assert core.find_issue_by_id(issues, 1) == issues[0]
     assert core.find_issue_by_id(issues, 99) is None
-
-
-def test_diff_index_files_reports_missing_extra_and_stale(tmp_path: Path) -> None:
-    issues_dir = tmp_path / "docs" / "issues"
-    indexes_dir = issues_dir / "indexes"
-    indexes_dir.mkdir(parents=True, exist_ok=True)
-    indexes_dir.joinpath("active.md").write_text("stale index content\n", encoding="utf-8", newline="\n")
-    indexes_dir.joinpath("legacy.md").write_text("legacy content\n", encoding="utf-8", newline="\n")
-
-    diff = core.diff_index_files(
-        issues_dir,
-        {
-            "active.md": "# active index\n",
-            "completed.md": "# completed index\n",
-        },
-    )
-
-    assert diff.missing == ["completed.md"]
-    assert diff.extra == ["legacy.md"]
-    assert diff.stale == ["active.md"]

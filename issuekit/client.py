@@ -10,21 +10,27 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 import base64
+import ipaddress
 import json
 import os
 from pathlib import Path
+import subprocess
+import sys
 import time
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 
-from issuekit.core import is_valid_workflow_token
+from issuekit.core import _drop_none, is_valid_workflow_token
 from issuekit.workflow import WorkflowError
 
 
 JsonDict = dict[str, Any]
 JsonBody = Mapping[str, Any] | Sequence[Mapping[str, Any]]
 _TOKEN_CACHE_ENV = "ISSUEKIT_TOKEN_CACHE"
+_ALLOW_INSECURE_ENV = "ISSUEKIT_ALLOW_INSECURE"
+_WARNED_INSECURE_API_URLS: set[str] = set()
 _LOGIN_GUIDANCE = (
     "API credentials are required; run `issuekit login` or set "
     "ISSUEKIT_API_USER and ISSUEKIT_API_PASSWORD or ISSUEKIT_API_TOKEN."
@@ -90,6 +96,7 @@ class IssuekitClient:
                 return self._token
             raise WorkflowError(_LOGIN_GUIDANCE, code="unauthorized")
 
+        _warn_insecure_api_url(self.api_url)
         response = self._send(
             "POST",
             "/auth/login",
@@ -289,9 +296,10 @@ class IssuekitClient:
         reply_to: str | None = None,
         priority: str | None = None,
     ) -> JsonDict:
-        payload = self._proposal_request(
+        payload = self._request(
             "POST",
             "/",
+            collection="proposals",
             json=_drop_none(
                 {
                     "origin": origin,
@@ -316,9 +324,10 @@ class IssuekitClient:
         offset = 0
         proposals: list[JsonDict] = []
         while True:
-            payload = self._proposal_request(
+            payload = self._request(
                 "GET",
                 "/",
+                collection="proposals",
                 params=_drop_none({"status": status, "limit": page_size, "offset": offset}),
             )
             page = _ensure_dict(payload, "Proposal list response")
@@ -343,24 +352,25 @@ class IssuekitClient:
             offset = current_offset + limit
 
     def get_proposal(self, proposal_id: int) -> JsonDict:
-        payload = self._proposal_request("GET", f"/{proposal_id}")
+        payload = self._request("GET", f"/{proposal_id}", collection="proposals")
         return _ensure_dict(payload, "Proposal response")
 
     def adopt_proposal(self, proposal_id: int, *, priority: str | None = None) -> JsonDict:
-        payload = self._proposal_request(
+        payload = self._request(
             "POST",
             f"/{proposal_id}/adopt",
+            collection="proposals",
             json=_drop_none({"priority": priority}),
         )
         return _ensure_dict(payload, "Adopt proposal response")
 
     def discard_proposal(self, proposal_id: int) -> JsonDict:
-        payload = self._proposal_request("POST", f"/{proposal_id}/discard")
+        payload = self._request("POST", f"/{proposal_id}/discard", collection="proposals")
         return _ensure_dict(payload, "Discard proposal response")
 
     def import_proposals(self, proposals: list[Mapping[str, Any]] | Mapping[str, Any]) -> list[JsonDict]:
         items = [dict(proposal) for proposal in proposals] if isinstance(proposals, list) else [dict(proposals)]
-        payload = self._proposal_request("POST", "/import", json={"proposals": items})
+        payload = self._request("POST", "/import", collection="proposals", json={"proposals": items})
         if not isinstance(payload, list):
             raise WorkflowError("Proposal import response was not a JSON array.", code="invalid_response")
         return [_ensure_dict(item, "Proposal import response item") for item in payload]
@@ -370,13 +380,15 @@ class IssuekitClient:
         method: str,
         path: str,
         *,
+        collection: str = "issues",
         json: JsonBody | None = None,
         params: Mapping[str, Any] | None = None,
     ) -> Any:
+        _warn_insecure_api_url(self.api_url)
         token = self.login()
         response = self._send(
             method,
-            self._issue_path(path),
+            self._collection_path(collection, path),
             json=json,
             params=dict(params) if params is not None else None,
             headers={
@@ -390,42 +402,7 @@ class IssuekitClient:
             token = self.login(force=True)
             response = self._send(
                 method,
-                self._issue_path(path),
-                json=json,
-                params=dict(params) if params is not None else None,
-                headers={
-                    "Accept": "application/json",
-                    "Authorization": f"Bearer {token}",
-                },
-        )
-        return self._parse_response(response)
-
-    def _proposal_request(
-        self,
-        method: str,
-        path: str,
-        *,
-        json: JsonBody | None = None,
-        params: Mapping[str, Any] | None = None,
-    ) -> Any:
-        token = self.login()
-        response = self._send(
-            method,
-            self._proposal_path(path),
-            json=json,
-            params=dict(params) if params is not None else None,
-            headers={
-                "Accept": "application/json",
-                "Authorization": f"Bearer {token}",
-            },
-        )
-        if response.status_code == 401:
-            if not self.username or not self.password:
-                raise WorkflowError(_LOGIN_GUIDANCE, code="unauthorized")
-            token = self.login(force=True)
-            response = self._send(
-                method,
-                self._proposal_path(path),
+                self._collection_path(collection, path),
                 json=json,
                 params=dict(params) if params is not None else None,
                 headers={
@@ -464,23 +441,14 @@ class IssuekitClient:
                 message = payload["detail"]
         raise WorkflowError(message, code=code)
 
-    def _issue_path(self, path: str) -> str:
+    def _collection_path(self, collection: str, path: str) -> str:
         if path in ("", "/"):
             suffix = ""
         elif path.startswith("/"):
             suffix = path
         else:
             suffix = f"/{path}"
-        return f"/api/issues/{self.project}/issues{suffix}"
-
-    def _proposal_path(self, path: str) -> str:
-        if path in ("", "/"):
-            suffix = ""
-        elif path.startswith("/"):
-            suffix = path
-        else:
-            suffix = f"/{path}"
-        return f"/api/issues/{self.project}/proposals{suffix}"
+        return f"/api/issues/{self.project}/{collection}{suffix}"
 
     def _url(self, path: str) -> str:
         suffix = path if path.startswith("/") else f"/{path}"
@@ -491,10 +459,6 @@ def _ensure_dict(payload: Any, label: str) -> JsonDict:
     if not isinstance(payload, dict):
         raise WorkflowError(f"{label} was not a JSON object.", code="invalid_response")
     return payload
-
-
-def _drop_none(values: Mapping[str, Any]) -> JsonDict:
-    return {key: value for key, value in values.items() if value is not None}
 
 
 def _is_expired(expiry: float | None) -> bool:
@@ -590,10 +554,80 @@ def _write_token_cache(cache: Mapping[str, Any]) -> None:
 
 
 def _chmod_600(path: Path) -> None:
+    if os.name == "nt":
+        _restrict_windows_acl(path)
+        return
     try:
         os.chmod(path, 0o600)
     except OSError:
         pass
+
+
+def _warn_insecure_api_url(api_url: str) -> None:
+    if _env_flag_enabled(_ALLOW_INSECURE_ENV):
+        return
+    if not _is_insecure_remote_url(api_url):
+        return
+    if api_url in _WARNED_INSECURE_API_URLS:
+        return
+    _WARNED_INSECURE_API_URLS.add(api_url)
+    print(
+        "Warning: ISSUEKIT API URL uses non-HTTPS transport; service-account "
+        "credentials and bearer tokens will be sent in cleartext. Use HTTPS or "
+        f"set {_ALLOW_INSECURE_ENV}=1 to suppress this warning for a trusted endpoint.",
+        file=sys.stderr,
+    )
+
+
+def _is_insecure_remote_url(api_url: str) -> bool:
+    parsed = urlparse(api_url)
+    if parsed.scheme.lower() != "http":
+        return False
+    host = (parsed.hostname or "").lower()
+    if host == "localhost":
+        return False
+    try:
+        return not ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return True
+
+
+def _env_flag_enabled(name: str) -> bool:
+    return os.getenv(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _restrict_windows_acl(path: Path) -> None:
+    user = os.getenv("USERNAME")
+    if not user:
+        _warn_token_cache_permissions(path, "current Windows user could not be determined")
+        return
+    try:
+        result = subprocess.run(
+            [
+                "icacls",
+                str(path),
+                "/inheritance:r",
+                "/grant:r",
+                f"{user}:F",
+            ],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        _warn_token_cache_permissions(path, str(exc))
+        return
+    if result.returncode != 0:
+        reason = result.stderr.strip() or f"icacls exited with {result.returncode}"
+        _warn_token_cache_permissions(path, reason)
+
+
+def _warn_token_cache_permissions(path: Path, reason: str) -> None:
+    print(
+        f"Warning: could not restrict API token cache permissions for {path}: {reason}",
+        file=sys.stderr,
+    )
 
 
 def _response_expiry(payload: Mapping[str, Any]) -> float | None:

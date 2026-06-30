@@ -5,8 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from issuekit.commands.propose import _api_client
 from issuekit.config import load_config
+from issuekit.proposals_api import api_client
 from issuekit.store import get_store
 
 
@@ -79,4 +79,4 @@ def run(args) -> int:
 def _incoming_proposals(config) -> list[dict]:
     if not config.api_url:
         return []
-    return _api_client(config).list_proposals(status="pending")
+    return api_client(config).list_proposals(status="pending")

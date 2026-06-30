@@ -10,11 +10,8 @@ from issuekit.config import IssuekitConfig
 from issuekit.core import (
     Frontmatter,
     Issue,
-    find_issue_by_id,
+    _drop_none,
     get_issue_heading,
-    read_active_issues,
-    read_all_issues,
-    read_completed_issues,
 )
 from issuekit.workflow import WorkflowError
 
@@ -48,35 +45,6 @@ class IssueStore(Protocol):
 
     def find_for(self, assignee: str | None = None, stage: str | None = None) -> list[Issue]:
         """Find active issues matching workflow fields."""
-
-
-class FilesystemStore:
-    def __init__(self, issues_dir: Path | str) -> None:
-        self.issues_dir = Path(issues_dir)
-
-    def read_active_issues(self) -> list[Issue]:
-        return read_active_issues(self.issues_dir)
-
-    def read_completed_issues(self) -> list[Issue]:
-        return read_completed_issues(self.issues_dir)
-
-    def read_all_issues(self) -> tuple[list[Issue], list[Issue], list[Issue]]:
-        return read_all_issues(self.issues_dir)
-
-    def get_issue(self, issue_id: int) -> Issue | None:
-        issue = find_issue_by_id(self.read_active_issues(), issue_id)
-        if issue is not None:
-            return issue
-        return find_issue_by_id(self.read_completed_issues(), issue_id)
-
-    def find_for(self, assignee: str | None = None, stage: str | None = None) -> list[Issue]:
-        return [
-            issue
-            for issue in self.read_active_issues()
-            if not issue.decode_error
-            and (assignee is None or issue.assignee == assignee)
-            and (stage is None or issue.stage == stage)
-        ]
 
 
 class ApiStore:
@@ -277,12 +245,10 @@ class ApiStore:
 
 
 def get_store(config: IssuekitConfig, issues_dir: Path | str | None = None) -> IssueStore:
-    if config.use_filesystem_store:
-        return FilesystemStore(issues_dir or config.issues_path(Path.cwd()))
     if not config.api_url:
         raise WorkflowError(
             "API store requires api_url. Set api_url in issuekit.toml/[tool.issuekit] "
-            "or ISSUEKIT_API_URL; set use_filesystem_store = true only for legacy local tracker access.",
+            "or ISSUEKIT_API_URL.",
             code="missing_api_url",
         )
     return ApiStore(config)
@@ -294,10 +260,6 @@ def _string(value: object) -> str:
 
 def _body(value: object) -> str:
     return "" if value is None else str(value)
-
-
-def _drop_none(values: dict[str, Any]) -> dict[str, Any]:
-    return {key: value for key, value in values.items() if value is not None}
 
 
 def _title(raw: dict[str, Any], body: str, issue_id: int) -> str:

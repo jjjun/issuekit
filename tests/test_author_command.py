@@ -1,28 +1,31 @@
 from pathlib import Path
 
 from issuekit import cli
-from issuekit.core import read_issues
+from issuekit import store as store_module
 from issuekit.commands.author import _slugify
+from issuekit.testing import FakeIssuekitClient
 
-from tests.issue_helpers import make_issue_tree
 
-
-def test_author_command_creates_valid_open_active_issue(
-    tmp_path: Path,
-    monkeypatch,
-    capsys,
-) -> None:
-    issues_dir = make_issue_tree(tmp_path)
-    body_file = tmp_path / "plan.md"
-    body_file.write_text(
-        "## Problem\n\nSomething is missing.\n\n"
-        "## Proposed Solution\n\nAdd it.\n\n"
-        "## Test Plan\n\n- uv run pytest\n",
+def _configure_api(tmp_path: Path, monkeypatch, client: FakeIssuekitClient) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'demo'\n",
         encoding="utf-8",
         newline="\n",
     )
-
+    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
     monkeypatch.chdir(tmp_path)
+
+
+def test_author_command_creates_issue_via_api(tmp_path: Path, monkeypatch, capsys) -> None:
+    client = FakeIssuekitClient()
+    body_file = tmp_path / "plan.md"
+    body_file.write_text(
+        "## Problem\n\nSomething is missing.\n\n## Test Plan\n\n- uv run pytest\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    _configure_api(tmp_path, monkeypatch, client)
+
     exit_code = cli.main(
         [
             "author",
@@ -39,30 +42,17 @@ def test_author_command_creates_valid_open_active_issue(
 
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert "API validation passed" in captured.out
-    assert "Authored issue: active/003_add_author_command.md" in captured.out
-
-    issue_path = issues_dir / "active" / "003_add_author_command.md"
-    content = issue_path.read_text(encoding="utf-8")
-    issues = read_issues(issues_dir, "active")
-    authored = next(issue for issue in issues if issue.id == 3)
-
-    assert authored.title == "Add Author Command"
-    assert authored.issue_status == "active"
-    assert authored.priority == "high"
-    assert authored.assignee == ""
-    assert authored.stage == "todo"
-    assert authored.implementer == ""
-    assert authored.author == "codex"
-    assert "author: codex" in content
-    assert "stage: todo" in content
-    assert "assignee:" not in content
-    assert "implementer:" not in content
-    assert "# Issue #3: Add Author Command" in content
-    assert "Something is missing." in content
-    assert "003_add_author_command.md" in (issues_dir / "indexes" / "active.md").read_text(
-        encoding="utf-8"
-    )
+    assert "API validation passed" not in captured.out
+    assert "Authored issue: demo#1" in captured.out
+    assert client.calls[0] == {
+        "method": "create_issue",
+        "body": {
+            "title": "Add Author Command",
+            "body": "## Problem\n\nSomething is missing.\n\n## Test Plan\n\n- uv run pytest",
+            "priority": "high",
+            "author": "codex",
+        },
+    }
 
 
 def test_author_command_can_assign_explicit_implementer(
@@ -70,9 +60,9 @@ def test_author_command_can_assign_explicit_implementer(
     monkeypatch,
     capsys,
 ) -> None:
-    issues_dir = make_issue_tree(tmp_path)
+    client = FakeIssuekitClient()
+    _configure_api(tmp_path, monkeypatch, client)
 
-    monkeypatch.chdir(tmp_path)
     exit_code = cli.main(
         [
             "author",
@@ -89,16 +79,8 @@ def test_author_command_can_assign_explicit_implementer(
 
     assert exit_code == 0
     capsys.readouterr()
-    authored = next(issue for issue in read_issues(issues_dir, "active") if issue.id == 3)
-    content = authored.file_path.read_text(encoding="utf-8")
-
-    assert authored.author == "claude"
-    assert authored.assignee == "kimi"
-    assert authored.stage == "todo"
-    assert authored.implementer == ""
-    assert "author: claude" in content
-    assert "assignee: kimi" in content
-    assert "implementer:" not in content
+    assert client.get_issue(1)["author"] == "claude"
+    assert client.get_issue(1)["assignee"] == "kimi"
 
 
 def test_slugify_preserves_title_length_for_authored_issues() -> None:

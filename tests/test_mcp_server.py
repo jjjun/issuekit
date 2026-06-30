@@ -8,7 +8,7 @@ import pytest
 pytest.importorskip("mcp")
 
 from issuekit import cli
-from issuekit.commands import propose as propose_command
+from issuekit import proposals_api
 from issuekit import store as store_module
 from issuekit.mcp.server import create_server
 from issuekit.testing import FakeIssuekitClient
@@ -514,7 +514,7 @@ def test_api_proposal_tools_send_list_adopt_and_discard(
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(propose_command, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
     server = create_server(tmp_path)
 
     sent = _call(
@@ -545,7 +545,7 @@ def test_cli_proposal_json_matches_mcp_output(tmp_path: Path, monkeypatch, capsy
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(propose_command, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
 
     # propose via MCP and via CLI: same source/title/body -> identical API proposal
     source_server = create_server(tmp_path)

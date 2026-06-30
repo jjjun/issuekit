@@ -5,7 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 import sys
 
-from issuekit.commands.generate_indexes import write_index_files
 from issuekit.config import load_config
 from issuekit.core import parse_issue_id_arg
 from issuekit.workflow import WorkflowError, request_changes, submit_for_review
@@ -35,8 +34,6 @@ def run_submit_review(args) -> int:
         print(str(exc), file=sys.stderr)
         return 1
 
-    if config.use_filesystem_store:
-        write_index_files(issues_dir, config.recent_count)
     print(
         f"id={issue.id} file={issue.relative_path} "
         f"assignee={issue.assignee} stage={issue.stage}"
@@ -66,8 +63,6 @@ def run_request_changes(args) -> int:
         print(str(exc), file=sys.stderr)
         return 1
 
-    if config.use_filesystem_store:
-        write_index_files(issues_dir, config.recent_count)
     print(
         f"id={issue.id} file={issue.relative_path} "
         f"assignee={issue.assignee} stage={issue.stage}"

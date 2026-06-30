@@ -130,7 +130,7 @@ def test_handlers_are_stubs(command: str) -> None:
 
 
 def test_proposal_cli_round_trip(tmp_path, monkeypatch, capsys) -> None:
-    from issuekit.commands import propose as propose_command
+    from issuekit import proposals_api
     from issuekit.testing import FakeIssuekitClient
 
     client = FakeIssuekitClient(
@@ -143,7 +143,7 @@ def test_proposal_cli_round_trip(tmp_path, monkeypatch, capsys) -> None:
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(propose_command, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
 
     monkeypatch.chdir(tmp_path)
     assert cli.main(
@@ -169,7 +169,7 @@ def test_list_refs_shows_effective_source_and_self(tmp_path, monkeypatch, capsys
     source.mkdir()
     target.mkdir()
     (target / "issuekit.toml").write_text(
-        "use_filesystem_store = true\n",
+        "api_url = 'https://mine.example'\n",
         encoding="utf-8",
         newline="\n",
     )
@@ -452,12 +452,16 @@ def test_workspace_refs_drive_propose_and_reply_round_trip(
     tmp_path,
     monkeypatch,
 ) -> None:
-    from issuekit.commands import propose as propose_command
+    from issuekit import proposals_api
     from issuekit import store as store_module
     from issuekit.testing import FakeIssuekitClient
     from tests.issue_helpers import api_issue
 
-    client = FakeIssuekitClient(
+    class NoListClient(FakeIssuekitClient):
+        def list_all_issues(self, *args, **kwargs):
+            raise AssertionError("build_proposal should fetch the reply source issue directly")
+
+    client = NoListClient(
         issues=[api_issue(1, "Implemented", status="completed", origin="source#0@abc123")]
     )
     (tmp_path / "issuekit.toml").write_text(
@@ -469,7 +473,7 @@ def test_workspace_refs_drive_propose_and_reply_round_trip(
     reply_file = tmp_path / "reply.md"
     body_file.write_text("## Suggested Change\n\nDo the thing.\n", encoding="utf-8", newline="\n")
     reply_file.write_text("## Suggested Change\n\nImplemented.\n", encoding="utf-8", newline="\n")
-    monkeypatch.setattr(propose_command, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
     monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
 
     monkeypatch.chdir(tmp_path)

@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import subprocess
 import time
 from pathlib import Path
 from urllib.parse import parse_qs
@@ -10,6 +11,7 @@ from urllib.parse import parse_qs
 import httpx
 import pytest
 
+import issuekit.client as client_module
 from issuekit.client import IssuekitClient
 from issuekit.testing import FakeIssuekitClient
 from issuekit.workflow import WorkflowError
@@ -18,6 +20,7 @@ from issuekit.workflow import WorkflowError
 @pytest.fixture(autouse=True)
 def isolated_token_cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ISSUEKIT_TOKEN_CACHE", str(tmp_path / "token.json"))
+    client_module._WARNED_INSECURE_API_URLS.clear()
 
 
 def test_client_logs_in_once_and_sends_expected_request_shape() -> None:
@@ -217,6 +220,151 @@ def test_login_writes_token_cache_with_expiry(
     }
     if os.name != "nt":
         assert cache_path.stat().st_mode & 0o777 == 0o600
+
+
+def test_insecure_api_url_warning_goes_to_stderr_once(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    login_count = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal login_count
+        assert request.url.path == "/auth/login"
+        login_count += 1
+        return httpx.Response(200, json={"access_token": _jwt(exp=time.time() + 3600)})
+
+    client = IssuekitClient(
+        "http://mine.example",
+        username="svc",
+        password="secret",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    assert client.login(force=True)
+    assert client.login(force=True)
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err.count("non-HTTPS transport") == 1
+    assert "cleartext" in captured.err
+    assert "ISSUEKIT_ALLOW_INSECURE=1" in captured.err
+    assert login_count == 2
+
+
+@pytest.mark.parametrize(
+    "api_url",
+    [
+        "https://mine.example",
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
+        "http://127.12.34.56:8000",
+        "http://[::1]:8000",
+    ],
+)
+def test_insecure_api_url_warning_is_suppressed_for_https_and_loopback(
+    api_url: str,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/auth/login"
+        return httpx.Response(200, json={"access_token": _jwt(exp=time.time() + 3600)})
+
+    client = IssuekitClient(
+        api_url,
+        username="svc",
+        password="secret",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    assert client.login(force=True)
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+
+
+def test_insecure_api_url_warning_can_be_suppressed_by_env(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("ISSUEKIT_ALLOW_INSECURE", "1")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/auth/login"
+        return httpx.Response(200, json={"access_token": _jwt(exp=time.time() + 3600)})
+
+    client = IssuekitClient(
+        "http://mine.example",
+        username="svc",
+        password="secret",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    assert client.login(force=True)
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+
+
+def test_bearer_request_warns_for_insecure_api_url_without_corrupting_stdout(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.headers["authorization"] == "Bearer static-token"
+        return httpx.Response(200, json=[])
+
+    client = IssuekitClient(
+        "http://mine.example",
+        token="static-token",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    assert client.list_issues() == []
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "non-HTTPS transport" in captured.err
+
+
+def test_windows_token_cache_acl_tightening_is_best_effort(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    cache_path = tmp_path / "token.json"
+    calls: list[list[str]] = []
+
+    def fake_run(argv: list[str], **kwargs: object):
+        calls.append(argv)
+        return subprocess.CompletedProcess(argv, 5, stderr="access denied")
+
+    monkeypatch.setenv("USERNAME", "svc-user")
+    monkeypatch.setattr(client_module, "_token_cache_path", lambda: cache_path)
+    monkeypatch.setattr(client_module.os, "name", "nt")
+    monkeypatch.setattr(client_module.subprocess, "run", fake_run)
+
+    client_module._write_token_cache({"https://mine.example": {"token": "cached-token"}})
+
+    payload = json.loads(cache_path.read_text(encoding="utf-8"))
+    assert payload == {"https://mine.example": {"token": "cached-token"}}
+    assert calls == [
+        [
+            "icacls",
+            str(cache_path.with_name(f".{cache_path.name}.{os.getpid()}.tmp")),
+            "/inheritance:r",
+            "/grant:r",
+            "svc-user:F",
+        ],
+        [
+            "icacls",
+            str(cache_path),
+            "/inheritance:r",
+            "/grant:r",
+            "svc-user:F",
+        ],
+    ]
+    assert "could not restrict API token cache permissions" in capsys.readouterr().err
 
 
 def test_second_client_reuses_cached_token_without_login(

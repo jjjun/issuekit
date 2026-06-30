@@ -59,7 +59,9 @@ def test_runner_captures_stdout_stderr_and_returns_result(tmp_path: Path) -> Non
     assert status["agent_log"].endswith(".agent.log")
 
 
-def test_runner_prompt_forbids_tracker_mutations(tmp_path: Path) -> None:
+def test_runner_prompt_describes_api_lifecycle_without_file_tracker(
+    tmp_path: Path,
+) -> None:
     class PromptCaptureAdapter(FakeAdapter):
         prompt: str = ""
 
@@ -78,8 +80,10 @@ def test_runner_prompt_forbids_tracker_mutations(tmp_path: Path) -> None:
     adapter = PromptCaptureAdapter([sys.executable, str(script)])
     AgentRunner().run(adapter, plan, repo, timeout=10.0)
 
-    assert "Never move, create, delete, or edit files under docs/issues/" in adapter.prompt
-    assert "issuekit owns the tracker lifecycle" in adapter.prompt
+    assert "Do NOT run git commit or git push" in adapter.prompt
+    assert "Issuekit owns the API-backed issue lifecycle" in adapter.prompt
+    assert "do not mutate tracker state or issue lifecycle metadata directly" in adapter.prompt
+    assert "docs/issues" not in adapter.prompt
 
 
 def test_runner_replaces_invalid_log_bytes_before_parsing(tmp_path: Path) -> None:
