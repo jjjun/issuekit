@@ -15,7 +15,7 @@ from issuekit.core import (
     issue_dict,
 )
 from issuekit.protocol import render_protocol, render_server_instructions
-from issuekit.proposals_api import api_client, build_proposal, proposal_id_arg
+from issuekit.proposals_api import adopt_outcome, api_client, build_proposal, proposal_id_arg
 from issuekit.store import get_store
 from issuekit.workflow import (
     AUTO_REVIEWER,
@@ -182,7 +182,8 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
     ) -> dict[str, Any]:
         config, issues_dir = _context(root)
         raw_id = proposal_id if proposal_id is not None else proposal_id_arg(proposal_file or "")
-        return api_client(config).adopt_proposal(int(raw_id), priority=priority)
+        issue = api_client(config).adopt_proposal(int(raw_id), priority=priority)
+        return adopt_outcome(raw_id, config.project, issue)
 
     @server.tool(description="Discard an incoming cross-repository proposal.")
     def discard_proposal(

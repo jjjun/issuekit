@@ -40,6 +40,18 @@ Separation-of-duties invariants:
 - The implementer and reviewer must be different sessions; explicit implementer
   self-review is rejected.
 - The author may also be the reviewer when a different implementer did the work.
+
+Copyable CLI examples:
+
+- Author: `issuekit author --title "Short title" --body-file issue.md --priority medium --agent codex`
+- Claim next: `issuekit claim --assignee codex`
+- Claim specific issue: `issuekit claim --id 123 --assignee codex`
+- Submit review: `issuekit submit-review 123 --summary "Implemented." --branch main --commit abc123 --assignee codex`
+- Request changes: `issuekit request-changes 123 --notes "Add focused tests." --reviewer claude`
+- Approve: `issuekit approve 123 --verification "uv run pytest" --reviewer claude`
+- Complete: `issuekit complete 123 --summary "Done." --verification "uv run pytest"`
+- Incoming proposals: `issuekit incoming --json`
+- Adopt proposal: `issuekit adopt 42 --priority medium --json`
 """
 
 
@@ -153,8 +165,9 @@ project owns triage, so do not mutate its state directly.
 2. Review the referenced branch and commit diff against the issue body.
 3. If the implementation is acceptable, approve it through the reviewer flow:
    call `approve(id, verification, reviewer=None)` with ASCII verification, or
-   use the CLI `issuekit complete <id>` command. The CLI `approve` alias is the
-   equivalent spelling once it is available.
+   use the CLI `issuekit approve <id> --verification <text>` command. The CLI
+   `issuekit complete <id>` command remains available when a completion summary
+   is needed.
 4. If changes are needed or the work is incomplete, call
    `request_changes(id, notes, reviewer=None, assignee=None)` with ASCII notes.
    Omit assignee to return the issue to its recorded implementer.

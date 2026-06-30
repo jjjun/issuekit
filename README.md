@@ -124,10 +124,12 @@ copying the steps.
 | `issuekit complete <id> --summary "..." --verification "..."` | Complete an issue through the API. |
 | `issuekit approve <id> --verification "..." [--reviewer claude]` | Approve a review-stage issue and move it to completed. |
 | `issuekit claim --assignee codex` | Claim the next active issue for an implementer. |
+| `issuekit claim --id <id> --assignee codex` | Claim a specific active issue for an implementer. |
 | `issuekit submit-review <id> --summary "..." [--assignee codex] [--reviewer claude]` | Submit implemented work to a reviewer. |
 | `issuekit request-changes <id> --notes "..." [--assignee codex] [--reviewer claude]` | Return a reviewed issue to implementation. |
 | `issuekit queue --assignee claude [--stage review]` | List active issues for an assignee. |
 | `issuekit check-encoding [--json]` | Check tracked source files for leading BOM bytes and likely mojibake. |
+| `issuekit generate-indexes` | Legacy compatibility no-op; use `issuekit validate` for API-backed trackers. |
 | `issuekit protocol [--agent codex\|claude]` | Print the canonical handoff protocol. |
 | `issuekit init [--with-mcp]` | Install tracker templates, encoding hooks, and optional MCP handoff scaffolding. |
 | `issuekit setup [--force] [--json]` | Run per-repo MCP handoff scaffolding and setup diagnostics. |
@@ -136,7 +138,7 @@ copying the steps.
 | `issuekit list-refs` | List effective local project aliases and their source. |
 | `issuekit propose --to <project> --title "..."` | Send a proposal to a project API inbox. |
 | `issuekit incoming [--json]` | List inbound API proposals. |
-| `issuekit adopt <proposal-id>` | Adopt an incoming API proposal as a local issue. |
+| `issuekit adopt <proposal-id> [--json]` | Adopt an incoming API proposal as a local issue and print the created API issue id. |
 | `issuekit discard <proposal-id>` | Discard an incoming API proposal. |
 
 Legacy file parsing is used only by `migrate-to-api`,

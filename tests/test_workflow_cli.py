@@ -108,6 +108,46 @@ def test_claim_command_uses_api_claim_next(
     ]
 
 
+def test_claim_command_can_claim_specific_issue(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient([api_issue(5, "Ready", priority="high", author="claude")])
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'demo'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = cli.main(["claim", "--id", "5", "--assignee", "codex"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "id=5 file=demo#5 assignee=codex stage=implementing" in captured.out
+    assert client.calls == [{"method": "claim", "number": 5, "body": {"assignee": "codex"}}]
+
+
+def test_claim_command_rejects_priority_with_specific_issue(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'demo'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = cli.main(["claim", "--id", "5", "--assignee", "codex", "--priority", "high"])
+
+    assert exit_code == 1
+    assert "--priority can only be used" in capsys.readouterr().err
+
+
 def test_handoff_commands_use_api_structured_params_without_local_notes(
     tmp_path: Path,
     monkeypatch,

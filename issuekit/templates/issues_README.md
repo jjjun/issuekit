@@ -22,6 +22,7 @@ issuekit info
 issuekit validate
 issuekit author --title "Short title" --body-file issue.md --agent codex
 issuekit claim --assignee codex
+issuekit claim --id 123 --assignee codex
 issuekit submit-review 123 --summary "Implemented."
 issuekit approve 123 --verification "uv run pytest"
 ```

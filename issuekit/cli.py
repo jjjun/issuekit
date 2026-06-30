@@ -12,6 +12,7 @@ from issuekit.commands import (
     check_encoding,
     claim,
     complete,
+    generate_indexes,
     handoff,
     implement,
     info,
@@ -43,6 +44,7 @@ COMMANDS = (
     "queue",
     "runs",
     "check-encoding",
+    "generate-indexes",
     "protocol",
     "init",
     "setup",
@@ -193,8 +195,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     claim_parser = subparsers.add_parser(
         "claim",
-        help="Claim the next issue for an assignee.",
+        help="Claim an issue for an assignee; defaults to the next eligible issue.",
     )
+    claim_parser.add_argument("--id", help="Specific issue id to claim.")
     claim_parser.add_argument("--assignee", required=True, help="Assignee to claim for.")
     claim_parser.add_argument("--priority", choices=("high", "medium", "low"), help="Priority filter.")
     claim_parser.set_defaults(func=claim.run)
@@ -267,6 +270,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Strip leading UTF-8 BOM bytes from tracked source files.",
     )
     check_encoding_parser.set_defaults(func=check_encoding.run)
+
+    generate_indexes_parser = subparsers.add_parser(
+        "generate-indexes",
+        help="Compatibility no-op for legacy markdown trackers.",
+    )
+    generate_indexes_parser.set_defaults(func=generate_indexes.run)
 
     protocol_parser = subparsers.add_parser(
         "protocol",

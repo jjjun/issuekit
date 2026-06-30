@@ -22,6 +22,7 @@ EXPECTED_COMMANDS = {
     "queue",
     "runs",
     "check-encoding",
+    "generate-indexes",
     "protocol",
     "init",
     "setup",
@@ -90,10 +91,23 @@ def test_complete_requires_id(capsys: pytest.CaptureFixture[str]) -> None:
     assert "id" in captured.err
 
 
+def test_generate_indexes_compatibility_exits_zero(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    exit_code = cli.main(["generate-indexes"])
+
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "generate-indexes is not used in API-backed mode" in captured.out
+    assert "issuekit validate" in captured.out
+
+
 @pytest.mark.parametrize("command", sorted(EXPECTED_COMMANDS))
 def test_handlers_are_stubs(command: str) -> None:
     if command in {
         "check-encoding",
+        "generate-indexes",
         "approve",
         "claim",
         "complete",

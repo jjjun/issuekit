@@ -159,9 +159,41 @@ def test_api_cli_adopt_and_discard_use_proposal_ids(
 
     assert adopted["title"] == "Adopt"
     assert adopted["priority"] == "high"
+    assert adopted["api_result"] == "created_issue"
+    assert adopted["created_api_issue"] is True
+    assert adopted["proposal_id"] == "1"
+    assert adopted["issue_id"] == 1
+    assert adopted["issue_ref"] == "target#1"
+    assert adopted["next_command"] == "issuekit claim --id 1 --assignee <agent>"
+    assert adopted["issue"]["title"] == "Adopt"
     assert client.get_proposal(1)["status"] == "adopted"
     assert discarded["status"] == "discarded"
     assert client.get_proposal(2)["status"] == "discarded"
+
+
+def test_api_cli_adopt_normal_output_includes_next_step(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient(
+        proposals=[
+            {"id": 1, "origin": "source#1@abc123", "title": "Adopt", "body": "Adopt body."},
+        ]
+    )
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'target'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["adopt", "1", "--priority", "high"]) == 0
+
+    out = capsys.readouterr().out
+    assert "Adopted proposal #1 as API issue #1 (target#1)." in out
+    assert "Next: issuekit claim --id 1 --assignee <agent>" in out
 
 
 def test_api_cli_adopt_requires_integer_id(tmp_path: Path, monkeypatch, capsys) -> None:

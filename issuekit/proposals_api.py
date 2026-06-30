@@ -13,6 +13,43 @@ from issuekit.proposals import Proposal, ProposalError, origin_destination
 from issuekit.store import get_store
 
 
+def adopt_outcome(proposal_id: str | int, project: str, issue: dict) -> dict:
+    raw_issue_id = issue.get("id")
+    try:
+        issue_id = int(raw_issue_id)
+    except (TypeError, ValueError):
+        issue_id = None
+    created_api_issue = issue_id is not None and issue_id > 0
+    issue_ref = f"{project}#{issue_id}" if created_api_issue else None
+    next_command = (
+        f"issuekit claim --id {issue_id} --assignee <agent>"
+        if created_api_issue
+        else None
+    )
+    instruction = (
+        f"Use issue #{issue_id} next."
+        if created_api_issue
+        else (
+            "Adoption did not return a created API issue. Run `issuekit author` "
+            "from the adopted proposal content to create an active API issue."
+        )
+    )
+    outcome = dict(issue)
+    outcome.update(
+        {
+            "api_result": "created_issue" if created_api_issue else "no_issue_created",
+            "created_api_issue": created_api_issue,
+            "proposal_id": str(proposal_id),
+            "issue_id": issue_id if created_api_issue else None,
+            "issue_ref": issue_ref,
+            "next_command": next_command,
+            "instruction": instruction,
+            "issue": issue,
+        }
+    )
+    return outcome
+
+
 def api_client(config: IssuekitConfig, *, project: str | None = None) -> IssuekitClient:
     if not config.api_url:
         raise ProposalError(

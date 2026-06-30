@@ -10,6 +10,7 @@ from issuekit.config import load_config
 from issuekit.core import VALID_ISSUE_PRIORITIES
 from issuekit.proposals import ProposalError
 from issuekit.proposals_api import (
+    adopt_outcome,
     api_client,
     build_proposal,
     proposal_id_arg,
@@ -114,10 +115,19 @@ def run_adopt(args) -> int:
     except (ProposalError, WorkflowError, ValueError) as exc:
         print(str(exc), file=sys.stderr)
         return 1
+    outcome = adopt_outcome(args.proposal, config.project, issue)
     if args.json:
-        print(json.dumps(issue, indent=2))
+        print(json.dumps(outcome, indent=2))
         return 0
-    print(f"Adopted proposal #{args.proposal} as issue #{issue.get('id')}.")
+    if outcome["created_api_issue"]:
+        print(
+            f"Adopted proposal #{args.proposal} as API issue "
+            f"#{outcome['issue_id']} ({outcome['issue_ref']})."
+        )
+        print(f"Next: {outcome['next_command']}")
+    else:
+        print(f"Adopted proposal #{args.proposal}, but no API issue id was returned.")
+        print(outcome["instruction"])
     return 0
 
 
