@@ -923,6 +923,32 @@ def test_client_submit_sends_exact_server_body() -> None:
     ) == {"id": 7, "stage": "review"}
 
 
+def test_client_request_changes_sends_worker_when_provided() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/issues/issuekit/issues/7/request-changes"
+        assert json.loads(request.content) == {
+            "notes": "add tests",
+            "reviewer": "codex",
+            "assignee": "claude",
+            "worker": "machine/repo/reviewer",
+        }
+        return httpx.Response(200, json={"id": 7, "stage": "changes_requested"})
+
+    client = IssuekitClient(
+        "https://mine.example",
+        token="static-token",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    assert client.request_changes(
+        7,
+        notes="add tests",
+        reviewer="codex",
+        assignee="claude",
+        worker="machine/repo/reviewer",
+    ) == {"id": 7, "stage": "changes_requested"}
+
+
 def test_client_approve_sends_exact_server_body() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/api/issues/issuekit/issues/7/approve"
@@ -944,6 +970,32 @@ def test_client_approve_sends_exact_server_body() -> None:
         summary="approved",
         verification="uv run python -m pytest",
         reviewer="claude",
+    ) == {"id": 7, "stage": "done"}
+
+
+def test_client_approve_sends_worker_when_provided() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/issues/issuekit/issues/7/approve"
+        assert json.loads(request.content) == {
+            "summary": "approved",
+            "verification": "uv run python -m pytest",
+            "reviewer": "codex",
+            "worker": "machine/repo/reviewer",
+        }
+        return httpx.Response(200, json={"id": 7, "stage": "done"})
+
+    client = IssuekitClient(
+        "https://mine.example",
+        token="static-token",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    assert client.approve(
+        7,
+        summary="approved",
+        verification="uv run python -m pytest",
+        reviewer="codex",
+        worker="machine/repo/reviewer",
     ) == {"id": 7, "stage": "done"}
 
 

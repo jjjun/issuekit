@@ -149,6 +149,7 @@ class ApiStore:
         notes: str,
         reviewer: str | None = None,
         assignee: str | None = None,
+        worker: str | None = None,
     ) -> Issue:
         return self._issue_from_response(
             self.client.request_changes(
@@ -156,6 +157,7 @@ class ApiStore:
                 notes=notes,
                 reviewer=reviewer,
                 assignee=assignee,
+                worker=worker,
             )
         )
 
@@ -166,6 +168,7 @@ class ApiStore:
         summary: str,
         verification: str,
         reviewer: str,
+        worker: str | None = None,
     ) -> Issue:
         return self._issue_from_response(
             self.client.approve(
@@ -173,6 +176,7 @@ class ApiStore:
                 summary=summary,
                 verification=verification,
                 reviewer=reviewer,
+                worker=worker,
             )
         )
 

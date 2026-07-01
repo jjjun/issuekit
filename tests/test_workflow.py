@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 
 from issuekit import store as store_module
+from issuekit.commands.approve import approve_issue
 from issuekit.commands.complete import complete_issue
 from issuekit.config import IssuekitConfig, WorkerIdentity
 from issuekit.testing import FakeIssuekitClient
@@ -180,6 +181,181 @@ def test_request_changes_returns_issue_to_implementer(tmp_path: Path, monkeypatc
     assert client.calls == [
         {"method": "request_changes", "number": 1, "body": {"notes": "Please add tests."}}
     ]
+
+
+def test_request_changes_sends_registered_reviewer_worker(tmp_path: Path, monkeypatch) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                1,
+                "First",
+                status="in_progress",
+                assignee="claude",
+                stage="review",
+                implementer="codex",
+            )
+        ]
+    )
+    config = _config(
+        client,
+        monkeypatch,
+        worker=WorkerIdentity("machine", "repo", "reviewer"),
+    )
+
+    request_changes(
+        tmp_path / "docs" / "issues",
+        1,
+        notes="Please add tests.",
+        config=config,
+    )
+
+    assert client.calls == [
+        {
+            "method": "request_changes",
+            "number": 1,
+            "body": {"notes": "Please add tests.", "worker": "machine/repo/reviewer"},
+        }
+    ]
+
+
+def test_approve_rejects_same_agent_same_worker_review(tmp_path: Path, monkeypatch) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                1,
+                "First",
+                status="in_progress",
+                assignee="",
+                stage="review",
+                implementer="codex",
+                worker="machine/repo/checkout",
+            )
+        ]
+    )
+    config = _config(
+        client,
+        monkeypatch,
+        worker=WorkerIdentity("machine", "repo", "checkout"),
+    )
+
+    with pytest.raises(WorkflowError, match="self-review is not allowed"):
+        approve_issue(
+            tmp_path / "docs" / "issues",
+            1,
+            verification="uv run pytest",
+            reviewer="codex",
+            config=config,
+        )
+
+    assert client.get_issue(1)["status"] == "in_progress"
+
+
+def test_approve_allows_same_agent_different_worker_open_review(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                1,
+                "First",
+                status="in_progress",
+                assignee="",
+                stage="review",
+                implementer="codex",
+                worker="machine/repo/implementer",
+            )
+        ]
+    )
+    config = _config(
+        client,
+        monkeypatch,
+        worker=WorkerIdentity("machine", "repo", "reviewer"),
+    )
+
+    issue = approve_issue(
+        tmp_path / "docs" / "issues",
+        1,
+        verification="uv run pytest",
+        reviewer="codex",
+        config=config,
+    )
+
+    assert issue.issue_status == "completed"
+    assert client.calls[-1] == {
+        "method": "approve",
+        "number": 1,
+        "body": {
+            "summary": "Approved.",
+            "verification": "uv run pytest",
+            "reviewer": "codex",
+            "worker": "machine/repo/reviewer",
+        },
+    }
+
+
+def test_approve_allows_different_agent_review(tmp_path: Path, monkeypatch) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                1,
+                "First",
+                status="in_progress",
+                assignee="claude",
+                stage="review",
+                implementer="codex",
+                worker="machine/repo/implementer",
+            )
+        ]
+    )
+    config = _config(
+        client,
+        monkeypatch,
+        worker=WorkerIdentity("machine", "repo", "reviewer"),
+    )
+
+    issue = approve_issue(
+        tmp_path / "docs" / "issues",
+        1,
+        verification="uv run pytest",
+        reviewer="claude",
+        config=config,
+    )
+
+    assert issue.issue_status == "completed"
+
+
+def test_approve_rejects_unassigned_reviewer_before_api_transition(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                1,
+                "First",
+                status="in_progress",
+                assignee="claude",
+                stage="review",
+                implementer="codex",
+            )
+        ]
+    )
+    config = _config(client, monkeypatch)
+
+    with pytest.raises(WorkflowError) as excinfo:
+        approve_issue(
+            tmp_path / "docs" / "issues",
+            1,
+            verification="uv run pytest",
+            reviewer="codex",
+            config=config,
+        )
+
+    message = str(excinfo.value)
+    assert "review is assigned to reviewer 'claude'" in message
+    assert "You passed reviewer='codex'" in message
+    assert client.calls == []
 
 
 def test_find_for_lists_matching_active_issues(tmp_path: Path, monkeypatch) -> None:

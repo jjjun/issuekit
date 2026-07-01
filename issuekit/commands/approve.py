@@ -14,8 +14,10 @@ from issuekit.core import (
 )
 from issuekit.workflow import (
     WorkflowError,
+    ensure_assigned_reviewer,
     resolve_reviewer,
 )
+from issuekit.worker import worker_key
 
 
 def run(args) -> int:
@@ -69,11 +71,13 @@ def approve_issue(
 
     store = get_store(config, issues_dir)
     resolved_reviewer = _resolve_api_approval_reviewer(store, issue_id, reviewer, config)
+    worker = worker_key(config.worker) if config.worker is not None else None
     return store.approve_issue(  # type: ignore[attr-defined]
         issue_id,
         summary=summary if summary is not None else "Approved.",
         verification=verification,
         reviewer=resolved_reviewer,
+        worker=worker,
     )
 
 
@@ -90,6 +94,10 @@ def _resolve_api_approval_reviewer(
                 "API approval requires a concrete reviewer; omit --reviewer to use auto resolution."
             )
         _validate_api_approval_reviewer(resolved, config)
+        issue = store.get_issue(issue_id)  # type: ignore[attr-defined]
+        if issue is None:
+            raise LookupError(issue_id)
+        ensure_assigned_reviewer(issue, reviewer, resolved)
         return resolved
 
     issue = store.get_issue(issue_id)  # type: ignore[attr-defined]

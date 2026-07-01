@@ -194,6 +194,7 @@ class FakeIssuekitClient:
         notes: str,
         reviewer: str | None = None,
         assignee: str | None = None,
+        worker: str | None = None,
     ) -> JsonDict:
         with self._lock:
             self._record(
@@ -205,6 +206,7 @@ class FakeIssuekitClient:
                         "notes": notes,
                         "reviewer": reviewer,
                         "assignee": assignee,
+                        "worker": worker,
                     }.items()
                     if value is not None
                 },
@@ -221,19 +223,25 @@ class FakeIssuekitClient:
         summary: str,
         verification: str,
         reviewer: str,
+        worker: str | None = None,
     ) -> JsonDict:
         with self._lock:
             self._record(
                 "approve",
                 number=number,
                 body={
-                    "summary": summary,
-                    "verification": verification,
-                    "reviewer": reviewer,
+                    key: value
+                    for key, value in {
+                        "summary": summary,
+                        "verification": verification,
+                        "reviewer": reviewer,
+                        "worker": worker,
+                    }.items()
+                    if value is not None
                 },
             )
             issue = self._find(number)
-            if issue.get("implementer") == reviewer:
+            if _is_self_review(issue, reviewer, worker):
                 raise WorkflowError(
                     f"Issue #{number} was implemented by {reviewer}; self-review is not allowed.",
                     code="invalid_transition",
@@ -526,3 +534,12 @@ class FakeIssuekitClient:
         if number is not None:
             call["number"] = number
         self.calls.append(call)
+
+
+def _is_self_review(issue: JsonDict, reviewer: str, reviewer_worker: str | None) -> bool:
+    if issue.get("implementer") != reviewer:
+        return False
+    implementer_worker = str(issue.get("worker") or "")
+    if implementer_worker and reviewer_worker:
+        return implementer_worker == reviewer_worker
+    return True

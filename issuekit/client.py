@@ -246,11 +246,14 @@ class IssuekitClient:
         notes: str,
         reviewer: str | None = None,
         assignee: str | None = None,
+        worker: str | None = None,
     ) -> JsonDict:
         payload = self._request(
             "POST",
             f"/{number}/request-changes",
-            json=_drop_none({"notes": notes, "reviewer": reviewer, "assignee": assignee}),
+            json=_drop_none(
+                {"notes": notes, "reviewer": reviewer, "assignee": assignee, "worker": worker}
+            ),
         )
         return _ensure_dict(payload, "Request-changes response")
 
@@ -261,15 +264,19 @@ class IssuekitClient:
         summary: str,
         verification: str,
         reviewer: str,
+        worker: str | None = None,
     ) -> JsonDict:
         payload = self._request(
             "POST",
             f"/{number}/approve",
-            json={
-                "summary": summary,
-                "verification": verification,
-                "reviewer": reviewer,
-            },
+            json=_drop_none(
+                {
+                    "summary": summary,
+                    "verification": verification,
+                    "reviewer": reviewer,
+                    "worker": worker,
+                }
+            ),
         )
         return _ensure_dict(payload, "Approve response")
 

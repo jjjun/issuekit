@@ -111,11 +111,13 @@ def request_changes(
     from issuekit.store import get_store
 
     store = get_store(config, issues_dir)
+    worker = worker_key(config.worker) if config.worker is not None else None
     return store.request_changes(  # type: ignore[attr-defined]
         issue_id,
         notes=notes,
         reviewer=reviewer,
         assignee=assignee,
+        worker=worker,
     )
 
 
