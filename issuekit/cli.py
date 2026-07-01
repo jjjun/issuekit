@@ -23,6 +23,7 @@ from issuekit.commands import (
     protocol,
     queue,
     runs,
+    serve,
     setup,
     validate,
 )
@@ -46,6 +47,7 @@ COMMANDS = (
     "request-changes",
     "queue",
     "runs",
+    "serve",
     "check-encoding",
     "generate-indexes",
     "protocol",
@@ -262,6 +264,40 @@ def build_parser() -> argparse.ArgumentParser:
     )
     runs_parser.add_argument("--json", action="store_true", help="Print JSON output.")
     runs_parser.set_defaults(func=runs.run)
+
+    serve_parser = subparsers.add_parser(
+        "serve",
+        help="Poll for eligible issues and run this checkout's worker agent.",
+    )
+    serve_parser.add_argument("--agent", help="Configured agent name to run.")
+    serve_parser.add_argument(
+        "--interval",
+        type=float,
+        default=15.0,
+        help="Idle poll interval in seconds.",
+    )
+    serve_parser.add_argument(
+        "--priority",
+        choices=("high", "medium", "low"),
+        help="Priority filter for claim-next.",
+    )
+    serve_parser.add_argument(
+        "--once",
+        action="store_true",
+        help="Attempt at most one claim and then exit.",
+    )
+    serve_parser.add_argument(
+        "--max-issues",
+        type=int,
+        help="Exit after this many successful submissions.",
+    )
+    serve_parser.add_argument(
+        "--timeout-sec",
+        type=float,
+        default=1800.0,
+        help="Hard timeout for each agent run in seconds.",
+    )
+    serve_parser.set_defaults(func=serve.run)
 
     check_encoding_parser = subparsers.add_parser(
         "check-encoding",

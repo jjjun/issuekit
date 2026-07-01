@@ -259,6 +259,7 @@ class AgentRunner:
         issue_id: int | None = None,
         follow: bool = False,
         prompt_suffix: str | None = None,
+        abort_event: threading.Event | None = None,
     ) -> AgentResult:
         plan_path = plan_path.resolve()
         repo = repo.resolve()
@@ -344,8 +345,11 @@ class AgentRunner:
             watcher.start()
 
             try:
-                exit_code = proc.wait(timeout=timeout)
-                timed_out = False
+                exit_code, timed_out = self._wait_for_process(
+                    proc,
+                    timeout=timeout,
+                    abort_event=abort_event,
+                )
             except subprocess.TimeoutExpired:
                 timed_out = True
                 self._kill_process_group(proc)
@@ -436,6 +440,32 @@ class AgentRunner:
         if exit_code == 0:
             return "completed"
         return "failed"
+
+    def _wait_for_process(
+        self,
+        proc: subprocess.Popen,
+        *,
+        timeout: float,
+        abort_event: threading.Event | None,
+    ) -> tuple[int, bool]:
+        if abort_event is None:
+            return proc.wait(timeout=timeout), False
+
+        deadline = time.monotonic() + timeout
+        while True:
+            if abort_event.is_set():
+                self._kill_process_group(proc)
+                exit_code = proc.returncode if proc.returncode is not None else -1
+                return exit_code, True
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                self._kill_process_group(proc)
+                exit_code = proc.returncode if proc.returncode is not None else -1
+                return exit_code, True
+            try:
+                return proc.wait(timeout=min(0.25, remaining)), False
+            except subprocess.TimeoutExpired:
+                continue
 
     def _kill_process_group(self, proc: subprocess.Popen) -> None:
         if os.name == "nt":
