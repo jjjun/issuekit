@@ -57,6 +57,33 @@ def test_info_json_output(tmp_path: Path, monkeypatch, capsys) -> None:
     assert payload["incomingProposals"] == []
 
 
+def test_info_reads_issue_list_once_for_counts(tmp_path: Path, monkeypatch, capsys) -> None:
+    class RecordingClient(FakeIssuekitClient):
+        def __init__(self, *args, **kwargs) -> None:
+            super().__init__(*args, **kwargs)
+            self.list_calls: list[dict[str, object]] = []
+
+        def list_all_issues(self, **kwargs):
+            self.list_calls.append(kwargs)
+            return super().list_all_issues(**kwargs)
+
+    client = RecordingClient(
+        [
+            api_issue(1, "First", priority="high"),
+            api_issue(2, "Done", status="completed", completed="2026-01-02"),
+        ]
+    )
+    _configure_api(tmp_path, monkeypatch, client)
+
+    cli.main(["info", "--json"])
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["counts"] == {"active": 1, "completed": 1, "total": 2}
+    assert client.list_calls == [
+        {"status": None, "assignee": None, "stage": None, "include_completed": True}
+    ]
+
+
 def test_info_json_lists_incoming_proposals(tmp_path: Path, monkeypatch, capsys) -> None:
     client = FakeIssuekitClient(
         [

@@ -129,6 +129,52 @@ def test_client_list_all_issues_caps_page_size_at_server_max() -> None:
     assert seen_pages == [(500, 0), (500, 500)]
 
 
+def test_client_list_all_issues_can_include_completed_via_board_endpoint() -> None:
+    all_issues = [{"id": issue_id} for issue_id in range(1, 4)]
+    seen_requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen_requests.append(request)
+        params = dict(request.url.params)
+        assert request.url.path == "/api/issues/board"
+        assert params["projects"] == "demo_project"
+        assert params["include_completed"] == "true"
+        limit = int(params["limit"])
+        offset = int(params["offset"])
+        return httpx.Response(
+            200,
+            json={
+                "items": all_issues[offset : offset + limit],
+                "total": len(all_issues),
+                "limit": limit,
+                "offset": offset,
+            },
+        )
+
+    client = IssuekitClient(
+        "https://mine.example",
+        project="demo_project",
+        token="static-token",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    assert client.list_all_issues(include_completed=True, page_size=2) == all_issues
+    assert [dict(request.url.params) for request in seen_requests] == [
+        {
+            "projects": "demo_project",
+            "include_completed": "true",
+            "limit": "2",
+            "offset": "0",
+        },
+        {
+            "projects": "demo_project",
+            "include_completed": "true",
+            "limit": "2",
+            "offset": "2",
+        },
+    ]
+
+
 def test_client_create_issue_uses_collection_path_without_trailing_slash() -> None:
     issue = {"title": "First"}
     seen_requests: list[httpx.Request] = []

@@ -137,9 +137,35 @@ class IssuekitClient:
         status: str | None = None,
         stage: str | None = None,
         assignee: str | None = None,
+        include_completed: bool = False,
         limit: int | None = None,
         offset: int | None = None,
     ) -> list[JsonDict]:
+        if include_completed:
+            payload = self._authorized_request(
+                "GET",
+                "/api/issues/board",
+                params=_drop_none(
+                    {
+                        "projects": self.project,
+                        "status": status,
+                        "include_completed": True,
+                        "stage": stage,
+                        "assignee": assignee,
+                        "limit": limit,
+                        "offset": offset,
+                    }
+                ),
+            )
+            page = _ensure_dict(payload, "Issue board response")
+            items = page.get("items")
+            if not isinstance(items, list):
+                raise WorkflowError(
+                    "Issue board response items was not a JSON array.",
+                    code="invalid_response",
+                )
+            return [_ensure_dict(item, "Issue response") for item in items]
+
         params = _drop_none(
             {
                 "status": status,
@@ -160,6 +186,7 @@ class IssuekitClient:
         status: str | None = None,
         stage: str | None = None,
         assignee: str | None = None,
+        include_completed: bool = False,
         page_size: int = 500,
     ) -> list[JsonDict]:
         if page_size <= 0:
@@ -172,6 +199,7 @@ class IssuekitClient:
                 status=status,
                 stage=stage,
                 assignee=assignee,
+                include_completed=include_completed,
                 limit=page_size,
                 offset=offset,
             )
