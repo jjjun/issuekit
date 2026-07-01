@@ -95,9 +95,17 @@ class FakeIssuekitClient:
             self._record("create_issue", body=deepcopy(issue))
             return deepcopy(self._store_issue(issue, allocate=True))
 
-    def claim(self, number: int, *, assignee: str) -> JsonDict:
+    def claim(self, number: int, *, assignee: str, worker: str | None = None) -> JsonDict:
         with self._lock:
-            self._record("claim", number=number, body={"assignee": assignee})
+            self._record(
+                "claim",
+                number=number,
+                body={
+                    key: value
+                    for key, value in {"assignee": assignee, "worker": worker}.items()
+                    if value is not None
+                },
+            )
             issue = self._find(number)
             self._claim_issue(issue, assignee)
             return deepcopy(issue)
@@ -107,13 +115,18 @@ class FakeIssuekitClient:
         *,
         assignee: str,
         priority: str | None = None,
+        worker: str | None = None,
     ) -> JsonDict | None:
         with self._lock:
             self._record(
                 "claim_next",
                 body={
                     key: value
-                    for key, value in {"assignee": assignee, "priority": priority}.items()
+                    for key, value in {
+                        "assignee": assignee,
+                        "priority": priority,
+                        "worker": worker,
+                    }.items()
                     if value is not None
                 },
             )

@@ -192,8 +192,12 @@ class IssuekitClient:
         payload = self._request("POST", "/", json=dict(issue))
         return _ensure_dict(payload, "Create response")
 
-    def claim(self, number: int, *, assignee: str) -> JsonDict:
-        payload = self._request("POST", f"/{number}/claim", json={"assignee": assignee})
+    def claim(self, number: int, *, assignee: str, worker: str | None = None) -> JsonDict:
+        payload = self._request(
+            "POST",
+            f"/{number}/claim",
+            json=_drop_none({"assignee": assignee, "worker": worker}),
+        )
         return _ensure_dict(payload, "Claim response")
 
     def claim_next(
@@ -201,11 +205,12 @@ class IssuekitClient:
         *,
         assignee: str,
         priority: str | None = None,
+        worker: str | None = None,
     ) -> JsonDict | None:
         payload = self._request(
             "POST",
             "/claim-next",
-            json=_drop_none({"assignee": assignee, "priority": priority}),
+            json=_drop_none({"assignee": assignee, "priority": priority, "worker": worker}),
         )
         if payload is None:
             return None

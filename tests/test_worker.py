@@ -9,6 +9,7 @@ from issuekit.worker import (
     WorkerRegistrationError,
     parse_repo_id_from_remote,
     register_worker,
+    worker_key,
 )
 from issuekit.refs import add_ref
 
@@ -24,6 +25,10 @@ from issuekit.refs import add_ref
 )
 def test_parse_repo_id_from_remote(remote_url: str, expected: str) -> None:
     assert parse_repo_id_from_remote(remote_url) == expected
+
+
+def test_worker_key_matches_registry_key_format() -> None:
+    assert worker_key(WorkerIdentity("machine", "repo", "checkout")) == "machine/repo/checkout"
 
 
 def test_register_worker_uses_remote_repo_and_basename_worker(

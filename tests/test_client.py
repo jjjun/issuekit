@@ -580,6 +580,68 @@ def test_client_claim_next_204_returns_none() -> None:
     assert client.claim_next(assignee="codex") is None
 
 
+def test_client_claim_sends_worker_when_provided() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "POST"
+        assert request.url.path == "/api/issues/issuekit/issues/7/claim"
+        assert json.loads(request.content) == {
+            "assignee": "codex",
+            "worker": "machine/repo/checkout",
+        }
+        return httpx.Response(200, json={"id": 7, "stage": "implementing"})
+
+    client = IssuekitClient(
+        "https://mine.example",
+        token="static-token",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    assert client.claim(7, assignee="codex", worker="machine/repo/checkout") == {
+        "id": 7,
+        "stage": "implementing",
+    }
+
+
+def test_client_claim_omits_worker_when_not_provided() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "POST"
+        assert request.url.path == "/api/issues/issuekit/issues/7/claim"
+        assert json.loads(request.content) == {"assignee": "codex"}
+        return httpx.Response(200, json={"id": 7, "stage": "implementing"})
+
+    client = IssuekitClient(
+        "https://mine.example",
+        token="static-token",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    assert client.claim(7, assignee="codex") == {"id": 7, "stage": "implementing"}
+
+
+def test_client_claim_next_sends_worker_when_provided() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "POST"
+        assert request.url.path == "/api/issues/issuekit/issues/claim-next"
+        assert json.loads(request.content) == {
+            "assignee": "codex",
+            "priority": "high",
+            "worker": "machine/repo/checkout",
+        }
+        return httpx.Response(200, json={"id": 7, "stage": "implementing"})
+
+    client = IssuekitClient(
+        "https://mine.example",
+        token="static-token",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    assert client.claim_next(
+        assignee="codex",
+        priority="high",
+        worker="machine/repo/checkout",
+    ) == {"id": 7, "stage": "implementing"}
+
+
 def test_client_import_issues_posts_wrapped_issues_body() -> None:
     items = [
         {

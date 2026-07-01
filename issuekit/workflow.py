@@ -11,6 +11,7 @@ from issuekit.core import (
     has_non_ascii,
     is_valid_workflow_token,
 )
+from issuekit.worker import worker_key
 
 
 AUTO_REVIEWER = "auto"
@@ -40,7 +41,8 @@ def claim_next(
     from issuekit.store import get_store
 
     store = get_store(config, issues_dir)
-    return store.claim_next(assignee=assignee, priority=priority)  # type: ignore[attr-defined]
+    worker = worker_key(config.worker) if config.worker is not None else None
+    return store.claim_next(assignee=assignee, priority=priority, worker=worker)  # type: ignore[attr-defined]
 
 
 def claim_issue(
@@ -57,7 +59,8 @@ def claim_issue(
     from issuekit.store import get_store
 
     store = get_store(config, issues_dir)
-    return store.claim_issue(issue_id, assignee=assignee)  # type: ignore[attr-defined]
+    worker = worker_key(config.worker) if config.worker is not None else None
+    return store.claim_issue(issue_id, assignee=assignee, worker=worker)  # type: ignore[attr-defined]
 
 
 def submit_for_review(

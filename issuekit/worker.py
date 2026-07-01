@@ -289,8 +289,12 @@ def _worker_registry_path(registry_path: Path | str | None) -> Path:
     return (Path.home() / ".issuekit" / "workers.toml").resolve()
 
 
-def _worker_key(identity: WorkerIdentity) -> str:
+def worker_key(identity: WorkerIdentity) -> str:
     return f"{identity.machine_id}/{identity.repo_id}/{identity.worker_id}"
+
+
+def _worker_key(identity: WorkerIdentity) -> str:
+    return worker_key(identity)
 
 
 def _local_config_text(*, worker: dict[str, str], refs: dict[str, str]) -> str:

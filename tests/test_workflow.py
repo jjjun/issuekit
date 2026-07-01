@@ -4,7 +4,7 @@ import pytest
 
 from issuekit import store as store_module
 from issuekit.commands.complete import complete_issue
-from issuekit.config import IssuekitConfig
+from issuekit.config import IssuekitConfig, WorkerIdentity
 from issuekit.testing import FakeIssuekitClient
 from issuekit.workflow import (
     WorkflowError,
@@ -18,9 +18,14 @@ from issuekit.workflow import (
 from tests.issue_helpers import api_issue
 
 
-def _config(client: FakeIssuekitClient, monkeypatch) -> IssuekitConfig:
+def _config(
+    client: FakeIssuekitClient,
+    monkeypatch,
+    *,
+    worker: WorkerIdentity | None = None,
+) -> IssuekitConfig:
     monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
-    return IssuekitConfig(api_url="https://mine.example", project="demo")
+    return IssuekitConfig(api_url="https://mine.example", project="demo", worker=worker)
 
 
 def test_claim_next_routes_to_api_and_picks_highest_priority(tmp_path: Path, monkeypatch) -> None:
@@ -61,6 +66,46 @@ def test_claim_next_respects_priority_filter(tmp_path: Path, monkeypatch) -> Non
     assert issue.id == 1
     assert client.calls == [
         {"method": "claim_next", "body": {"assignee": "codex", "priority": "low"}}
+    ]
+
+
+def test_claim_next_sends_registered_worker(tmp_path: Path, monkeypatch) -> None:
+    client = FakeIssuekitClient([api_issue(1, "Ready", author="claude")])
+    config = _config(
+        client,
+        monkeypatch,
+        worker=WorkerIdentity("machine", "repo", "checkout"),
+    )
+
+    issue = claim_next(tmp_path / "docs" / "issues", "codex", config=config)
+
+    assert issue is not None
+    assert issue.id == 1
+    assert client.calls == [
+        {
+            "method": "claim_next",
+            "body": {"assignee": "codex", "worker": "machine/repo/checkout"},
+        }
+    ]
+
+
+def test_claim_issue_sends_registered_worker(tmp_path: Path, monkeypatch) -> None:
+    client = FakeIssuekitClient([api_issue(1, "Ready", author="claude")])
+    config = _config(
+        client,
+        monkeypatch,
+        worker=WorkerIdentity("machine", "repo", "checkout"),
+    )
+
+    issue = claim_issue(tmp_path / "docs" / "issues", 1, "codex", config=config)
+
+    assert issue.id == 1
+    assert client.calls == [
+        {
+            "method": "claim",
+            "number": 1,
+            "body": {"assignee": "codex", "worker": "machine/repo/checkout"},
+        }
     ]
 
 
