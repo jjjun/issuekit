@@ -56,6 +56,26 @@ class ExplodingRunner:
         raise AssertionError("agent runner should not be called")
 
 
+class RecoveryErrorThenRunner:
+    calls: list[int | None] = []
+
+    def run(
+        self,
+        adapter,
+        plan_path: Path,
+        repo: Path,
+        timeout: float,
+        agent_name: str | None = None,
+        issue_id: int | None = None,
+        follow: bool = False,
+        **kwargs,
+    ) -> FakeResult:
+        self.calls.append(issue_id)
+        if issue_id == 1:
+            raise RuntimeError("temporary recovery failure")
+        return FakeResult(parsed={"resume_session_id": "def456"})
+
+
 def _configure_registered_api(
     tmp_path: Path,
     monkeypatch,
@@ -128,6 +148,146 @@ def test_serve_once_claims_runs_and_submits(
     assert [call["method"] for call in client.calls] == ["claim_next", "submit"]
     assert client.calls[0]["body"]["worker"] == "machine/demo/checkout"
     assert "event=submitted issue=1" in capsys.readouterr().err
+
+
+def test_serve_once_recovers_own_orphan_before_polling(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                1,
+                "Orphan",
+                status="in_progress",
+                assignee="codex",
+                stage="implementing",
+                implementer="codex",
+                author="claude",
+                worker="machine/demo/checkout",
+            )
+        ]
+    )
+    FakeRunner.calls.clear()
+    _configure_registered_api(tmp_path, monkeypatch, client)
+    monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", FakeRunner)
+
+    exit_code = cli.main(["serve", "--agent", "codex", "--once"])
+
+    assert exit_code == 0
+    assert [call["method"] for call in client.calls] == ["submit"]
+    assert [call[4] for call in FakeRunner.calls] == [1]
+    captured = capsys.readouterr()
+    assert "event=recovered issue=1" in captured.err
+    assert "event=submitted issue=1" in captured.err
+
+
+def test_serve_ignores_orphan_for_other_worker(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                1,
+                "Other Worker",
+                status="in_progress",
+                assignee="codex",
+                stage="implementing",
+                implementer="codex",
+                author="claude",
+                worker="machine/demo/other",
+            )
+        ]
+    )
+    _configure_registered_api(tmp_path, monkeypatch, client)
+    monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", ExplodingRunner)
+
+    exit_code = cli.main(["serve", "--agent", "codex", "--once"])
+
+    assert exit_code == 0
+    assert [call["method"] for call in client.calls] == ["claim_next"]
+    assert client.get_issue(1)["stage"] == "implementing"
+
+
+def test_serve_no_orphan_claims_normally(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    client = FakeIssuekitClient([api_issue(1, "Ready", author="claude")])
+    FakeRunner.calls.clear()
+    _configure_registered_api(tmp_path, monkeypatch, client)
+    monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", FakeRunner)
+
+    exit_code = cli.main(["serve", "--agent", "codex", "--once"])
+
+    assert exit_code == 0
+    assert [call["method"] for call in client.calls] == ["claim_next", "submit"]
+    assert [call[4] for call in FakeRunner.calls] == [1]
+
+
+def test_serve_recovery_error_continues_to_poll(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                1,
+                "Orphan",
+                status="in_progress",
+                assignee="codex",
+                stage="implementing",
+                implementer="codex",
+                author="claude",
+                worker="machine/demo/checkout",
+            ),
+            api_issue(2, "Ready", author="claude"),
+        ]
+    )
+    RecoveryErrorThenRunner.calls.clear()
+    _configure_registered_api(tmp_path, monkeypatch, client)
+    monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", RecoveryErrorThenRunner)
+    monkeypatch.setattr(serve, "BACKOFF_INITIAL_SEC", 0.0)
+
+    exit_code = cli.main(["serve", "--agent", "codex", "--max-issues", "1", "--interval", "0"])
+
+    assert exit_code == 0
+    assert RecoveryErrorThenRunner.calls == [1, 2]
+    assert [call["method"] for call in client.calls] == ["claim_next", "submit"]
+    assert "event=run_error issue=1" in capsys.readouterr().err
+
+
+def test_serve_recovered_issue_counts_toward_max_issues(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                1,
+                "Orphan",
+                status="in_progress",
+                assignee="codex",
+                stage="implementing",
+                implementer="codex",
+                author="claude",
+                worker="machine/demo/checkout",
+            ),
+            api_issue(2, "Ready", author="claude"),
+        ]
+    )
+    FakeRunner.calls.clear()
+    _configure_registered_api(tmp_path, monkeypatch, client)
+    monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", FakeRunner)
+
+    exit_code = cli.main(["serve", "--agent", "codex", "--max-issues", "1", "--interval", "0"])
+
+    assert exit_code == 0
+    assert [call["method"] for call in client.calls] == ["submit"]
+    assert [call[4] for call in FakeRunner.calls] == [1]
 
 
 def test_serve_max_issues_stops_after_successful_submissions(

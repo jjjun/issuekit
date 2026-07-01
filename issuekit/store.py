@@ -46,6 +46,9 @@ class IssueStore(Protocol):
     def find_for(self, assignee: str | None = None, stage: str | None = None) -> list[Issue]:
         """Find active issues matching workflow fields."""
 
+    def find_implementing_for_worker(self, worker: str) -> list[Issue]:
+        """Find in-progress implementation issues held by a worker."""
+
 
 class ApiStore:
     def __init__(self, config: IssuekitConfig, client: IssuekitClient | None = None) -> None:
@@ -79,6 +82,10 @@ class ApiStore:
     def find_for(self, assignee: str | None = None, stage: str | None = None) -> list[Issue]:
         issues = self._list_issues(assignee=assignee, stage=stage)
         return [issue for issue in issues if issue.issue_status != "completed"]
+
+    def find_implementing_for_worker(self, worker: str) -> list[Issue]:
+        issues = self._list_issues(stage="implementing")
+        return [issue for issue in issues if issue.issue_status != "completed" and issue.worker == worker]
 
     def create_issue(
         self,
@@ -223,6 +230,7 @@ class ApiStore:
             "stage": _string(raw.get("stage")),
             "implementer": _string(raw.get("implementer")),
             "author": _string(raw.get("author")),
+            "worker": _string(raw.get("worker")),
             "origin": _string(raw.get("origin")),
             "title": _title(raw, body, issue_id),
         }
@@ -246,6 +254,7 @@ class ApiStore:
             author=metadata["author"],
             content=body,
             frontmatter=Frontmatter(data=metadata, body=body, has_frontmatter=True),
+            worker=metadata["worker"],
             decode_error=False,
         )
 

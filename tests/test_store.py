@@ -37,6 +37,7 @@ def test_api_store_maps_json_to_issue_and_issue_dict() -> None:
                 stage="review",
                 implementer="codex",
                 author="kimi",
+                worker="machine/demo/checkout",
                 body=body,
             )
         ]
@@ -58,6 +59,7 @@ def test_api_store_maps_json_to_issue_and_issue_dict() -> None:
     assert issue.stage == "review"
     assert issue.implementer == "codex"
     assert issue.author == "kimi"
+    assert issue.worker == "machine/demo/checkout"
     assert issue.content == body
     assert issue.frontmatter.body == body
     assert issue.frontmatter.data["status"] == "in_progress"
@@ -73,6 +75,55 @@ def test_api_store_maps_json_to_issue_and_issue_dict() -> None:
         "file": "demo#7",
         "body": body,
     }
+
+
+def test_api_store_worker_field_is_optional() -> None:
+    class MissingWorkerClient(FakeIssuekitClient):
+        def get_issue(self, number: int) -> dict[str, object]:
+            raw = super().get_issue(number)
+            raw.pop("worker", None)
+            return raw
+
+    client = MissingWorkerClient([api_issue(7, "Read Path")])
+    store = ApiStore(IssuekitConfig(api_url="https://mine.example"), client=client)
+
+    issue = store.get_issue(7)
+
+    assert issue is not None
+    assert issue.worker == ""
+
+
+def test_api_store_finds_implementing_issues_for_worker() -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                1,
+                "Mine",
+                status="in_progress",
+                stage="implementing",
+                worker="machine/demo/checkout",
+            ),
+            api_issue(
+                2,
+                "Other",
+                status="in_progress",
+                stage="implementing",
+                worker="machine/demo/other",
+            ),
+            api_issue(
+                3,
+                "Done",
+                status="completed",
+                stage="implementing",
+                worker="machine/demo/checkout",
+            ),
+        ]
+    )
+    store = ApiStore(IssuekitConfig(api_url="https://mine.example"), client=client)
+
+    issues = store.find_implementing_for_worker("machine/demo/checkout")
+
+    assert [issue.id for issue in issues] == [1]
 
 
 def test_api_store_partitions_and_filters_active_issues() -> None:

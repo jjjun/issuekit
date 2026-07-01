@@ -54,6 +54,7 @@ def api_issue(
     stage: str = "",
     implementer: str = "",
     author: str = "",
+    worker: str = "",
     origin: str = "",
     body: str | None = None,
 ) -> dict[str, object]:
@@ -68,6 +69,7 @@ def api_issue(
         "stage": stage,
         "implementer": implementer,
         "author": author,
+        "worker": worker,
         "origin": origin,
         "body": body if body is not None else f"# Issue #{issue_id}: {title}\n",
     }

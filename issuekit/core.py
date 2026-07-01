@@ -56,6 +56,7 @@ class Issue:
     author: str
     content: str
     frontmatter: Frontmatter
+    worker: str = ""
     decode_error: bool = False
 
 

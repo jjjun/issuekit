@@ -16,6 +16,9 @@ from typing import Iterator
 
 from issuekit.agents.run_claimed import review_feedback_prompt, run_and_submit
 from issuekit.config import IssuekitConfig, load_config
+from issuekit.core import Issue
+from issuekit.store import get_store
+from issuekit.worker import worker_key
 from issuekit.workflow import WorkflowError, claim_next
 
 
@@ -25,6 +28,13 @@ BACKOFF_MAX_SEC = 60.0
 
 class ServeLockError(RuntimeError):
     """Raised when another live serve process holds the checkout lock."""
+
+
+@dataclass(frozen=True)
+class IssueRunResult:
+    status: str
+    exit_code: int
+    reviewed_issue: Issue | None = None
 
 
 @dataclass
@@ -124,6 +134,19 @@ def _serve_loop(
     submitted_count = 0
     backoff = BACKOFF_INITIAL_SEC
     attempt_count = 0
+    submitted_count, backoff, exit_code = _recover_orphaned_issues(
+        args,
+        agent=agent,
+        config=config,
+        cwd=cwd,
+        issues_dir=issues_dir,
+        log_path=log_path,
+        controller=controller,
+        submitted_count=submitted_count,
+        backoff=backoff,
+    )
+    if exit_code is not None:
+        return exit_code
 
     while not controller.requested:
         attempt_count += 1
@@ -150,44 +173,27 @@ def _serve_loop(
             continue
 
         _log(sys.stderr, log_path, "claimed", issue=issue.id, agent=agent)
-        try:
-            outcome = run_and_submit(
-                issue,
-                agent=agent,
-                config=config,
-                cwd=cwd,
-                issues_dir=issues_dir,
-                timeout=float(args.timeout_sec),
-                prompt_suffix=review_feedback_prompt(issue.frontmatter.body),
-                abort_event=controller.abort_event,
-                out=sys.stderr,
-                err=sys.stderr,
-            )
-        except (
-            FileNotFoundError,
-            RuntimeError,
-            ValueError,
-            TimeoutError,
-            WorkflowError,
-        ) as exc:
-            _log(sys.stderr, log_path, "run_error", issue=issue.id, error=str(exc), backoff=backoff)
+        result = _run_claimed_issue(
+            args,
+            issue,
+            agent=agent,
+            config=config,
+            cwd=cwd,
+            issues_dir=issues_dir,
+            log_path=log_path,
+            controller=controller,
+            backoff=backoff,
+        )
+        if result.status == "error":
             if args.once:
                 return 1
             controller.sleep(backoff)
             backoff = min(backoff * 2, BACKOFF_MAX_SEC)
             continue
 
-        if outcome.exit_code != 0 or outcome.reviewed_issue is None:
-            _log(
-                sys.stderr,
-                log_path,
-                "run_failed",
-                issue=issue.id,
-                exit_code=outcome.exit_code,
-                backoff=backoff,
-            )
+        if result.status == "failed":
             if args.once:
-                return outcome.exit_code
+                return result.exit_code
             if controller.abort_event.is_set():
                 return 0
             controller.sleep(backoff)
@@ -196,15 +202,7 @@ def _serve_loop(
 
         submitted_count += 1
         backoff = BACKOFF_INITIAL_SEC
-        _log(
-            sys.stderr,
-            log_path,
-            "submitted",
-            issue=outcome.reviewed_issue.id,
-            assignee=outcome.reviewed_issue.assignee,
-            stage=outcome.reviewed_issue.stage,
-            count=submitted_count,
-        )
+        _log_submitted(log_path, result.reviewed_issue, submitted_count)
         if args.once:
             return 0
         if args.max_issues is not None and submitted_count >= args.max_issues:
@@ -212,6 +210,130 @@ def _serve_loop(
 
     _log(sys.stderr, log_path, "stopped")
     return 0
+
+
+def _recover_orphaned_issues(
+    args,
+    *,
+    agent: str,
+    config: IssuekitConfig,
+    cwd: Path,
+    issues_dir: Path,
+    log_path: Path,
+    controller: ShutdownController,
+    submitted_count: int,
+    backoff: float,
+) -> tuple[int, float, int | None]:
+    if config.worker is None:
+        return submitted_count, backoff, None
+
+    me = worker_key(config.worker)
+    try:
+        store = get_store(config, issues_dir)
+        issues = store.find_implementing_for_worker(me)
+    except (AttributeError, RuntimeError, TimeoutError, WorkflowError, ValueError) as exc:
+        _log(sys.stderr, log_path, "recovery_error", worker=me, error=str(exc))
+        return submitted_count, backoff, None
+
+    for issue in issues:
+        if controller.requested:
+            break
+        _log(sys.stderr, log_path, "recovered", issue=issue.id, agent=agent, worker=me)
+        result = _run_claimed_issue(
+            args,
+            issue,
+            agent=agent,
+            config=config,
+            cwd=cwd,
+            issues_dir=issues_dir,
+            log_path=log_path,
+            controller=controller,
+            backoff=backoff,
+        )
+        if result.status == "submitted":
+            submitted_count += 1
+            backoff = BACKOFF_INITIAL_SEC
+            _log_submitted(log_path, result.reviewed_issue, submitted_count)
+            if args.once:
+                return submitted_count, backoff, 0
+            if args.max_issues is not None and submitted_count >= args.max_issues:
+                return submitted_count, backoff, 0
+            continue
+
+        if result.status == "failed" and controller.abort_event.is_set():
+            return submitted_count, backoff, 0
+        if not args.once:
+            controller.sleep(backoff)
+            backoff = min(backoff * 2, BACKOFF_MAX_SEC)
+
+    return submitted_count, backoff, None
+
+
+def _run_claimed_issue(
+    args,
+    issue: Issue,
+    *,
+    agent: str,
+    config: IssuekitConfig,
+    cwd: Path,
+    issues_dir: Path,
+    log_path: Path,
+    controller: ShutdownController,
+    backoff: float,
+) -> IssueRunResult:
+    try:
+        outcome = run_and_submit(
+            issue,
+            agent=agent,
+            config=config,
+            cwd=cwd,
+            issues_dir=issues_dir,
+            timeout=float(args.timeout_sec),
+            prompt_suffix=review_feedback_prompt(issue.frontmatter.body),
+            abort_event=controller.abort_event,
+            out=sys.stderr,
+            err=sys.stderr,
+        )
+    except (
+        FileNotFoundError,
+        RuntimeError,
+        ValueError,
+        TimeoutError,
+        WorkflowError,
+    ) as exc:
+        _log(sys.stderr, log_path, "run_error", issue=issue.id, error=str(exc), backoff=backoff)
+        return IssueRunResult(status="error", exit_code=1)
+
+    if outcome.exit_code != 0 or outcome.reviewed_issue is None:
+        _log(
+            sys.stderr,
+            log_path,
+            "run_failed",
+            issue=issue.id,
+            exit_code=outcome.exit_code,
+            backoff=backoff,
+        )
+        return IssueRunResult(status="failed", exit_code=outcome.exit_code)
+
+    return IssueRunResult(
+        status="submitted",
+        exit_code=0,
+        reviewed_issue=outcome.reviewed_issue,
+    )
+
+
+def _log_submitted(log_path: Path, reviewed_issue: Issue | None, submitted_count: int) -> None:
+    if reviewed_issue is None:
+        return
+    _log(
+        sys.stderr,
+        log_path,
+        "submitted",
+        issue=reviewed_issue.id,
+        assignee=reviewed_issue.assignee,
+        stage=reviewed_issue.stage,
+        count=submitted_count,
+    )
 
 
 def _resolve_agent(agent: str | None, config: IssuekitConfig) -> str | None:

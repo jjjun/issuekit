@@ -107,7 +107,7 @@ class FakeIssuekitClient:
                 },
             )
             issue = self._find(number)
-            self._claim_issue(issue, assignee)
+            self._claim_issue(issue, assignee, worker=worker)
             return deepcopy(issue)
 
     def claim_next(
@@ -144,7 +144,7 @@ class FakeIssuekitClient:
                 candidates,
                 key=lambda item: (PRIORITY_RANK.get(str(item.get("priority", "")), 99), int(item["id"])),
             )[0]
-            self._claim_issue(issue, assignee)
+            self._claim_issue(issue, assignee, worker=worker)
             return deepcopy(issue)
 
     def submit(
@@ -425,6 +425,7 @@ class FakeIssuekitClient:
         stored.setdefault("stage", "todo")
         stored.setdefault("implementer", "")
         stored.setdefault("author", "")
+        stored.setdefault("worker", "")
         stored.setdefault("body", "")
         self._issues[issue_id] = stored
         return stored
@@ -452,7 +453,7 @@ class FakeIssuekitClient:
         self._proposals[proposal_id] = stored
         return stored
 
-    def _claim_issue(self, issue: JsonDict, assignee: str) -> None:
+    def _claim_issue(self, issue: JsonDict, assignee: str, *, worker: str | None = None) -> None:
         issue_id = issue["id"]
         if issue.get("status") not in CLAIMABLE_STATUSES:
             raise WorkflowError(
@@ -479,6 +480,8 @@ class FakeIssuekitClient:
         issue["assignee"] = assignee
         issue["stage"] = "implementing"
         issue["implementer"] = assignee
+        if worker is not None:
+            issue["worker"] = worker
 
     def _record(
         self,
