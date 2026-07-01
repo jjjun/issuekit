@@ -7,6 +7,8 @@ from issuekit import cli
 
 EXPECTED_COMMANDS = {
     "info",
+    "add",
+    "register",
     "login",
     "logout",
     "author",
@@ -108,6 +110,8 @@ def test_handlers_are_stubs(command: str) -> None:
     if command in {
         "check-encoding",
         "generate-indexes",
+        "add",
+        "register",
         "approve",
         "claim",
         "complete",

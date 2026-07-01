@@ -34,6 +34,13 @@ class AgentRunConfig:
 
 
 @dataclass(frozen=True)
+class WorkerIdentity:
+    machine_id: str
+    repo_id: str
+    worker_id: str
+
+
+@dataclass(frozen=True)
 class IssuekitConfig:
     api_url: str = ""
     project: str = "issuekit"
@@ -46,6 +53,7 @@ class IssuekitConfig:
     default_reviewer: str = "claude"
     require_distinct_reviewer: bool = False
     require_review_before_complete: bool = True
+    worker: WorkerIdentity | None = None
     agents: tuple[tuple[str, AgentRunConfig], ...] = (
         (
             "kimi",
@@ -131,8 +139,19 @@ def load_config(cwd: Path | str = ".") -> IssuekitConfig:
     api_url = str(
         os.getenv("ISSUEKIT_API_URL", raw_config.get("api_url", IssuekitConfig.api_url))
     ).strip()
+    worker = _load_worker(raw_config.get("worker"))
+    configured_project = raw_config.get("project", _SENTINEL)
     project = str(
-        os.getenv("ISSUEKIT_PROJECT", raw_config.get("project", IssuekitConfig.project))
+        os.getenv(
+            "ISSUEKIT_PROJECT",
+            (
+                configured_project
+                if configured_project is not _SENTINEL
+                else worker.repo_id
+                if worker is not None
+                else IssuekitConfig.project
+            ),
+        )
     ).strip()
     _validate_project(project)
     assignees = _string_tuple(raw_config.get("assignees", IssuekitConfig.assignees))
@@ -171,28 +190,63 @@ def load_config(cwd: Path | str = ".") -> IssuekitConfig:
                 IssuekitConfig.require_review_before_complete,
             )
         ),
+        worker=worker,
         agents=agents,
     )
 
 
 def _load_raw_config(cwd: Path) -> dict[str, object]:
+    raw_config: dict[str, object] = {}
+    pyproject_has_issuekit = False
     pyproject_path = cwd / "pyproject.toml"
     if pyproject_path.exists():
         data = tomllib.loads(pyproject_path.read_text(encoding="utf-8-sig"))
-        raw_config = data.get("tool", {}).get("issuekit")
-        if raw_config is not None:
+        pyproject_config = data.get("tool", {}).get("issuekit")
+        if pyproject_config is not None:
+            pyproject_has_issuekit = True
             # pyproject's [tool.issuekit] wins when present so Python repos keep
             # their existing behavior even if a standalone config also exists.
-            return dict(raw_config)
+            raw_config = dict(pyproject_config)
 
     issuekit_path = cwd / "issuekit.toml"
-    if issuekit_path.exists():
+    if not pyproject_has_issuekit and issuekit_path.exists():
         try:
-            return dict(tomllib.loads(issuekit_path.read_text(encoding="utf-8-sig")))
+            raw_config = dict(tomllib.loads(issuekit_path.read_text(encoding="utf-8-sig")))
         except tomllib.TOMLDecodeError as exc:
             raise ValueError(f"Failed to parse {issuekit_path}: {exc}") from exc
 
-    return {}
+    return _merge_local_worker_config(cwd, raw_config)
+
+
+def _merge_local_worker_config(cwd: Path, raw_config: dict[str, object]) -> dict[str, object]:
+    local_path = cwd / "issuekit.local.toml"
+    if not local_path.exists():
+        return raw_config
+    try:
+        local_data = tomllib.loads(local_path.read_text(encoding="utf-8-sig"))
+    except tomllib.TOMLDecodeError as exc:
+        raise ValueError(f"Failed to parse {local_path}: {exc}") from exc
+
+    local_worker = _raw_worker_table(local_data)
+    if local_worker is None:
+        return raw_config
+    merged = dict(raw_config)
+    merged["worker"] = dict(local_worker)
+    return merged
+
+
+def _raw_worker_table(data: dict[str, object]) -> dict[str, object] | None:
+    worker = data.get("worker")
+    if isinstance(worker, dict):
+        return worker
+    tool = data.get("tool")
+    if not isinstance(tool, dict):
+        return None
+    issuekit = tool.get("issuekit")
+    if not isinstance(issuekit, dict):
+        return None
+    worker = issuekit.get("worker")
+    return worker if isinstance(worker, dict) else None
 
 
 def _string_tuple(value: object) -> tuple[str, ...]:
@@ -236,6 +290,22 @@ def _load_agents(raw: dict[str, object]) -> tuple[tuple[str, AgentRunConfig], ..
     for name in new_agent_names:
         result.append((name, configured[name]))
     return tuple(result)
+
+
+def _load_worker(raw: object) -> WorkerIdentity | None:
+    if not isinstance(raw, dict):
+        return None
+    machine_id = _required_worker_value(raw, "machine_id")
+    repo_id = _required_worker_value(raw, "repo_id")
+    worker_id = _required_worker_value(raw, "worker_id")
+    if not (machine_id and repo_id and worker_id):
+        return None
+    return WorkerIdentity(machine_id=machine_id, repo_id=repo_id, worker_id=worker_id)
+
+
+def _required_worker_value(raw: dict[str, object], key: str) -> str:
+    value = raw.get(key)
+    return "" if value is None else str(value).strip()
 
 
 def _agent_overrides(cfg: dict[str, object]) -> dict[str, object]:

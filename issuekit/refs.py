@@ -96,7 +96,15 @@ def load_effective_refs(cwd: Path | str = ".") -> dict[str, RefEntry]:
 
 def save_refs(refs: dict[str, str], cwd: Path | str = ".") -> None:
     path = Path(cwd) / LOCAL_CONFIG_NAME
-    lines = ["[refs]"]
+    lines: list[str] = []
+    worker = _load_local_worker_table(path)
+    if worker:
+        lines.append("[worker]")
+        for key in ("machine_id", "repo_id", "worker_id"):
+            if key in worker:
+                lines.append(f"{key} = {json.dumps(str(worker[key]))}")
+        lines.append("")
+    lines.append("[refs]")
     for name in sorted(refs):
         lines.append(f"{name} = {json.dumps(refs[name])}")
     content = "\n".join(lines) + "\n"
@@ -230,6 +238,17 @@ def _load_workspace_raw_refs(workspace_file: Path) -> dict[str, str]:
             raise RefError(f"Workspace ref {name} must be a string path.")
         refs[str(name)] = value
     return refs
+
+
+def _load_local_worker_table(path: Path) -> dict[str, object]:
+    if not path.exists():
+        return {}
+    try:
+        data = tomllib.loads(path.read_text(encoding="utf-8-sig"))
+    except tomllib.TOMLDecodeError:
+        return {}
+    worker = data.get("worker", {})
+    return worker if isinstance(worker, dict) else {}
 
 
 def _workspace_file_for_write(

@@ -6,6 +6,7 @@ import argparse
 from collections.abc import Sequence
 
 from issuekit.commands import (
+    add,
     approve,
     auth,
     author,
@@ -29,6 +30,8 @@ from issuekit.commands import (
 
 COMMANDS = (
     "info",
+    "add",
+    "register",
     "login",
     "logout",
     "author",
@@ -72,6 +75,21 @@ def build_parser() -> argparse.ArgumentParser:
     info_parser = subparsers.add_parser("info", help="Show issue tracker status.")
     info_parser.add_argument("--json", action="store_true", help="Print JSON output.")
     info_parser.set_defaults(func=info.run)
+
+    add_parser = subparsers.add_parser(
+        "add",
+        aliases=("register",),
+        help="Register this checkout as a local worker.",
+    )
+    add_parser.add_argument("--machine-id", help="Override the hostname-derived machine id.")
+    add_parser.add_argument("--repo-id", help="Override the git-origin-derived repository id.")
+    add_parser.add_argument("--worker-id", help="Override the checkout worker id.")
+    add_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Overwrite an existing pinned worker id or local collision.",
+    )
+    add_parser.set_defaults(func=add.run)
 
     login_parser = subparsers.add_parser(
         "login",
