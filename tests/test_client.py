@@ -11,7 +11,8 @@ from urllib.parse import parse_qs
 import httpx
 import pytest
 
-import issuekit.client as client_module
+import issuekit.client_security as security_module
+import issuekit.token_cache as token_cache_module
 from issuekit.client import IssuekitClient
 from issuekit.testing import FakeIssuekitClient
 from issuekit.workflow import WorkflowError
@@ -21,7 +22,7 @@ from issuekit.workflow import WorkflowError
 def isolated_token_cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ISSUEKIT_TOKEN_CACHE", str(tmp_path / "token.json"))
     monkeypatch.delenv("ISSUEKIT_ALLOW_INSECURE", raising=False)
-    client_module._WARNED_INSECURE_API_URLS.clear()
+    security_module._WARNED_INSECURE_API_URLS.clear()
 
 
 def test_client_logs_in_once_and_sends_expected_request_shape() -> None:
@@ -341,11 +342,11 @@ def test_windows_token_cache_acl_tightening_is_best_effort(
         return subprocess.CompletedProcess(argv, 5, stderr="access denied")
 
     monkeypatch.setenv("USERNAME", "svc-user")
-    monkeypatch.setattr(client_module, "_token_cache_path", lambda: cache_path)
-    monkeypatch.setattr(client_module.os, "name", "nt")
-    monkeypatch.setattr(client_module.subprocess, "run", fake_run)
+    monkeypatch.setattr(token_cache_module, "_token_cache_path", lambda: cache_path)
+    monkeypatch.setattr(token_cache_module.os, "name", "nt")
+    monkeypatch.setattr(token_cache_module.subprocess, "run", fake_run)
 
-    client_module._write_token_cache({"https://mine.example": {"token": "cached-token"}})
+    token_cache_module._write_token_cache({"https://mine.example": {"token": "cached-token"}})
 
     payload = json.loads(cache_path.read_text(encoding="utf-8"))
     assert payload == {"https://mine.example": {"token": "cached-token"}}
