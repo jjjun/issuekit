@@ -24,6 +24,7 @@ from issuekit.agents.status import (
     write_status,
 )
 from issuekit.config import AgentRunConfig, IssuekitConfig
+from issuekit.gitutil import changed_file_count, git_status_short
 
 
 class AgentAdapter(ABC):
@@ -231,19 +232,7 @@ class _RunWatcher:
 
     @staticmethod
     def _changed_file_count(repo: Path) -> int:
-        try:
-            result = subprocess.run(
-                ["git", "--no-pager", "status", "--short"],
-                cwd=str(repo),
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-            if result.returncode == 0:
-                return sum(1 for line in result.stdout.splitlines() if line.strip())
-            return 0
-        except (OSError, subprocess.SubprocessError):
-            return 0
+        return changed_file_count(repo)
 
 
 class AgentRunner:
@@ -493,16 +482,4 @@ class AgentRunner:
                     proc.wait()
 
     def _git_status_short(self, repo: Path) -> str | None:
-        try:
-            result = subprocess.run(
-                ["git", "--no-pager", "status", "--short"],
-                cwd=str(repo),
-                capture_output=True,
-                text=True,
-                timeout=30,
-            )
-            if result.returncode == 0:
-                return result.stdout.strip()
-            return None
-        except (OSError, subprocess.SubprocessError):
-            return None
+        return git_status_short(repo)

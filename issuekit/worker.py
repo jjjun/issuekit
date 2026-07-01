@@ -8,12 +8,12 @@ import os
 from pathlib import Path
 import platform
 import re
-import subprocess
 import tomllib
 from urllib.parse import urlparse
 
 from issuekit.config import WorkerIdentity
 from issuekit.core import is_valid_workflow_token
+from issuekit.gitutil import git_origin_url as _git_origin_url
 
 
 LOCAL_CONFIG_NAME = "issuekit.local.toml"
@@ -145,23 +145,7 @@ def parse_repo_id_from_remote(remote_url: str) -> str | None:
 
 
 def git_origin_url(cwd: Path | str = ".") -> str | None:
-    try:
-        result = subprocess.run(
-            ["git", "config", "--get", "remote.origin.url"],
-            cwd=str(cwd),
-            check=False,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            stdin=subprocess.DEVNULL,
-            text=True,
-            timeout=5,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return None
-    if result.returncode != 0:
-        return None
-    value = result.stdout.strip()
-    return value or None
+    return _git_origin_url(cwd)
 
 
 def _default_identity(cwd: Path) -> WorkerRegistration:

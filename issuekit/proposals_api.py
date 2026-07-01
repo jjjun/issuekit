@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from datetime import date
 from pathlib import Path
-import subprocess
 
 from issuekit.client import IssuekitClient
 from issuekit.config import IssuekitConfig, load_config
 from issuekit.core import Issue, parse_issue_id_arg
+from issuekit.gitutil import git_short_head
 from issuekit.proposals import Proposal, ProposalError, origin_destination
 from issuekit.store import get_store
 
@@ -139,18 +139,4 @@ def _proposal_body(body: str | None, body_file: str | None, source_issue: Issue 
 
 
 def _git_commit(cwd: Path) -> str:
-    try:
-        # stdin must be redirected: when this runs inside the issuekit-mcp stdio
-        # server, an inherited stdin pipe makes `git` block until the timeout.
-        result = subprocess.run(
-            ["git", "rev-parse", "--short", "HEAD"],
-            cwd=cwd,
-            check=True,
-            capture_output=True,
-            text=True,
-            timeout=5,
-            stdin=subprocess.DEVNULL,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return "unknown"
-    return result.stdout.strip() or "unknown"
+    return git_short_head(cwd) or "unknown"
