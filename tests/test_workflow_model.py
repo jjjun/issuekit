@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from issuekit import core
+from issuekit import legacy_markdown
 from issuekit.config import IssuekitConfig, load_config
 
 from tests.issue_helpers import issue_text, write_issue
@@ -14,7 +15,7 @@ def test_read_issues_reads_optional_workflow_fields(tmp_path: Path) -> None:
     )
     write_issue(issues_dir / "active" / "002_second.md", issue_text(2, "Second", author="claude"))
 
-    issues = core.read_issues(issues_dir, "active")
+    issues = legacy_markdown.read_issues(issues_dir, "active")
 
     assert issues[0].assignee == "codex"
     assert issues[0].stage == "implementing"

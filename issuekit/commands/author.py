@@ -107,4 +107,4 @@ def _slugify(title: str) -> str:
 
 
 def _authored_ref(authored: Issue) -> str:
-    return authored.relative_path
+    return authored.ref

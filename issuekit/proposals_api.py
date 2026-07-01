@@ -92,7 +92,7 @@ def build_proposal(
     reply_to = ""
     if reply is not None:
         source_issue = _get_issue(config, reply)
-        reply_to = source_issue.frontmatter.data.get("origin", "").strip()
+        reply_to = source_issue.metadata.get("origin", "").strip()
         if not reply_to:
             raise ProposalError(f"Issue #{source_issue.id} has no origin field.")
         to = to or origin_destination(reply_to)
@@ -134,7 +134,7 @@ def _proposal_body(body: str | None, body_file: str | None, source_issue: Issue 
     if body_file:
         return Path(body_file).read_text(encoding="utf-8-sig").strip()
     if source_issue is not None:
-        return source_issue.frontmatter.body.strip()
+        return source_issue.body.strip()
     return "## Context\n\n## Suggested Change\n\n## Rationale"
 
 

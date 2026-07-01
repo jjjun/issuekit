@@ -295,7 +295,7 @@ def _run_claimed_issue(
             cwd=cwd,
             issues_dir=issues_dir,
             timeout=float(args.timeout_sec),
-            prompt_suffix=review_feedback_prompt(issue.frontmatter.body),
+            prompt_suffix=review_feedback_prompt(issue.body),
             abort_event=controller.abort_event,
             out=sys.stderr,
             err=sys.stderr,

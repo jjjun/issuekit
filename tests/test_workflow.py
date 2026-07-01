@@ -373,7 +373,7 @@ def test_complete_issue_uses_api_complete(monkeypatch) -> None:
         config=_config(client, monkeypatch),
     )
 
-    assert issue.status == "completed"
+    assert issue.issue_status == "completed"
     assert issue.stage == "done"
     assert client.calls == [
         {

@@ -29,15 +29,9 @@ def run(args) -> int:
         if issue is None:
             print(f"Active issue #{issue_id} was not found.", file=sys.stderr)
             return 1
-        if issue.decode_error:
-            print(
-                f"Active issue #{issue_id} is not valid UTF-8: {issue.relative_path}",
-                file=sys.stderr,
-            )
-            return 1
 
         reviewer_prompt = (
-            review_feedback_prompt(issue.frontmatter.body)
+            review_feedback_prompt(issue.body)
             if issue.stage == "changes_requested"
             else None
         )
@@ -67,7 +61,7 @@ def run(args) -> int:
 
 
 def _print_run_report(issue: Issue, result: AgentResult, agent: str) -> None:
-    print(f"issue={issue.id} file={issue.relative_path} agent={agent}")
+    print(f"issue={issue.id} file={issue.ref} agent={agent}")
     print(
         "exit_code={exit_code} timed_out={timed_out} elapsed_sec={elapsed:.2f}".format(
             exit_code=result.exit_code,
@@ -99,6 +93,6 @@ def _print_submit_report(outcome: RunOutcome) -> None:
     if reviewed_issue is None:
         return
     print(
-        f"submitted_review id={reviewed_issue.id} file={reviewed_issue.relative_path} "
+        f"submitted_review id={reviewed_issue.id} file={reviewed_issue.ref} "
         f"assignee={reviewed_issue.assignee} stage={reviewed_issue.stage}"
     )

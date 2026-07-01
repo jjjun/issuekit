@@ -1,5 +1,3 @@
-from pathlib import Path
-
 from issuekit.config import IssuekitConfig
 from issuekit.core import issue_dict
 from issuekit.store import ApiStore, get_store
@@ -48,11 +46,7 @@ def test_api_store_maps_json_to_issue_and_issue_dict() -> None:
 
     assert issue is not None
     assert issue.id == 7
-    assert issue.file_name_id == 7
-    assert issue.file_name == "demo#7"
-    assert issue.file_path == Path("demo#7")
-    assert issue.relative_path == "demo#7"
-    assert issue.status == "active"
+    assert issue.ref == "demo#7"
     assert issue.issue_status == "in_progress"
     assert issue.priority == "high"
     assert issue.assignee == "claude"
@@ -60,10 +54,8 @@ def test_api_store_maps_json_to_issue_and_issue_dict() -> None:
     assert issue.implementer == "codex"
     assert issue.author == "kimi"
     assert issue.worker == "machine/demo/checkout"
-    assert issue.content == body
-    assert issue.frontmatter.body == body
-    assert issue.frontmatter.data["status"] == "in_progress"
-    assert issue.decode_error is False
+    assert issue.body == body
+    assert issue.metadata["status"] == "in_progress"
     assert issue_dict(issue, include_body=True) == {
         "id": 7,
         "title": "Read Path",

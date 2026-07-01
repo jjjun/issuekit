@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any, Protocol
 
 from issuekit.client import IssuekitClient
 from issuekit.config import IssuekitConfig
 from issuekit.core import (
-    Frontmatter,
     Issue,
     _drop_none,
     get_issue_heading,
@@ -212,7 +210,7 @@ class ApiStore:
                 include_completed=include_completed,
             )
         ]
-        return sorted(issues, key=lambda issue: (issue.id or 0, issue.relative_path))
+        return sorted(issues, key=lambda issue: (issue.id or 0, issue.ref))
 
     def _issue_from_response(self, raw: dict[str, Any]) -> Issue:
         missing = sorted(field for field in REQUIRED_API_FIELDS if field not in raw)
@@ -243,15 +241,10 @@ class ApiStore:
             "title": _title(raw, body, issue_id),
         }
         synthetic_ref = f"{self.config.project}#{issue_id}"
-        status = "completed" if metadata["status"] == "completed" else "active"
         return Issue(
             id=issue_id,
-            file_name_id=issue_id,
-            file_name=synthetic_ref,
-            file_path=Path(synthetic_ref),
-            relative_path=synthetic_ref,
+            ref=synthetic_ref,
             title=metadata["title"],
-            status=status,
             issue_status=metadata["status"],
             created=metadata["created"],
             completed=metadata["completed"],
@@ -260,10 +253,9 @@ class ApiStore:
             stage=metadata["stage"],
             implementer=metadata["implementer"],
             author=metadata["author"],
-            content=body,
-            frontmatter=Frontmatter(data=metadata, body=body, has_frontmatter=True),
+            body=body,
+            metadata=metadata,
             worker=metadata["worker"],
-            decode_error=False,
         )
 
 

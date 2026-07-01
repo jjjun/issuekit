@@ -25,7 +25,7 @@ def run_submit_review(args) -> int:
         )
 
         print(
-            f"id={issue.id} file={issue.relative_path} "
+            f"id={issue.id} file={issue.ref} "
             f"assignee={issue.assignee} stage={issue.stage}"
         )
         return 0
@@ -46,7 +46,7 @@ def run_request_changes(args) -> int:
         )
 
         print(
-            f"id={issue.id} file={issue.relative_path} "
+            f"id={issue.id} file={issue.ref} "
             f"assignee={issue.assignee} stage={issue.stage}"
         )
         return 0

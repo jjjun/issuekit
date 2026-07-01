@@ -58,7 +58,7 @@ def run_and_submit(
     run_dir = cwd / ".agent-runs"
     run_dir.mkdir(exist_ok=True)
     plan_path = run_dir / f"issue-{issue_id}.md"
-    plan_path.write_text(issue.content, encoding="utf-8", newline="\n")
+    plan_path.write_text(issue.body, encoding="utf-8", newline="\n")
     runner_factory = runner_factory or AgentRunner
     result = runner_factory().run(
         adapter,

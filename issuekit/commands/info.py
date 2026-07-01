@@ -28,9 +28,9 @@ def run(args) -> int:
                 "id": issue.id,
                 "title": issue.title,
                 "priority": issue.priority or None,
-                "status": issue.issue_status or issue.status,
+                "status": issue.issue_status,
                 "stage": issue.stage or None,
-                "file": issue.relative_path,
+                "file": issue.ref,
             }
             for issue in active_issues
         ],

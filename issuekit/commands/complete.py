@@ -30,7 +30,7 @@ def run(args) -> int:
             config=config,
         )
 
-        print(f"Completed issue #{completed_issue.id}: {completed_issue.relative_path}")
+        print(f"Completed issue #{completed_issue.id}: {completed_issue.ref}")
         return 0
 
     return run_command(action, lookup_error=lambda _exc: active_issue_not_found(issue_id))
