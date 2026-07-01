@@ -1,13 +1,16 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from issuekit import cli
 from issuekit.agents.runner import AgentResult
-from issuekit.commands.negotiate import run_negotiation
+from issuekit.commands.negotiate import MockIssueCreator, finalize_negotiation, run_negotiation
 from issuekit.config import IssuekitConfig
 from issuekit.core import Issue
 from issuekit.negotiation import MockNegotiationStore, ThreadStatus, Verdict
 from issuekit.testing import FakeIssuekitClient
+from issuekit.workflow import WorkflowError
 
 from tests.issue_helpers import api_issue
 
@@ -212,6 +215,114 @@ def test_negotiate_materially_different_agreements_do_not_converge(tmp_path) -> 
     assert store.get_status(result.thread_id) is ThreadStatus.negotiating
 
 
+def _agreed_store() -> tuple[MockNegotiationStore, str]:
+    store = MockNegotiationStore(None)
+    first = store.create_thread(
+        side="frontend",
+        verdict=Verdict.agree,
+        title="frontend agree",
+        body="Accepted.",
+        origin="frontend#108:frontend:round-1",
+        contract="GET /items 200",
+    )
+    store.append_entry(
+        first.thread_id,
+        side="backend",
+        verdict=Verdict.agree,
+        title="backend agree",
+        body="Accepted.",
+        origin="frontend#108:backend:round-2",
+        contract="GET /items 200",
+    )
+    store.set_status(first.thread_id, ThreadStatus.agreed)
+    return store, first.thread_id
+
+
+def test_finalize_negotiation_creates_cross_linked_issues() -> None:
+    store, thread_id = _agreed_store()
+    creator = MockIssueCreator()
+
+    result = finalize_negotiation(
+        thread_id=thread_id,
+        to_project="backend",
+        author_agent="codex",
+        priority="medium",
+        config=IssuekitConfig(project="frontend"),
+        store=store,
+        issue_creator=creator,
+    )
+
+    assert result.created is True
+    assert result.backend_issue_ref == "backend#1"
+    assert result.frontend_issue_ref == "frontend#1"
+    assert store.get_issue_refs(thread_id) is not None
+    backend = creator.issues[result.backend_issue_ref]
+    frontend = creator.issues[result.frontend_issue_ref]
+    assert "GET /items 200" in backend.body
+    assert "GET /items 200" in frontend.body
+    assert f"Negotiation thread: {thread_id}" in backend.body
+    assert f"Negotiation thread: {thread_id}" in frontend.body
+    assert "Frontend/origin issue: frontend#1" in backend.body
+    assert "Backend/API issue: backend#1" in frontend.body
+    assert "Originating issue: frontend#108" in backend.body
+    assert "Originating issue: frontend#108" in frontend.body
+
+
+def test_finalize_negotiation_is_idempotent() -> None:
+    store, thread_id = _agreed_store()
+    creator = MockIssueCreator()
+    first = finalize_negotiation(
+        thread_id=thread_id,
+        to_project="backend",
+        author_agent="codex",
+        priority="medium",
+        config=IssuekitConfig(project="frontend"),
+        store=store,
+        issue_creator=creator,
+    )
+
+    second = finalize_negotiation(
+        thread_id=thread_id,
+        to_project="backend",
+        author_agent="codex",
+        priority="medium",
+        config=IssuekitConfig(project="frontend"),
+        store=store,
+        issue_creator=creator,
+    )
+
+    assert second.created is False
+    assert second.backend_issue_ref == first.backend_issue_ref
+    assert second.frontend_issue_ref == first.frontend_issue_ref
+    assert sorted(creator.issues) == ["backend#1", "frontend#1"]
+
+
+def test_finalize_negotiation_refuses_non_agreed_thread() -> None:
+    store = MockNegotiationStore(None)
+    first = store.create_thread(
+        side="frontend",
+        verdict=Verdict.propose,
+        title="frontend propose",
+        body="Start.",
+        origin="frontend#108:frontend:round-1",
+        contract="GET /items",
+    )
+
+    with pytest.raises(WorkflowError) as excinfo:
+        finalize_negotiation(
+            thread_id=first.thread_id,
+            to_project="backend",
+            author_agent="codex",
+            priority="medium",
+            config=IssuekitConfig(project="frontend"),
+            store=store,
+            issue_creator=MockIssueCreator(),
+        )
+
+    assert excinfo.value.code == "invalid_transition"
+    assert "not agreed" in str(excinfo.value)
+
+
 def test_negotiate_cli_json_uses_mock_store_and_api_issue(tmp_path, monkeypatch, capsys) -> None:
     from issuekit import store as store_module
     from issuekit.commands import negotiate
@@ -258,3 +369,49 @@ def test_negotiate_cli_json_uses_mock_store_and_api_issue(tmp_path, monkeypatch,
     payload = json.loads(capsys.readouterr().out)
     assert payload["outcome"] == "blocked"
     assert payload["thread_id"] == "1"
+
+
+def test_negotiate_cli_finalize_json_uses_mock_store(tmp_path, monkeypatch, capsys) -> None:
+    monkeypatch.chdir(tmp_path)
+    store = MockNegotiationStore(tmp_path / ".agent-runs" / "negotiations" / "mock.json")
+    first = store.create_thread(
+        side="frontend",
+        verdict=Verdict.agree,
+        title="frontend agree",
+        body="Accepted.",
+        origin="frontend#108:frontend:round-1",
+        contract="GET /items 200",
+    )
+    store.append_entry(
+        first.thread_id,
+        side="backend",
+        verdict=Verdict.agree,
+        title="backend agree",
+        body="Accepted.",
+        origin="frontend#108:backend:round-2",
+        contract="GET /items 200",
+    )
+    store.set_status(first.thread_id, ThreadStatus.agreed)
+
+    assert (
+        cli.main(
+            [
+                "negotiate",
+                "--finalize",
+                first.thread_id,
+                "--to",
+                "backend",
+                "--mock",
+                "--json",
+            ]
+        )
+        == 0
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload == {
+        "thread_id": first.thread_id,
+        "backend_issue_ref": "backend#1",
+        "frontend_issue_ref": "issuekit#1",
+        "created": True,
+    }

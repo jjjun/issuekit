@@ -107,6 +107,13 @@ class FakeIssuekitClient:
             self._record("create_issue", body=deepcopy(issue))
             return deepcopy(self._store_issue(issue, allocate=True))
 
+    def update_issue(self, number: int, issue: JsonDict) -> JsonDict:
+        with self._lock:
+            self._record("update_issue", number=number, body=deepcopy(issue))
+            stored = self._find(number)
+            stored.update(deepcopy(issue))
+            return deepcopy(stored)
+
     def claim(self, number: int, *, assignee: str, worker: str | None = None) -> JsonDict:
         with self._lock:
             self._record(
@@ -493,8 +500,10 @@ class FakeIssuekitClient:
         self,
         thread_id: int,
         *,
-        status: str,
+        status: str | None = None,
         agreed_contract: str | None = None,
+        backend_issue_ref: str | None = None,
+        frontend_issue_ref: str | None = None,
     ) -> JsonDict:
         self._validate_contract(agreed_contract)
         with self._lock:
@@ -506,29 +515,41 @@ class FakeIssuekitClient:
                     for key, value in {
                         "status": status,
                         "agreed_contract": agreed_contract,
+                        "backend_issue_ref": backend_issue_ref,
+                        "frontend_issue_ref": frontend_issue_ref,
                     }.items()
                     if value is not None
                 },
             )
             thread = self._find_thread(thread_id)
-            if thread.get("status") != "negotiating":
+            if status is not None:
+                if thread.get("status") != "negotiating":
+                    raise WorkflowError(
+                        f"Negotiation thread {thread_id} is already {thread.get('status')}.",
+                        code="invalid_transition",
+                    )
+                if status not in {"agreed", "blocked"}:
+                    raise WorkflowError(
+                        f"Invalid thread status transition: {status}.",
+                        code="invalid_transition",
+                    )
+                if agreed_contract is not None and status != "agreed":
+                    raise WorkflowError(
+                        "agreed_contract can only be set when status is agreed.",
+                        code="invalid_transition",
+                    )
+                thread["status"] = status
+                if status == "agreed":
+                    thread["agreed_contract"] = agreed_contract or self._latest_agree_contract(thread_id)
+            elif agreed_contract is not None:
                 raise WorkflowError(
-                    f"Negotiation thread {thread_id} is already {thread.get('status')}.",
+                    "agreed_contract can only be set with a status transition.",
                     code="invalid_transition",
                 )
-            if status not in {"agreed", "blocked"}:
-                raise WorkflowError(
-                    f"Invalid thread status transition: {status}.",
-                    code="invalid_transition",
-                )
-            if agreed_contract is not None and status != "agreed":
-                raise WorkflowError(
-                    "agreed_contract can only be set when status is agreed.",
-                    code="invalid_transition",
-                )
-            thread["status"] = status
-            if status == "agreed":
-                thread["agreed_contract"] = agreed_contract or self._latest_agree_contract(thread_id)
+            if backend_issue_ref is not None:
+                thread["backend_issue_ref"] = backend_issue_ref
+            if frontend_issue_ref is not None:
+                thread["frontend_issue_ref"] = frontend_issue_ref
             thread["updated_at"] = date.today().isoformat()
             return deepcopy(thread)
 

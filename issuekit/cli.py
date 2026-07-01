@@ -152,16 +152,19 @@ def build_parser() -> argparse.ArgumentParser:
         "negotiate",
         help="Drive a bounded cross-repository design negotiation.",
     )
-    negotiate_parser.add_argument("--from-issue", required=True, help="Originating issue id.")
-    negotiate_parser.add_argument("--to", required=True, help="Target project name.")
+    negotiate_parser.add_argument("--from-issue", help="Originating issue id.")
+    negotiate_parser.add_argument("--to", help="Target project name.")
+    negotiate_parser.add_argument(
+        "--finalize",
+        metavar="THREAD_ID",
+        help="Create cross-linked implementation issues for an agreed thread.",
+    )
     negotiate_parser.add_argument(
         "--frontend-agent",
-        required=True,
         help="Configured agent representing the frontend side.",
     )
     negotiate_parser.add_argument(
         "--backend-agent",
-        required=True,
         help="Configured agent representing the backend side.",
     )
     negotiate_parser.add_argument(
@@ -181,6 +184,17 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=120.0,
         help="Hard timeout for each negotiation turn in seconds.",
+    )
+    negotiate_parser.add_argument(
+        "--author-agent",
+        default="codex",
+        help="Author agent for issues created by --finalize.",
+    )
+    negotiate_parser.add_argument(
+        "--priority",
+        choices=("high", "medium", "low"),
+        default="medium",
+        help="Priority for issues created by --finalize.",
     )
     negotiate_parser.add_argument("--json", action="store_true", help="Print JSON output.")
     negotiate_parser.set_defaults(func=negotiate.run)

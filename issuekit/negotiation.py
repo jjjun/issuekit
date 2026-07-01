@@ -52,6 +52,24 @@ class NegotiationEntry:
         object.__setattr__(self, "verdict", _coerce_verdict(self.verdict))
 
 
+@dataclass(frozen=True)
+class NegotiationIssueRefs:
+    backend_issue_ref: str
+    frontend_issue_ref: str
+
+    def __post_init__(self) -> None:
+        if not self.backend_issue_ref.strip():
+            raise ValueError("backend_issue_ref is required")
+        if not self.frontend_issue_ref.strip():
+            raise ValueError("frontend_issue_ref is required")
+
+    def to_dict(self) -> dict[str, str]:
+        return {
+            "backend_issue_ref": self.backend_issue_ref,
+            "frontend_issue_ref": self.frontend_issue_ref,
+        }
+
+
 class NegotiationStore(Protocol):
     def create_thread(
         self,
@@ -96,6 +114,12 @@ class NegotiationStore(Protocol):
     def get_agreed_contract(self, thread_id: str) -> str | None:
         """Return the agreed contract frozen on the thread, if any."""
 
+    def get_issue_refs(self, thread_id: str) -> NegotiationIssueRefs | None:
+        """Return implementation issue refs recorded on a finalized thread."""
+
+    def set_issue_refs(self, thread_id: str, refs: NegotiationIssueRefs) -> None:
+        """Record implementation issue refs for a finalized thread."""
+
 
 class MockNegotiationStore:
     """In-memory negotiation store with JSON persistence for local runs."""
@@ -105,6 +129,7 @@ class MockNegotiationStore:
         self._threads: dict[str, list[NegotiationEntry]] = {}
         self._statuses: dict[str, ThreadStatus] = {}
         self._agreed_contracts: dict[str, str | None] = {}
+        self._issue_refs: dict[str, NegotiationIssueRefs] = {}
         self._next_thread_id = 1
         self._next_entry_id = 1
         self._load()
@@ -135,6 +160,7 @@ class MockNegotiationStore:
         self._threads[thread_id] = [entry]
         self._statuses[thread_id] = ThreadStatus.negotiating
         self._agreed_contracts[thread_id] = None
+        self._issue_refs.pop(thread_id, None)
         self._persist()
         return entry
 
@@ -213,6 +239,25 @@ class MockNegotiationStore:
     def get_agreed_contract(self, thread_id: str) -> str | None:
         self._ensure_thread(thread_id)
         return self._agreed_contracts.get(thread_id)
+
+    def get_issue_refs(self, thread_id: str) -> NegotiationIssueRefs | None:
+        self._ensure_thread(thread_id)
+        return self._issue_refs.get(thread_id)
+
+    def set_issue_refs(self, thread_id: str, refs: NegotiationIssueRefs) -> None:
+        self._ensure_thread(thread_id)
+        if self._statuses[thread_id] is not ThreadStatus.agreed:
+            raise WorkflowError(
+                f"Negotiation thread {thread_id} is {self._statuses[thread_id].value}, not agreed.",
+                code="invalid_transition",
+            )
+        if thread_id in self._issue_refs and self._issue_refs[thread_id] != refs:
+            raise WorkflowError(
+                f"Negotiation thread {thread_id} already has implementation issue refs.",
+                code="invalid_transition",
+            )
+        self._issue_refs[thread_id] = refs
+        self._persist()
 
     def _make_entry(
         self,
@@ -297,6 +342,14 @@ class MockNegotiationStore:
         }
         for thread_id in self._threads:
             self._agreed_contracts.setdefault(thread_id, None)
+        raw_issue_refs = raw.get("issue_refs", {})
+        if not isinstance(raw_issue_refs, dict):
+            raise WorkflowError("Negotiation persistence issue_refs was not a JSON object.")
+        self._issue_refs = {
+            str(thread_id): _issue_refs_from_json(refs)
+            for thread_id, refs in raw_issue_refs.items()
+            if str(thread_id) in self._threads
+        }
 
     def _persist(self) -> None:
         if self.persistence_path is None:
@@ -307,6 +360,9 @@ class MockNegotiationStore:
             "next_entry_id": self._next_entry_id,
             "statuses": {key: status.value for key, status in self._statuses.items()},
             "agreed_contracts": self._agreed_contracts,
+            "issue_refs": {
+                thread_id: refs.to_dict() for thread_id, refs in self._issue_refs.items()
+            },
             "threads": {
                 thread_id: [_entry_to_json(entry) for entry in entries]
                 for thread_id, entries in self._threads.items()
@@ -439,6 +495,17 @@ class ApiNegotiationStore:
             )
         return contract
 
+    def get_issue_refs(self, thread_id: str) -> NegotiationIssueRefs | None:
+        payload = self.client.get_thread(_api_thread_id(thread_id))
+        return _issue_refs_from_api(payload)
+
+    def set_issue_refs(self, thread_id: str, refs: NegotiationIssueRefs) -> None:
+        self.client.patch_thread(
+            _api_thread_id(thread_id),
+            backend_issue_ref=refs.backend_issue_ref,
+            frontend_issue_ref=refs.frontend_issue_ref,
+        )
+
 
 def get_negotiation_store(
     config: IssuekitConfig,
@@ -476,6 +543,21 @@ def _entry_from_json(raw: Any) -> NegotiationEntry:
         created=str(raw.get("created", "")),
         id=_optional_int(raw.get("id")),
     )
+
+
+def _issue_refs_from_json(raw: Any) -> NegotiationIssueRefs:
+    if not isinstance(raw, dict):
+        raise WorkflowError("Negotiation issue_refs item was not a JSON object.")
+    try:
+        return NegotiationIssueRefs(
+            backend_issue_ref=str(raw["backend_issue_ref"]),
+            frontend_issue_ref=str(raw["frontend_issue_ref"]),
+        )
+    except KeyError as exc:
+        raise WorkflowError(
+            f"Negotiation issue_refs item missing {exc.args[0]}.",
+            code="invalid_response",
+        ) from exc
 
 
 def _coerce_verdict(value: object) -> Verdict:
@@ -578,6 +660,32 @@ def _entry_from_api(raw: Any) -> NegotiationEntry:
             id=_optional_int(raw.get("id")),
         )
     except (TypeError, ValueError) as exc:
+        raise WorkflowError(str(exc), code="invalid_response") from exc
+
+
+def _issue_refs_from_api(raw: Any) -> NegotiationIssueRefs | None:
+    if not isinstance(raw, dict):
+        raise WorkflowError("Proposal thread response was not a JSON object.", code="invalid_response")
+    nested = raw.get("issue_refs") or raw.get("adopted_issue_refs")
+    if isinstance(nested, dict):
+        backend_ref = nested.get("backend_issue_ref") or nested.get("backend")
+        frontend_ref = nested.get("frontend_issue_ref") or nested.get("frontend")
+    else:
+        backend_ref = raw.get("backend_issue_ref")
+        frontend_ref = raw.get("frontend_issue_ref")
+    if backend_ref is None and frontend_ref is None:
+        return None
+    if not isinstance(backend_ref, str) or not isinstance(frontend_ref, str):
+        raise WorkflowError(
+            "Proposal thread issue refs were incomplete or invalid.",
+            code="invalid_response",
+        )
+    try:
+        return NegotiationIssueRefs(
+            backend_issue_ref=backend_ref,
+            frontend_issue_ref=frontend_ref,
+        )
+    except ValueError as exc:
         raise WorkflowError(str(exc), code="invalid_response") from exc
 
 

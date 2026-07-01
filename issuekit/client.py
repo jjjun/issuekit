@@ -216,6 +216,10 @@ class IssuekitClient:
         payload = self._request("POST", "/", json=dict(issue))
         return _ensure_dict(payload, "Create response")
 
+    def update_issue(self, number: int, issue: Mapping[str, Any]) -> JsonDict:
+        payload = self._request("PATCH", f"/{number}", json=dict(issue))
+        return _ensure_dict(payload, "Update response")
+
     def claim(self, number: int, *, assignee: str, worker: str | None = None) -> JsonDict:
         payload = self._request(
             "POST",
@@ -500,14 +504,23 @@ class IssuekitClient:
         self,
         thread_id: int,
         *,
-        status: str,
+        status: str | None = None,
         agreed_contract: str | None = None,
+        backend_issue_ref: str | None = None,
+        frontend_issue_ref: str | None = None,
     ) -> JsonDict:
         payload = self._request(
             "PATCH",
             f"/thread/{thread_id}",
             collection="proposals",
-            json=_drop_none({"status": status, "agreed_contract": agreed_contract}),
+            json=_drop_none(
+                {
+                    "status": status,
+                    "agreed_contract": agreed_contract,
+                    "backend_issue_ref": backend_issue_ref,
+                    "frontend_issue_ref": frontend_issue_ref,
+                }
+            ),
         )
         return _ensure_dict(payload, "Proposal thread response")
 

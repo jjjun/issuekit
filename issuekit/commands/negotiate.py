@@ -2,17 +2,19 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import hashlib
 import json
 from pathlib import Path
 import sys
+from typing import Protocol
 
 from issuekit.agents.runner import AgentResult, AgentRunner, resolve_adapter
 from issuekit.commands._common import run_command
 from issuekit.config import IssuekitConfig, load_config
 from issuekit.core import Issue, parse_issue_id_arg
 from issuekit.negotiation import (
+    NegotiationIssueRefs,
     NegotiationEntry,
     NegotiationStore,
     ThreadStatus,
@@ -70,15 +72,154 @@ class NegotiationResult:
         }
 
 
+@dataclass(frozen=True)
+class NegotiationFinalizationResult:
+    thread_id: str
+    backend_issue_ref: str
+    frontend_issue_ref: str
+    created: bool
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "thread_id": self.thread_id,
+            "backend_issue_ref": self.backend_issue_ref,
+            "frontend_issue_ref": self.frontend_issue_ref,
+            "created": self.created,
+        }
+
+
+class IssueCreator(Protocol):
+    def create_issue(
+        self,
+        *,
+        project: str,
+        title: str,
+        body: str,
+        priority: str,
+        author: str,
+    ) -> Issue:
+        """Create one implementation issue in a project."""
+
+    def update_issue_body(self, *, project: str, issue_id: int, body: str) -> Issue:
+        """Update one issue body after both cross-linked refs are known."""
+
+
+class ApiIssueCreator:
+    def __init__(self, config: IssuekitConfig) -> None:
+        self.config = config
+
+    def create_issue(
+        self,
+        *,
+        project: str,
+        title: str,
+        body: str,
+        priority: str,
+        author: str,
+    ) -> Issue:
+        project_config = replace(self.config, project=project)
+        store = get_store(project_config)
+        return store.create_issue(  # type: ignore[attr-defined]
+            title=title,
+            body=body,
+            priority=priority,
+            author=author,
+        )
+
+    def update_issue_body(self, *, project: str, issue_id: int, body: str) -> Issue:
+        project_config = replace(self.config, project=project)
+        store = get_store(project_config)
+        return store.update_issue_body(issue_id, body=body)  # type: ignore[attr-defined]
+
+
+class MockIssueCreator:
+    def __init__(self) -> None:
+        self._next_ids: dict[str, int] = {}
+        self.issues: dict[str, Issue] = {}
+
+    def create_issue(
+        self,
+        *,
+        project: str,
+        title: str,
+        body: str,
+        priority: str,
+        author: str,
+    ) -> Issue:
+        issue_id = self._next_ids.get(project, 1)
+        self._next_ids[project] = issue_id + 1
+        issue = Issue(
+            id=issue_id,
+            ref=f"{project}#{issue_id}",
+            title=title,
+            issue_status="active",
+            created="",
+            completed="",
+            priority=priority,
+            assignee="",
+            stage="todo",
+            implementer="",
+            author=author,
+            body=body,
+            metadata={"title": title},
+        )
+        self.issues[issue.ref] = issue
+        return issue
+
+    def update_issue_body(self, *, project: str, issue_id: int, body: str) -> Issue:
+        ref = f"{project}#{issue_id}"
+        issue = self.issues.get(ref)
+        if issue is None:
+            raise WorkflowError(f"Issue {ref} was not found.", code="not_found")
+        updated = Issue(
+            id=issue.id,
+            ref=issue.ref,
+            title=issue.title,
+            issue_status=issue.issue_status,
+            created=issue.created,
+            completed=issue.completed,
+            priority=issue.priority,
+            assignee=issue.assignee,
+            stage=issue.stage,
+            implementer=issue.implementer,
+            author=issue.author,
+            body=body,
+            metadata=issue.metadata,
+            worker=issue.worker,
+        )
+        self.issues[ref] = updated
+        return updated
+
+
 def run(args) -> int:
     def action() -> int:
+        cwd = Path.cwd()
+        config = load_config(cwd)
+        if args.finalize:
+            _require_finalize_args(args)
+            store = get_negotiation_store(config, use_mock=bool(args.mock))
+            creator: IssueCreator = MockIssueCreator() if args.mock else ApiIssueCreator(config)
+            result = finalize_negotiation(
+                thread_id=args.finalize,
+                to_project=args.to,
+                author_agent=args.author_agent,
+                priority=args.priority,
+                config=config,
+                store=store,
+                issue_creator=creator,
+            )
+            if args.json:
+                print(json.dumps(result.to_dict(), indent=2))
+            else:
+                _print_human_finalization_result(result)
+            return 0
+
+        _require_round_args(args)
         issue_id = parse_issue_id_arg(args.from_issue)
         max_rounds = int(args.max_rounds)
         if max_rounds < 1:
             raise ValueError("--max-rounds must be at least 1.")
 
-        cwd = Path.cwd()
-        config = load_config(cwd)
         issue = get_store(config).get_issue(issue_id)
         if issue is None:
             print(f"Active issue #{issue_id} was not found.", file=sys.stderr)
@@ -113,6 +254,95 @@ def run(args) -> int:
             WorkflowError,
             NegotiationParseError,
         ),
+    )
+
+
+def finalize_negotiation(
+    *,
+    thread_id: str,
+    to_project: str,
+    author_agent: str,
+    priority: str,
+    config: IssuekitConfig,
+    store: NegotiationStore,
+    issue_creator: IssueCreator,
+) -> NegotiationFinalizationResult:
+    """Create cross-linked implementation issues for an agreed negotiation."""
+
+    status = store.get_status(thread_id)
+    if status is not ThreadStatus.agreed:
+        raise WorkflowError(
+            f"Negotiation thread {thread_id} is {status.value}, not agreed.",
+            code="invalid_transition",
+        )
+
+    existing_refs = store.get_issue_refs(thread_id)
+    if existing_refs is not None:
+        return NegotiationFinalizationResult(
+            thread_id=thread_id,
+            backend_issue_ref=existing_refs.backend_issue_ref,
+            frontend_issue_ref=existing_refs.frontend_issue_ref,
+            created=False,
+        )
+
+    thread = store.get_thread(thread_id)
+    contract = store.get_agreed_contract(thread_id) or _latest_contract(thread)
+    if not contract:
+        raise WorkflowError(
+            f"Negotiation thread {thread_id} has no agreed contract.",
+            code="invalid_transition",
+        )
+
+    origin_issue_ref = _origin_issue_ref(thread)
+    frontend_project = config.project
+    frontend_title = f"Integrate agreed contract from negotiation {thread_id}"
+    backend_title = f"Implement agreed contract from negotiation {thread_id}"
+
+    frontend = issue_creator.create_issue(
+        project=frontend_project,
+        title=frontend_title,
+        body=_frontend_issue_body(
+            thread_id=thread_id,
+            origin_issue_ref=origin_issue_ref,
+            backend_issue_ref="pending",
+            contract=contract,
+        ),
+        priority=priority,
+        author=author_agent,
+    )
+    backend = issue_creator.create_issue(
+        project=to_project,
+        title=backend_title,
+        body=_backend_issue_body(
+            thread_id=thread_id,
+            origin_issue_ref=origin_issue_ref,
+            frontend_issue_ref=frontend.ref,
+            contract=contract,
+        ),
+        priority=priority,
+        author=author_agent,
+    )
+    issue_creator.update_issue_body(
+        project=frontend_project,
+        issue_id=_require_issue_id(frontend),
+        body=_frontend_issue_body(
+            thread_id=thread_id,
+            origin_issue_ref=origin_issue_ref,
+            backend_issue_ref=backend.ref,
+            contract=contract,
+        ),
+    )
+
+    refs = NegotiationIssueRefs(
+        backend_issue_ref=backend.ref,
+        frontend_issue_ref=frontend.ref,
+    )
+    store.set_issue_refs(thread_id, refs)
+    return NegotiationFinalizationResult(
+        thread_id=thread_id,
+        backend_issue_ref=refs.backend_issue_ref,
+        frontend_issue_ref=refs.frontend_issue_ref,
+        created=True,
     )
 
 
@@ -391,6 +621,115 @@ def _entry_origin(
     return f"{config.project}#{issue_id}:{side}:round-{round_number}"
 
 
+def _backend_issue_body(
+    *,
+    thread_id: str,
+    origin_issue_ref: str | None,
+    frontend_issue_ref: str,
+    contract: str,
+) -> str:
+    lines = [
+        "## Implementation Task",
+        "",
+        "Implement the backend/API side of the agreed cross-repository contract.",
+        "",
+        "## Links",
+        "",
+        f"- Negotiation thread: {thread_id}",
+        f"- Frontend/origin issue: {frontend_issue_ref}",
+    ]
+    if origin_issue_ref:
+        lines.append(f"- Originating issue: {origin_issue_ref}")
+    lines.extend(
+        [
+            "",
+            "## Agreed Contract",
+            "",
+            "```",
+            contract,
+            "```",
+            "",
+            "## Acceptance Criteria",
+            "",
+            "- The API behavior described in the agreed contract is implemented.",
+            "- The contract is covered by focused tests.",
+            "- Any documented request/response shape remains compatible with the frontend issue.",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def _frontend_issue_body(
+    *,
+    thread_id: str,
+    origin_issue_ref: str | None,
+    backend_issue_ref: str,
+    contract: str,
+) -> str:
+    lines = [
+        "## Implementation Task",
+        "",
+        "Integrate the frontend/origin project with the agreed backend contract.",
+        "",
+        "## Links",
+        "",
+        f"- Negotiation thread: {thread_id}",
+        f"- Backend/API issue: {backend_issue_ref}",
+    ]
+    if origin_issue_ref:
+        lines.append(f"- Originating issue: {origin_issue_ref}")
+    lines.extend(
+        [
+            "",
+            "## Agreed Contract",
+            "",
+            "```",
+            contract,
+            "```",
+            "",
+            "## Acceptance Criteria",
+            "",
+            "- The integration consumes the agreed contract.",
+            "- User-facing behavior from the originating issue is covered.",
+            "- The implementation handles backend errors or unavailable data clearly.",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def _origin_issue_ref(thread: list[NegotiationEntry]) -> str | None:
+    if not thread:
+        return None
+    origin = thread[0].origin.split(":", 1)[0].strip()
+    return origin or None
+
+
+def _require_issue_id(issue: Issue) -> int:
+    if issue.id is None:
+        raise WorkflowError(f"Created issue {issue.ref} has no id.", code="invalid_response")
+    return issue.id
+
+
+def _require_finalize_args(args) -> None:
+    if not args.to:
+        raise ValueError("--to is required with --finalize.")
+
+
+def _require_round_args(args) -> None:
+    missing = [
+        name
+        for name, value in (
+            ("--from-issue", args.from_issue),
+            ("--to", args.to),
+            ("--frontend-agent", args.frontend_agent),
+            ("--backend-agent", args.backend_agent),
+        )
+        if not value
+    ]
+    if missing:
+        raise ValueError(f"{', '.join(missing)} required unless --finalize is used.")
+
+
 def _stdout_text(result: AgentResult) -> str:
     if result.parsed and "stdout" in result.parsed:
         return result.parsed["stdout"]
@@ -419,3 +758,11 @@ def _print_human_result(result: NegotiationResult) -> None:
         print(result.final_contract)
     if result.run_ids:
         print(f"run_ids={','.join(result.run_ids)}")
+
+
+def _print_human_finalization_result(result: NegotiationFinalizationResult) -> None:
+    action = "created" if result.created else "already finalized"
+    print(
+        f"negotiation thread={result.thread_id} {action} "
+        f"backend={result.backend_issue_ref} frontend={result.frontend_issue_ref}"
+    )

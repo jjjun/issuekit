@@ -5,6 +5,7 @@ from issuekit.negotiation import (
     ApiNegotiationStore,
     MockNegotiationStore,
     NegotiationEntry,
+    NegotiationIssueRefs,
     ThreadStatus,
     Verdict,
     get_negotiation_store,
@@ -153,6 +154,29 @@ def test_mock_store_freezes_agreed_contract_and_persists_it(tmp_path) -> None:
     assert second_store.get_agreed_contract(first.thread_id) == "GET /items"
 
 
+def test_mock_store_issue_refs_round_trip(tmp_path) -> None:
+    path = tmp_path / "negotiations.json"
+    first_store = MockNegotiationStore(path)
+    first = first_store.create_thread(
+        side="frontend",
+        verdict=Verdict.agree,
+        title="Agreed",
+        body="Accepted.",
+        origin="frontend#1",
+        contract="GET /items",
+    )
+    first_store.set_status(first.thread_id, ThreadStatus.agreed)
+    refs = NegotiationIssueRefs(
+        backend_issue_ref="backend#4",
+        frontend_issue_ref="frontend#9",
+    )
+    first_store.set_issue_refs(first.thread_id, refs)
+
+    second_store = MockNegotiationStore(path)
+
+    assert second_store.get_issue_refs(first.thread_id) == refs
+
+
 def test_mock_store_rejects_contract_over_cap(tmp_path) -> None:
     store = MockNegotiationStore(tmp_path / "negotiations.json")
 
@@ -276,6 +300,12 @@ def test_api_negotiation_store_round_trips_via_fake_client() -> None:
     assert [entry.id for entry in store.get_thread(first.thread_id)] == [first.id, second.id, third.id]
     assert store.get_status(first.thread_id) is ThreadStatus.agreed
     assert store.get_agreed_contract(first.thread_id) == "GET /items?page=1"
+    refs = NegotiationIssueRefs(
+        backend_issue_ref="target#4",
+        frontend_issue_ref="source#8",
+    )
+    store.set_issue_refs(first.thread_id, refs)
+    assert store.get_issue_refs(first.thread_id) == refs
 
     with pytest.raises(WorkflowError) as append_exc:
         store.append_entry(

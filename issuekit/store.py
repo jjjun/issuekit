@@ -106,6 +106,9 @@ class ApiStore:
             )
         )
 
+    def update_issue_body(self, issue_id: int, *, body: str) -> Issue:
+        return self._issue_from_response(self.client.update_issue(issue_id, {"body": body}))
+
     def claim_issue(self, issue_id: int, *, assignee: str, worker: str | None = None) -> Issue:
         return self._issue_from_response(self.client.claim(issue_id, assignee=assignee, worker=worker))
 
