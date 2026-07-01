@@ -267,7 +267,7 @@ class ApiStore:
         )
 
 
-def get_store(config: IssuekitConfig, issues_dir: Path | str | None = None) -> IssueStore:
+def get_store(config: IssuekitConfig) -> IssueStore:
     if not config.api_url:
         raise WorkflowError(
             "API store requires api_url. Set api_url in issuekit.toml/[tool.issuekit] "

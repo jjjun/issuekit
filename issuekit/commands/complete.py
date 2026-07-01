@@ -25,10 +25,8 @@ def run(args) -> int:
         return 1
 
     config = load_config(Path.cwd())
-    issues_dir = config.issues_path(Path.cwd())
     try:
         completed_issue = complete_issue(
-            issues_dir,
             issue_id,
             summary=summary,
             verification=verification,
@@ -51,7 +49,6 @@ def run(args) -> int:
 
 
 def complete_issue(
-    issues_dir: Path | str,
     issue_id: int,
     *,
     summary: str = "",
@@ -66,7 +63,7 @@ def complete_issue(
     config = config or IssuekitConfig()
     from issuekit.store import get_store
 
-    store = get_store(config, issues_dir)
+    store = get_store(config)
     return store.complete_issue(  # type: ignore[attr-defined]
         issue_id,
         summary=summary,

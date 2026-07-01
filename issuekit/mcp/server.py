@@ -42,8 +42,8 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
         )
     )
     def claim_next_task(assignee: str = "codex", priority: str | None = None) -> dict[str, Any]:
-        config, issues_dir = _context(root)
-        issue = claim_next(issues_dir, assignee, priority=priority, config=config)
+        config = _context(root)
+        issue = claim_next(assignee, priority=priority, config=config)
         if issue is None:
             return {"status": "none", "assignee": assignee}
         return _issue_dict(issue, include_body=True)
@@ -62,9 +62,8 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
         assignee: str = "codex",
         reviewer: str | None = None,
     ) -> dict[str, Any]:
-        config, issues_dir = _context(root)
+        config = _context(root)
         issue = workflow_submit_for_review(
-            issues_dir,
             id,
             summary=summary,
             branch=branch,
@@ -82,14 +81,14 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
         )
     )
     def next_review(reviewer: str | None = None) -> dict[str, Any]:
-        config, issues_dir = _context(root)
+        config = _context(root)
         if reviewer is None and config.default_reviewer == AUTO_REVIEWER:
-            issues = find_for(issues_dir, stage="review", config=config)
+            issues = find_for(stage="review", config=config)
             if not issues:
                 return {"status": "none", "assignee": AUTO_REVIEWER, "stage": "review"}
             return _issue_dict(issues[0], include_body=True)
         reviewer = resolve_reviewer(reviewer, config)
-        issues = find_for(issues_dir, reviewer, stage="review", config=config)
+        issues = find_for(reviewer, stage="review", config=config)
         if not issues:
             return {"status": "none", "assignee": reviewer, "stage": "review"}
         return _issue_dict(issues[0], include_body=True)
@@ -103,9 +102,8 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
         reviewer: str | None = None,
         assignee: str | None = None,
     ) -> dict[str, Any]:
-        config, issues_dir = _context(root)
+        config = _context(root)
         issue = workflow_request_changes(
-            issues_dir,
             id,
             notes=notes,
             reviewer=reviewer,
@@ -118,9 +116,8 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
         description="Reviewer protocol decision: approve a reviewed issue and move it to completed."
     )
     def approve(id: int, verification: str, reviewer: str | None = None) -> dict[str, Any]:
-        config, issues_dir = _context(root)
+        config = _context(root)
         issue = approve_issue(
-            issues_dir,
             id,
             verification=verification,
             reviewer=reviewer,
@@ -130,18 +127,18 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
 
     @server.tool(description="Read one active or completed issue by id.")
     def get_issue(id: int) -> dict[str, Any]:
-        config, issues_dir = _context(root)
-        issue = get_store(config, issues_dir).get_issue(id)
+        config = _context(root)
+        issue = get_store(config).get_issue(id)
         if issue is None:
             return {"status": "none", "id": id}
         return _issue_dict(issue, include_body=True)
 
     @server.tool(description="List active queue entries, optionally filtered by assignee and stage.")
     def list_queue(assignee: str | None = None, stage: str | None = None) -> list[dict[str, Any]]:
-        config, issues_dir = _context(root)
+        config = _context(root)
         return [
             _issue_dict(issue)
-            for issue in find_for(issues_dir, assignee, stage=stage, config=config)
+            for issue in find_for(assignee, stage=stage, config=config)
         ]
 
     @server.tool(description="Send a cross-repository proposal to a configured ref.")
@@ -161,7 +158,7 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
             from_issue=from_issue,
             reply=reply,
         )
-        config, _ = _context(root)
+        config = _context(root)
         return api_client(config, project=proposal.to).create_proposal(
             origin=proposal.origin,
             title=proposal.title,
@@ -171,7 +168,7 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
 
     @server.tool(description="List incoming cross-repository proposals.")
     def list_incoming() -> list[dict[str, Any]]:
-        config, issues_dir = _context(root)
+        config = _context(root)
         return api_client(config).list_proposals(status="pending")
 
     @server.tool(description="Adopt an incoming proposal as a local active issue.")
@@ -180,7 +177,7 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
         proposal_file: str | None = None,
         priority: str = "medium",
     ) -> dict[str, Any]:
-        config, issues_dir = _context(root)
+        config = _context(root)
         raw_id = proposal_id if proposal_id is not None else proposal_id_arg(proposal_file or "")
         issue = api_client(config).adopt_proposal(int(raw_id), priority=priority)
         return adopt_outcome(raw_id, config.project, issue)
@@ -190,7 +187,7 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
         proposal_id: int | None = None,
         proposal_file: str | None = None,
     ) -> dict[str, Any]:
-        config, issues_dir = _context(root)
+        config = _context(root)
         raw_id = proposal_id if proposal_id is not None else proposal_id_arg(proposal_file or "")
         return api_client(config).discard_proposal(int(raw_id))
 
@@ -203,7 +200,7 @@ def main() -> None:
 
 def _context(root: Path):
     config = load_config(root)
-    return config, config.issues_path(root)
+    return config
 
 
 def _issue_dict(issue: Issue, *, include_body: bool = False) -> dict[str, Any]:

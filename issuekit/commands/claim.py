@@ -21,18 +21,15 @@ def run(args) -> int:
         return 1
 
     config = load_config(Path.cwd())
-    issues_dir = config.issues_path(Path.cwd())
     try:
         if issue_id is None:
             issue = claim_next(
-                issues_dir,
                 args.assignee,
                 priority=args.priority,
                 config=config,
             )
         else:
             issue = claim_issue(
-                issues_dir,
                 issue_id,
                 args.assignee,
                 config=config,

@@ -91,13 +91,13 @@ def build_proposal(
     source_issue: Issue | None = None
     reply_to = ""
     if reply is not None:
-        source_issue = _get_issue(cwd, config, reply)
+        source_issue = _get_issue(config, reply)
         reply_to = source_issue.frontmatter.data.get("origin", "").strip()
         if not reply_to:
             raise ProposalError(f"Issue #{source_issue.id} has no origin field.")
         to = to or origin_destination(reply_to)
     elif from_issue is not None:
-        source_issue = _get_issue(cwd, config, from_issue)
+        source_issue = _get_issue(config, from_issue)
 
     if not to:
         raise ProposalError("--to is required unless --reply is used.")
@@ -120,9 +120,9 @@ def build_proposal(
     )
 
 
-def _get_issue(cwd: Path, config: IssuekitConfig, raw_id: str) -> Issue:
+def _get_issue(config: IssuekitConfig, raw_id: str) -> Issue:
     issue_id = parse_issue_id_arg(raw_id)
-    issue = get_store(config, config.issues_path(cwd)).get_issue(issue_id)
+    issue = get_store(config).get_issue(issue_id)
     if issue is None:
         raise LookupError(f"Issue #{issue_id} was not found.")
     return issue

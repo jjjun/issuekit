@@ -18,10 +18,8 @@ def run_submit_review(args) -> int:
         return 1
 
     config = load_config(Path.cwd())
-    issues_dir = config.issues_path(Path.cwd())
     try:
         issue = submit_for_review(
-            issues_dir,
             issue_id,
             summary=args.summary,
             branch=args.branch,
@@ -49,10 +47,8 @@ def run_request_changes(args) -> int:
         return 1
 
     config = load_config(Path.cwd())
-    issues_dir = config.issues_path(Path.cwd())
     try:
         issue = request_changes(
-            issues_dir,
             issue_id,
             notes=args.notes,
             assignee=args.assignee,

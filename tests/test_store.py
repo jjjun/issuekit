@@ -9,9 +9,9 @@ from issuekit.workflow import WorkflowError
 from tests.issue_helpers import api_issue
 
 
-def test_get_store_requires_api_url_for_runtime_default(tmp_path: Path) -> None:
+def test_get_store_requires_api_url_for_runtime_default() -> None:
     try:
-        get_store(IssuekitConfig(), tmp_path / "docs" / "issues")
+        get_store(IssuekitConfig())
     except WorkflowError as exc:
         assert exc.code == "missing_api_url"
     else:

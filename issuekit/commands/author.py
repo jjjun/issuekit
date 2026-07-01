@@ -18,11 +18,9 @@ from issuekit.workflow import WorkflowError
 
 def run(args) -> int:
     config = load_config(Path.cwd())
-    issues_dir = config.issues_path(Path.cwd())
 
     try:
         authored = author_issue(
-            issues_dir,
             title=args.title,
             body=args.body,
             body_file=args.body_file,
@@ -35,12 +33,11 @@ def run(args) -> int:
         print(str(exc), file=sys.stderr)
         return 1
 
-    print(f"Authored issue: {_authored_ref(authored, issues_dir)}")
+    print(f"Authored issue: {_authored_ref(authored)}")
     return 0
 
 
 def author_issue(
-    issues_dir: Path | str,
     *,
     title: str,
     body: str | None,
@@ -63,7 +60,7 @@ def author_issue(
         raise ValueError("--body and --body-file must be ASCII-only.")
     from issuekit.store import get_store
 
-    store = get_store(config, issues_dir)
+    store = get_store(config)
     return store.create_issue(  # type: ignore[attr-defined]
         title=title.strip(),
         body=issue_body.strip(),
@@ -111,5 +108,5 @@ def _slugify(title: str) -> str:
     return _core_slugify(title.strip(), default="issue")
 
 
-def _authored_ref(authored: Issue, issues_dir: Path) -> str:
+def _authored_ref(authored: Issue) -> str:
     return authored.relative_path

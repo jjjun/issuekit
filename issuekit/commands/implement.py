@@ -28,7 +28,7 @@ def run(args) -> int:
     config = load_config(cwd)
     issues_dir = config.issues_path(cwd)
     try:
-        issue = get_store(config, issues_dir).get_issue(issue_id)
+        issue = get_store(config).get_issue(issue_id)
     except (WorkflowError, ValueError) as exc:
         print(str(exc), file=sys.stderr)
         return 1
@@ -48,7 +48,7 @@ def run(args) -> int:
         else None
     )
     try:
-        claimed_issue = claim_issue(issues_dir, issue.id or issue_id, args.agent, config=config)
+        claimed_issue = claim_issue(issue.id or issue_id, args.agent, config=config)
         outcome = run_and_submit(
             claimed_issue,
             agent=args.agent,

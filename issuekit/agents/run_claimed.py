@@ -118,7 +118,6 @@ def run_and_submit(
             return RunOutcome(issue=issue, result=result, exit_code=1)
 
     reviewed_issue = submit_for_review(
-        issues_dir,
         issue_id,
         summary=f"Implemented by {agent} via issuekit implement.",
         assignee=agent,

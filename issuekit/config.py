@@ -131,6 +131,15 @@ class IssuekitConfig:
             return path
         return Path(cwd) / path
 
+    def worker_key(self) -> str | None:
+        if self.worker is None:
+            return None
+        return (
+            f"{self.worker.machine_id}/"
+            f"{self.worker.repo_id}/"
+            f"{self.worker.worker_id}"
+        )
+
 
 def load_config(cwd: Path | str = ".") -> IssuekitConfig:
     config_cwd = Path(cwd)

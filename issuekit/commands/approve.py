@@ -17,7 +17,6 @@ from issuekit.workflow import (
     ensure_assigned_reviewer,
     resolve_reviewer,
 )
-from issuekit.worker import worker_key
 
 
 def run(args) -> int:
@@ -28,10 +27,8 @@ def run(args) -> int:
         return 1
 
     config = load_config(Path.cwd())
-    issues_dir = config.issues_path(Path.cwd())
     try:
         completed_issue = approve_issue(
-            issues_dir,
             issue_id,
             summary=args.summary,
             verification=args.verification,
@@ -54,7 +51,6 @@ def run(args) -> int:
 
 
 def approve_issue(
-    issues_dir: Path | str,
     issue_id: int,
     *,
     verification: str,
@@ -69,9 +65,9 @@ def approve_issue(
     config = config or IssuekitConfig()
     from issuekit.store import get_store
 
-    store = get_store(config, issues_dir)
+    store = get_store(config)
     resolved_reviewer = _resolve_api_approval_reviewer(store, issue_id, reviewer, config)
-    worker = worker_key(config.worker) if config.worker is not None else None
+    worker = config.worker_key()
     return store.approve_issue(  # type: ignore[attr-defined]
         issue_id,
         summary=summary if summary is not None else "Approved.",
