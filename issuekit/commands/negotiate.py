@@ -156,7 +156,7 @@ def run_negotiation(
         verdict=first.parsed.verdict,
         title=_entry_title(FRONTEND_SIDE, first.parsed),
         body=first.parsed.notes,
-        origin=_entry_origin(issue, config=config, side=FRONTEND_SIDE),
+        origin=_entry_origin(issue, config=config, side=FRONTEND_SIDE, round_number=1),
         contract=first.parsed.contract,
     )
     run_records.append(first.run)
@@ -165,7 +165,7 @@ def run_negotiation(
 
     outcome = _evaluate_convergence(thread)
     if outcome != "negotiating":
-        _set_terminal_status(store, thread_id, outcome)
+        _set_terminal_status(store, thread_id, outcome, thread)
         return _result(thread, outcome=outcome, runs=run_records)
 
     while len(thread) < max_rounds:
@@ -190,7 +190,7 @@ def run_negotiation(
             verdict=turn.parsed.verdict,
             title=_entry_title(side, turn.parsed),
             body=turn.parsed.notes,
-            origin=_entry_origin(issue, config=config, side=side),
+            origin=_entry_origin(issue, config=config, side=side, round_number=len(thread) + 1),
             contract=turn.parsed.contract,
         )
         run_records.append(turn.run)
@@ -198,7 +198,7 @@ def run_negotiation(
 
         outcome = _evaluate_convergence(thread)
         if outcome != "negotiating":
-            _set_terminal_status(store, thread_id, outcome)
+            _set_terminal_status(store, thread_id, outcome, thread)
             return _result(thread, outcome=outcome, runs=run_records)
 
     return _result(thread, outcome="escalate", runs=run_records)
@@ -321,9 +321,14 @@ def _contract_hash(contract: str | None) -> str | None:
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
 
-def _set_terminal_status(store: NegotiationStore, thread_id: str, outcome: str) -> None:
+def _set_terminal_status(
+    store: NegotiationStore,
+    thread_id: str,
+    outcome: str,
+    thread: list[NegotiationEntry],
+) -> None:
     if outcome == "agreed":
-        store.set_status(thread_id, ThreadStatus.agreed)
+        store.set_status(thread_id, ThreadStatus.agreed, agreed_contract=_latest_contract(thread))
     elif outcome == "blocked":
         store.set_status(thread_id, ThreadStatus.blocked)
 
@@ -375,9 +380,15 @@ def _entry_title(side: str, parsed: ParsedRound) -> str:
     return f"{side} {parsed.verdict.value}"
 
 
-def _entry_origin(issue: Issue, *, config: IssuekitConfig, side: str) -> str:
+def _entry_origin(
+    issue: Issue,
+    *,
+    config: IssuekitConfig,
+    side: str,
+    round_number: int,
+) -> str:
     issue_id = issue.id if issue.id is not None else "unknown"
-    return f"{config.project}#{issue_id}:{side}"
+    return f"{config.project}#{issue_id}:{side}:round-{round_number}"
 
 
 def _stdout_text(result: AgentResult) -> str:

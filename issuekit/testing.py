@@ -14,6 +14,7 @@ JsonDict = dict[str, Any]
 READY_STAGES = {"", "todo", "changes_requested"}
 CLAIMABLE_STATUSES = {"active", "in_progress"}
 PRIORITY_RANK = {"high": 0, "medium": 1, "low": 2}
+MAX_CONTRACT_LENGTH = 100000
 
 
 class FakeIssuekitClient:
@@ -27,8 +28,10 @@ class FakeIssuekitClient:
         self._lock = Lock()
         self._issues: dict[int, JsonDict] = {}
         self._proposals: dict[int, JsonDict] = {}
+        self._threads: dict[int, JsonDict] = {}
         self._next_id = 1
         self._next_proposal_id = 1
+        self._next_thread_id = 1
         self.calls: list[JsonDict] = []
         for issue in issues or []:
             self._store_issue(issue)
@@ -310,7 +313,12 @@ class FakeIssuekitClient:
         body: str,
         reply_to: str | None = None,
         priority: str | None = None,
+        thread_id: int | None = None,
+        side: str | None = None,
+        verdict: str | None = None,
+        contract: str | None = None,
     ) -> JsonDict:
+        self._validate_contract(contract)
         request = {
             key: value
             for key, value in {
@@ -319,20 +327,34 @@ class FakeIssuekitClient:
                 "body": body,
                 "reply_to": reply_to,
                 "priority": priority,
+                "thread_id": thread_id,
+                "side": side,
+                "verdict": verdict,
+                "contract": contract,
             }.items()
             if value is not None
         }
         with self._lock:
             self._record("create_proposal", body=deepcopy(request))
-            for proposal in sorted(self._proposals.values(), key=lambda item: int(item["id"])):
-                if proposal.get("origin") == origin and proposal.get("status") == "pending":
-                    return deepcopy(proposal)
+            has_thread_fields = any(
+                value is not None for value in (thread_id, side, verdict, contract)
+            )
+            if not has_thread_fields:
+                for proposal in sorted(self._proposals.values(), key=lambda item: int(item["id"])):
+                    if proposal.get("origin") == origin and proposal.get("status") == "pending":
+                        return deepcopy(proposal)
+            if has_thread_fields and thread_id is None:
+                request["thread_id"] = self._allocate_thread()["id"]
+            elif thread_id is not None:
+                self._ensure_thread_is_negotiating(thread_id)
+                self._ensure_unique_thread_origin(thread_id, origin)
             return deepcopy(self._store_proposal(request, allocate=True))
 
     def list_proposals(
         self,
         *,
         status: str | None = None,
+        thread_id: int | None = None,
         page_size: int = 500,
     ) -> list[JsonDict]:
         if page_size <= 0:
@@ -340,7 +362,12 @@ class FakeIssuekitClient:
         proposals: list[JsonDict] = []
         offset = 0
         while True:
-            page = self.list_proposals_page(status=status, limit=min(page_size, 500), offset=offset)
+            page = self.list_proposals_page(
+                status=status,
+                thread_id=thread_id,
+                limit=min(page_size, 500),
+                offset=offset,
+            )
             proposals.extend(page["items"])
             if page["offset"] + len(page["items"]) >= page["total"] or len(page["items"]) < page["limit"]:
                 return deepcopy(proposals)
@@ -350,6 +377,7 @@ class FakeIssuekitClient:
         self,
         *,
         status: str | None = None,
+        thread_id: int | None = None,
         limit: int = 500,
         offset: int = 0,
     ) -> JsonDict:
@@ -358,6 +386,7 @@ class FakeIssuekitClient:
                 proposal
                 for proposal in sorted(self._proposals.values(), key=lambda item: int(item["id"]))
                 if (status or "pending") == proposal.get("status")
+                and (thread_id is None or proposal.get("thread_id") == thread_id)
             ]
             items = deepcopy(filtered[offset : offset + limit])
             return {
@@ -366,6 +395,142 @@ class FakeIssuekitClient:
                 "limit": limit,
                 "offset": offset,
             }
+
+    def reply_proposal(
+        self,
+        proposal_id: int,
+        *,
+        origin: str,
+        title: str,
+        body: str,
+        side: str,
+        verdict: str,
+        contract: str | None = None,
+        priority: str | None = None,
+    ) -> JsonDict:
+        self._validate_contract(contract)
+        request = {
+            key: value
+            for key, value in {
+                "origin": origin,
+                "title": title,
+                "body": body,
+                "side": side,
+                "verdict": verdict,
+                "contract": contract,
+                "priority": priority,
+            }.items()
+            if value is not None
+        }
+        with self._lock:
+            self._record("reply_proposal", number=proposal_id, body=deepcopy(request))
+            parent = self._find_proposal(proposal_id)
+            thread_id = parent.get("thread_id")
+            if thread_id is None:
+                thread_id = self._allocate_thread()["id"]
+                parent["thread_id"] = thread_id
+                self._update_thread_timestamp(thread_id)
+            thread_id = int(thread_id)
+            self._ensure_thread_is_negotiating(thread_id)
+            self._ensure_unique_thread_origin(thread_id, origin)
+            request["thread_id"] = thread_id
+            request["reply_to"] = str(proposal_id)
+            return deepcopy(self._store_proposal(request, allocate=True))
+
+    def get_thread(self, thread_id: int) -> JsonDict:
+        with self._lock:
+            thread = deepcopy(self._find_thread(thread_id))
+            items = [
+                proposal
+                for proposal in sorted(self._proposals.values(), key=lambda item: int(item["id"]))
+                if proposal.get("thread_id") == thread_id
+            ]
+            thread["items"] = deepcopy(items)
+            thread["total"] = len(items)
+            thread["limit"] = len(items)
+            thread["offset"] = 0
+            return thread
+
+    def list_threads(
+        self,
+        *,
+        status: str | None = None,
+        page_size: int = 500,
+    ) -> list[JsonDict]:
+        if page_size <= 0:
+            raise ValueError("page_size must be greater than zero")
+        threads: list[JsonDict] = []
+        offset = 0
+        while True:
+            page = self.list_threads_page(status=status, limit=min(page_size, 500), offset=offset)
+            threads.extend(page["items"])
+            if page["offset"] + len(page["items"]) >= page["total"] or len(page["items"]) < page["limit"]:
+                return deepcopy(threads)
+            offset = page["offset"] + page["limit"]
+
+    def list_threads_page(
+        self,
+        *,
+        status: str | None = None,
+        limit: int = 500,
+        offset: int = 0,
+    ) -> JsonDict:
+        with self._lock:
+            filtered = [
+                thread
+                for thread in sorted(self._threads.values(), key=lambda item: int(item["id"]))
+                if status is None or thread.get("status") == status
+            ]
+            items = deepcopy(filtered[offset : offset + limit])
+            return {
+                "items": items,
+                "total": len(filtered),
+                "limit": limit,
+                "offset": offset,
+            }
+
+    def patch_thread(
+        self,
+        thread_id: int,
+        *,
+        status: str,
+        agreed_contract: str | None = None,
+    ) -> JsonDict:
+        self._validate_contract(agreed_contract)
+        with self._lock:
+            self._record(
+                "patch_thread",
+                number=thread_id,
+                body={
+                    key: value
+                    for key, value in {
+                        "status": status,
+                        "agreed_contract": agreed_contract,
+                    }.items()
+                    if value is not None
+                },
+            )
+            thread = self._find_thread(thread_id)
+            if thread.get("status") != "negotiating":
+                raise WorkflowError(
+                    f"Negotiation thread {thread_id} is already {thread.get('status')}.",
+                    code="invalid_transition",
+                )
+            if status not in {"agreed", "blocked"}:
+                raise WorkflowError(
+                    f"Invalid thread status transition: {status}.",
+                    code="invalid_transition",
+                )
+            if agreed_contract is not None and status != "agreed":
+                raise WorkflowError(
+                    "agreed_contract can only be set when status is agreed.",
+                    code="invalid_transition",
+                )
+            thread["status"] = status
+            if status == "agreed":
+                thread["agreed_contract"] = agreed_contract or self._latest_agree_contract(thread_id)
+            thread["updated_at"] = date.today().isoformat()
+            return deepcopy(thread)
 
     def get_proposal(self, proposal_id: int) -> JsonDict:
         with self._lock:
@@ -440,6 +605,12 @@ class FakeIssuekitClient:
             raise WorkflowError(f"Proposal #{proposal_id} was not found.", code="not_found")
         return proposal
 
+    def _find_thread(self, thread_id: int) -> JsonDict:
+        thread = self._threads.get(thread_id)
+        if thread is None:
+            raise WorkflowError(f"Proposal thread {thread_id} was not found.", code="not_found")
+        return thread
+
     def _find_imported_proposal(self, proposal: JsonDict) -> JsonDict | None:
         origin = proposal.get("origin")
         status = proposal.get("status")
@@ -491,10 +662,80 @@ class FakeIssuekitClient:
         stored.setdefault("priority", None)
         stored.setdefault("status", "pending")
         stored.setdefault("created", date.today().isoformat())
+        stored.setdefault("created_at", stored["created"])
         stored.setdefault("adopted_issue_number", None)
         stored.setdefault("updated", stored["created"])
+        stored.setdefault("updated_at", stored["updated"])
+        stored.setdefault("thread_id", None)
+        stored.setdefault("side", None)
+        stored.setdefault("verdict", None)
+        stored.setdefault("contract", None)
         self._proposals[proposal_id] = stored
+        if stored.get("thread_id") is not None:
+            thread_id = int(stored["thread_id"])
+            if thread_id not in self._threads:
+                self._store_thread({"id": thread_id}, allocate=False)
+            self._update_thread_timestamp(thread_id)
         return stored
+
+    def _store_thread(self, thread: JsonDict, *, allocate: bool = False) -> JsonDict:
+        stored = deepcopy(thread)
+        raw_id = stored.get("id")
+        if allocate or raw_id is None:
+            thread_id = self._next_thread_id
+            self._next_thread_id += 1
+        else:
+            thread_id = int(raw_id)
+            self._next_thread_id = max(self._next_thread_id, thread_id + 1)
+        stored["id"] = thread_id
+        stored.setdefault("target_project", "issuekit")
+        stored.setdefault("status", "negotiating")
+        stored.setdefault("agreed_contract", None)
+        stored.setdefault("created_at", date.today().isoformat())
+        stored.setdefault("updated_at", stored["created_at"])
+        self._threads[thread_id] = stored
+        return stored
+
+    def _allocate_thread(self) -> JsonDict:
+        return self._store_thread({}, allocate=True)
+
+    def _update_thread_timestamp(self, thread_id: int) -> None:
+        self._threads[thread_id]["updated_at"] = date.today().isoformat()
+
+    def _ensure_thread_is_negotiating(self, thread_id: int) -> None:
+        thread = self._find_thread(thread_id)
+        if thread.get("status") != "negotiating":
+            raise WorkflowError(
+                f"Negotiation thread {thread_id} is {thread.get('status')} and cannot be modified.",
+                code="invalid_transition",
+            )
+
+    def _ensure_unique_thread_origin(self, thread_id: int, origin: str) -> None:
+        if any(
+            proposal.get("thread_id") == thread_id and proposal.get("origin") == origin
+            for proposal in self._proposals.values()
+        ):
+            raise WorkflowError(
+                f"Negotiation thread {thread_id} already has origin {origin}.",
+                code="duplicate_origin",
+            )
+
+    def _latest_agree_contract(self, thread_id: int) -> str | None:
+        for proposal in sorted(self._proposals.values(), key=lambda item: int(item["id"]), reverse=True):
+            if (
+                proposal.get("thread_id") == thread_id
+                and proposal.get("verdict") == "agree"
+                and proposal.get("contract") is not None
+            ):
+                return str(proposal.get("contract"))
+        return None
+
+    def _validate_contract(self, contract: str | None) -> None:
+        if contract is not None and len(contract) > MAX_CONTRACT_LENGTH:
+            raise WorkflowError(
+                f"Negotiation contract exceeds {MAX_CONTRACT_LENGTH} characters.",
+                code="invalid_value",
+            )
 
     def _claim_issue(self, issue: JsonDict, assignee: str, *, worker: str | None = None) -> None:
         issue_id = issue["id"]

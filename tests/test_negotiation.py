@@ -9,6 +9,7 @@ from issuekit.negotiation import (
     Verdict,
     get_negotiation_store,
 )
+from issuekit.testing import FakeIssuekitClient
 from issuekit.workflow import WorkflowError
 
 
@@ -86,6 +87,7 @@ def test_mock_store_status_round_trips(tmp_path) -> None:
     store.set_status(entry.thread_id, ThreadStatus.agreed)
 
     assert store.get_status(entry.thread_id) is ThreadStatus.agreed
+    assert store.get_agreed_contract(entry.thread_id) is None
 
 
 def test_mock_store_json_persistence_round_trips(tmp_path) -> None:
@@ -121,6 +123,77 @@ def test_mock_store_json_persistence_round_trips(tmp_path) -> None:
     )
     assert next_entry.thread_id == "2"
     assert next_entry.id == 3
+
+
+def test_mock_store_freezes_agreed_contract_and_persists_it(tmp_path) -> None:
+    path = tmp_path / "negotiations.json"
+    first_store = MockNegotiationStore(path)
+    first = first_store.create_thread(
+        side="frontend",
+        verdict=Verdict.propose,
+        title="Initial",
+        body="Start.",
+        origin="frontend#1",
+        contract="GET /items",
+    )
+    first_store.append_entry(
+        first.thread_id,
+        side="backend",
+        verdict=Verdict.agree,
+        title="Agreed",
+        body="Accepted.",
+        origin="backend#1",
+        contract="GET /items",
+    )
+    first_store.set_status(first.thread_id, ThreadStatus.agreed)
+
+    second_store = MockNegotiationStore(path)
+
+    assert second_store.get_status(first.thread_id) is ThreadStatus.agreed
+    assert second_store.get_agreed_contract(first.thread_id) == "GET /items"
+
+
+def test_mock_store_rejects_contract_over_cap(tmp_path) -> None:
+    store = MockNegotiationStore(tmp_path / "negotiations.json")
+
+    with pytest.raises(WorkflowError) as excinfo:
+        store.create_thread(
+            side="frontend",
+            verdict=Verdict.propose,
+            title="Initial",
+            body="Start.",
+            origin="frontend#1",
+            contract="x" * 100001,
+        )
+
+    assert excinfo.value.code == "invalid_value"
+
+
+def test_mock_store_rejects_changes_after_terminal_status(tmp_path) -> None:
+    store = MockNegotiationStore(tmp_path / "negotiations.json")
+    first = store.create_thread(
+        side="frontend",
+        verdict=Verdict.propose,
+        title="Initial",
+        body="Start.",
+        origin="frontend#1",
+    )
+    store.set_status(first.thread_id, ThreadStatus.blocked)
+
+    with pytest.raises(WorkflowError) as append_exc:
+        store.append_entry(
+            first.thread_id,
+            side="backend",
+            verdict=Verdict.counter,
+            title="Counter",
+            body="No.",
+            origin="backend#1",
+        )
+    with pytest.raises(WorkflowError) as status_exc:
+        store.set_status(first.thread_id, ThreadStatus.agreed)
+
+    assert append_exc.value.code == "invalid_transition"
+    assert status_exc.value.code == "invalid_transition"
 
 
 def test_negotiation_entry_rejects_invalid_side_token() -> None:
@@ -164,34 +237,60 @@ def test_mock_store_rejects_invalid_verdict(tmp_path) -> None:
         )
 
 
-def test_api_negotiation_store_methods_raise_until_proposal_112_lands() -> None:
-    store = ApiNegotiationStore(IssuekitConfig(api_url="https://mine.example"))
+def test_api_negotiation_store_round_trips_via_fake_client() -> None:
+    client = FakeIssuekitClient()
+    store = ApiNegotiationStore(
+        IssuekitConfig(api_url="https://mine.example", project="target"),
+        client=client,
+    )
 
-    calls = [
-        lambda: store.create_thread(
-            side="frontend",
-            verdict=Verdict.propose,
-            title="Initial",
-            body="Start.",
-            origin="frontend#1",
-        ),
-        lambda: store.append_entry(
-            "1",
+    first = store.create_thread(
+        side="frontend",
+        verdict=Verdict.propose,
+        title="Initial",
+        body="Start.",
+        origin="frontend#1",
+        contract="GET /items",
+    )
+    second = store.append_entry(
+        first.thread_id,
+        side="backend",
+        verdict=Verdict.counter,
+        title="Counter",
+        body="Add pagination.",
+        origin="backend#1",
+        contract="GET /items?page=1",
+    )
+    third = store.append_entry(
+        first.thread_id,
+        side="frontend",
+        verdict=Verdict.agree,
+        title="Agreed",
+        body="Pagination accepted.",
+        origin="frontend#2",
+        contract="GET /items?page=1",
+    )
+    store.set_status(first.thread_id, ThreadStatus.agreed, agreed_contract="GET /items?page=1")
+
+    assert first.thread_id == "1"
+    assert [entry.id for entry in store.get_thread(first.thread_id)] == [first.id, second.id, third.id]
+    assert store.get_status(first.thread_id) is ThreadStatus.agreed
+    assert store.get_agreed_contract(first.thread_id) == "GET /items?page=1"
+
+    with pytest.raises(WorkflowError) as append_exc:
+        store.append_entry(
+            first.thread_id,
             side="backend",
             verdict=Verdict.counter,
-            title="Counter",
-            body="Continue.",
-            origin="backend#1",
-        ),
-        lambda: store.get_thread("1"),
-        lambda: store.set_status("1", ThreadStatus.agreed),
-        lambda: store.get_status("1"),
-    ]
+            title="Too late",
+            body="No.",
+            origin="backend#2",
+        )
+    with pytest.raises(WorkflowError) as status_exc:
+        store.set_status(first.thread_id, ThreadStatus.blocked)
 
-    for call in calls:
-        with pytest.raises(WorkflowError, match="#112") as excinfo:
-            call()
-        assert excinfo.value.code == "negotiation_api_unavailable"
+    assert append_exc.value.code == "invalid_transition"
+    assert status_exc.value.code == "invalid_transition"
 
 
 def test_get_negotiation_store_selects_mock_or_api(tmp_path, monkeypatch) -> None:

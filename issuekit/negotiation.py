@@ -16,9 +16,7 @@ from issuekit.workflow import WorkflowError
 
 
 DEFAULT_NEGOTIATION_PATH = Path(".agent-runs") / "negotiations" / "mock.json"
-_API_UNAVAILABLE_MESSAGE = (
-    "Negotiation API endpoints are not available until proposal #112 is adopted."
-)
+MAX_CONTRACT_LENGTH = 100000
 
 
 class Verdict(StrEnum):
@@ -83,11 +81,20 @@ class NegotiationStore(Protocol):
     def get_thread(self, thread_id: str) -> list[NegotiationEntry]:
         """Return a thread's entries in stable ascending order."""
 
-    def set_status(self, thread_id: str, status: ThreadStatus) -> None:
+    def set_status(
+        self,
+        thread_id: str,
+        status: ThreadStatus,
+        *,
+        agreed_contract: str | None = None,
+    ) -> None:
         """Set the status for a negotiation thread."""
 
     def get_status(self, thread_id: str) -> ThreadStatus:
         """Return the status for a negotiation thread."""
+
+    def get_agreed_contract(self, thread_id: str) -> str | None:
+        """Return the agreed contract frozen on the thread, if any."""
 
 
 class MockNegotiationStore:
@@ -97,6 +104,7 @@ class MockNegotiationStore:
         self.persistence_path = Path(persistence_path) if persistence_path is not None else None
         self._threads: dict[str, list[NegotiationEntry]] = {}
         self._statuses: dict[str, ThreadStatus] = {}
+        self._agreed_contracts: dict[str, str | None] = {}
         self._next_thread_id = 1
         self._next_entry_id = 1
         self._load()
@@ -112,6 +120,7 @@ class MockNegotiationStore:
         contract: str | None = None,
     ) -> NegotiationEntry:
         _validate_entry_input(side, verdict)
+        _validate_contract(contract)
         thread_id = str(self._next_thread_id)
         self._next_thread_id += 1
         entry = self._make_entry(
@@ -125,6 +134,7 @@ class MockNegotiationStore:
         )
         self._threads[thread_id] = [entry]
         self._statuses[thread_id] = ThreadStatus.negotiating
+        self._agreed_contracts[thread_id] = None
         self._persist()
         return entry
 
@@ -141,6 +151,9 @@ class MockNegotiationStore:
     ) -> NegotiationEntry:
         self._ensure_thread(thread_id)
         _validate_entry_input(side, verdict)
+        _validate_contract(contract)
+        self._ensure_negotiating(thread_id)
+        self._ensure_unique_origin(thread_id, origin)
         entry = self._make_entry(
             thread_id,
             side=side,
@@ -165,14 +178,41 @@ class MockNegotiationStore:
             ),
         )
 
-    def set_status(self, thread_id: str, status: ThreadStatus) -> None:
+    def set_status(
+        self,
+        thread_id: str,
+        status: ThreadStatus,
+        *,
+        agreed_contract: str | None = None,
+    ) -> None:
         self._ensure_thread(thread_id)
-        self._statuses[thread_id] = _coerce_status(status)
+        next_status = _coerce_status(status)
+        _validate_contract(agreed_contract)
+        current_status = self._statuses[thread_id]
+        if current_status is not ThreadStatus.negotiating:
+            raise WorkflowError(
+                f"Negotiation thread {thread_id} is already {current_status.value}.",
+                code="invalid_transition",
+            )
+        if next_status is ThreadStatus.agreed:
+            self._agreed_contracts[thread_id] = agreed_contract or _latest_agree_contract(
+                self._threads[thread_id]
+            )
+        elif agreed_contract is not None:
+            raise WorkflowError(
+                "agreed_contract can only be set when status is agreed.",
+                code="invalid_transition",
+            )
+        self._statuses[thread_id] = next_status
         self._persist()
 
     def get_status(self, thread_id: str) -> ThreadStatus:
         self._ensure_thread(thread_id)
         return self._statuses[thread_id]
+
+    def get_agreed_contract(self, thread_id: str) -> str | None:
+        self._ensure_thread(thread_id)
+        return self._agreed_contracts.get(thread_id)
 
     def _make_entry(
         self,
@@ -206,6 +246,21 @@ class MockNegotiationStore:
                 code="not_found",
             )
 
+    def _ensure_negotiating(self, thread_id: str) -> None:
+        status = self._statuses[thread_id]
+        if status is not ThreadStatus.negotiating:
+            raise WorkflowError(
+                f"Negotiation thread {thread_id} is {status.value} and cannot be modified.",
+                code="invalid_transition",
+            )
+
+    def _ensure_unique_origin(self, thread_id: str, origin: str) -> None:
+        if any(entry.origin == origin for entry in self._threads[thread_id]):
+            raise WorkflowError(
+                f"Negotiation thread {thread_id} already has origin {origin}.",
+                code="duplicate_origin",
+            )
+
     def _load(self) -> None:
         if self.persistence_path is None or not self.persistence_path.exists():
             return
@@ -232,6 +287,16 @@ class MockNegotiationStore:
         }
         for thread_id in self._threads:
             self._statuses.setdefault(thread_id, ThreadStatus.negotiating)
+        raw_agreed_contracts = raw.get("agreed_contracts", {})
+        if not isinstance(raw_agreed_contracts, dict):
+            raise WorkflowError("Negotiation persistence agreed_contracts was not a JSON object.")
+        self._agreed_contracts = {
+            str(thread_id): _optional_string(contract)
+            for thread_id, contract in raw_agreed_contracts.items()
+            if str(thread_id) in self._threads
+        }
+        for thread_id in self._threads:
+            self._agreed_contracts.setdefault(thread_id, None)
 
     def _persist(self) -> None:
         if self.persistence_path is None:
@@ -241,6 +306,7 @@ class MockNegotiationStore:
             "next_thread_id": self._next_thread_id,
             "next_entry_id": self._next_entry_id,
             "statuses": {key: status.value for key, status in self._statuses.items()},
+            "agreed_contracts": self._agreed_contracts,
             "threads": {
                 thread_id: [_entry_to_json(entry) for entry in entries]
                 for thread_id, entries in self._threads.items()
@@ -253,7 +319,7 @@ class MockNegotiationStore:
 
 
 class ApiNegotiationStore:
-    """Placeholder for proposal #112-backed negotiation endpoints."""
+    """Negotiation store backed by mine-py's proposal thread endpoints."""
 
     def __init__(
         self,
@@ -277,7 +343,17 @@ class ApiNegotiationStore:
         origin: str,
         contract: str | None = None,
     ) -> NegotiationEntry:
-        raise _api_unavailable()
+        _validate_entry_input(side, verdict)
+        _validate_contract(contract)
+        proposal = self.client.create_proposal(
+            origin=origin,
+            title=title,
+            body=body,
+            side=side,
+            verdict=_coerce_verdict(verdict).value,
+            contract=contract,
+        )
+        return _entry_from_api(proposal)
 
     def append_entry(
         self,
@@ -290,16 +366,78 @@ class ApiNegotiationStore:
         origin: str,
         contract: str | None = None,
     ) -> NegotiationEntry:
-        raise _api_unavailable()
+        _validate_entry_input(side, verdict)
+        _validate_contract(contract)
+        entries = self.get_thread(thread_id)
+        if not entries:
+            raise WorkflowError(
+                f"Negotiation thread {thread_id} has no entries.",
+                code="invalid_response",
+            )
+        last_entry_id = entries[-1].id
+        if last_entry_id is None:
+            raise WorkflowError(
+                f"Negotiation thread {thread_id} last entry has no id.",
+                code="invalid_response",
+            )
+        proposal = self.client.reply_proposal(
+            last_entry_id,
+            origin=origin,
+            title=title,
+            body=body,
+            side=side,
+            verdict=_coerce_verdict(verdict).value,
+            contract=contract,
+        )
+        return _entry_from_api(proposal)
 
     def get_thread(self, thread_id: str) -> list[NegotiationEntry]:
-        raise _api_unavailable()
+        payload = self.client.get_thread(_api_thread_id(thread_id))
+        items = payload.get("items")
+        if not isinstance(items, list):
+            raise WorkflowError(
+                "Proposal thread response items was not a JSON array.",
+                code="invalid_response",
+            )
+        return sorted(
+            [_entry_from_api(item) for item in items],
+            key=lambda entry: (
+                entry.id is None,
+                entry.id if entry.id is not None else 0,
+                entry.created,
+            ),
+        )
 
-    def set_status(self, thread_id: str, status: ThreadStatus) -> None:
-        raise _api_unavailable()
+    def set_status(
+        self,
+        thread_id: str,
+        status: ThreadStatus,
+        *,
+        agreed_contract: str | None = None,
+    ) -> None:
+        _validate_contract(agreed_contract)
+        next_status = _coerce_status(status)
+        if next_status is ThreadStatus.agreed and agreed_contract is None:
+            agreed_contract = _latest_agree_contract(self.get_thread(thread_id))
+        self.client.patch_thread(
+            _api_thread_id(thread_id),
+            status=next_status.value,
+            agreed_contract=agreed_contract,
+        )
 
     def get_status(self, thread_id: str) -> ThreadStatus:
-        raise _api_unavailable()
+        payload = self.client.get_thread(_api_thread_id(thread_id))
+        return _status_from_api(payload)
+
+    def get_agreed_contract(self, thread_id: str) -> str | None:
+        payload = self.client.get_thread(_api_thread_id(thread_id))
+        contract = payload.get("agreed_contract")
+        if contract is not None and not isinstance(contract, str):
+            raise WorkflowError(
+                "Proposal thread agreed_contract was not a string or null.",
+                code="invalid_response",
+            )
+        return contract
 
 
 def get_negotiation_store(
@@ -353,6 +491,14 @@ def _validate_entry_input(side: str, verdict: object) -> None:
     _coerce_verdict(verdict)
 
 
+def _validate_contract(contract: str | None) -> None:
+    if contract is not None and len(contract) > MAX_CONTRACT_LENGTH:
+        raise WorkflowError(
+            f"Negotiation contract exceeds {MAX_CONTRACT_LENGTH} characters.",
+            code="invalid_value",
+        )
+
+
 def _coerce_status(value: object) -> ThreadStatus:
     try:
         return value if isinstance(value, ThreadStatus) else ThreadStatus(str(value))
@@ -366,5 +512,79 @@ def _optional_int(value: object) -> int | None:
     return int(value)
 
 
-def _api_unavailable() -> WorkflowError:
-    return WorkflowError(_API_UNAVAILABLE_MESSAGE, code="negotiation_api_unavailable")
+def _optional_string(value: object) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise WorkflowError("Negotiation persistence value was not a string or null.")
+    _validate_contract(value)
+    return value
+
+
+def _latest_agree_contract(entries: list[NegotiationEntry]) -> str | None:
+    for entry in reversed(entries):
+        if entry.verdict is Verdict.agree and entry.contract is not None:
+            return entry.contract
+    return None
+
+
+def _api_thread_id(thread_id: str) -> int:
+    try:
+        return int(thread_id)
+    except (TypeError, ValueError) as exc:
+        raise WorkflowError(
+            f"Negotiation thread id {thread_id!r} is not an API thread id.",
+            code="invalid_value",
+        ) from exc
+
+
+def _entry_from_api(raw: Any) -> NegotiationEntry:
+    if not isinstance(raw, dict):
+        raise WorkflowError("Proposal response was not a JSON object.", code="invalid_response")
+    try:
+        thread_id = raw["thread_id"]
+        side = raw["side"]
+        verdict = raw["verdict"]
+        title = raw["title"]
+        body = raw["body"]
+        origin = raw["origin"]
+    except KeyError as exc:
+        raise WorkflowError(
+            f"Proposal response missing {exc.args[0]}.",
+            code="invalid_response",
+        ) from exc
+    contract = raw.get("contract")
+    if not isinstance(thread_id, int):
+        raise WorkflowError("Proposal response thread_id was not an integer.", code="invalid_response")
+    if not isinstance(side, str) or not isinstance(verdict, str):
+        raise WorkflowError("Proposal response negotiation fields were invalid.", code="invalid_response")
+    if contract is not None and not isinstance(contract, str):
+        raise WorkflowError("Proposal response contract was not a string or null.", code="invalid_response")
+    if not isinstance(title, str) or not isinstance(body, str) or not isinstance(origin, str):
+        raise WorkflowError("Proposal response text fields were invalid.", code="invalid_response")
+    created = raw.get("created_at", raw.get("created", ""))
+    if not isinstance(created, str):
+        raise WorkflowError("Proposal response created timestamp was invalid.", code="invalid_response")
+    try:
+        return NegotiationEntry(
+            thread_id=str(thread_id),
+            side=side,
+            verdict=verdict,
+            contract=contract,
+            title=title,
+            body=body,
+            origin=origin,
+            created=created,
+            id=_optional_int(raw.get("id")),
+        )
+    except (TypeError, ValueError) as exc:
+        raise WorkflowError(str(exc), code="invalid_response") from exc
+
+
+def _status_from_api(raw: Any) -> ThreadStatus:
+    if not isinstance(raw, dict):
+        raise WorkflowError("Proposal thread response was not a JSON object.", code="invalid_response")
+    try:
+        return _coerce_status(raw.get("status"))
+    except ValueError as exc:
+        raise WorkflowError(str(exc), code="invalid_response") from exc

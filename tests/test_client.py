@@ -786,15 +786,62 @@ def test_client_create_proposal_accepts_dedup_200_response() -> None:
     assert client.create_proposal(origin="source#0@abc123", title="Proposal", body="Body") == response
 
 
+def test_client_create_proposal_sends_thread_fields() -> None:
+    response = {
+        "id": 3,
+        "thread_id": 9,
+        "side": "frontend",
+        "verdict": "propose",
+        "contract": "GET /items",
+        "origin": "source#0@abc123",
+        "title": "Proposal",
+        "body": "Body",
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "POST"
+        assert request.url.path == "/api/issues/target/proposals"
+        assert json.loads(request.content) == {
+            "origin": "source#0@abc123",
+            "title": "Proposal",
+            "body": "Body",
+            "thread_id": 9,
+            "side": "frontend",
+            "verdict": "propose",
+            "contract": "GET /items",
+        }
+        return httpx.Response(200, json=response)
+
+    client = IssuekitClient(
+        "https://mine.example",
+        project="target",
+        token="static-token",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    assert (
+        client.create_proposal(
+            origin="source#0@abc123",
+            title="Proposal",
+            body="Body",
+            thread_id=9,
+            side="frontend",
+            verdict="propose",
+            contract="GET /items",
+        )
+        == response
+    )
+
+
 def test_client_list_proposals_pages_wrapped_response() -> None:
     proposals = [{"id": proposal_id, "status": "pending"} for proposal_id in range(1, 6)]
-    seen_pages: list[tuple[int, int, str]] = []
+    seen_pages: list[tuple[int, int, str, str]] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
         params = dict(request.url.params)
         limit = int(params["limit"])
         offset = int(params["offset"])
-        seen_pages.append((limit, offset, params["status"]))
+        seen_pages.append((limit, offset, params["status"], params["thread_id"]))
         return httpx.Response(
             200,
             json={
@@ -812,8 +859,81 @@ def test_client_list_proposals_pages_wrapped_response() -> None:
         http_client=httpx.Client(transport=httpx.MockTransport(handler)),
     )
 
-    assert client.list_proposals(status="pending", page_size=2) == proposals
-    assert seen_pages == [(2, 0, "pending"), (2, 2, "pending"), (2, 4, "pending")]
+    assert client.list_proposals(status="pending", thread_id=8, page_size=2) == proposals
+    assert seen_pages == [(2, 0, "pending", "8"), (2, 2, "pending", "8"), (2, 4, "pending", "8")]
+
+
+def test_client_proposal_thread_methods_use_expected_paths() -> None:
+    seen: list[tuple[str, str, object]] = []
+    threads = [{"id": thread_id, "status": "negotiating"} for thread_id in range(1, 5)]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content) if request.content else None
+        seen.append((request.method, request.url.path, body))
+        if request.url.path.endswith("/4/reply"):
+            return httpx.Response(200, json={"id": 5, "thread_id": 7, "side": "backend"})
+        if request.url.path.endswith("/thread/7") and request.method == "GET":
+            return httpx.Response(200, json={"id": 7, "status": "negotiating", "items": []})
+        if request.url.path.endswith("/threads"):
+            params = dict(request.url.params)
+            limit = int(params["limit"])
+            offset = int(params["offset"])
+            return httpx.Response(
+                200,
+                json={
+                    "items": threads[offset : offset + limit],
+                    "total": len(threads),
+                    "limit": limit,
+                    "offset": offset,
+                },
+            )
+        if request.url.path.endswith("/thread/7") and request.method == "PATCH":
+            return httpx.Response(200, json={"id": 7, "status": "agreed", "agreed_contract": "GET /items"})
+        raise AssertionError(request.url.path)
+
+    client = IssuekitClient(
+        "https://mine.example",
+        project="target",
+        token="static-token",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    assert client.reply_proposal(
+        4,
+        origin="source#1",
+        title="Reply",
+        body="Body",
+        side="backend",
+        verdict="counter",
+        contract="GET /items?page=1",
+        priority="high",
+    ) == {"id": 5, "thread_id": 7, "side": "backend"}
+    assert client.get_thread(7) == {"id": 7, "status": "negotiating", "items": []}
+    assert client.list_threads(status="negotiating", page_size=2) == threads
+    assert client.patch_thread(7, status="agreed", agreed_contract="GET /items") == {
+        "id": 7,
+        "status": "agreed",
+        "agreed_contract": "GET /items",
+    }
+    assert seen == [
+        (
+            "POST",
+            "/api/issues/target/proposals/4/reply",
+            {
+                "origin": "source#1",
+                "title": "Reply",
+                "body": "Body",
+                "side": "backend",
+                "verdict": "counter",
+                "contract": "GET /items?page=1",
+                "priority": "high",
+            },
+        ),
+        ("GET", "/api/issues/target/proposals/thread/7", None),
+        ("GET", "/api/issues/target/proposals/threads", None),
+        ("GET", "/api/issues/target/proposals/threads", None),
+        ("PATCH", "/api/issues/target/proposals/thread/7", {"status": "agreed", "agreed_contract": "GET /items"}),
+    ]
 
 
 def test_client_proposal_get_adopt_and_discard_paths() -> None:

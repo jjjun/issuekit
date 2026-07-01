@@ -351,6 +351,10 @@ class IssuekitClient:
         body: str,
         reply_to: str | None = None,
         priority: str | None = None,
+        thread_id: int | None = None,
+        side: str | None = None,
+        verdict: str | None = None,
+        contract: str | None = None,
     ) -> JsonDict:
         payload = self._request(
             "POST",
@@ -363,6 +367,10 @@ class IssuekitClient:
                     "body": body,
                     "reply_to": reply_to,
                     "priority": priority,
+                    "thread_id": thread_id,
+                    "side": side,
+                    "verdict": verdict,
+                    "contract": contract,
                 }
             ),
         )
@@ -372,6 +380,7 @@ class IssuekitClient:
         self,
         *,
         status: str | None = None,
+        thread_id: int | None = None,
         page_size: int = 500,
     ) -> list[JsonDict]:
         if page_size <= 0:
@@ -384,7 +393,14 @@ class IssuekitClient:
                 "GET",
                 "/",
                 collection="proposals",
-                params=_drop_none({"status": status, "limit": page_size, "offset": offset}),
+                params=_drop_none(
+                    {
+                        "status": status,
+                        "thread_id": thread_id,
+                        "limit": page_size,
+                        "offset": offset,
+                    }
+                ),
             )
             page = _ensure_dict(payload, "Proposal list response")
             items = page.get("items")
@@ -406,6 +422,94 @@ class IssuekitClient:
             if current_offset + len(items) >= total or len(items) < limit:
                 return proposals
             offset = current_offset + limit
+
+    def reply_proposal(
+        self,
+        proposal_id: int,
+        *,
+        origin: str,
+        title: str,
+        body: str,
+        side: str,
+        verdict: str,
+        contract: str | None = None,
+        priority: str | None = None,
+    ) -> JsonDict:
+        payload = self._request(
+            "POST",
+            f"/{proposal_id}/reply",
+            collection="proposals",
+            json=_drop_none(
+                {
+                    "origin": origin,
+                    "title": title,
+                    "body": body,
+                    "side": side,
+                    "verdict": verdict,
+                    "contract": contract,
+                    "priority": priority,
+                }
+            ),
+        )
+        return _ensure_dict(payload, "Proposal response")
+
+    def get_thread(self, thread_id: int) -> JsonDict:
+        payload = self._request("GET", f"/thread/{thread_id}", collection="proposals")
+        return _ensure_dict(payload, "Proposal thread response")
+
+    def list_threads(
+        self,
+        *,
+        status: str | None = None,
+        page_size: int = 500,
+    ) -> list[JsonDict]:
+        if page_size <= 0:
+            raise ValueError("page_size must be greater than zero")
+        page_size = min(page_size, 500)
+        offset = 0
+        threads: list[JsonDict] = []
+        while True:
+            payload = self._request(
+                "GET",
+                "/threads",
+                collection="proposals",
+                params=_drop_none({"status": status, "limit": page_size, "offset": offset}),
+            )
+            page = _ensure_dict(payload, "Proposal thread list response")
+            items = page.get("items")
+            if not isinstance(items, list):
+                raise WorkflowError(
+                    "Proposal thread list response items was not a JSON array.",
+                    code="invalid_response",
+                )
+            threads.extend(_ensure_dict(item, "Proposal thread response") for item in items)
+
+            total = page.get("total")
+            limit = page.get("limit", page_size)
+            current_offset = page.get("offset", offset)
+            if not isinstance(total, int) or not isinstance(limit, int) or not isinstance(current_offset, int):
+                raise WorkflowError(
+                    "Proposal thread list response pagination fields were invalid.",
+                    code="invalid_response",
+                )
+            if current_offset + len(items) >= total or len(items) < limit:
+                return threads
+            offset = current_offset + limit
+
+    def patch_thread(
+        self,
+        thread_id: int,
+        *,
+        status: str,
+        agreed_contract: str | None = None,
+    ) -> JsonDict:
+        payload = self._request(
+            "PATCH",
+            f"/thread/{thread_id}",
+            collection="proposals",
+            json=_drop_none({"status": status, "agreed_contract": agreed_contract}),
+        )
+        return _ensure_dict(payload, "Proposal thread response")
 
     def get_proposal(self, proposal_id: int) -> JsonDict:
         payload = self._request("GET", f"/{proposal_id}", collection="proposals")
