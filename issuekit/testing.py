@@ -47,6 +47,7 @@ class FakeIssuekitClient:
         status: str | None = None,
         stage: str | None = None,
         assignee: str | None = None,
+        include_completed: bool = False,
         limit: int | None = None,
         offset: int | None = None,
     ) -> list[JsonDict]:
@@ -55,7 +56,7 @@ class FakeIssuekitClient:
                 issue
                 for issue in sorted(self._issues.values(), key=lambda item: int(item["id"]))
                 if (
-                    (status is None and issue.get("status") != "completed")
+                    (status is None and (include_completed or issue.get("status") != "completed"))
                     or (status is not None and issue.get("status") == status)
                 )
                 and (stage is None or issue.get("stage") == stage)
@@ -72,6 +73,7 @@ class FakeIssuekitClient:
         status: str | None = None,
         stage: str | None = None,
         assignee: str | None = None,
+        include_completed: bool = False,
         page_size: int = 500,
     ) -> list[JsonDict]:
         if page_size <= 0:
@@ -84,6 +86,7 @@ class FakeIssuekitClient:
                 status=status,
                 stage=stage,
                 assignee=assignee,
+                include_completed=include_completed,
                 limit=page_size,
                 offset=offset,
             )

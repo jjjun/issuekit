@@ -11,7 +11,8 @@ from urllib.parse import parse_qs
 import httpx
 import pytest
 
-import issuekit.client as client_module
+import issuekit.client_security as security_module
+import issuekit.token_cache as token_cache_module
 from issuekit.client import IssuekitClient
 from issuekit.testing import FakeIssuekitClient
 from issuekit.workflow import WorkflowError
@@ -21,7 +22,7 @@ from issuekit.workflow import WorkflowError
 def isolated_token_cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ISSUEKIT_TOKEN_CACHE", str(tmp_path / "token.json"))
     monkeypatch.delenv("ISSUEKIT_ALLOW_INSECURE", raising=False)
-    client_module._WARNED_INSECURE_API_URLS.clear()
+    security_module._WARNED_INSECURE_API_URLS.clear()
 
 
 def test_client_logs_in_once_and_sends_expected_request_shape() -> None:
@@ -126,6 +127,52 @@ def test_client_list_all_issues_caps_page_size_at_server_max() -> None:
 
     assert client.list_all_issues(page_size=999) == all_issues
     assert seen_pages == [(500, 0), (500, 500)]
+
+
+def test_client_list_all_issues_can_include_completed_via_board_endpoint() -> None:
+    all_issues = [{"id": issue_id} for issue_id in range(1, 4)]
+    seen_requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen_requests.append(request)
+        params = dict(request.url.params)
+        assert request.url.path == "/api/issues/board"
+        assert params["projects"] == "demo_project"
+        assert params["include_completed"] == "true"
+        limit = int(params["limit"])
+        offset = int(params["offset"])
+        return httpx.Response(
+            200,
+            json={
+                "items": all_issues[offset : offset + limit],
+                "total": len(all_issues),
+                "limit": limit,
+                "offset": offset,
+            },
+        )
+
+    client = IssuekitClient(
+        "https://mine.example",
+        project="demo_project",
+        token="static-token",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    assert client.list_all_issues(include_completed=True, page_size=2) == all_issues
+    assert [dict(request.url.params) for request in seen_requests] == [
+        {
+            "projects": "demo_project",
+            "include_completed": "true",
+            "limit": "2",
+            "offset": "0",
+        },
+        {
+            "projects": "demo_project",
+            "include_completed": "true",
+            "limit": "2",
+            "offset": "2",
+        },
+    ]
 
 
 def test_client_create_issue_uses_collection_path_without_trailing_slash() -> None:
@@ -341,11 +388,11 @@ def test_windows_token_cache_acl_tightening_is_best_effort(
         return subprocess.CompletedProcess(argv, 5, stderr="access denied")
 
     monkeypatch.setenv("USERNAME", "svc-user")
-    monkeypatch.setattr(client_module, "_token_cache_path", lambda: cache_path)
-    monkeypatch.setattr(client_module.os, "name", "nt")
-    monkeypatch.setattr(client_module.subprocess, "run", fake_run)
+    monkeypatch.setattr(token_cache_module, "_token_cache_path", lambda: cache_path)
+    monkeypatch.setattr(token_cache_module.os, "name", "nt")
+    monkeypatch.setattr(token_cache_module.subprocess, "run", fake_run)
 
-    client_module._write_token_cache({"https://mine.example": {"token": "cached-token"}})
+    token_cache_module._write_token_cache({"https://mine.example": {"token": "cached-token"}})
 
     payload = json.loads(cache_path.read_text(encoding="utf-8"))
     assert payload == {"https://mine.example": {"token": "cached-token"}}

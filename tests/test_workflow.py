@@ -1,5 +1,3 @@
-from pathlib import Path
-
 import pytest
 
 from issuekit import store as store_module
@@ -29,7 +27,7 @@ def _config(
     return IssuekitConfig(api_url="https://mine.example", project="demo", worker=worker)
 
 
-def test_claim_next_routes_to_api_and_picks_highest_priority(tmp_path: Path, monkeypatch) -> None:
+def test_claim_next_routes_to_api_and_picks_highest_priority(monkeypatch) -> None:
     client = FakeIssuekitClient(
         [
             api_issue(1, "Low", priority="low"),
@@ -38,7 +36,7 @@ def test_claim_next_routes_to_api_and_picks_highest_priority(tmp_path: Path, mon
         ]
     )
 
-    issue = claim_next(tmp_path / "docs" / "issues", "codex", config=_config(client, monkeypatch))
+    issue = claim_next("codex", config=_config(client, monkeypatch))
 
     assert issue is not None
     assert issue.id == 2
@@ -48,7 +46,7 @@ def test_claim_next_routes_to_api_and_picks_highest_priority(tmp_path: Path, mon
     assert client.calls == [{"method": "claim_next", "body": {"assignee": "codex"}}]
 
 
-def test_claim_next_respects_priority_filter(tmp_path: Path, monkeypatch) -> None:
+def test_claim_next_respects_priority_filter(monkeypatch) -> None:
     client = FakeIssuekitClient(
         [
             api_issue(1, "Low", priority="low"),
@@ -57,7 +55,6 @@ def test_claim_next_respects_priority_filter(tmp_path: Path, monkeypatch) -> Non
     )
 
     issue = claim_next(
-        tmp_path / "docs" / "issues",
         "codex",
         priority="low",
         config=_config(client, monkeypatch),
@@ -70,7 +67,7 @@ def test_claim_next_respects_priority_filter(tmp_path: Path, monkeypatch) -> Non
     ]
 
 
-def test_claim_next_sends_registered_worker(tmp_path: Path, monkeypatch) -> None:
+def test_claim_next_sends_registered_worker(monkeypatch) -> None:
     client = FakeIssuekitClient([api_issue(1, "Ready", author="claude")])
     config = _config(
         client,
@@ -78,7 +75,7 @@ def test_claim_next_sends_registered_worker(tmp_path: Path, monkeypatch) -> None
         worker=WorkerIdentity("machine", "repo", "checkout"),
     )
 
-    issue = claim_next(tmp_path / "docs" / "issues", "codex", config=config)
+    issue = claim_next("codex", config=config)
 
     assert issue is not None
     assert issue.id == 1
@@ -90,7 +87,7 @@ def test_claim_next_sends_registered_worker(tmp_path: Path, monkeypatch) -> None
     ]
 
 
-def test_claim_issue_sends_registered_worker(tmp_path: Path, monkeypatch) -> None:
+def test_claim_issue_sends_registered_worker(monkeypatch) -> None:
     client = FakeIssuekitClient([api_issue(1, "Ready", author="claude")])
     config = _config(
         client,
@@ -98,7 +95,7 @@ def test_claim_issue_sends_registered_worker(tmp_path: Path, monkeypatch) -> Non
         worker=WorkerIdentity("machine", "repo", "checkout"),
     )
 
-    issue = claim_issue(tmp_path / "docs" / "issues", 1, "codex", config=config)
+    issue = claim_issue(1, "codex", config=config)
 
     assert issue.id == 1
     assert client.calls == [
@@ -110,14 +107,14 @@ def test_claim_issue_sends_registered_worker(tmp_path: Path, monkeypatch) -> Non
     ]
 
 
-def test_claim_issue_surfaces_api_transition_error(tmp_path: Path, monkeypatch) -> None:
+def test_claim_issue_surfaces_api_transition_error(monkeypatch) -> None:
     client = FakeIssuekitClient([api_issue(1, "First", assignee="codex", author="codex")])
 
     with pytest.raises(WorkflowError, match="self-implementation is not allowed"):
-        claim_issue(tmp_path / "docs" / "issues", 1, "codex", config=_config(client, monkeypatch))
+        claim_issue(1, "codex", config=_config(client, monkeypatch))
 
 
-def test_submit_for_review_passes_structured_fields(tmp_path: Path, monkeypatch) -> None:
+def test_submit_for_review_passes_structured_fields(monkeypatch) -> None:
     client = FakeIssuekitClient(
         [
             api_issue(
@@ -132,7 +129,6 @@ def test_submit_for_review_passes_structured_fields(tmp_path: Path, monkeypatch)
     )
 
     issue = submit_for_review(
-        tmp_path / "docs" / "issues",
         1,
         summary="Implemented workflow.",
         branch="codex/workflow",
@@ -155,7 +151,7 @@ def test_submit_for_review_passes_structured_fields(tmp_path: Path, monkeypatch)
     ]
 
 
-def test_request_changes_returns_issue_to_implementer(tmp_path: Path, monkeypatch) -> None:
+def test_request_changes_returns_issue_to_implementer(monkeypatch) -> None:
     client = FakeIssuekitClient(
         [
             api_issue(
@@ -170,7 +166,6 @@ def test_request_changes_returns_issue_to_implementer(tmp_path: Path, monkeypatc
     )
 
     issue = request_changes(
-        tmp_path / "docs" / "issues",
         1,
         notes="Please add tests.",
         config=_config(client, monkeypatch),
@@ -183,7 +178,7 @@ def test_request_changes_returns_issue_to_implementer(tmp_path: Path, monkeypatc
     ]
 
 
-def test_request_changes_sends_registered_reviewer_worker(tmp_path: Path, monkeypatch) -> None:
+def test_request_changes_sends_registered_reviewer_worker(monkeypatch) -> None:
     client = FakeIssuekitClient(
         [
             api_issue(
@@ -203,7 +198,6 @@ def test_request_changes_sends_registered_reviewer_worker(tmp_path: Path, monkey
     )
 
     request_changes(
-        tmp_path / "docs" / "issues",
         1,
         notes="Please add tests.",
         config=config,
@@ -218,7 +212,7 @@ def test_request_changes_sends_registered_reviewer_worker(tmp_path: Path, monkey
     ]
 
 
-def test_approve_rejects_same_agent_same_worker_review(tmp_path: Path, monkeypatch) -> None:
+def test_approve_rejects_same_agent_same_worker_review(monkeypatch) -> None:
     client = FakeIssuekitClient(
         [
             api_issue(
@@ -240,7 +234,6 @@ def test_approve_rejects_same_agent_same_worker_review(tmp_path: Path, monkeypat
 
     with pytest.raises(WorkflowError, match="self-review is not allowed"):
         approve_issue(
-            tmp_path / "docs" / "issues",
             1,
             verification="uv run pytest",
             reviewer="codex",
@@ -251,7 +244,6 @@ def test_approve_rejects_same_agent_same_worker_review(tmp_path: Path, monkeypat
 
 
 def test_approve_allows_same_agent_different_worker_open_review(
-    tmp_path: Path,
     monkeypatch,
 ) -> None:
     client = FakeIssuekitClient(
@@ -274,7 +266,6 @@ def test_approve_allows_same_agent_different_worker_open_review(
     )
 
     issue = approve_issue(
-        tmp_path / "docs" / "issues",
         1,
         verification="uv run pytest",
         reviewer="codex",
@@ -294,7 +285,7 @@ def test_approve_allows_same_agent_different_worker_open_review(
     }
 
 
-def test_approve_allows_different_agent_review(tmp_path: Path, monkeypatch) -> None:
+def test_approve_allows_different_agent_review(monkeypatch) -> None:
     client = FakeIssuekitClient(
         [
             api_issue(
@@ -315,7 +306,6 @@ def test_approve_allows_different_agent_review(tmp_path: Path, monkeypatch) -> N
     )
 
     issue = approve_issue(
-        tmp_path / "docs" / "issues",
         1,
         verification="uv run pytest",
         reviewer="claude",
@@ -326,7 +316,6 @@ def test_approve_allows_different_agent_review(tmp_path: Path, monkeypatch) -> N
 
 
 def test_approve_rejects_unassigned_reviewer_before_api_transition(
-    tmp_path: Path,
     monkeypatch,
 ) -> None:
     client = FakeIssuekitClient(
@@ -345,7 +334,6 @@ def test_approve_rejects_unassigned_reviewer_before_api_transition(
 
     with pytest.raises(WorkflowError) as excinfo:
         approve_issue(
-            tmp_path / "docs" / "issues",
             1,
             verification="uv run pytest",
             reviewer="codex",
@@ -358,7 +346,7 @@ def test_approve_rejects_unassigned_reviewer_before_api_transition(
     assert client.calls == []
 
 
-def test_find_for_lists_matching_active_issues(tmp_path: Path, monkeypatch) -> None:
+def test_find_for_lists_matching_active_issues(monkeypatch) -> None:
     client = FakeIssuekitClient(
         [
             api_issue(1, "Review", status="in_progress", assignee="claude", stage="review"),
@@ -367,7 +355,6 @@ def test_find_for_lists_matching_active_issues(tmp_path: Path, monkeypatch) -> N
     )
 
     issues = find_for(
-        tmp_path / "docs" / "issues",
         "claude",
         stage="review",
         config=_config(client, monkeypatch),
@@ -376,18 +363,17 @@ def test_find_for_lists_matching_active_issues(tmp_path: Path, monkeypatch) -> N
     assert [issue.id for issue in issues] == [1]
 
 
-def test_complete_issue_uses_api_complete(tmp_path: Path, monkeypatch) -> None:
+def test_complete_issue_uses_api_complete(monkeypatch) -> None:
     client = FakeIssuekitClient([api_issue(1, "First", stage="review")])
 
     issue = complete_issue(
-        tmp_path / "docs" / "issues",
         1,
         summary="Approved.",
         verification="pytest",
         config=_config(client, monkeypatch),
     )
 
-    assert issue.status == "completed"
+    assert issue.issue_status == "completed"
     assert issue.stage == "done"
     assert client.calls == [
         {
@@ -398,11 +384,11 @@ def test_complete_issue_uses_api_complete(tmp_path: Path, monkeypatch) -> None:
     ]
 
 
-def test_workflow_rejects_invalid_tokens_and_non_ascii_text(tmp_path: Path, monkeypatch) -> None:
+def test_workflow_rejects_invalid_tokens_and_non_ascii_text(monkeypatch) -> None:
     client = FakeIssuekitClient([api_issue(1, "First")])
     config = _config(client, monkeypatch)
 
     with pytest.raises(WorkflowError, match="Invalid assignee token"):
-        claim_next(tmp_path / "docs" / "issues", "codex\nstage: done", config=config)
+        claim_next("codex\nstage: done", config=config)
     with pytest.raises(WorkflowError, match="ASCII-only"):
-        submit_for_review(tmp_path / "docs" / "issues", 1, summary="\u3042", config=config)
+        submit_for_review(1, summary="\u3042", config=config)

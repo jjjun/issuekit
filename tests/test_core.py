@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from issuekit import core
+from issuekit import core, legacy_markdown
 from issuekit.config import IssuekitConfig, load_config
 
 
@@ -12,7 +12,7 @@ def write_issue(path: Path, text: str) -> None:
 
 
 def test_parse_frontmatter_strips_bom_and_quotes() -> None:
-    parsed = core.parse_issue_frontmatter(
+    parsed = legacy_markdown.parse_issue_frontmatter(
         '\ufeff---\nid: 7\ntitle: "Quoted title"\ncompleted:\n---\n\n# Body\n'
     )
 
@@ -31,7 +31,7 @@ def test_read_issues_and_next_id(tmp_path: Path) -> None:
     )
     write_issue(issues_dir / "completed" / "002_second.md", "# Issue #2: Second\n")
 
-    active, completed, all_issues = core.read_all_issues(issues_dir)
+    active, completed, all_issues = legacy_markdown.read_all_issues(issues_dir)
 
     assert [issue.title for issue in active] == ["First"]
     assert [issue.title for issue in completed] == ["Second"]
@@ -44,7 +44,7 @@ def test_read_issues_returns_decode_error_issue_for_non_utf8_file(tmp_path: Path
     bad_issue.parent.mkdir(parents=True, exist_ok=True)
     bad_issue.write_bytes(b"# Issue #3: \x83e\x83X\x83g\n")
 
-    issues = core.read_issues(issues_dir, "active")
+    issues = legacy_markdown.read_issues(issues_dir, "active")
 
     assert len(issues) == 1
     assert issues[0].id == 3
@@ -52,7 +52,11 @@ def test_read_issues_returns_decode_error_issue_for_non_utf8_file(tmp_path: Path
     assert issues[0].title == "cp932"
     assert issues[0].relative_path == "active/003_cp932.md"
     assert issues[0].content == ""
-    assert issues[0].frontmatter == core.Frontmatter(data={}, body="", has_frontmatter=False)
+    assert issues[0].frontmatter == legacy_markdown.Frontmatter(
+        data={},
+        body="",
+        has_frontmatter=False,
+    )
     assert issues[0].decode_error is True
 
 
@@ -92,12 +96,23 @@ def test_parse_issue_id_arg() -> None:
         core.parse_issue_id_arg("not-a-number")
 
 
-def test_find_issue_by_id_matches_by_id(tmp_path: Path) -> None:
-    issues_dir = tmp_path / "docs" / "issues"
-    write_issue(
-        issues_dir / "active" / "001_first.md",
-        "---\nid: 1\nstatus: active\npriority: high\ncreated: 2026-01-01\ncompleted:\ntitle: First\n---\n\n# Issue #1: First\n",
-    )
-    issues = core.read_issues(issues_dir, "active")
+def test_find_issue_by_id_matches_by_id() -> None:
+    issues = [
+        core.Issue(
+            id=1,
+            ref="demo#1",
+            title="First",
+            issue_status="active",
+            created="2026-01-01",
+            completed="",
+            priority="high",
+            assignee="",
+            stage="todo",
+            implementer="",
+            author="",
+            body="# Issue #1: First\n",
+            metadata={},
+        )
+    ]
     assert core.find_issue_by_id(issues, 1) == issues[0]
     assert core.find_issue_by_id(issues, 99) is None

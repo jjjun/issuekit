@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from datetime import date
 from pathlib import Path
-import subprocess
 
 from issuekit.client import IssuekitClient
 from issuekit.config import IssuekitConfig, load_config
 from issuekit.core import Issue, parse_issue_id_arg
+from issuekit.gitutil import git_short_head
 from issuekit.proposals import Proposal, ProposalError, origin_destination
 from issuekit.store import get_store
 
@@ -91,13 +91,13 @@ def build_proposal(
     source_issue: Issue | None = None
     reply_to = ""
     if reply is not None:
-        source_issue = _get_issue(cwd, config, reply)
-        reply_to = source_issue.frontmatter.data.get("origin", "").strip()
+        source_issue = _get_issue(config, reply)
+        reply_to = source_issue.metadata.get("origin", "").strip()
         if not reply_to:
             raise ProposalError(f"Issue #{source_issue.id} has no origin field.")
         to = to or origin_destination(reply_to)
     elif from_issue is not None:
-        source_issue = _get_issue(cwd, config, from_issue)
+        source_issue = _get_issue(config, from_issue)
 
     if not to:
         raise ProposalError("--to is required unless --reply is used.")
@@ -120,9 +120,9 @@ def build_proposal(
     )
 
 
-def _get_issue(cwd: Path, config: IssuekitConfig, raw_id: str) -> Issue:
+def _get_issue(config: IssuekitConfig, raw_id: str) -> Issue:
     issue_id = parse_issue_id_arg(raw_id)
-    issue = get_store(config, config.issues_path(cwd)).get_issue(issue_id)
+    issue = get_store(config).get_issue(issue_id)
     if issue is None:
         raise LookupError(f"Issue #{issue_id} was not found.")
     return issue
@@ -134,23 +134,9 @@ def _proposal_body(body: str | None, body_file: str | None, source_issue: Issue 
     if body_file:
         return Path(body_file).read_text(encoding="utf-8-sig").strip()
     if source_issue is not None:
-        return source_issue.frontmatter.body.strip()
+        return source_issue.body.strip()
     return "## Context\n\n## Suggested Change\n\n## Rationale"
 
 
 def _git_commit(cwd: Path) -> str:
-    try:
-        # stdin must be redirected: when this runs inside the issuekit-mcp stdio
-        # server, an inherited stdin pipe makes `git` block until the timeout.
-        result = subprocess.run(
-            ["git", "rev-parse", "--short", "HEAD"],
-            cwd=cwd,
-            check=True,
-            capture_output=True,
-            text=True,
-            timeout=5,
-            stdin=subprocess.DEVNULL,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return "unknown"
-    return result.stdout.strip() or "unknown"
+    return git_short_head(cwd) or "unknown"

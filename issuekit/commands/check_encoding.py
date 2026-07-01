@@ -8,6 +8,7 @@ import subprocess
 import sys
 
 from issuekit.core import has_mojibake
+from issuekit.gitutil import run_git
 
 
 SOURCE_EXTENSIONS = {
@@ -114,14 +115,14 @@ def run(args) -> int:
 
 
 def list_tracked_files(cwd: Path) -> list[str]:
-    output = subprocess.check_output(["git", "ls-files", "-z"], cwd=cwd)
-    return [item for item in output.decode("utf-8").split("\0") if item]
+    output = _git_stdout(["ls-files", "-z"], cwd)
+    return [item for item in output.split("\0") if item]
 
 
 def list_crlf_files(cwd: Path) -> list[str]:
-    output = subprocess.check_output(["git", "ls-files", "--eol", "-z"], cwd=cwd)
+    output = _git_stdout(["ls-files", "--eol", "-z"], cwd)
     crlf_files: list[str] = []
-    for record in output.decode("utf-8").split("\0"):
+    for record in output.split("\0"):
         if not record:
             continue
         metadata, separator, path = record.partition("\t")
@@ -138,6 +139,20 @@ def list_crlf_files(cwd: Path) -> list[str]:
         ):
             crlf_files.append(path)
     return crlf_files
+
+
+def _git_stdout(args: list[str], cwd: Path) -> str:
+    result = run_git(args, cwd)
+    if result is None:
+        raise RuntimeError("git command failed before producing a result")
+    if result.returncode != 0:
+        raise subprocess.CalledProcessError(
+            result.returncode,
+            ["git", *args],
+            output=result.stdout,
+            stderr=result.stderr,
+        )
+    return result.stdout
 
 
 def _has_source_extension(file: str) -> bool:

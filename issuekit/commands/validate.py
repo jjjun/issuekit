@@ -12,9 +12,8 @@ from issuekit.workflow import WorkflowError
 
 def run(_args) -> int:
     config = load_config(Path.cwd())
-    issues_dir = config.issues_path(Path.cwd())
     try:
-        _, _, issues = get_store(config, issues_dir).read_all_issues()
+        _, _, issues = get_store(config).read_all_issues()
     except (WorkflowError, ValueError) as exc:
         print(f"Error: API validation failed: {exc}", file=sys.stderr)
         return 1

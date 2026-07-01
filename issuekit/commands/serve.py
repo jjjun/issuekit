@@ -18,7 +18,6 @@ from issuekit.agents.run_claimed import review_feedback_prompt, run_and_submit
 from issuekit.config import IssuekitConfig, load_config
 from issuekit.core import Issue
 from issuekit.store import get_store
-from issuekit.worker import worker_key
 from issuekit.worker_registry import (
     WORKER_HEARTBEAT_INTERVAL_SEC,
     WorkerHeartbeat,
@@ -158,7 +157,6 @@ def _serve_loop(
         attempt_count += 1
         try:
             issue = claim_next(
-                issues_dir,
                 agent,
                 priority=args.priority,
                 config=config,
@@ -233,9 +231,11 @@ def _recover_orphaned_issues(
     if config.worker is None:
         return submitted_count, backoff, None
 
-    me = worker_key(config.worker)
+    me = config.worker_key()
+    if me is None:
+        return submitted_count, backoff, None
     try:
-        store = get_store(config, issues_dir)
+        store = get_store(config)
         issues = store.find_implementing_for_worker(me)
     except (AttributeError, RuntimeError, TimeoutError, WorkflowError, ValueError) as exc:
         _log(sys.stderr, log_path, "recovery_error", worker=me, error=str(exc))
@@ -295,7 +295,7 @@ def _run_claimed_issue(
             cwd=cwd,
             issues_dir=issues_dir,
             timeout=float(args.timeout_sec),
-            prompt_suffix=review_feedback_prompt(issue.frontmatter.body),
+            prompt_suffix=review_feedback_prompt(issue.body),
             abort_event=controller.abort_event,
             out=sys.stderr,
             err=sys.stderr,

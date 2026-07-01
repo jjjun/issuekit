@@ -207,7 +207,6 @@ def test_handoff_commands_use_api_structured_params_without_local_notes(
 
 
 def test_api_approval_and_completion_pass_structured_params(
-    tmp_path: Path,
     monkeypatch,
 ) -> None:
     client = FakeIssuekitClient(
@@ -241,14 +240,12 @@ def test_api_approval_and_completion_pass_structured_params(
     )
 
     approved = approve_issue(
-        tmp_path / "docs" / "issues",
         9,
         summary="Looks good.",
         verification="uv run pytest",
         config=config,
     )
     completed = complete_issue(
-        tmp_path / "docs" / "issues",
         10,
         summary="Done.",
         verification="manual",
@@ -277,7 +274,6 @@ def test_api_approval_and_completion_pass_structured_params(
 
 
 def test_api_server_rejected_transition_surfaces_workflow_error(
-    tmp_path: Path,
     monkeypatch,
 ) -> None:
     client = FakeIssuekitClient(
@@ -298,7 +294,6 @@ def test_api_server_rejected_transition_surfaces_workflow_error(
 
     with pytest.raises(WorkflowError, match="self-review is not allowed") as excinfo:
         approve_issue(
-            tmp_path / "docs" / "issues",
             9,
             verification="uv run pytest",
             reviewer="codex",

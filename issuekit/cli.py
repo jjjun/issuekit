@@ -13,7 +13,6 @@ from issuekit.commands import (
     check_encoding,
     claim,
     complete,
-    generate_indexes,
     handoff,
     implement,
     info,
@@ -49,7 +48,6 @@ COMMANDS = (
     "runs",
     "serve",
     "check-encoding",
-    "generate-indexes",
     "protocol",
     "init",
     "setup",
@@ -324,12 +322,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="Strip leading UTF-8 BOM bytes from tracked source files.",
     )
     check_encoding_parser.set_defaults(func=check_encoding.run)
-
-    generate_indexes_parser = subparsers.add_parser(
-        "generate-indexes",
-        help="Compatibility no-op for legacy markdown trackers.",
-    )
-    generate_indexes_parser.set_defaults(func=generate_indexes.run)
 
     protocol_parser = subparsers.add_parser(
         "protocol",

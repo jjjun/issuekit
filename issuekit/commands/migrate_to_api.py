@@ -10,9 +10,9 @@ from typing import Any
 
 from issuekit.client import IssuekitClient
 from issuekit.config import load_config
-from issuekit.core import (
+from issuekit.legacy_markdown import (
+    LegacyIssue,
     MANAGED_FRONTMATTER_KEYS,
-    Issue,
     parse_issue_frontmatter,
     parse_frontmatter_id,
     read_all_issues,
@@ -163,7 +163,7 @@ def verify_proposal_import(source_payload: list[dict[str, Any]], stored_proposal
         raise ValueError(f"Imported proposal(s) missing from response: {joined}")
 
 
-def _validate_source_issues(issues: list[Issue]) -> None:
+def _validate_source_issues(issues: list[LegacyIssue]) -> None:
     seen: dict[int, str] = {}
     for issue in issues:
         if issue.decode_error:
@@ -176,7 +176,7 @@ def _validate_source_issues(issues: list[Issue]) -> None:
         seen[issue.id] = issue.relative_path
 
 
-def _issue_payload(issue: Issue) -> dict[str, Any]:
+def _issue_payload(issue: LegacyIssue) -> dict[str, Any]:
     data = issue.frontmatter.data
     issue_id = parse_frontmatter_id(data.get("id")) or issue.id
     if issue_id is None:

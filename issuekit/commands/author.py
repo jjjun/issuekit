@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 from pathlib import Path
-import sys
 
+from issuekit.commands._common import require_ascii, run_command
 from issuekit.config import IssuekitConfig, load_config
 from issuekit.core import (
     Issue,
     VALID_ISSUE_PRIORITIES,
-    has_non_ascii,
     is_valid_workflow_token,
     slugify as _core_slugify,
 )
@@ -17,12 +16,9 @@ from issuekit.workflow import WorkflowError
 
 
 def run(args) -> int:
-    config = load_config(Path.cwd())
-    issues_dir = config.issues_path(Path.cwd())
-
-    try:
+    def action() -> int:
+        config = load_config(Path.cwd())
         authored = author_issue(
-            issues_dir,
             title=args.title,
             body=args.body,
             body_file=args.body_file,
@@ -31,16 +27,17 @@ def run(args) -> int:
             assign=args.assign,
             config=config,
         )
-    except (OSError, UnicodeError, ValueError, WorkflowError) as exc:
-        print(str(exc), file=sys.stderr)
-        return 1
 
-    print(f"Authored issue: {_authored_ref(authored, issues_dir)}")
-    return 0
+        print(f"Authored issue: {_authored_ref(authored)}")
+        return 0
+
+    return run_command(
+        action,
+        errors=(OSError, UnicodeError, ValueError, WorkflowError),
+    )
 
 
 def author_issue(
-    issues_dir: Path | str,
     *,
     title: str,
     body: str | None,
@@ -59,11 +56,10 @@ def author_issue(
         config=config,
     )
     issue_body = _read_body(body=body, body_file=body_file)
-    if has_non_ascii(issue_body):
-        raise ValueError("--body and --body-file must be ASCII-only.")
+    require_ascii(issue_body, message="--body and --body-file must be ASCII-only.")
     from issuekit.store import get_store
 
-    store = get_store(config, issues_dir)
+    store = get_store(config)
     return store.create_issue(  # type: ignore[attr-defined]
         title=title.strip(),
         body=issue_body.strip(),
@@ -83,8 +79,7 @@ def _validate_author_input(
 ) -> None:
     if not title.strip():
         raise ValueError("--title is required.")
-    if has_non_ascii(title):
-        raise ValueError("--title must be ASCII-only.")
+    require_ascii(title, message="--title must be ASCII-only.")
     if priority not in VALID_ISSUE_PRIORITIES:
         raise ValueError(f"Invalid priority: {priority}")
     _validate_agent_token(agent, "--agent", config)
@@ -111,5 +106,5 @@ def _slugify(title: str) -> str:
     return _core_slugify(title.strip(), default="issue")
 
 
-def _authored_ref(authored: Issue, issues_dir: Path) -> str:
-    return authored.relative_path
+def _authored_ref(authored: Issue) -> str:
+    return authored.ref

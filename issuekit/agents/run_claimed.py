@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-import subprocess
 import sys
 import threading
 from typing import TextIO
@@ -13,6 +12,7 @@ from typing import TextIO
 from issuekit.agents.runner import AgentResult, AgentRunner, resolve_adapter
 from issuekit.config import IssuekitConfig
 from issuekit.core import Issue, has_mojibake
+from issuekit.gitutil import git_root, git_status_short, run_git
 from issuekit.workflow import submit_for_review
 
 
@@ -58,7 +58,7 @@ def run_and_submit(
     run_dir = cwd / ".agent-runs"
     run_dir.mkdir(exist_ok=True)
     plan_path = run_dir / f"issue-{issue_id}.md"
-    plan_path.write_text(issue.content, encoding="utf-8", newline="\n")
+    plan_path.write_text(issue.body, encoding="utf-8", newline="\n")
     runner_factory = runner_factory or AgentRunner
     result = runner_factory().run(
         adapter,
@@ -89,7 +89,7 @@ def run_and_submit(
             file=out,
         )
 
-    if _git_root(cwd) == cwd.resolve() and not _touched_implementation_paths(cwd, issues_dir):
+    if git_root(cwd) == cwd.resolve() and not _touched_implementation_paths(cwd, issues_dir):
         print(
             "ERROR: agent produced no implementation changes; not submitting for review. "
             "The issue remains claimed in implementation.",
@@ -118,7 +118,6 @@ def run_and_submit(
             return RunOutcome(issue=issue, result=result, exit_code=1)
 
     reviewed_issue = submit_for_review(
-        issues_dir,
         issue_id,
         summary=f"Implemented by {agent} via issuekit implement.",
         assignee=agent,
@@ -193,17 +192,10 @@ def _warn_heavy_deletions(
     deletion_threshold: int,
     err: TextIO,
 ) -> None:
-    if _git_root(repo) != repo.resolve():
+    if git_root(repo) != repo.resolve():
         return
-    try:
-        result = subprocess.run(
-            ["git", "--no-pager", "diff", "--numstat", "HEAD", "--"],
-            cwd=str(repo),
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-    except (OSError, subprocess.SubprocessError):
+    result = run_git(["--no-pager", "diff", "--numstat", "HEAD", "--"], repo)
+    if result is None:
         return
     if result.returncode != 0:
         return
@@ -227,23 +219,14 @@ def _warn_heavy_deletions(
 
 
 def _touched_paths(repo: Path) -> tuple[Path, ...]:
-    if _git_root(repo) != repo.resolve():
+    if git_root(repo) != repo.resolve():
         return ()
-    try:
-        result = subprocess.run(
-            ["git", "--no-pager", "status", "--short", "--untracked-files=all"],
-            cwd=str(repo),
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return ()
-    if result.returncode != 0:
+    status_short = git_status_short(repo, strip=False, untracked_files="all")
+    if status_short is None:
         return ()
 
     paths: list[Path] = []
-    for line in result.stdout.splitlines():
+    for line in status_short.splitlines():
         if len(line) < 4:
             continue
         status = line[:2]
@@ -255,22 +238,6 @@ def _touched_paths(repo: Path) -> tuple[Path, ...]:
             continue
         paths.append(path)
     return tuple(paths)
-
-
-def _git_root(repo: Path) -> Path | None:
-    try:
-        result = subprocess.run(
-            ["git", "rev-parse", "--show-toplevel"],
-            cwd=str(repo),
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return None
-    if result.returncode != 0:
-        return None
-    return Path(result.stdout.strip()).resolve()
 
 
 def _is_under_issues_dir(path: Path, issues_dir: Path) -> bool:

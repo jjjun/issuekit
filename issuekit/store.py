@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any, Protocol
 
 from issuekit.client import IssuekitClient
 from issuekit.config import IssuekitConfig
 from issuekit.core import (
-    Frontmatter,
     Issue,
     _drop_none,
     get_issue_heading,
@@ -60,15 +58,14 @@ class ApiStore:
         )
 
     def read_active_issues(self) -> list[Issue]:
-        return [issue for issue in self._list_issues() if issue.issue_status != "completed"]
+        return self._list_issues()
 
     def read_completed_issues(self) -> list[Issue]:
-        return [issue for issue in self._list_issues(status="completed") if issue.issue_status == "completed"]
+        return self._list_issues(status="completed")
 
     def read_all_issues(self) -> tuple[list[Issue], list[Issue], list[Issue]]:
-        active_issues = self.read_active_issues()
-        completed_issues = self.read_completed_issues()
-        all_issues = sorted(active_issues + completed_issues, key=lambda issue: (issue.id or 0, issue.relative_path))
+        all_issues = self._list_issues(include_completed=True)
+        active_issues, completed_issues = _partition_issues(all_issues)
         return active_issues, completed_issues, all_issues
 
     def get_issue(self, issue_id: int) -> Issue | None:
@@ -80,12 +77,11 @@ class ApiStore:
             raise
 
     def find_for(self, assignee: str | None = None, stage: str | None = None) -> list[Issue]:
-        issues = self._list_issues(assignee=assignee, stage=stage)
-        return [issue for issue in issues if issue.issue_status != "completed"]
+        return self._list_issues(assignee=assignee, stage=stage)
 
     def find_implementing_for_worker(self, worker: str) -> list[Issue]:
         issues = self._list_issues(stage="implementing")
-        return [issue for issue in issues if issue.issue_status != "completed" and issue.worker == worker]
+        return [issue for issue in issues if issue.worker == worker]
 
     def create_issue(
         self,
@@ -203,12 +199,18 @@ class ApiStore:
         status: str | None = None,
         assignee: str | None = None,
         stage: str | None = None,
+        include_completed: bool = False,
     ) -> list[Issue]:
         issues = [
             self._issue_from_response(raw)
-            for raw in self.client.list_all_issues(status=status, assignee=assignee, stage=stage)
+            for raw in self.client.list_all_issues(
+                status=status,
+                assignee=assignee,
+                stage=stage,
+                include_completed=include_completed,
+            )
         ]
-        return sorted(issues, key=lambda issue: (issue.id or 0, issue.relative_path))
+        return sorted(issues, key=lambda issue: (issue.id or 0, issue.ref))
 
     def _issue_from_response(self, raw: dict[str, Any]) -> Issue:
         missing = sorted(field for field in REQUIRED_API_FIELDS if field not in raw)
@@ -239,15 +241,10 @@ class ApiStore:
             "title": _title(raw, body, issue_id),
         }
         synthetic_ref = f"{self.config.project}#{issue_id}"
-        status = "completed" if metadata["status"] == "completed" else "active"
         return Issue(
             id=issue_id,
-            file_name_id=issue_id,
-            file_name=synthetic_ref,
-            file_path=Path(synthetic_ref),
-            relative_path=synthetic_ref,
+            ref=synthetic_ref,
             title=metadata["title"],
-            status=status,
             issue_status=metadata["status"],
             created=metadata["created"],
             completed=metadata["completed"],
@@ -256,14 +253,13 @@ class ApiStore:
             stage=metadata["stage"],
             implementer=metadata["implementer"],
             author=metadata["author"],
-            content=body,
-            frontmatter=Frontmatter(data=metadata, body=body, has_frontmatter=True),
+            body=body,
+            metadata=metadata,
             worker=metadata["worker"],
-            decode_error=False,
         )
 
 
-def get_store(config: IssuekitConfig, issues_dir: Path | str | None = None) -> IssueStore:
+def get_store(config: IssuekitConfig) -> IssueStore:
     if not config.api_url:
         raise WorkflowError(
             "API store requires api_url. Set api_url in issuekit.toml/[tool.issuekit] "
@@ -279,6 +275,17 @@ def _string(value: object) -> str:
 
 def _body(value: object) -> str:
     return "" if value is None else str(value)
+
+
+def _partition_issues(issues: list[Issue]) -> tuple[list[Issue], list[Issue]]:
+    active_issues: list[Issue] = []
+    completed_issues: list[Issue] = []
+    for issue in issues:
+        if issue.issue_status == "completed":
+            completed_issues.append(issue)
+        else:
+            active_issues.append(issue)
+    return active_issues, completed_issues
 
 
 def _title(raw: dict[str, Any], body: str, issue_id: int) -> str:

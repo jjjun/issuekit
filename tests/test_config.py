@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from issuekit.config import AgentRunConfig, IssuekitConfig, load_config
+from issuekit.config import AgentRunConfig, IssuekitConfig, WorkerIdentity, load_config
 
 
 _ENV_KEYS = (
@@ -218,6 +218,13 @@ def test_load_config_uses_defaults_without_config_files(tmp_path: Path) -> None:
 
 def test_default_assignees_includes_kimi() -> None:
     assert "kimi" in IssuekitConfig.assignees
+
+
+def test_config_worker_key_returns_registered_identity() -> None:
+    assert IssuekitConfig().worker_key() is None
+    config = IssuekitConfig(worker=WorkerIdentity("machine", "repo", "checkout"))
+
+    assert config.worker_key() == "machine/repo/checkout"
 
 
 def test_load_config_malformed_issuekit_toml_names_file(tmp_path: Path) -> None:

@@ -1,5 +1,3 @@
-from pathlib import Path
-
 from issuekit.config import IssuekitConfig
 from issuekit.core import issue_dict
 from issuekit.store import ApiStore, get_store
@@ -9,9 +7,9 @@ from issuekit.workflow import WorkflowError
 from tests.issue_helpers import api_issue
 
 
-def test_get_store_requires_api_url_for_runtime_default(tmp_path: Path) -> None:
+def test_get_store_requires_api_url_for_runtime_default() -> None:
     try:
-        get_store(IssuekitConfig(), tmp_path / "docs" / "issues")
+        get_store(IssuekitConfig())
     except WorkflowError as exc:
         assert exc.code == "missing_api_url"
     else:
@@ -48,11 +46,7 @@ def test_api_store_maps_json_to_issue_and_issue_dict() -> None:
 
     assert issue is not None
     assert issue.id == 7
-    assert issue.file_name_id == 7
-    assert issue.file_name == "demo#7"
-    assert issue.file_path == Path("demo#7")
-    assert issue.relative_path == "demo#7"
-    assert issue.status == "active"
+    assert issue.ref == "demo#7"
     assert issue.issue_status == "in_progress"
     assert issue.priority == "high"
     assert issue.assignee == "claude"
@@ -60,10 +54,8 @@ def test_api_store_maps_json_to_issue_and_issue_dict() -> None:
     assert issue.implementer == "codex"
     assert issue.author == "kimi"
     assert issue.worker == "machine/demo/checkout"
-    assert issue.content == body
-    assert issue.frontmatter.body == body
-    assert issue.frontmatter.data["status"] == "in_progress"
-    assert issue.decode_error is False
+    assert issue.body == body
+    assert issue.metadata["status"] == "in_progress"
     assert issue_dict(issue, include_body=True) == {
         "id": 7,
         "title": "Read Path",
@@ -127,7 +119,16 @@ def test_api_store_finds_implementing_issues_for_worker() -> None:
 
 
 def test_api_store_partitions_and_filters_active_issues() -> None:
-    client = FakeIssuekitClient(
+    class RecordingClient(FakeIssuekitClient):
+        def __init__(self, *args, **kwargs) -> None:
+            super().__init__(*args, **kwargs)
+            self.list_calls: list[dict[str, object]] = []
+
+        def list_all_issues(self, **kwargs):
+            self.list_calls.append(kwargs)
+            return super().list_all_issues(**kwargs)
+
+    client = RecordingClient(
         [
             api_issue(1, "Review", status="in_progress", assignee="claude", stage="review"),
             api_issue(2, "Done", status="completed", stage="done", completed="2026-01-02"),
@@ -143,6 +144,12 @@ def test_api_store_partitions_and_filters_active_issues() -> None:
     assert [issue.id for issue in store.read_active_issues()] == [1]
     assert [issue.id for issue in store.read_completed_issues()] == [2]
     assert [issue.id for issue in store.find_for("claude", "review")] == [1]
+    assert client.list_calls == [
+        {"status": None, "assignee": None, "stage": None, "include_completed": True},
+        {"status": None, "assignee": None, "stage": None, "include_completed": False},
+        {"status": "completed", "assignee": None, "stage": None, "include_completed": False},
+        {"status": None, "assignee": "claude", "stage": "review", "include_completed": False},
+    ]
 
 
 def test_api_store_reads_all_pages() -> None:

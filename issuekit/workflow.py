@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from issuekit.config import IssuekitConfig
 from issuekit.core import (
     Issue,
@@ -11,7 +9,6 @@ from issuekit.core import (
     has_non_ascii,
     is_valid_workflow_token,
 )
-from issuekit.worker import worker_key
 
 
 AUTO_REVIEWER = "auto"
@@ -26,12 +23,10 @@ class WorkflowError(RuntimeError):
 
 
 def claim_next(
-    issues_dir: Path | str,
     assignee: str,
     *,
     priority: str | None = None,
     config: IssuekitConfig | None = None,
-    timeout: float = 10.0,
 ) -> Issue | None:
     config = config or IssuekitConfig()
     _validate_assignee(assignee, config)
@@ -40,31 +35,28 @@ def claim_next(
         raise WorkflowError(f"Invalid priority: {priority}")
     from issuekit.store import get_store
 
-    store = get_store(config, issues_dir)
-    worker = worker_key(config.worker) if config.worker is not None else None
+    store = get_store(config)
+    worker = config.worker_key()
     return store.claim_next(assignee=assignee, priority=priority, worker=worker)  # type: ignore[attr-defined]
 
 
 def claim_issue(
-    issues_dir: Path | str,
     issue_id: int,
     assignee: str,
     *,
     config: IssuekitConfig | None = None,
-    timeout: float = 10.0,
 ) -> Issue:
     config = config or IssuekitConfig()
     _validate_assignee(assignee, config)
     _validate_stage("implementing", config)
     from issuekit.store import get_store
 
-    store = get_store(config, issues_dir)
-    worker = worker_key(config.worker) if config.worker is not None else None
+    store = get_store(config)
+    worker = config.worker_key()
     return store.claim_issue(issue_id, assignee=assignee, worker=worker)  # type: ignore[attr-defined]
 
 
 def submit_for_review(
-    issues_dir: Path | str,
     issue_id: int,
     *,
     summary: str,
@@ -73,7 +65,6 @@ def submit_for_review(
     assignee: str = "codex",
     reviewer: str | None = None,
     config: IssuekitConfig | None = None,
-    timeout: float = 10.0,
 ) -> Issue:
     config = config or IssuekitConfig()
     _validate_assignee(assignee, config)
@@ -83,7 +74,7 @@ def submit_for_review(
     _validate_ascii_text(commit or "", "--commit")
     from issuekit.store import get_store
 
-    store = get_store(config, issues_dir)
+    store = get_store(config)
     return store.submit_for_review(  # type: ignore[attr-defined]
         issue_id,
         summary=summary,
@@ -94,14 +85,12 @@ def submit_for_review(
 
 
 def request_changes(
-    issues_dir: Path | str,
     issue_id: int,
     *,
     notes: str,
     reviewer: str | None = None,
     assignee: str | None = None,
     config: IssuekitConfig | None = None,
-    timeout: float = 10.0,
 ) -> Issue:
     config = config or IssuekitConfig()
     if assignee is not None:
@@ -110,8 +99,8 @@ def request_changes(
     _validate_ascii_text(notes, "--notes")
     from issuekit.store import get_store
 
-    store = get_store(config, issues_dir)
-    worker = worker_key(config.worker) if config.worker is not None else None
+    store = get_store(config)
+    worker = config.worker_key()
     return store.request_changes(  # type: ignore[attr-defined]
         issue_id,
         notes=notes,
@@ -122,7 +111,6 @@ def request_changes(
 
 
 def find_for(
-    issues_dir: Path | str,
     assignee: str | None = None,
     *,
     stage: str | None = None,
@@ -136,7 +124,7 @@ def find_for(
 
     from issuekit.store import get_store
 
-    return get_store(config, issues_dir).find_for(assignee, stage)
+    return get_store(config).find_for(assignee, stage)
 
 
 def ensure_not_self_review(

@@ -12,8 +12,7 @@ from issuekit.store import get_store
 
 def run(args) -> int:
     config = load_config(Path.cwd())
-    issues_dir = config.issues_path(Path.cwd())
-    store = get_store(config, issues_dir)
+    store = get_store(config)
     active_issues, completed_issues, all_issues = store.read_all_issues()
     incoming_proposals = _incoming_proposals(config)
     summary = {
@@ -29,9 +28,9 @@ def run(args) -> int:
                 "id": issue.id,
                 "title": issue.title,
                 "priority": issue.priority or None,
-                "status": issue.issue_status or issue.status,
+                "status": issue.issue_status,
                 "stage": issue.stage or None,
-                "file": issue.relative_path,
+                "file": issue.ref,
             }
             for issue in active_issues
         ],

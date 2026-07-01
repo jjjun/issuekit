@@ -9,28 +9,24 @@ client created here.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-import base64
-import ipaddress
-import json
 import os
-from pathlib import Path
-import subprocess
-import sys
-import time
 from typing import Any
-from urllib.parse import urlparse
 
 import httpx
 
+from issuekit.client_security import (
+    _is_expired,
+    _jwt_expiry,
+    _response_expiry,
+    _warn_insecure_api_url,
+)
 from issuekit.core import _drop_none, is_valid_workflow_token
+from issuekit.token_cache import _delete_cached_token, _read_cached_token, _write_cached_token
 from issuekit.workflow import WorkflowError
 
 
 JsonDict = dict[str, Any]
 JsonBody = Mapping[str, Any] | Sequence[Mapping[str, Any]]
-_TOKEN_CACHE_ENV = "ISSUEKIT_TOKEN_CACHE"
-_ALLOW_INSECURE_ENV = "ISSUEKIT_ALLOW_INSECURE"
-_WARNED_INSECURE_API_URLS: set[str] = set()
 _LOGIN_GUIDANCE = (
     "API credentials are required; run `issuekit login` or set "
     "ISSUEKIT_API_USER and ISSUEKIT_API_PASSWORD or ISSUEKIT_API_TOKEN."
@@ -141,9 +137,35 @@ class IssuekitClient:
         status: str | None = None,
         stage: str | None = None,
         assignee: str | None = None,
+        include_completed: bool = False,
         limit: int | None = None,
         offset: int | None = None,
     ) -> list[JsonDict]:
+        if include_completed:
+            payload = self._authorized_request(
+                "GET",
+                "/api/issues/board",
+                params=_drop_none(
+                    {
+                        "projects": self.project,
+                        "status": status,
+                        "include_completed": True,
+                        "stage": stage,
+                        "assignee": assignee,
+                        "limit": limit,
+                        "offset": offset,
+                    }
+                ),
+            )
+            page = _ensure_dict(payload, "Issue board response")
+            items = page.get("items")
+            if not isinstance(items, list):
+                raise WorkflowError(
+                    "Issue board response items was not a JSON array.",
+                    code="invalid_response",
+                )
+            return [_ensure_dict(item, "Issue response") for item in items]
+
         params = _drop_none(
             {
                 "status": status,
@@ -164,6 +186,7 @@ class IssuekitClient:
         status: str | None = None,
         stage: str | None = None,
         assignee: str | None = None,
+        include_completed: bool = False,
         page_size: int = 500,
     ) -> list[JsonDict]:
         if page_size <= 0:
@@ -176,6 +199,7 @@ class IssuekitClient:
                 status=status,
                 stage=stage,
                 assignee=assignee,
+                include_completed=include_completed,
                 limit=page_size,
                 offset=offset,
             )
@@ -506,202 +530,3 @@ def _ensure_dict(payload: Any, label: str) -> JsonDict:
     if not isinstance(payload, dict):
         raise WorkflowError(f"{label} was not a JSON object.", code="invalid_response")
     return payload
-
-
-def _is_expired(expiry: float | None) -> bool:
-    return expiry is not None and expiry <= time.time() + 30
-
-
-def _token_cache_path() -> Path:
-    override = os.getenv(_TOKEN_CACHE_ENV)
-    if override:
-        return Path(override).expanduser()
-    return Path.home() / ".issuekit" / "token.json"
-
-
-def _read_cached_token(api_url: str) -> dict[str, Any] | None:
-    entry = _read_token_cache().get(api_url)
-    if not isinstance(entry, dict):
-        return None
-    token = entry.get("token")
-    expires_at = entry.get("expires_at")
-    if not isinstance(token, str) or not token:
-        return None
-    if expires_at is not None and not isinstance(expires_at, (int, float)):
-        return None
-    expiry = float(expires_at) if isinstance(expires_at, (int, float)) else _jwt_expiry(token)
-    if _is_expired(expiry):
-        return None
-    return {"token": token, "expires_at": expiry}
-
-
-def _write_cached_token(api_url: str, token: str, expires_at: float | None) -> None:
-    cache = _read_token_cache()
-    cache[api_url] = {"token": token, "expires_at": expires_at}
-    _write_token_cache(cache)
-
-
-def _delete_cached_token(api_url: str) -> None:
-    path = _token_cache_path()
-    cache = _read_token_cache()
-    if api_url not in cache:
-        return
-    del cache[api_url]
-    if cache:
-        _write_token_cache(cache)
-        return
-    try:
-        path.unlink()
-    except FileNotFoundError:
-        pass
-    except OSError as exc:
-        raise WorkflowError(f"Failed to remove API token cache: {exc}", code="token_cache_error") from exc
-
-
-def _read_token_cache() -> dict[str, Any]:
-    path = _token_cache_path()
-    try:
-        raw = path.read_text(encoding="utf-8")
-    except FileNotFoundError:
-        return {}
-    except OSError:
-        return {}
-    try:
-        payload = json.loads(raw)
-    except ValueError:
-        return {}
-    return payload if isinstance(payload, dict) else {}
-
-
-def _write_token_cache(cache: Mapping[str, Any]) -> None:
-    path = _token_cache_path()
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-    except OSError as exc:
-        raise WorkflowError(f"Failed to create API token cache directory: {exc}", code="token_cache_error") from exc
-
-    temp_path = path.with_name(f".{path.name}.{os.getpid()}.tmp")
-    data = json.dumps(dict(cache), sort_keys=True, separators=(",", ":")) + "\n"
-    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
-    if hasattr(os, "O_BINARY"):
-        flags |= os.O_BINARY
-    try:
-        fd = os.open(temp_path, flags, 0o600)
-        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
-            handle.write(data)
-        _chmod_600(temp_path)
-        os.replace(temp_path, path)
-        _chmod_600(path)
-    except OSError as exc:
-        try:
-            temp_path.unlink()
-        except OSError:
-            pass
-        raise WorkflowError(f"Failed to write API token cache: {exc}", code="token_cache_error") from exc
-
-
-def _chmod_600(path: Path) -> None:
-    if os.name == "nt":
-        _restrict_windows_acl(path)
-        return
-    try:
-        os.chmod(path, 0o600)
-    except OSError:
-        pass
-
-
-def _warn_insecure_api_url(api_url: str) -> None:
-    if _env_flag_enabled(_ALLOW_INSECURE_ENV):
-        return
-    if not _is_insecure_remote_url(api_url):
-        return
-    if api_url in _WARNED_INSECURE_API_URLS:
-        return
-    _WARNED_INSECURE_API_URLS.add(api_url)
-    print(
-        "Warning: ISSUEKIT API URL uses non-HTTPS transport; service-account "
-        "credentials and bearer tokens will be sent in cleartext. Use HTTPS or "
-        f"set {_ALLOW_INSECURE_ENV}=1 to suppress this warning for a trusted endpoint.",
-        file=sys.stderr,
-    )
-
-
-def _is_insecure_remote_url(api_url: str) -> bool:
-    parsed = urlparse(api_url)
-    if parsed.scheme.lower() != "http":
-        return False
-    host = (parsed.hostname or "").lower()
-    if host == "localhost":
-        return False
-    try:
-        return not ipaddress.ip_address(host).is_loopback
-    except ValueError:
-        return True
-
-
-def _env_flag_enabled(name: str) -> bool:
-    return os.getenv(name, "").strip().lower() in {"1", "true", "yes", "on"}
-
-
-def _restrict_windows_acl(path: Path) -> None:
-    user = os.getenv("USERNAME")
-    if not user:
-        _warn_token_cache_permissions(path, "current Windows user could not be determined")
-        return
-    try:
-        result = subprocess.run(
-            [
-                "icacls",
-                str(path),
-                "/inheritance:r",
-                "/grant:r",
-                f"{user}:F",
-            ],
-            check=False,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
-            text=True,
-        )
-    except (OSError, subprocess.SubprocessError) as exc:
-        _warn_token_cache_permissions(path, str(exc))
-        return
-    if result.returncode != 0:
-        reason = result.stderr.strip() or f"icacls exited with {result.returncode}"
-        _warn_token_cache_permissions(path, reason)
-
-
-def _warn_token_cache_permissions(path: Path, reason: str) -> None:
-    print(
-        f"Warning: could not restrict API token cache permissions for {path}: {reason}",
-        file=sys.stderr,
-    )
-
-
-def _response_expiry(payload: Mapping[str, Any]) -> float | None:
-    for key in ("expires_at", "expires"):
-        raw = payload.get(key)
-        if isinstance(raw, (int, float)):
-            return float(raw)
-    raw_expires_in = payload.get("expires_in")
-    if isinstance(raw_expires_in, (int, float)):
-        return time.time() + float(raw_expires_in)
-    return None
-
-
-def _jwt_expiry(token: str | None) -> float | None:
-    if not token:
-        return None
-    parts = token.split(".")
-    if len(parts) < 2:
-        return None
-    try:
-        payload = json.loads(_b64url_decode(parts[1]).decode("utf-8"))
-    except (ValueError, UnicodeDecodeError):
-        return None
-    exp = payload.get("exp")
-    return float(exp) if isinstance(exp, (int, float)) else None
-
-
-def _b64url_decode(value: str) -> bytes:
-    padding = "=" * (-len(value) % 4)
-    return base64.urlsafe_b64decode(f"{value}{padding}".encode("ascii"))

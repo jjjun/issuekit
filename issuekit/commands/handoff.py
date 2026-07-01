@@ -3,25 +3,18 @@
 from __future__ import annotations
 
 from pathlib import Path
-import sys
 
+from issuekit.commands._common import run_command
 from issuekit.config import load_config
 from issuekit.core import parse_issue_id_arg
 from issuekit.workflow import WorkflowError, request_changes, submit_for_review
 
 
 def run_submit_review(args) -> int:
-    try:
+    def action() -> int:
         issue_id = parse_issue_id_arg(args.id)
-    except ValueError as exc:
-        print(str(exc), file=sys.stderr)
-        return 1
-
-    config = load_config(Path.cwd())
-    issues_dir = config.issues_path(Path.cwd())
-    try:
+        config = load_config(Path.cwd())
         issue = submit_for_review(
-            issues_dir,
             issue_id,
             summary=args.summary,
             branch=args.branch,
@@ -30,41 +23,32 @@ def run_submit_review(args) -> int:
             reviewer=args.reviewer,
             config=config,
         )
-    except (TimeoutError, WorkflowError) as exc:
-        print(str(exc), file=sys.stderr)
-        return 1
 
-    print(
-        f"id={issue.id} file={issue.relative_path} "
-        f"assignee={issue.assignee} stage={issue.stage}"
-    )
-    return 0
+        print(
+            f"id={issue.id} file={issue.ref} "
+            f"assignee={issue.assignee} stage={issue.stage}"
+        )
+        return 0
+
+    return run_command(action, errors=(ValueError, TimeoutError, WorkflowError))
 
 
 def run_request_changes(args) -> int:
-    try:
+    def action() -> int:
         issue_id = parse_issue_id_arg(args.id)
-    except ValueError as exc:
-        print(str(exc), file=sys.stderr)
-        return 1
-
-    config = load_config(Path.cwd())
-    issues_dir = config.issues_path(Path.cwd())
-    try:
+        config = load_config(Path.cwd())
         issue = request_changes(
-            issues_dir,
             issue_id,
             notes=args.notes,
             assignee=args.assignee,
             reviewer=args.reviewer,
             config=config,
         )
-    except (TimeoutError, WorkflowError) as exc:
-        print(str(exc), file=sys.stderr)
-        return 1
 
-    print(
-        f"id={issue.id} file={issue.relative_path} "
-        f"assignee={issue.assignee} stage={issue.stage}"
-    )
-    return 0
+        print(
+            f"id={issue.id} file={issue.ref} "
+            f"assignee={issue.assignee} stage={issue.stage}"
+        )
+        return 0
+
+    return run_command(action, errors=(ValueError, TimeoutError, WorkflowError))
