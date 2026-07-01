@@ -134,6 +134,7 @@ copying the steps.
 | `issuekit init [--with-mcp]` | Install tracker templates, encoding hooks, and optional MCP handoff scaffolding. |
 | `issuekit setup [--force] [--json]` | Run per-repo MCP handoff scaffolding and setup diagnostics. |
 | `issuekit setup check --json` | Check setup state without writing files. |
+| `issuekit add` / `issuekit register` | Register this checkout as a worker (auto-derives machine/repo/worker ids). |
 | `issuekit add-ref <name> --path <repo> [--scope local\|workspace]` | Register an optional local project alias. |
 | `issuekit list-refs` | List effective local project aliases and their source. |
 | `issuekit propose --to <project> --title "..."` | Send a proposal to a project API inbox. |

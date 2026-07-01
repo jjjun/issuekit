@@ -23,6 +23,12 @@ The model is pull-based: authors publish work to a pool, implementers pull from
 that pool, and reviewers pull from the review pool. No central orchestrator is
 required for the normal author -> implement -> review cycle.
 
+Register each checkout once with `issuekit add` (alias `issuekit register`)
+before pulling work. It records a worker identity (machine/repo/worker) in a
+gitignored `issuekit.local.toml`, so claims report which physical checkout
+holds an issue. Multiple checkouts of one repo on one machine become distinct
+workers.
+
 Issue lifecycle and cross-project proposal state are stored in the configured
 mine-py API project.
 
@@ -43,6 +49,7 @@ Separation-of-duties invariants:
 
 Copyable CLI examples:
 
+- Register worker: `issuekit add`
 - Author: `issuekit author --title "Short title" --body-file issue.md --priority medium --agent codex`
 - Claim next: `issuekit claim --assignee codex`
 - Claim specific issue: `issuekit claim --id 123 --assignee codex`
