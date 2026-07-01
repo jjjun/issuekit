@@ -248,6 +248,7 @@ class AgentRunner:
         issue_id: int | None = None,
         follow: bool = False,
         prompt_suffix: str | None = None,
+        prompt_override: str | None = None,
         abort_event: threading.Event | None = None,
     ) -> AgentResult:
         plan_path = plan_path.resolve()
@@ -258,7 +259,7 @@ class AgentRunner:
             raise FileNotFoundError(f"Repo directory not found: {repo}")
 
         binary = adapter.resolve_binary()
-        prompt = (
+        prompt = prompt_override or (
             f"Read the plan file at: {plan_path} . Implement it fully by editing "
             "files directly in this repository. Do NOT run git commit or git push - "
             "leave all changes unstaged for review. Edit only code, tests, and "

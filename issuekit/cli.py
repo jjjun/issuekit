@@ -18,6 +18,7 @@ from issuekit.commands import (
     info,
     init,
     migrate_to_api,
+    negotiate,
     propose,
     protocol,
     queue,
@@ -36,6 +37,7 @@ COMMANDS = (
     "logout",
     "author",
     "implement",
+    "negotiate",
     "validate",
     "migrate-to-api",
     "migrate-proposals-to-api",
@@ -145,6 +147,43 @@ def build_parser() -> argparse.ArgumentParser:
         help="Emit a live heartbeat to stderr while the agent runs.",
     )
     implement_parser.set_defaults(func=implement.run)
+
+    negotiate_parser = subparsers.add_parser(
+        "negotiate",
+        help="Drive a bounded cross-repository design negotiation.",
+    )
+    negotiate_parser.add_argument("--from-issue", required=True, help="Originating issue id.")
+    negotiate_parser.add_argument("--to", required=True, help="Target project name.")
+    negotiate_parser.add_argument(
+        "--frontend-agent",
+        required=True,
+        help="Configured agent representing the frontend side.",
+    )
+    negotiate_parser.add_argument(
+        "--backend-agent",
+        required=True,
+        help="Configured agent representing the backend side.",
+    )
+    negotiate_parser.add_argument(
+        "--max-rounds",
+        type=int,
+        default=negotiate.DEFAULT_MAX_ROUNDS,
+        help="Maximum total agent turns, including the opening turn.",
+    )
+    negotiate_parser.add_argument(
+        "--mock",
+        action="store_true",
+        help="Use the local mock negotiation store.",
+    )
+    negotiate_parser.add_argument("--model", help="Optional model name passed to both agents.")
+    negotiate_parser.add_argument(
+        "--timeout-sec",
+        type=float,
+        default=120.0,
+        help="Hard timeout for each negotiation turn in seconds.",
+    )
+    negotiate_parser.add_argument("--json", action="store_true", help="Print JSON output.")
+    negotiate_parser.set_defaults(func=negotiate.run)
 
     validate_parser = subparsers.add_parser(
         "validate",
