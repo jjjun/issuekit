@@ -11,6 +11,7 @@ from issuekit.agents.run_claimed import (
     run_and_submit,
 )
 from issuekit.agents.runner import AgentResult, AgentRunner
+from issuekit.commands._common import run_command
 from issuekit.config import load_config
 from issuekit.core import Issue, parse_issue_id_arg
 from issuekit.store import get_store
@@ -18,36 +19,28 @@ from issuekit.workflow import WorkflowError, claim_issue
 
 
 def run(args) -> int:
-    try:
+    def action() -> int:
         issue_id = parse_issue_id_arg(args.id)
-    except ValueError as exc:
-        print(str(exc), file=sys.stderr)
-        return 1
 
-    cwd = Path.cwd()
-    config = load_config(cwd)
-    issues_dir = config.issues_path(cwd)
-    try:
+        cwd = Path.cwd()
+        config = load_config(cwd)
+        issues_dir = config.issues_path(cwd)
         issue = get_store(config).get_issue(issue_id)
-    except (WorkflowError, ValueError) as exc:
-        print(str(exc), file=sys.stderr)
-        return 1
-    if issue is None:
-        print(f"Active issue #{issue_id} was not found.", file=sys.stderr)
-        return 1
-    if issue.decode_error:
-        print(
-            f"Active issue #{issue_id} is not valid UTF-8: {issue.relative_path}",
-            file=sys.stderr,
-        )
-        return 1
+        if issue is None:
+            print(f"Active issue #{issue_id} was not found.", file=sys.stderr)
+            return 1
+        if issue.decode_error:
+            print(
+                f"Active issue #{issue_id} is not valid UTF-8: {issue.relative_path}",
+                file=sys.stderr,
+            )
+            return 1
 
-    reviewer_prompt = (
-        review_feedback_prompt(issue.frontmatter.body)
-        if issue.stage == "changes_requested"
-        else None
-    )
-    try:
+        reviewer_prompt = (
+            review_feedback_prompt(issue.frontmatter.body)
+            if issue.stage == "changes_requested"
+            else None
+        )
         claimed_issue = claim_issue(issue.id or issue_id, args.agent, config=config)
         outcome = run_and_submit(
             claimed_issue,
@@ -62,13 +55,15 @@ def run(args) -> int:
             reporter=lambda issue, result: _print_run_report(issue, result, args.agent),
             runner_factory=AgentRunner,
         )
-    except (FileNotFoundError, RuntimeError, ValueError, TimeoutError, WorkflowError) as exc:
-        print(str(exc), file=sys.stderr)
-        return 1
 
-    if outcome.reviewed_issue is not None:
-        _print_submit_report(outcome)
-    return outcome.exit_code
+        if outcome.reviewed_issue is not None:
+            _print_submit_report(outcome)
+        return outcome.exit_code
+
+    return run_command(
+        action,
+        errors=(FileNotFoundError, RuntimeError, ValueError, TimeoutError, WorkflowError),
+    )
 
 
 def _print_run_report(issue: Issue, result: AgentResult, agent: str) -> None:

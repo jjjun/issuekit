@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 from pathlib import Path
-import sys
 
+from issuekit.commands._common import active_issue_not_found, require_ascii, run_command
 from issuekit.config import IssuekitConfig, load_config
 from issuekit.core import (
     Issue,
-    has_non_ascii,
     is_valid_workflow_token,
     parse_issue_id_arg,
 )
@@ -20,14 +19,12 @@ from issuekit.workflow import (
 
 
 def run(args) -> int:
-    try:
-        issue_id = parse_issue_id_arg(args.id)
-    except ValueError as exc:
-        print(str(exc), file=sys.stderr)
-        return 1
+    issue_id = 0
 
-    config = load_config(Path.cwd())
-    try:
+    def action() -> int:
+        nonlocal issue_id
+        issue_id = parse_issue_id_arg(args.id)
+        config = load_config(Path.cwd())
         completed_issue = approve_issue(
             issue_id,
             summary=args.summary,
@@ -36,18 +33,11 @@ def run(args) -> int:
             force=args.force,
             config=config,
         )
-    except (ValueError, WorkflowError) as exc:
-        print(str(exc), file=sys.stderr)
-        return 1
-    except LookupError:
-        print(f"Active issue #{issue_id} was not found.", file=sys.stderr)
-        return 1
-    except UnicodeError as exc:
-        print(str(exc), file=sys.stderr)
-        return 1
 
-    print(f"Approved issue #{completed_issue.id}: {completed_issue.relative_path}")
-    return 0
+        print(f"Approved issue #{completed_issue.id}: {completed_issue.relative_path}")
+        return 0
+
+    return run_command(action, lookup_error=lambda _exc: active_issue_not_found(issue_id))
 
 
 def approve_issue(
@@ -59,8 +49,11 @@ def approve_issue(
     force: bool = False,
     config: IssuekitConfig | None = None,
 ) -> Issue:
-    if has_non_ascii(summary or "") or has_non_ascii(verification):
-        raise ValueError("--summary and --verification must be ASCII-only.")
+    require_ascii(
+        summary or "",
+        verification,
+        message="--summary and --verification must be ASCII-only.",
+    )
 
     config = config or IssuekitConfig()
     from issuekit.store import get_store
