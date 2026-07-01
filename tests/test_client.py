@@ -20,6 +20,7 @@ from issuekit.workflow import WorkflowError
 @pytest.fixture(autouse=True)
 def isolated_token_cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ISSUEKIT_TOKEN_CACHE", str(tmp_path / "token.json"))
+    monkeypatch.delenv("ISSUEKIT_ALLOW_INSECURE", raising=False)
     client_module._WARNED_INSECURE_API_URLS.clear()
 
 
@@ -640,6 +641,41 @@ def test_client_claim_next_sends_worker_when_provided() -> None:
         priority="high",
         worker="machine/repo/checkout",
     ) == {"id": 7, "stage": "implementing"}
+
+
+def test_client_upsert_worker_posts_top_level_workers_endpoint() -> None:
+    response = {
+        "id": "machine/repo/checkout",
+        "machine_id": "machine",
+        "repo_id": "repo",
+        "worker_id": "checkout",
+        "path": "/repo",
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "POST"
+        assert request.url.path == "/api/workers"
+        assert json.loads(request.content) == {
+            "machine_id": "machine",
+            "repo_id": "repo",
+            "worker_id": "checkout",
+            "path": "/repo",
+        }
+        return httpx.Response(201, json=response)
+
+    client = IssuekitClient(
+        "https://mine.example",
+        project="demo",
+        token="static-token",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    assert client.upsert_worker(
+        machine_id="machine",
+        repo_id="repo",
+        worker_id="checkout",
+        path="/repo",
+    ) == response
 
 
 def test_client_import_issues_posts_wrapped_issues_body() -> None:

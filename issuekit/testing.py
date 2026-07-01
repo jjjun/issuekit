@@ -35,6 +35,12 @@ class FakeIssuekitClient:
         for proposal in proposals or []:
             self._store_proposal(proposal)
 
+    def __enter__(self) -> "FakeIssuekitClient":
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        return None
+
     def list_issues(
         self,
         *,
@@ -258,6 +264,32 @@ class FakeIssuekitClient:
             self._record("import_issues", body={"issues": deepcopy(raw_issues)})
             imported = [self._store_issue(issue) for issue in raw_issues]
             return deepcopy(imported)
+
+    def upsert_worker(
+        self,
+        *,
+        machine_id: str,
+        repo_id: str,
+        worker_id: str,
+        path: str | None,
+    ) -> JsonDict:
+        body = {
+            "machine_id": machine_id,
+            "repo_id": repo_id,
+            "worker_id": worker_id,
+            "path": path,
+        }
+        with self._lock:
+            self._record("upsert_worker", body=body)
+            return {
+                "id": f"{machine_id}/{repo_id}/{worker_id}",
+                **body,
+                "status": "idle",
+                "current_issue": None,
+                "last_seen": "2026-01-01T00:00:00Z",
+                "created_at": "2026-01-01T00:00:00Z",
+                "updated_at": "2026-01-01T00:00:00Z",
+            }
 
     def create_proposal(
         self,

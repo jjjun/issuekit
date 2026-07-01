@@ -292,6 +292,26 @@ class IssuekitClient:
             raise WorkflowError("Import response was not JSON data.", code="invalid_response")
         return payload
 
+    def upsert_worker(
+        self,
+        *,
+        machine_id: str,
+        repo_id: str,
+        worker_id: str,
+        path: str | None,
+    ) -> JsonDict:
+        payload = self._authorized_request(
+            "POST",
+            "/api/workers",
+            json={
+                "machine_id": machine_id,
+                "repo_id": repo_id,
+                "worker_id": worker_id,
+                "path": path,
+            },
+        )
+        return _ensure_dict(payload, "Worker response")
+
     def create_proposal(
         self,
         *,
@@ -389,11 +409,26 @@ class IssuekitClient:
         json: JsonBody | None = None,
         params: Mapping[str, Any] | None = None,
     ) -> Any:
+        return self._authorized_request(
+            method,
+            self._collection_path(collection, path),
+            json=json,
+            params=params,
+        )
+
+    def _authorized_request(
+        self,
+        method: str,
+        path: str,
+        *,
+        json: JsonBody | None = None,
+        params: Mapping[str, Any] | None = None,
+    ) -> Any:
         _warn_insecure_api_url(self.api_url)
         token = self.login()
         response = self._send(
             method,
-            self._collection_path(collection, path),
+            path,
             json=json,
             params=dict(params) if params is not None else None,
             headers={
@@ -407,7 +442,7 @@ class IssuekitClient:
             token = self.login(force=True)
             response = self._send(
                 method,
-                self._collection_path(collection, path),
+                path,
                 json=json,
                 params=dict(params) if params is not None else None,
                 headers={

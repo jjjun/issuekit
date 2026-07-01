@@ -19,6 +19,11 @@ from issuekit.config import IssuekitConfig, load_config
 from issuekit.core import Issue
 from issuekit.store import get_store
 from issuekit.worker import worker_key
+from issuekit.worker_registry import (
+    WORKER_HEARTBEAT_INTERVAL_SEC,
+    WorkerHeartbeat,
+    try_post_worker_registration,
+)
 from issuekit.workflow import WorkflowError, claim_next
 
 
@@ -105,15 +110,16 @@ def run(args) -> int:
 
     try:
         with _serve_lock(lock_path), _signal_handlers(controller):
-            return _serve_loop(
-                args,
-                agent=agent,
-                config=config,
-                cwd=cwd,
-                issues_dir=issues_dir,
-                log_path=log_path,
-                controller=controller,
-            )
+            with _worker_heartbeat(config, cwd, log_path):
+                return _serve_loop(
+                    args,
+                    agent=agent,
+                    config=config,
+                    cwd=cwd,
+                    issues_dir=issues_dir,
+                    log_path=log_path,
+                    controller=controller,
+                )
     except ServeLockError as exc:
         print(str(exc), file=sys.stderr)
         return 1
@@ -342,6 +348,25 @@ def _resolve_agent(agent: str | None, config: IssuekitConfig) -> str | None:
     if len(config.assignees) == 1:
         return config.assignees[0]
     return None
+
+
+@contextmanager
+def _worker_heartbeat(config: IssuekitConfig, cwd: Path, log_path: Path) -> Iterator[None]:
+    def on_error(exc: Exception) -> None:
+        _log(sys.stderr, log_path, "worker_registry_error", error=str(exc))
+
+    try_post_worker_registration(config, cwd, on_error=on_error)
+    heartbeat = WorkerHeartbeat(
+        config,
+        cwd,
+        interval=WORKER_HEARTBEAT_INTERVAL_SEC,
+        on_error=on_error,
+    )
+    heartbeat.start()
+    try:
+        yield
+    finally:
+        heartbeat.stop()
 
 
 @contextmanager

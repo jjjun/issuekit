@@ -5,6 +5,7 @@ import signal
 
 from issuekit import cli
 from issuekit import store as store_module
+from issuekit import worker_registry
 from issuekit.commands import serve
 from issuekit.testing import FakeIssuekitClient
 from issuekit.workflow import WorkflowError
@@ -98,6 +99,7 @@ def _configure_registered_api(
         newline="\n",
     )
     monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.setattr(worker_registry, "IssuekitClient", lambda *args, **kwargs: client)
     monkeypatch.chdir(tmp_path)
 
 
@@ -114,6 +116,15 @@ def test_serve_once_empty_queue_exits_without_agent(
 
     assert exit_code == 0
     assert client.calls == [
+        {
+            "method": "upsert_worker",
+            "body": {
+                "machine_id": "machine",
+                "repo_id": "demo",
+                "worker_id": "checkout",
+                "path": tmp_path.resolve().as_posix(),
+            },
+        },
         {
             "method": "claim_next",
             "body": {"assignee": "codex", "worker": "machine/demo/checkout"},
@@ -145,8 +156,8 @@ def test_serve_once_claims_runs_and_submits(
     assert agent_name == "codex"
     assert issue_id == 1
     assert prompt_suffix is None
-    assert [call["method"] for call in client.calls] == ["claim_next", "submit"]
-    assert client.calls[0]["body"]["worker"] == "machine/demo/checkout"
+    assert [call["method"] for call in client.calls] == ["upsert_worker", "claim_next", "submit"]
+    assert client.calls[1]["body"]["worker"] == "machine/demo/checkout"
     assert "event=submitted issue=1" in capsys.readouterr().err
 
 
@@ -176,7 +187,7 @@ def test_serve_once_recovers_own_orphan_before_polling(
     exit_code = cli.main(["serve", "--agent", "codex", "--once"])
 
     assert exit_code == 0
-    assert [call["method"] for call in client.calls] == ["submit"]
+    assert [call["method"] for call in client.calls] == ["upsert_worker", "submit"]
     assert [call[4] for call in FakeRunner.calls] == [1]
     captured = capsys.readouterr()
     assert "event=recovered issue=1" in captured.err
@@ -207,7 +218,7 @@ def test_serve_ignores_orphan_for_other_worker(
     exit_code = cli.main(["serve", "--agent", "codex", "--once"])
 
     assert exit_code == 0
-    assert [call["method"] for call in client.calls] == ["claim_next"]
+    assert [call["method"] for call in client.calls] == ["upsert_worker", "claim_next"]
     assert client.get_issue(1)["stage"] == "implementing"
 
 
@@ -223,7 +234,7 @@ def test_serve_no_orphan_claims_normally(
     exit_code = cli.main(["serve", "--agent", "codex", "--once"])
 
     assert exit_code == 0
-    assert [call["method"] for call in client.calls] == ["claim_next", "submit"]
+    assert [call["method"] for call in client.calls] == ["upsert_worker", "claim_next", "submit"]
     assert [call[4] for call in FakeRunner.calls] == [1]
 
 
@@ -256,7 +267,7 @@ def test_serve_recovery_error_continues_to_poll(
 
     assert exit_code == 0
     assert RecoveryErrorThenRunner.calls == [1, 2]
-    assert [call["method"] for call in client.calls] == ["claim_next", "submit"]
+    assert [call["method"] for call in client.calls] == ["upsert_worker", "claim_next", "submit"]
     assert "event=run_error issue=1" in capsys.readouterr().err
 
 
@@ -286,7 +297,7 @@ def test_serve_recovered_issue_counts_toward_max_issues(
     exit_code = cli.main(["serve", "--agent", "codex", "--max-issues", "1", "--interval", "0"])
 
     assert exit_code == 0
-    assert [call["method"] for call in client.calls] == ["submit"]
+    assert [call["method"] for call in client.calls] == ["upsert_worker", "submit"]
     assert [call[4] for call in FakeRunner.calls] == [1]
 
 
@@ -309,6 +320,7 @@ def test_serve_max_issues_stops_after_successful_submissions(
 
     assert exit_code == 0
     assert [call["method"] for call in client.calls] == [
+        "upsert_worker",
         "claim_next",
         "submit",
         "claim_next",
@@ -344,7 +356,7 @@ def test_serve_uses_single_configured_assignee_when_agent_omitted(
     monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", ExplodingRunner)
 
     assert cli.main(["serve", "--once"]) == 0
-    assert client.calls[0]["body"]["assignee"] == "codex"
+    assert client.calls[1]["body"]["assignee"] == "codex"
 
 
 def test_serve_refuses_live_lock(
