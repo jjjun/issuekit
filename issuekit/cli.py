@@ -13,6 +13,7 @@ from issuekit.commands import (
     check_encoding,
     claim,
     complete,
+    dev_tool,
     handoff,
     implement,
     info,
@@ -54,6 +55,7 @@ COMMANDS = (
     "protocol",
     "init",
     "setup",
+    "dev-tool",
     "add-ref",
     "list-refs",
     "propose",
@@ -473,6 +475,54 @@ def build_parser() -> argparse.ArgumentParser:
     )
     setup_apply_parser.set_defaults(func=setup.run)
     setup_parser.set_defaults(func=setup.run)
+
+    dev_tool_parser = subparsers.add_parser(
+        "dev-tool",
+        help="Maintain the global issuekit tool during local development.",
+    )
+    dev_tool_subparsers = dev_tool_parser.add_subparsers(
+        dest="dev_tool_action",
+        metavar="<action>",
+        required=True,
+    )
+    install_editable_parser = dev_tool_subparsers.add_parser(
+        "install-editable",
+        help="Install this checkout as the global issuekit tool in editable mode.",
+    )
+    install_editable_parser.add_argument(
+        "--repo",
+        help="Explicit issuekit checkout path; defaults to the installed source root.",
+    )
+    install_editable_parser.add_argument(
+        "--no-stop",
+        action="store_true",
+        help="Do not stop running issuekit-mcp.exe processes before installing.",
+    )
+    install_editable_parser.add_argument("--json", action="store_true", help="Print JSON output.")
+    install_editable_parser.set_defaults(func=dev_tool.run)
+
+    reinstall_parser = dev_tool_subparsers.add_parser(
+        "reinstall",
+        help="Reinstall this checkout as the global issuekit tool using an absolute path.",
+    )
+    reinstall_parser.add_argument(
+        "--repo",
+        help="Explicit issuekit checkout path; defaults to the installed source root.",
+    )
+    reinstall_parser.add_argument(
+        "--no-stop",
+        action="store_true",
+        help="Do not stop running issuekit-mcp.exe processes before reinstalling.",
+    )
+    reinstall_parser.add_argument("--json", action="store_true", help="Print JSON output.")
+    reinstall_parser.set_defaults(func=dev_tool.run)
+
+    reload_mcp_parser = dev_tool_subparsers.add_parser(
+        "reload-mcp",
+        help="Stop running issuekit-mcp.exe processes so clients can restart them.",
+    )
+    reload_mcp_parser.add_argument("--json", action="store_true", help="Print JSON output.")
+    reload_mcp_parser.set_defaults(func=dev_tool.run)
 
     add_ref_parser = subparsers.add_parser(
         "add-ref",

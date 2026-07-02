@@ -18,7 +18,14 @@ For local development:
 ```powershell
 uv sync
 uv run issuekit --help
+uv run issuekit dev-tool install-editable
 ```
+
+On Windows, `dev-tool install-editable` installs the global `issuekit` and
+`issuekit-mcp` tool shims from this checkout in editable mode. It stops stale
+`issuekit-mcp.exe` processes first, uninstalls any existing global `issuekit`
+tool if present, installs with the `mcp` extra, and verifies the resulting tool
+environment.
 
 ## MCP server
 
@@ -30,7 +37,8 @@ uv tool install "issuekit[mcp] @ git+https://github.com/jjjun/issuekit.git"
 
 When upgrading a global tool, stop running issuekit MCP servers first. MCP
 clients hold `issuekit-mcp.exe` while the session is running, so replacing the
-tool underneath them can leave the install half-removed. Prefer:
+tool underneath them can leave the install half-removed. Normal users should
+prefer:
 
 ```powershell
 uv tool install --reinstall "issuekit[mcp] @ <absolute-path-or-url>"
@@ -39,6 +47,24 @@ uv tool install --reinstall "issuekit[mcp] @ <absolute-path-or-url>"
 Use an absolute path or URL, not a bare `.`, to avoid cwd-dependent installs.
 After any reinstall or upgrade, restart running codex and Claude Code sessions;
 they keep a stdio connection to the old server process.
+
+Issuekit developers working from a Windows checkout should use the repeatable
+developer commands instead:
+
+```powershell
+uv run issuekit dev-tool install-editable
+uv run issuekit dev-tool reload-mcp
+uv run issuekit dev-tool reinstall
+```
+
+`install-editable` reflects source edits the next time a global `issuekit` or
+`issuekit-mcp` process starts. `reload-mcp` stops only `issuekit-mcp.exe`
+processes and reports their PIDs and executable paths when available; codex or
+Claude Code may respawn the server, and a full client restart may still be
+required if the stdio connection is wedged. `reinstall` is the recovery path
+when editable metadata gets stale or a global tool environment is partially
+broken. All generated uv install commands use an absolute checkout path, never a
+bare `.`.
 
 Then scaffold each repository that uses issuekit:
 
@@ -133,6 +159,9 @@ copying the steps.
 | `issuekit init [--with-mcp]` | Install tracker templates, encoding hooks, and optional MCP handoff scaffolding. |
 | `issuekit setup [--force] [--json]` | Run per-repo MCP handoff scaffolding and setup diagnostics. |
 | `issuekit setup check --json` | Check setup state without writing files. |
+| `issuekit dev-tool install-editable [--repo <path>] [--no-stop] [--json]` | Windows developer command to install this checkout as the global editable tool with the MCP extra. |
+| `issuekit dev-tool reinstall [--repo <path>] [--no-stop] [--json]` | Windows developer recovery command to reinstall the global tool from an absolute checkout path. |
+| `issuekit dev-tool reload-mcp [--json]` | Stop only running `issuekit-mcp.exe` processes so MCP clients can restart them. |
 | `issuekit add` / `issuekit register` | Register this checkout as a worker (auto-derives machine/repo/worker ids). |
 | `issuekit add-ref <name> --path <repo> [--scope local\|workspace]` | Register an optional local project alias. |
 | `issuekit list-refs` | List effective local project aliases and their source. |
@@ -301,3 +330,14 @@ same-name review is rejected.
 
 This repo dogfoods issuekit. Implementation tasks and cross-project proposals
 live in the configured API project.
+
+Windows developer global-tool workflow:
+
+```powershell
+uv run issuekit dev-tool install-editable
+uv run issuekit dev-tool reload-mcp
+uv run issuekit dev-tool reinstall
+```
+
+Pass `--json` to any `dev-tool` action for automation. The JSON payload includes
+`ok`, `actions`, `stopped_processes`, `commands`, and `diagnostics`.
