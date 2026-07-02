@@ -14,18 +14,16 @@ from issuekit.config import load_config
 from issuekit.core import issue_dict
 from issuekit.protocol import render_protocol, render_server_instructions
 from issuekit.proposals_api import (
-    adopt_outcome,
+    adopt_proposal_with_append,
     api_client,
     build_proposal,
     list_outgoing_proposals,
-    payload_mismatch_guidance,
     proposal_id_arg,
-    proposal_payload_mismatch,
+    send_proposal,
 )
-from issuekit.store import ApiStore, get_store
+from issuekit.store import get_store
 from issuekit.workflow import (
     AUTO_REVIEWER,
-    WorkflowError,
     claim_next,
     find_for,
     request_changes as workflow_request_changes,
@@ -199,21 +197,7 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
             reply=reply,
         )
         config = load_config(root)
-        with api_client(config, project=proposal.to) as client:
-            created = client.create_proposal(
-                origin=proposal.origin,
-                title=proposal.title,
-                body=proposal.body,
-                reply_to=proposal.reply_to or None,
-            )
-        result = dict(created)
-        mismatched = proposal_payload_mismatch(proposal, created)
-        result["payload_mismatch"] = bool(mismatched)
-        if mismatched:
-            result["idempotent_existing"] = True
-            result["payload_mismatch_fields"] = mismatched
-            result["warning"] = payload_mismatch_guidance(proposal, created, mismatched)
-        return result
+        return send_proposal(config, proposal)
 
     @server.tool(description="List incoming cross-repository proposals.")
     def list_incoming() -> list[dict[str, Any]]:
@@ -240,22 +224,12 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
     ) -> dict[str, Any]:
         config = load_config(root)
         raw_id = proposal_id if proposal_id is not None else proposal_id_arg(proposal_file or "")
-        with api_client(config) as client:
-            issue = client.adopt_proposal(int(raw_id), priority=priority)
-            if append is not None:
-                issue_id = _adopted_issue_id(issue)
-                if issue_id is None:
-                    raise WorkflowError(
-                        "Adoption did not return a created API issue; cannot append to the issue body."
-                    )
-                edit_issue(
-                    issue_id,
-                    append=append,
-                    config=config,
-                    store=ApiStore(config, client=client),
-                )
-                issue = client.get_issue(issue_id)
-        return adopt_outcome(raw_id, config.project, issue)
+        return adopt_proposal_with_append(
+            config,
+            raw_id,
+            priority=priority,
+            append_text=append,
+        )
 
     @server.tool(description="Discard an incoming cross-repository proposal.")
     def discard_proposal(
@@ -272,11 +246,3 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
 
 def main() -> None:
     asyncio.run(create_server().run_stdio_async())
-
-
-def _adopted_issue_id(issue: dict[str, Any]) -> int | None:
-    try:
-        issue_id = int(issue.get("id"))
-    except (TypeError, ValueError):
-        return None
-    return issue_id if issue_id > 0 else None

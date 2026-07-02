@@ -13,6 +13,7 @@ from issuekit.core import Issue, parse_issue_id_arg
 from issuekit.gitutil import git_short_head
 from issuekit.proposals import Proposal, ProposalError, origin_destination
 from issuekit.store import get_store
+from issuekit.workflow import WorkflowError
 
 
 OUTGOING_PROPOSAL_STATUSES = ("pending", "adopted", "discarded")
@@ -55,6 +56,15 @@ def adopt_outcome(proposal_id: str | int, project: str, issue: dict) -> dict:
     return outcome
 
 
+class ProposalAppendError(ProposalError):
+    """Raised after adoption succeeds but appending extra issue content fails."""
+
+    def __init__(self, message: str, *, outcome: dict, append_error: str) -> None:
+        super().__init__(message)
+        self.outcome = outcome
+        self.append_error = append_error
+
+
 def api_client(config: IssuekitConfig, *, project: str | None = None) -> IssuekitClient:
     if not config.api_url:
         raise ProposalError(
@@ -65,6 +75,69 @@ def api_client(config: IssuekitConfig, *, project: str | None = None) -> Issueki
         project=project or config.project,
         timeout=config.api_timeout,
     )
+
+
+def send_proposal(config: IssuekitConfig, proposal: Proposal) -> dict:
+    """Create a proposal and annotate idempotent payload conflicts."""
+    with api_client(config, project=proposal.to) as client:
+        created = client.create_proposal(
+            origin=proposal.origin,
+            title=proposal.title,
+            body=proposal.body,
+            reply_to=proposal.reply_to or None,
+        )
+    result = dict(created)
+    mismatched = proposal_payload_mismatch(proposal, created)
+    result["payload_mismatch"] = bool(mismatched)
+    if mismatched:
+        result["idempotent_existing"] = True
+        result["payload_mismatch_fields"] = mismatched
+        result["warning"] = payload_mismatch_guidance(proposal, created, mismatched)
+    return result
+
+
+def adopt_proposal_with_append(
+    config: IssuekitConfig,
+    proposal_id: str | int,
+    *,
+    priority: str | None,
+    append_text: str | None = None,
+    append_file: str | None = None,
+) -> dict:
+    if append_text is not None and append_file is not None:
+        raise ValueError("append_text and append_file are mutually exclusive.")
+    raw_id = proposal_id_arg(str(proposal_id))
+    with api_client(config) as client:
+        issue = client.adopt_proposal(raw_id, priority=priority)
+        if append_text is not None or append_file is not None:
+            issue_id = _adopted_issue_id(issue)
+            outcome = adopt_outcome(proposal_id, config.project, issue)
+            if issue_id is None:
+                message = (
+                    "Adopted proposal, but no API issue id was returned; cannot append file."
+                    if append_file is not None
+                    else "Adoption did not return a created API issue; cannot append to the issue body."
+                )
+                raise ProposalAppendError(message, outcome=outcome, append_error=message)
+            try:
+                from issuekit.commands.edit import edit_issue
+                from issuekit.store import ApiStore
+
+                edit_issue(
+                    issue_id,
+                    append=append_text,
+                    append_file=append_file,
+                    config=config,
+                    store=ApiStore(config, client=client),
+                )
+                issue = client.get_issue(issue_id)
+            except (OSError, UnicodeError, ValueError, WorkflowError) as exc:
+                raise ProposalAppendError(
+                    f"Adopted proposal as issue #{issue_id}, but append failed: {exc}",
+                    outcome=outcome,
+                    append_error=str(exc),
+                ) from exc
+    return adopt_outcome(proposal_id, config.project, issue)
 
 
 def proposal_payload_mismatch(proposal: Proposal, created: Mapping[str, Any]) -> list[str]:
@@ -137,6 +210,14 @@ def _is_own_origin(origin: object, project: str) -> bool:
 
 def _proposal_text(value: object) -> str:
     return str(value or "").strip()
+
+
+def _adopted_issue_id(issue: dict) -> int | None:
+    try:
+        issue_id = int(issue.get("id"))
+    except (TypeError, ValueError):
+        return None
+    return issue_id if issue_id > 0 else None
 
 
 def proposal_id_arg(value: str) -> int:

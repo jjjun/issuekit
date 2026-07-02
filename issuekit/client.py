@@ -8,7 +8,7 @@ client created here.
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 import os
 from typing import Any
 
@@ -195,6 +195,23 @@ class IssuekitClient:
         include_completed: bool = False,
         page_size: int = 500,
     ) -> list[JsonDict]:
+        if include_completed:
+            return list(
+                self._paginate(
+                    "/api/issues/board",
+                    collection=None,
+                    params={
+                        "projects": self.project,
+                        "status": status,
+                        "include_completed": True,
+                        "stage": stage,
+                        "assignee": assignee,
+                    },
+                    page_label="Issue board response",
+                    item_label="Issue response",
+                    page_size=page_size,
+                )
+            )
         if page_size <= 0:
             raise ValueError("page_size must be greater than zero")
         page_size = min(page_size, 500)
@@ -434,45 +451,16 @@ class IssuekitClient:
         thread_id: int | None = None,
         page_size: int = 500,
     ) -> list[JsonDict]:
-        if page_size <= 0:
-            raise ValueError("page_size must be greater than zero")
-        page_size = min(page_size, 500)
-        offset = 0
-        proposals: list[JsonDict] = []
-        while True:
-            payload = self._request(
-                "GET",
+        return list(
+            self._paginate(
                 "/",
                 collection="proposals",
-                params=_drop_none(
-                    {
-                        "status": status,
-                        "thread_id": thread_id,
-                        "limit": page_size,
-                        "offset": offset,
-                    }
-                ),
+                params={"status": status, "thread_id": thread_id},
+                page_label="Proposal list response",
+                item_label="Proposal response",
+                page_size=page_size,
             )
-            page = _ensure_dict(payload, "Proposal list response")
-            items = page.get("items")
-            if not isinstance(items, list):
-                raise WorkflowError(
-                    "Proposal list response items was not a JSON array.",
-                    code="invalid_response",
-                )
-            proposals.extend(_ensure_dict(item, "Proposal response") for item in items)
-
-            total = page.get("total")
-            limit = page.get("limit", page_size)
-            current_offset = page.get("offset", offset)
-            if not isinstance(total, int) or not isinstance(limit, int) or not isinstance(current_offset, int):
-                raise WorkflowError(
-                    "Proposal list response pagination fields were invalid.",
-                    code="invalid_response",
-                )
-            if current_offset + len(items) >= total or len(items) < limit:
-                return proposals
-            offset = current_offset + limit
+        )
 
     def reply_proposal(
         self,
@@ -514,38 +502,16 @@ class IssuekitClient:
         status: str | None = None,
         page_size: int = 500,
     ) -> list[JsonDict]:
-        if page_size <= 0:
-            raise ValueError("page_size must be greater than zero")
-        page_size = min(page_size, 500)
-        offset = 0
-        threads: list[JsonDict] = []
-        while True:
-            payload = self._request(
-                "GET",
+        return list(
+            self._paginate(
                 "/threads",
                 collection="proposals",
-                params=_drop_none({"status": status, "limit": page_size, "offset": offset}),
+                params={"status": status},
+                page_label="Proposal thread list response",
+                item_label="Proposal thread response",
+                page_size=page_size,
             )
-            page = _ensure_dict(payload, "Proposal thread list response")
-            items = page.get("items")
-            if not isinstance(items, list):
-                raise WorkflowError(
-                    "Proposal thread list response items was not a JSON array.",
-                    code="invalid_response",
-                )
-            threads.extend(_ensure_dict(item, "Proposal thread response") for item in items)
-
-            total = page.get("total")
-            limit = page.get("limit", page_size)
-            current_offset = page.get("offset", offset)
-            if not isinstance(total, int) or not isinstance(limit, int) or not isinstance(current_offset, int):
-                raise WorkflowError(
-                    "Proposal thread list response pagination fields were invalid.",
-                    code="invalid_response",
-                )
-            if current_offset + len(items) >= total or len(items) < limit:
-                return threads
-            offset = current_offset + limit
+        )
 
     def patch_thread(
         self,
@@ -646,6 +612,53 @@ class IssuekitClient:
                 },
             )
         return self._parse_response(response)
+
+    def _paginate(
+        self,
+        path: str,
+        *,
+        collection: str | None,
+        params: Mapping[str, Any],
+        page_label: str,
+        item_label: str,
+        page_size: int,
+    ) -> Iterator[JsonDict]:
+        if page_size <= 0:
+            raise ValueError("page_size must be greater than zero")
+        page_size = min(page_size, 500)
+        offset = 0
+        while True:
+            page_params = _drop_none({**params, "limit": page_size, "offset": offset})
+            if collection is None:
+                payload = self._authorized_request("GET", path, params=page_params)
+            else:
+                payload = self._request("GET", path, collection=collection, params=page_params)
+            page = _ensure_dict(payload, page_label)
+            items = page.get("items")
+            if not isinstance(items, list):
+                raise WorkflowError(
+                    f"{page_label} items was not a JSON array.",
+                    code="invalid_response",
+                )
+            for item in items:
+                yield _ensure_dict(item, item_label)
+
+            total = page.get("total")
+            limit = page.get("limit", page_size)
+            current_offset = page.get("offset", offset)
+            if (
+                not isinstance(total, int)
+                or not isinstance(limit, int)
+                or not isinstance(current_offset, int)
+                or limit <= 0
+            ):
+                raise WorkflowError(
+                    f"{page_label} pagination fields were invalid.",
+                    code="invalid_response",
+                )
+            if current_offset + len(items) >= total or len(items) < limit:
+                return
+            offset = current_offset + limit
 
     def _send(self, method: str, path: str, **kwargs: Any) -> httpx.Response:
         try:

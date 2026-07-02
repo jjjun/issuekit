@@ -6,19 +6,18 @@ import json
 from pathlib import Path
 import sys
 
-from issuekit.commands.edit import edit_issue
 from issuekit.config import load_config
 from issuekit.core import VALID_ISSUE_PRIORITIES
 from issuekit.proposals import ProposalError
 from issuekit.proposals_api import (
-    adopt_outcome,
+    ProposalAppendError,
+    adopt_proposal_with_append,
     api_client,
     build_proposal,
     get_outgoing_proposal,
     list_outgoing_proposals,
-    payload_mismatch_guidance,
     proposal_id_arg,
-    proposal_payload_mismatch,
+    send_proposal,
 )
 from issuekit.refs import (
     RefError,
@@ -26,7 +25,6 @@ from issuekit.refs import (
     add_workspace_ref,
     list_effective_refs,
 )
-from issuekit.store import ApiStore
 from issuekit.workflow import WorkflowError
 
 
@@ -73,26 +71,18 @@ def run_propose(args) -> int:
             from_issue=args.from_issue,
             reply=args.reply,
         )
-        with api_client(config, project=proposal.to) as client:
-            created = client.create_proposal(
-                origin=proposal.origin,
-                title=proposal.title,
-                body=proposal.body,
-                reply_to=proposal.reply_to or None,
-            )
+        created = send_proposal(config, proposal)
     except (LookupError, ProposalError, RefError, ValueError, WorkflowError) as exc:
         print(str(exc), file=sys.stderr)
         return 1
-    mismatched = proposal_payload_mismatch(proposal, created)
+    warning = created.get("warning")
+    mismatched = bool(created.get("payload_mismatch"))
     if args.json:
         output = dict(created)
-        output["payload_mismatch"] = bool(mismatched)
-        if mismatched:
-            output["idempotent_existing"] = True
-            output["payload_mismatch_fields"] = mismatched
+        output.pop("warning", None)
         print(json.dumps(output, indent=2))
     if mismatched:
-        print(payload_mismatch_guidance(proposal, created, mismatched), file=sys.stderr)
+        print(warning, file=sys.stderr)
         return 1
     if not args.json:
         print(f"Sent proposal #{created.get('id')}: {created.get('title', proposal.title)}")
@@ -147,52 +137,23 @@ def run_adopt(args) -> int:
         print(f"Invalid priority: {args.priority}", file=sys.stderr)
         return 1
     config = load_config(Path.cwd())
-    client = None
     try:
-        client = api_client(config)
-        issue = client.adopt_proposal(
-            proposal_id_arg(args.proposal),
+        outcome = adopt_proposal_with_append(
+            config,
+            args.proposal,
             priority=args.priority,
+            append_file=args.append_file,
         )
-    except (ProposalError, WorkflowError, ValueError) as exc:
-        if client is not None:
-            client.close()
+    except ProposalAppendError as exc:
+        if args.json:
+            output = dict(exc.outcome)
+            output["append_error"] = exc.append_error
+            print(json.dumps(output, indent=2))
         print(str(exc), file=sys.stderr)
         return 1
-    if args.append_file:
-        issue_id = _adopted_issue_id(issue)
-        outcome = adopt_outcome(args.proposal, config.project, issue)
-        if issue_id is None:
-            message = "Adopted proposal, but no API issue id was returned; cannot append file."
-            if args.json:
-                output = dict(outcome)
-                output["append_error"] = message
-                print(json.dumps(output, indent=2))
-            print(message, file=sys.stderr)
-            if client is not None:
-                client.close()
-            return 1
-        try:
-            edit_issue(
-                issue_id,
-                append_file=args.append_file,
-                config=config,
-                store=ApiStore(config, client=client),
-            )
-            issue = client.get_issue(issue_id)
-        except (OSError, UnicodeError, ValueError, WorkflowError) as exc:
-            message = f"Adopted proposal as issue #{issue_id}, but append failed: {exc}"
-            if client is not None:
-                client.close()
-            if args.json:
-                output = dict(outcome)
-                output["append_error"] = str(exc)
-                print(json.dumps(output, indent=2))
-            print(message, file=sys.stderr)
-            return 1
-    if client is not None:
-        client.close()
-    outcome = adopt_outcome(args.proposal, config.project, issue)
+    except (ProposalError, WorkflowError, ValueError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
     if args.json:
         print(json.dumps(outcome, indent=2))
         return 0
@@ -206,14 +167,6 @@ def run_adopt(args) -> int:
         print(f"Adopted proposal #{args.proposal}, but no API issue id was returned.")
         print(outcome["instruction"])
     return 0
-
-
-def _adopted_issue_id(issue: dict) -> int | None:
-    try:
-        issue_id = int(issue.get("id"))
-    except (TypeError, ValueError):
-        return None
-    return issue_id if issue_id > 0 else None
 
 
 def run_discard(args) -> int:
