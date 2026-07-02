@@ -23,7 +23,12 @@ class FakeAdapter(AgentAdapter):
     def resolve_binary(self) -> Path:
         return Path(self.command[0])
 
-    def build_argv(self, prompt: str, plan_path: Path) -> list[str]:
+    def build_argv(
+        self,
+        prompt: str,
+        plan_path: Path,
+        session_id: str | None = None,
+    ) -> list[str]:
         return self.command[1:]
 
     def parse_output(self, stdout: str, stderr: str) -> dict[str, str]:
@@ -65,9 +70,14 @@ def test_runner_prompt_describes_api_lifecycle_without_file_tracker(
     class PromptCaptureAdapter(FakeAdapter):
         prompt: str = ""
 
-        def build_argv(self, prompt: str, plan_path: Path) -> list[str]:
+        def build_argv(
+            self,
+            prompt: str,
+            plan_path: Path,
+            session_id: str | None = None,
+        ) -> list[str]:
             self.prompt = prompt
-            return super().build_argv(prompt, plan_path)
+            return super().build_argv(prompt, plan_path, session_id=session_id)
 
     script = tmp_path / "script.py"
     script.write_text("pass")
@@ -84,6 +94,45 @@ def test_runner_prompt_describes_api_lifecycle_without_file_tracker(
     assert "Issuekit owns the API-backed issue lifecycle" in adapter.prompt
     assert "do not mutate tracker state or issue lifecycle metadata directly" in adapter.prompt
     assert "docs/issues" not in adapter.prompt
+
+
+def test_runner_passes_session_id_through_to_argv(tmp_path: Path) -> None:
+    script = tmp_path / "script.py"
+    script.write_text(
+        "import json, sys; print(json.dumps(sys.argv[1:]))",
+        encoding="utf-8",
+        newline="\n",
+    )
+    plan = tmp_path / "plan.md"
+    plan.write_text("plan")
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / ".git").mkdir()
+    config = IssuekitConfig(
+        agents=(
+            (
+                "python-agent",
+                AgentRunConfig(
+                    binary=sys.executable,
+                    headless_argv=(str(script),),
+                    resumable=True,
+                    session_flag="--session-id",
+                ),
+            ),
+        )
+    )
+
+    adapter = ConfigAgentAdapter("python-agent", config=config)
+    result = AgentRunner().run(
+        adapter,
+        plan,
+        repo,
+        timeout=10.0,
+        session_id="123e4567-e89b-12d3-a456-426614174000",
+    )
+
+    argv = json.loads(result.stdout_path.read_text(encoding="utf-8"))
+    assert argv[-2:] == ["--session-id", "123e4567-e89b-12d3-a456-426614174000"]
 
 
 def test_runner_replaces_invalid_log_bytes_before_parsing(tmp_path: Path) -> None:
@@ -295,6 +344,59 @@ def test_claude_adapter_argv_appends_model_when_supplied() -> None:
         "text",
     ]
     assert argv[6:] == ["--model", "claude-opus-4-8"]
+
+
+def test_config_adapter_appends_session_flag_only_when_resumable() -> None:
+    config = IssuekitConfig(
+        agents=(
+            (
+                "resumable",
+                AgentRunConfig(
+                    binary="agent",
+                    headless_argv=("run",),
+                    resumable=True,
+                    session_flag="--session-id",
+                ),
+            ),
+            (
+                "plain",
+                AgentRunConfig(
+                    binary="agent",
+                    headless_argv=("run",),
+                    session_flag="--session-id",
+                ),
+            ),
+        )
+    )
+
+    resumable = ConfigAgentAdapter("resumable", config=config)
+    plain = ConfigAgentAdapter("plain", config=config)
+
+    assert resumable.supports_session_resume() is True
+    assert plain.supports_session_resume() is False
+    assert resumable.build_argv(
+        "prompt",
+        Path("/plan.md"),
+        session_id="123e4567-e89b-12d3-a456-426614174000",
+    )[-2:] == ["--session-id", "123e4567-e89b-12d3-a456-426614174000"]
+    assert resumable.build_argv("prompt", Path("/plan.md")) == ["run", "prompt"]
+    assert plain.build_argv(
+        "prompt",
+        Path("/plan.md"),
+        session_id="123e4567-e89b-12d3-a456-426614174000",
+    ) == ["run", "prompt"]
+
+
+def test_claude_adapter_argv_appends_session_id_when_supplied() -> None:
+    adapter = ClaudeAdapter()
+    argv = adapter.build_argv(
+        "prompt",
+        Path("/plan.md"),
+        session_id="123e4567-e89b-12d3-a456-426614174000",
+    )
+
+    assert adapter.supports_session_resume() is True
+    assert argv[-2:] == ["--session-id", "123e4567-e89b-12d3-a456-426614174000"]
 
 
 def test_config_adapter_uses_configured_model_and_prompt_suffix() -> None:

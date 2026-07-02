@@ -77,6 +77,7 @@ class CannedRunner:
                 "agent_name": agent_name,
                 "issue_id": issue_id,
                 "prompt_override": kwargs.get("prompt_override"),
+                "session_id": kwargs.get("session_id"),
             }
         )
         return AgentResult(
@@ -130,6 +131,41 @@ def test_negotiate_converges_when_both_sides_agree_on_same_contract(tmp_path) ->
     assert "Perspective: you represent the frontend side." in str(
         runner.calls[0]["prompt_override"]
     )
+
+
+def test_negotiate_reuses_resumable_side_session_and_shrinks_prompt(tmp_path) -> None:
+    store = MockNegotiationStore(None)
+    runner = CannedRunner(
+        [
+            _block(side="frontend", verdict="propose", contract="GET /items"),
+            _block(side="backend", verdict="agree", contract="GET /items"),
+            _block(side="frontend", verdict="agree", contract="GET /items"),
+        ]
+    )
+
+    result = run_negotiation(
+        issue=_issue(),
+        to_project="backend",
+        frontend_agent="claude",
+        backend_agent="codex",
+        max_rounds=3,
+        timeout=9.0,
+        config=IssuekitConfig(api_url="https://mine.example", project="frontend"),
+        cwd=tmp_path,
+        store=store,
+        runner=runner,
+    )
+
+    assert result.outcome == "agreed"
+    assert runner.calls[0]["session_id"] == runner.calls[2]["session_id"]
+    assert isinstance(runner.calls[0]["session_id"], str)
+    assert runner.calls[1]["session_id"] is None
+    assert "Compact thread so far:" in str(runner.calls[1]["prompt_override"])
+    resumed_prompt = str(runner.calls[2]["prompt_override"])
+    assert "Latest counterpart entry:" in resumed_prompt
+    assert "backend agree | verdict=agree | contract=GET /items" in resumed_prompt
+    assert "Compact thread so far:" not in resumed_prompt
+    assert "frontend propose | verdict=propose" not in resumed_prompt
 
 
 def test_negotiate_blocked_path_stops_immediately(tmp_path) -> None:

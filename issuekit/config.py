@@ -21,6 +21,8 @@ class AgentRunConfig:
     binary: str
     known_paths: tuple[str, ...] = ()
     headless_argv: tuple[str, ...] = ()
+    resumable: bool = False
+    session_flag: str | None = None
     approval_flag: str | None = None
     approval_value: str | None = None
     output_format_flag: str | None = None
@@ -103,6 +105,8 @@ class IssuekitConfig:
                     "~/.local/bin/claude.exe",
                 ),
                 headless_argv=("-p",),
+                resumable=True,
+                session_flag="--session-id",
                 approval_flag="--permission-mode",
                 approval_value="acceptEdits",
                 output_format_flag="--output-format",
@@ -322,6 +326,8 @@ def _agent_overrides(cfg: dict[str, object]) -> dict[str, object]:
         "binary": str,
         "known_paths": _string_tuple,
         "headless_argv": _string_tuple,
+        "resumable": _bool_value,
+        "session_flag": _optional_str,
         "approval_flag": _optional_str,
         "approval_value": _optional_str,
         "output_format_flag": _optional_str,

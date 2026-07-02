@@ -327,6 +327,8 @@ def test_load_config_reads_agent_guardrail_fields(tmp_path: Path) -> None:
             "model_flag = '--model'\n"
             "model = 'gpt-5.3-codex-spark'\n"
             "prompt_suffix = 'Keep diffs small.'\n"
+            "resumable = true\n"
+            "session_flag = '--session-id'\n"
             "mojibake_gate = true\n"
             "diff_shape_warn_deletions = 12\n"
             "[agents.codex.model_prompts]\n"
@@ -347,6 +349,8 @@ def test_load_config_reads_agent_guardrail_fields(tmp_path: Path) -> None:
         ),
         headless_argv=("exec",),
         approval_flag="--full-auto",
+        resumable=True,
+        session_flag="--session-id",
         model_flag="--model",
         model="gpt-5.3-codex-spark",
         prompt_suffix="Keep diffs small.",
@@ -433,3 +437,14 @@ def test_shipped_kimi_defaults_do_not_enable_guardrails() -> None:
     assert kimi.prompt_suffix is None
     assert kimi.mojibake_gate is False
     assert kimi.diff_shape_warn_deletions is None
+
+
+def test_shipped_only_claude_defaults_enable_resumable_sessions() -> None:
+    agents = dict(IssuekitConfig.agents)
+
+    assert agents["claude"].resumable is True
+    assert agents["claude"].session_flag == "--session-id"
+    assert agents["codex"].resumable is False
+    assert agents["codex"].session_flag is None
+    assert agents["kimi"].resumable is False
+    assert agents["kimi"].session_flag is None

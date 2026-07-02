@@ -7,9 +7,10 @@ import hashlib
 import json
 from pathlib import Path
 import sys
+import uuid
 from typing import Protocol
 
-from issuekit.agents.runner import AgentResult, AgentRunner, resolve_adapter
+from issuekit.agents.runner import AgentAdapter, AgentResult, AgentRunner, resolve_adapter
 from issuekit.commands._common import run_command
 from issuekit.config import IssuekitConfig, load_config
 from issuekit.core import Issue, parse_issue_id_arg
@@ -25,6 +26,7 @@ from issuekit.negotiation_prompts import (
     NegotiationParseError,
     ParsedRound,
     parse_round_output,
+    render_resumed_round_prompt,
     render_round_prompt,
 )
 from issuekit.store import get_store
@@ -367,20 +369,37 @@ def run_negotiation(
     runner = runner or AgentRunner()
     seed = _seed_text(issue, config=config, to_project=to_project)
     run_records: list[RoundRun] = []
+    adapters = {
+        FRONTEND_SIDE: resolve_adapter(frontend_agent, config=config, model=model),
+        BACKEND_SIDE: resolve_adapter(backend_agent, config=config, model=model),
+    }
+    agents = {
+        FRONTEND_SIDE: frontend_agent,
+        BACKEND_SIDE: backend_agent,
+    }
+    session_ids = {
+        side: str(uuid.uuid4())
+        for side, adapter in adapters.items()
+        if adapter.supports_session_resume()
+    }
+    seeded_sessions: set[str] = set()
 
     first = _run_side_turn(
         round_number=1,
         side=FRONTEND_SIDE,
-        agent=frontend_agent,
+        agent=agents[FRONTEND_SIDE],
+        adapter=adapters[FRONTEND_SIDE],
+        session_id=session_ids.get(FRONTEND_SIDE),
+        resume_prompt=False,
         seed=seed,
         thread=[],
         issue=issue,
-        config=config,
         cwd=cwd,
         timeout=timeout,
-        model=model,
         runner=runner,
     )
+    if FRONTEND_SIDE in session_ids:
+        seeded_sessions.add(FRONTEND_SIDE)
     first_entry = store.create_thread(
         side=FRONTEND_SIDE,
         verdict=first.parsed.verdict,
@@ -400,20 +419,22 @@ def run_negotiation(
 
     while len(thread) < max_rounds:
         side = _next_side(thread)
-        agent = frontend_agent if side == FRONTEND_SIDE else backend_agent
         turn = _run_side_turn(
             round_number=len(thread) + 1,
             side=side,
-            agent=agent,
+            agent=agents[side],
+            adapter=adapters[side],
+            session_id=session_ids.get(side),
+            resume_prompt=session_ids.get(side) is not None and side in seeded_sessions,
             seed=seed,
             thread=thread,
             issue=issue,
-            config=config,
             cwd=cwd,
             timeout=timeout,
-            model=model,
             runner=runner,
         )
+        if side in session_ids:
+            seeded_sessions.add(side)
         store.append_entry(
             thread_id,
             side=side,
@@ -445,21 +466,30 @@ def _run_side_turn(
     round_number: int,
     side: str,
     agent: str,
+    adapter: AgentAdapter,
+    session_id: str | None,
+    resume_prompt: bool,
     seed: str,
     thread: list[NegotiationEntry],
     issue: Issue,
-    config: IssuekitConfig,
     cwd: Path,
     timeout: float,
-    model: str | None,
     runner: AgentRunner,
 ) -> _TurnResult:
-    prompt = render_round_prompt(
-        side=side,
-        seed=seed,
-        thread=thread,
-        resolved_contract=_latest_contract(thread),
-    )
+    if resume_prompt:
+        latest_counterpart = _latest_counterpart(thread, side=side)
+        prompt = render_resumed_round_prompt(
+            side=side,
+            latest_counterpart=latest_counterpart,
+            resolved_contract=_latest_contract(thread),
+        )
+    else:
+        prompt = render_round_prompt(
+            side=side,
+            seed=seed,
+            thread=thread,
+            resolved_contract=_latest_contract(thread),
+        )
     plan_path = _write_round_prompt(
         cwd,
         issue_id=issue.id,
@@ -467,7 +497,6 @@ def _run_side_turn(
         side=side,
         prompt=prompt,
     )
-    adapter = resolve_adapter(agent, config=config, model=model)
     result = runner.run(
         adapter,
         plan_path,
@@ -476,6 +505,7 @@ def _run_side_turn(
         agent_name=agent,
         issue_id=issue.id,
         prompt_override=prompt,
+        session_id=session_id,
     )
     run_id = _run_id(result)
     print(
@@ -604,6 +634,16 @@ def _latest_contract(thread: list[NegotiationEntry]) -> str | None:
         if entry.contract:
             return entry.contract
     return None
+
+
+def _latest_counterpart(thread: list[NegotiationEntry], *, side: str) -> NegotiationEntry:
+    for entry in reversed(thread):
+        if entry.side != side:
+            return entry
+    raise WorkflowError(
+        f"No counterpart entry is available for resumed {side} prompt.",
+        code="invalid_negotiation_thread",
+    )
 
 
 def _entry_title(side: str, parsed: ParsedRound) -> str:

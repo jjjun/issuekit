@@ -87,6 +87,56 @@ def render_round_prompt(
     )
 
 
+def render_resumed_round_prompt(
+    *,
+    side: str,
+    latest_counterpart: NegotiationEntry,
+    resolved_contract: str | None = None,
+) -> str:
+    """Render a compact prompt for an already-resumed side session."""
+
+    resolved = resolved_contract if resolved_contract is not None else "(none yet)"
+    verdict_values = ", ".join(verdict.value for verdict in Verdict)
+
+    return "\n".join(
+        [
+            "You are continuing an issuekit cross-repo design negotiation.",
+            f"Perspective: you represent the {side} side.",
+            "Round job: propose, counter, agree, or block the current contract.",
+            "",
+            "Resolved contract so far:",
+            resolved,
+            "",
+            "Latest counterpart entry:",
+            _format_thread_entry(1, latest_counterpart),
+            "",
+            "Read budget:",
+            (
+                "Read only the files needed to judge this specific contract; do not "
+                "implement code; do not modify the tracker."
+            ),
+            "Do not read or include whole-repo dumps.",
+            "",
+            "Output contract:",
+            "Emit exactly one fenced block and no other response text.",
+            "Everything outside the block is ignored by the parser.",
+            f"The JSON keys must be: {', '.join(NEGOTIATION_OUTPUT_KEYS)}.",
+            f"The verdict must be one of: {verdict_values}.",
+            "The contract value must be a string or null.",
+            "The notes value must be short free text.",
+            "```negotiation",
+            '{',
+            f'  "side": "{side}",',
+            '  "verdict": "propose",',
+            '  "contract": "Small proposed contract text, or null",',
+            '  "notes": "Short rationale."',
+            '}',
+            "```",
+            "",
+        ]
+    )
+
+
 def parse_round_output(stdout: str) -> ParsedRound:
     """Parse the newest well-formed negotiation block from agent stdout."""
 

@@ -5,6 +5,7 @@ from issuekit.negotiation_prompts import (
     NegotiationParseError,
     ParsedRound,
     parse_round_output,
+    render_resumed_round_prompt,
     render_round_prompt,
 )
 
@@ -69,6 +70,31 @@ def test_render_round_prompt_excludes_entry_bodies_and_repo_dumps() -> None:
 
     assert "SECRET_REPO_FILE_CONTENTS" not in prompt
     assert "Do not read or include whole-repo dumps." in prompt
+
+
+def test_render_resumed_round_prompt_includes_only_latest_counterpart() -> None:
+    latest = _entry(
+        side="backend",
+        title="Backend agrees",
+        verdict=Verdict.agree,
+        contract="GET /items 200",
+        body="SECRET_REPO_FILE_CONTENTS",
+    )
+
+    prompt = render_resumed_round_prompt(
+        side="frontend",
+        latest_counterpart=latest,
+        resolved_contract="GET /items 200",
+    )
+
+    assert "You are continuing an issuekit cross-repo design negotiation." in prompt
+    assert "Latest counterpart entry:" in prompt
+    assert "Backend agrees | verdict=agree | contract=GET /items 200" in prompt
+    assert "Compact thread so far:" not in prompt
+    assert "Seed:" not in prompt
+    assert "SECRET_REPO_FILE_CONTENTS" not in prompt
+    assert "```negotiation" in prompt
+    assert '"side": "frontend"' in prompt
 
 
 def test_parse_round_output_parses_clean_block() -> None:

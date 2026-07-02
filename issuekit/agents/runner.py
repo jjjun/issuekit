@@ -35,12 +35,21 @@ class AgentAdapter(ABC):
         """Return the path to the agent executable."""
 
     @abstractmethod
-    def build_argv(self, prompt: str, plan_path: Path) -> list[str]:
+    def build_argv(
+        self,
+        prompt: str,
+        plan_path: Path,
+        session_id: str | None = None,
+    ) -> list[str]:
         """Build the command-line argv for the agent."""
 
     @abstractmethod
     def parse_output(self, stdout: str, stderr: str) -> dict[str, str]:
         """Parse stdout/stderr into a structured dict."""
+
+    def supports_session_resume(self) -> bool:
+        """Return True when the adapter can resume a caller-provided session."""
+        return False
 
 
 class ConfigAgentAdapter(AgentAdapter):
@@ -74,7 +83,12 @@ class ConfigAgentAdapter(AgentAdapter):
             "Tried PATH and known per-OS locations."
         )
 
-    def build_argv(self, prompt: str, plan_path: Path) -> list[str]:
+    def build_argv(
+        self,
+        prompt: str,
+        plan_path: Path,
+        session_id: str | None = None,
+    ) -> list[str]:
         resolved_model = self.model or self.run_config.model
         prompt = self._append_prompt_suffixes(prompt, resolved_model)
         argv = list(self.run_config.headless_argv)
@@ -89,6 +103,12 @@ class ConfigAgentAdapter(AgentAdapter):
             )
         if resolved_model and self.run_config.model_flag:
             argv.extend([self.run_config.model_flag, resolved_model])
+        if (
+            session_id
+            and self.run_config.resumable
+            and self.run_config.session_flag
+        ):
+            argv.extend([self.run_config.session_flag, session_id])
         return argv
 
     def parse_output(self, stdout: str, stderr: str) -> dict[str, str]:
@@ -97,6 +117,10 @@ class ConfigAgentAdapter(AgentAdapter):
             "stdout": stdout,
             "stderr": stderr,
         }
+
+    def supports_session_resume(self) -> bool:
+        """Return True when the declarative config has a session flag."""
+        return bool(self.run_config.resumable and self.run_config.session_flag)
 
     def _append_prompt_suffixes(self, prompt: str, resolved_model: str | None) -> str:
         parts = [prompt]
@@ -250,6 +274,7 @@ class AgentRunner:
         prompt_suffix: str | None = None,
         prompt_override: str | None = None,
         abort_event: threading.Event | None = None,
+        session_id: str | None = None,
     ) -> AgentResult:
         plan_path = plan_path.resolve()
         repo = repo.resolve()
@@ -271,7 +296,11 @@ class AgentRunner:
         )
         if prompt_suffix:
             prompt = f"{prompt}\n\n{prompt_suffix}"
-        argv = [str(binary)] + adapter.build_argv(prompt, plan_path)
+        argv = [str(binary)] + adapter.build_argv(
+            prompt,
+            plan_path,
+            session_id=session_id,
+        )
 
         run_dir = repo / ".agent-runs"
         run_dir_existed = run_dir.exists()

@@ -23,6 +23,8 @@ def test_default_config_includes_claude() -> None:
     agents_dict = dict(config.agents)
     assert "claude" in agents_dict
     assert agents_dict["claude"].binary == "claude"
+    assert agents_dict["claude"].resumable is True
+    assert agents_dict["claude"].session_flag == "--session-id"
 
 
 def test_resolve_adapter_returns_kimi() -> None:
