@@ -18,6 +18,8 @@ from typing import Iterator
 from issuekit.agents.run_claimed import review_feedback_prompt, run_and_submit
 from issuekit.config import IssuekitConfig, load_config
 from issuekit.core import Issue
+from issuekit.proposals import ProposalError
+from issuekit.proposals_api import auto_adopt_incoming_proposals
 from issuekit.store import get_store
 from issuekit.worker_registry import (
     WORKER_HEARTBEAT_INTERVAL_SEC,
@@ -52,6 +54,11 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         "--once",
         action="store_true",
         help="Attempt at most one claim and then exit.",
+    )
+    serve_parser.add_argument(
+        "--triage",
+        action="store_true",
+        help="Auto-adopt matching incoming proposals before each claim attempt.",
     )
     serve_parser.add_argument(
         "--max-issues",
@@ -208,6 +215,33 @@ def _serve_loop(
 
         while not controller.requested:
             attempt_count += 1
+            if _triage_enabled(args, config):
+                try:
+                    adopted = auto_adopt_incoming_proposals(config)
+                except (ProposalError, TimeoutError, WorkflowError, ValueError) as exc:
+                    _log(
+                        sys.stderr,
+                        log_path,
+                        "triage_error",
+                        error=str(exc),
+                        backoff=backoff.current,
+                    )
+                    if _should_recreate_store(exc):
+                        store = _recreate_store(store, config)
+                    if args.once:
+                        return 1
+                    controller.sleep(backoff.current)
+                    backoff.step()
+                    continue
+                for outcome in adopted:
+                    _log(
+                        sys.stderr,
+                        log_path,
+                        "auto_adopted",
+                        proposal=outcome.get("proposal_id"),
+                        issue=outcome.get("issue_id"),
+                        priority=config.triage.default_priority,
+                    )
             try:
                 issue = claim_next(
                     agent,
@@ -439,6 +473,10 @@ def _resolve_agent(agent: str | None, config: IssuekitConfig) -> str | None:
     if len(config.assignees) == 1:
         return config.assignees[0]
     return None
+
+
+def _triage_enabled(args, config: IssuekitConfig) -> bool:
+    return bool(getattr(args, "triage", False) or config.triage.auto_adopt)
 
 
 @contextmanager

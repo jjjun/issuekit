@@ -32,8 +32,10 @@ def test_render_protocol_returns_each_agent_and_both() -> None:
         assert 'issuekit approve 123 --verification "uv run pytest"' in rendered
         assert 'issuekit complete 123 --summary "Done."' in rendered
         assert "issuekit incoming --json" in rendered
+        assert "issuekit propose --to <project> --title <t> --body <b> --blocking --json" in rendered
         assert "issuekit adopt 42 --priority medium --json" in rendered
         assert "issuekit outgoing --to <project> --json" in rendered
+        assert "issuekit serve --agent codex --triage" in rendered
         assert "Upstream feedback loop" in rendered
         assert "issuekit propose --to issuekit" in rendered
         assert "issuekit outgoing --to issuekit" in rendered
@@ -87,6 +89,9 @@ def test_render_protocol_returns_triage_role() -> None:
     assert "issuekit adopt <id> --priority <p>" in triage
     assert "issuekit discard <id>" in triage
     assert "Do not implement adopted issues in the triage session" in triage
+    assert "[triage] trusted_origins" in triage
+    assert "issuekit serve --triage" in triage
+    assert "issuekit propose --blocking" in triage
     triage.encode("ascii")
 
 

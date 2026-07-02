@@ -4,6 +4,7 @@ from pathlib import Path
 
 from issuekit import cli
 from issuekit import proposals_api
+from issuekit.config import IssuekitConfig, TriagePolicy
 from issuekit.proposals_api import _git_commit
 from issuekit.proposals import ProposalError, origin_destination
 from issuekit.testing import FakeIssuekitClient
@@ -66,6 +67,50 @@ def test_api_cli_propose_posts_expected_body_and_dedupes(
     }
     assert created_projects == ["target", "target"]
     assert not (tmp_path / "docs" / "issues" / "incoming").exists()
+
+
+def test_api_cli_propose_can_mark_blocking(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient()
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'source'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.chdir(tmp_path)
+
+    assert (
+        cli.main(
+            [
+                "propose",
+                "--to",
+                "target",
+                "--title",
+                "Blocking API Proposal",
+                "--body",
+                "Needed by source.",
+                "--blocking",
+                "--json",
+            ]
+        )
+        == 0
+    )
+    sent = json.loads(capsys.readouterr().out)
+
+    assert sent["blocking"] is True
+    assert client.calls[0] == {
+        "method": "create_proposal",
+        "body": {
+            "origin": "source#0@unknown",
+            "title": "Blocking API Proposal",
+            "body": "Needed by source.",
+            "blocking": True,
+        },
+    }
 
 
 def test_api_cli_propose_from_issue_reads_api_store(
@@ -322,6 +367,64 @@ def test_api_cli_adopt_normal_output_includes_next_step(
     out = capsys.readouterr().out
     assert "Adopted proposal #1 as API issue #1 (target#1)." in out
     assert "Next: issuekit claim --id 1 --assignee <agent>" in out
+
+
+def test_auto_adopt_incoming_proposals_filters_policy_and_caps(monkeypatch) -> None:
+    client = FakeIssuekitClient(
+        proposals=[
+            {
+                "id": 1,
+                "origin": "source#1@abc123",
+                "title": "Blocking",
+                "body": "Blocking body.",
+                "blocking": True,
+            },
+            {
+                "id": 2,
+                "origin": "source#2@abc123",
+                "title": "Not blocking",
+                "body": "Body.",
+                "blocking": False,
+            },
+            {
+                "id": 3,
+                "origin": "other#1@abc123",
+                "title": "Foreign",
+                "body": "Body.",
+                "blocking": True,
+            },
+            {
+                "id": 4,
+                "origin": "source#3@abc123",
+                "title": "Second blocking",
+                "body": "Body.",
+                "blocking": True,
+            },
+        ]
+    )
+    config = IssuekitConfig(
+        api_url="https://mine.example",
+        project="target",
+        triage=TriagePolicy(
+            trusted_origins=("source",),
+            default_priority="high",
+            require_blocking=True,
+            max_adoptions_per_cycle=1,
+        ),
+    )
+    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+
+    adopted = proposals_api.auto_adopt_incoming_proposals(config)
+
+    assert [item["proposal_id"] for item in adopted] == ["1"]
+    assert adopted[0]["auto_adopted"] is True
+    assert adopted[0]["blocking"] is True
+    assert client.get_proposal(1)["status"] == "adopted"
+    assert client.get_issue(1)["priority"] == "high"
+    assert client.get_issue(1)["origin_proposal_id"] == "1"
+    assert client.get_proposal(2)["status"] == "pending"
+    assert client.get_proposal(3)["status"] == "pending"
+    assert client.get_proposal(4)["status"] == "pending"
 
 
 def test_api_cli_adopt_requires_integer_id(tmp_path: Path, monkeypatch, capsys) -> None:

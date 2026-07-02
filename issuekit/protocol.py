@@ -68,9 +68,11 @@ Copyable CLI examples:
 - Approve: `issuekit approve 123 --verification "uv run pytest" --reviewer claude`
 - Complete: `issuekit complete 123 --summary "Done." --verification "uv run pytest"`
 - Close no-op issue: `issuekit complete 123 --force --summary "Obsolete." --verification "no local code scope"`
+- Blocking proposal: `issuekit propose --to <project> --title <t> --body <b> --blocking --json`
 - Incoming proposals: `issuekit incoming --json`
 - Adopt proposal: `issuekit adopt 42 --priority medium --json`
 - Outgoing proposal status: `issuekit outgoing --to <project> --json`
+- Serve with target-owned inbox triage: `issuekit serve --agent codex --triage`
 """
 
 
@@ -97,6 +99,13 @@ or triage proposals.
 5. Do not implement adopted issues in the triage session. Implementers claim
    them through the normal cycle, or an orchestrator drives
    `issuekit implement <id> --agent <agent>`.
+
+Projects may automate trusted target-owned triage by configuring
+`[triage] trusted_origins`, `default_priority`, `require_blocking`, and
+`max_adoptions_per_cycle`, then running `issuekit serve --triage`. Each serve
+poll first auto-adopts matching pending proposals, then claims and implements
+through the normal review-gated cycle. Use `issuekit propose --blocking` for
+hard cross-project dependencies when the target requires blocking proposals.
 """
 
 
@@ -121,13 +130,15 @@ originate a proposal instead of only working around it locally or reporting it.
 Use `issuekit propose --to <project> --title <t> --body <b>` (or the MCP
 `propose` tool). Proposals are non-destructive suggestions in the target
 project's API inbox; the target project owns triage, so do not mutate its state
-directly.
+directly. Add `--blocking` for hard cross-project dependencies so trusted
+targets can restrict auto-adoption to blocking proposals.
 
 Proposal-system MCP and CLI share one implementation, so the CLI is a drop-in
 fallback when the MCP tools hang or error. Equivalents (add `--json` for the
 same structured output the MCP tools return):
 
 - `propose(to, title, body)` -> `issuekit propose --to <project> --title <t> --body <b> --json`
+- `propose(to, title, body, blocking=True)` -> `issuekit propose --to <project> --title <t> --body <b> --blocking --json`
 - `list_incoming()` -> `issuekit incoming --json`
 - `adopt_proposal(proposal_id, priority)` -> `issuekit adopt <id> --priority <p> --json`
 
@@ -172,10 +183,11 @@ When a needed change belongs to another project, originate a proposal instead
 of only reporting it. Use `issuekit propose --to <project> --title <t> --body
 <b>` (or the MCP `propose` tool). Proposals are non-destructive suggestions in
 the target project's API inbox; the target project owns triage, so do not mutate
-its state directly.
+its state directly. Add `--blocking` when the proposal is a hard dependency.
 
 When the proposal-system MCP tools hang or error, fall back to the equivalent
 CLI: `issuekit propose --to <project> --title <t> --body <b> --json`,
+`issuekit propose --to <project> --title <t> --body <b> --blocking --json`,
 `issuekit incoming --json`, and `issuekit adopt <id> --json`. They share the
 same implementation and emit the same structured output.
 
@@ -201,7 +213,8 @@ When review reveals that a needed change belongs to another project, originate
 a proposal instead of only reporting it. Use `issuekit propose --to <project>
 --title <t> --body <b>` (or the MCP `propose` tool). Proposals are
 non-destructive suggestions in the target project's API inbox; the target
-project owns triage, so do not mutate its state directly.
+project owns triage, so do not mutate its state directly. Add `--blocking`
+when the proposal is a hard dependency.
 
 1. Call the issuekit MCP tool `next_review(reviewer=None)`. Omit reviewer to
    use `default_reviewer`, or pass the reviewer assignee to inspect. With
@@ -227,6 +240,7 @@ review pool.
 
 When the proposal-system MCP tools hang or error, fall back to the equivalent
 CLI: `issuekit propose --to <project> --title <t> --body <b> --json`,
+`issuekit propose --to <project> --title <t> --body <b> --blocking --json`,
 `issuekit incoming --json`, and `issuekit adopt <id> --json`. They share the
 same implementation and emit the same structured output.
 """

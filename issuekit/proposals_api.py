@@ -85,6 +85,7 @@ def send_proposal(config: IssuekitConfig, proposal: Proposal) -> dict:
             title=proposal.title,
             body=proposal.body,
             reply_to=proposal.reply_to or None,
+            blocking=True if proposal.blocking else None,
         )
     result = dict(created)
     mismatched = proposal_payload_mismatch(proposal, created)
@@ -151,7 +152,32 @@ def proposal_payload_mismatch(proposal: Proposal, created: Mapping[str, Any]) ->
         mismatched.append("body")
     if (created.get("reply_to") or None) != (proposal.reply_to or None):
         mismatched.append("reply_to")
+    if bool(created.get("blocking", False)) != proposal.blocking:
+        mismatched.append("blocking")
     return mismatched
+
+
+def auto_adopt_incoming_proposals(config: IssuekitConfig) -> list[dict]:
+    """Adopt pending inbox proposals that match this target project's policy."""
+    policy = config.triage
+    if not policy.trusted_origins:
+        return []
+    adopted: list[dict] = []
+    with api_client(config) as client:
+        for proposal in client.list_proposals(status="pending"):
+            if len(adopted) >= policy.max_adoptions_per_cycle:
+                break
+            if not _matches_triage_policy(proposal, config):
+                continue
+            issue = client.adopt_proposal(
+                int(proposal["id"]),
+                priority=policy.default_priority,
+            )
+            outcome = adopt_outcome(proposal["id"], config.project, issue)
+            outcome["auto_adopted"] = True
+            outcome["blocking"] = bool(proposal.get("blocking", False))
+            adopted.append(outcome)
+    return adopted
 
 
 def payload_mismatch_guidance(
@@ -208,6 +234,21 @@ def _is_own_origin(origin: object, project: str) -> bool:
     return isinstance(origin, str) and origin.startswith(f"{project}#")
 
 
+def _matches_triage_policy(proposal: Mapping[str, Any], config: IssuekitConfig) -> bool:
+    origin = proposal.get("origin")
+    if not isinstance(origin, str):
+        return False
+    try:
+        origin_project = origin_destination(origin)
+    except ProposalError:
+        return False
+    if origin_project not in config.triage.trusted_origins:
+        return False
+    if config.triage.require_blocking and not bool(proposal.get("blocking", False)):
+        return False
+    return True
+
+
 def _proposal_text(value: object) -> str:
     return str(value or "").strip()
 
@@ -239,6 +280,7 @@ def build_proposal(
     body_file: str | None,
     from_issue: str | None,
     reply: str | None,
+    blocking: bool = False,
 ) -> Proposal:
     config = load_config(cwd)
     if not config.api_url:
@@ -275,6 +317,7 @@ def build_proposal(
         created=date.today().isoformat(),
         title=title,
         body=proposal_body,
+        blocking=blocking,
     )
 
 

@@ -186,6 +186,7 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
         body: str | None = None,
         from_issue: str | None = None,
         reply: str | None = None,
+        blocking: bool = False,
     ) -> dict[str, Any]:
         proposal = build_proposal(
             root,
@@ -195,6 +196,7 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
             body_file=None,
             from_issue=from_issue,
             reply=reply,
+            blocking=blocking,
         )
         config = load_config(root)
         return send_proposal(config, proposal)

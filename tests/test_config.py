@@ -4,7 +4,13 @@ from pathlib import Path
 
 import pytest
 
-from issuekit.config import AgentRunConfig, IssuekitConfig, WorkerIdentity, load_config
+from issuekit.config import (
+    AgentRunConfig,
+    IssuekitConfig,
+    TriagePolicy,
+    WorkerIdentity,
+    load_config,
+)
 
 
 _ENV_KEYS = (
@@ -83,6 +89,45 @@ def test_load_config_reads_api_fields_from_pyproject(tmp_path: Path) -> None:
     assert config.api_timeout == 12.5
     assert config.default_reviewer == "auto"
     assert config.require_distinct_reviewer is True
+
+
+def test_load_config_reads_triage_policy(tmp_path: Path) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        (
+            "[triage]\n"
+            "auto_adopt = true\n"
+            "trusted_origins = ['frontend', 'api_worker']\n"
+            "default_priority = 'high'\n"
+            "require_blocking = true\n"
+            "max_adoptions_per_cycle = 2\n"
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    config = load_config(tmp_path)
+
+    assert config.triage == TriagePolicy(
+        auto_adopt=True,
+        trusted_origins=("frontend", "api_worker"),
+        default_priority="high",
+        require_blocking=True,
+        max_adoptions_per_cycle=2,
+    )
+
+
+def test_load_config_rejects_invalid_triage_policy(tmp_path: Path) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        (
+            "[triage]\n"
+            "trusted_origins = ['bad origin']\n"
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    with pytest.raises(ValueError, match="triage.trusted_origins"):
+        load_config(tmp_path)
 
 
 def test_load_config_reads_api_url_from_dotenv(

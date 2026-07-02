@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 import os
 from pathlib import Path
 
-from issuekit.core import is_valid_workflow_token, optional_int, optional_str
+from issuekit.core import (
+    VALID_ISSUE_PRIORITIES,
+    is_valid_workflow_token,
+    optional_int,
+    optional_str,
+)
 from issuekit.dotenv import load_dotenv
 from issuekit.localconfig import LocalConfigError, load_toml, read_local_config
 
@@ -43,6 +48,17 @@ class WorkerIdentity:
 
 
 @dataclass(frozen=True)
+class TriagePolicy:
+    """Target-owned policy for automatic inbox proposal adoption."""
+
+    auto_adopt: bool = False
+    trusted_origins: tuple[str, ...] = ()
+    default_priority: str = "medium"
+    require_blocking: bool = False
+    max_adoptions_per_cycle: int = 5
+
+
+@dataclass(frozen=True)
 class IssuekitConfig:
     api_url: str = ""
     project: str = "issuekit"
@@ -54,6 +70,7 @@ class IssuekitConfig:
     default_reviewer: str = "claude"
     require_distinct_reviewer: bool = False
     worker: WorkerIdentity | None = None
+    triage: TriagePolicy = field(default_factory=TriagePolicy)
     agents: tuple[tuple[str, AgentRunConfig], ...] = (
         (
             "kimi",
@@ -173,6 +190,7 @@ def load_config(cwd: Path | str = ".") -> IssuekitConfig:
     )
     _validate_default_reviewer(default_reviewer, assignees)
     agents = _load_agents(raw_config.get("agents", {}))
+    triage = _load_triage_policy(raw_config.get("triage", {}))
     return IssuekitConfig(
         api_url=api_url,
         project=project,
@@ -195,6 +213,7 @@ def load_config(cwd: Path | str = ".") -> IssuekitConfig:
             )
         ),
         worker=worker,
+        triage=triage,
         agents=agents,
     )
 
@@ -290,6 +309,43 @@ def _load_worker(raw: object) -> WorkerIdentity | None:
     if not (machine_id and repo_id and worker_id):
         return None
     return WorkerIdentity(machine_id=machine_id, repo_id=repo_id, worker_id=worker_id)
+
+
+def _load_triage_policy(raw: object) -> TriagePolicy:
+    if not raw:
+        return TriagePolicy()
+    if not isinstance(raw, dict):
+        raise ValueError("triage config must be a table.")
+    default_priority = str(raw.get("default_priority", TriagePolicy.default_priority)).strip()
+    if default_priority not in VALID_ISSUE_PRIORITIES:
+        raise ValueError(f"Invalid triage.default_priority: {default_priority}")
+    trusted_origins = _string_tuple(
+        raw.get("trusted_origins", TriagePolicy.trusted_origins)
+    )
+    invalid_origins = [
+        origin
+        for origin in trusted_origins
+        if not origin or not is_valid_workflow_token(origin)
+    ]
+    if invalid_origins:
+        raise ValueError(f"Invalid triage.trusted_origins token: {invalid_origins[0]}")
+    max_adoptions = int(
+        raw.get(
+            "max_adoptions_per_cycle",
+            TriagePolicy.max_adoptions_per_cycle,
+        )
+    )
+    if max_adoptions < 1:
+        raise ValueError("triage.max_adoptions_per_cycle must be greater than zero.")
+    return TriagePolicy(
+        auto_adopt=_bool_value(raw.get("auto_adopt", TriagePolicy.auto_adopt)),
+        trusted_origins=trusted_origins,
+        default_priority=default_priority,
+        require_blocking=_bool_value(
+            raw.get("require_blocking", TriagePolicy.require_blocking)
+        ),
+        max_adoptions_per_cycle=max_adoptions,
+    )
 
 
 def _required_worker_value(raw: dict[str, object], key: str) -> str:

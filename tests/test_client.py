@@ -981,6 +981,44 @@ def test_client_create_proposal_sends_thread_fields() -> None:
     )
 
 
+def test_client_create_proposal_sends_blocking_flag() -> None:
+    response = {
+        "id": 3,
+        "origin": "source#0@abc123",
+        "title": "Proposal",
+        "body": "Body",
+        "blocking": True,
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "POST"
+        assert request.url.path == "/api/issues/target/proposals"
+        assert json.loads(request.content) == {
+            "origin": "source#0@abc123",
+            "title": "Proposal",
+            "body": "Body",
+            "blocking": True,
+        }
+        return httpx.Response(200, json=response)
+
+    client = IssuekitClient(
+        "https://mine.example",
+        project="target",
+        token="static-token",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    assert (
+        client.create_proposal(
+            origin="source#0@abc123",
+            title="Proposal",
+            body="Body",
+            blocking=True,
+        )
+        == response
+    )
+
+
 def test_client_list_proposals_pages_wrapped_response() -> None:
     proposals = [{"id": proposal_id, "status": "pending"} for proposal_id in range(1, 6)]
     seen_pages: list[tuple[int, int, str, str]] = []

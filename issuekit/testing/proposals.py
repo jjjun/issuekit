@@ -22,6 +22,7 @@ class FakeProposalSurface:
         title: str,
         body: str,
         reply_to: str | None = None,
+        blocking: bool | None = None,
         priority: str | None = None,
         thread_id: int | None = None,
         side: str | None = None,
@@ -35,6 +36,7 @@ class FakeProposalSurface:
                 "title": title,
                 "body": body,
                 "reply_to": reply_to,
+                "blocking": blocking,
                 "priority": priority,
                 "thread_id": thread_id,
                 "side": side,
@@ -276,6 +278,7 @@ class FakeProposalSurface:
                     "priority": priority or proposal.get("priority") or "medium",
                     "author": "proposal",
                     "origin": proposal["origin"],
+                    "origin_proposal_id": str(proposal_id),
                 },
                 allocate=True,
             )
@@ -349,6 +352,7 @@ class FakeProposalSurface:
         stored.setdefault("title", f"Proposal #{proposal_id}")
         stored.setdefault("body", "")
         stored.setdefault("priority", None)
+        stored.setdefault("blocking", False)
         stored.setdefault("status", "pending")
         stored.setdefault("created", date.today().isoformat())
         stored.setdefault("created_at", stored["created"])

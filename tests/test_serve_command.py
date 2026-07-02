@@ -4,6 +4,7 @@ import os
 import signal
 
 from issuekit import cli
+from issuekit import proposals_api
 from issuekit import store as store_module
 from issuekit import worker_registry
 from issuekit.commands import serve
@@ -83,10 +84,12 @@ def _configure_registered_api(
     client: FakeIssuekitClient,
     *,
     assignees: str | None = None,
+    triage: str = "",
 ) -> None:
     config = "api_url = 'https://mine.example'\nproject = 'demo'\ndefault_reviewer = 'auto'\n"
     if assignees is not None:
         config += f"assignees = [{assignees}]\n"
+    config += triage
     (tmp_path / "issuekit.toml").write_text(config, encoding="utf-8", newline="\n")
     (tmp_path / "issuekit.local.toml").write_text(
         (
@@ -99,6 +102,7 @@ def _configure_registered_api(
         newline="\n",
     )
     monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
     monkeypatch.setattr(worker_registry, "IssuekitClient", lambda *args, **kwargs: client)
     monkeypatch.chdir(tmp_path)
 
@@ -159,6 +163,57 @@ def test_serve_once_claims_runs_and_submits(
     assert [call["method"] for call in client.calls] == ["upsert_worker", "claim_next", "submit"]
     assert client.calls[1]["body"]["worker"] == "machine/demo/checkout"
     assert "event=submitted issue=1" in capsys.readouterr().err
+
+
+def test_serve_triage_auto_adopts_before_claiming(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient(
+        proposals=[
+            {
+                "id": 1,
+                "origin": "source#7@abc123",
+                "title": "Adopt me",
+                "body": "# Issue #1: Adopt me\n",
+                "blocking": True,
+            }
+        ]
+    )
+    FakeRunner.calls.clear()
+    _configure_registered_api(
+        tmp_path,
+        monkeypatch,
+        client,
+        triage=(
+            "[triage]\n"
+            "trusted_origins = ['source']\n"
+            "default_priority = 'high'\n"
+            "require_blocking = true\n"
+            "max_adoptions_per_cycle = 3\n"
+        ),
+    )
+    monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", FakeRunner)
+
+    exit_code = cli.main(["serve", "--agent", "codex", "--once", "--triage"])
+
+    assert exit_code == 0
+    assert [call["method"] for call in client.calls] == [
+        "upsert_worker",
+        "adopt_proposal",
+        "claim_next",
+        "submit",
+    ]
+    assert client.calls[1]["number"] == 1
+    assert client.calls[1]["body"] == {"priority": "high"}
+    assert client.calls[2]["body"]["worker"] == "machine/demo/checkout"
+    assert client.get_proposal(1)["status"] == "adopted"
+    assert client.get_issue(1)["origin_proposal_id"] == "1"
+    assert [call[4] for call in FakeRunner.calls] == [1]
+    captured = capsys.readouterr()
+    assert "event=auto_adopted proposal=1 issue=1 priority=high" in captured.err
+    assert "event=submitted issue=1" in captured.err
 
 
 def test_serve_once_recovers_own_orphan_before_polling(

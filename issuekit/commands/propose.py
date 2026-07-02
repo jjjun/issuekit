@@ -64,6 +64,11 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     propose_parser.add_argument("--body-file", help="File containing proposal body.")
     propose_parser.add_argument("--from-issue", help="Local issue id to propose from.")
     propose_parser.add_argument("--reply", help="Local adopted issue id to reply from.")
+    propose_parser.add_argument(
+        "--blocking",
+        action="store_true",
+        help="Mark the proposal as a hard dependency for the origin project.",
+    )
     propose_parser.add_argument("--json", action="store_true", help="Print JSON output.")
     propose_parser.set_defaults(func=run_propose)
 
@@ -160,6 +165,7 @@ def run_propose(args) -> int:
             body_file=args.body_file,
             from_issue=args.from_issue,
             reply=args.reply,
+            blocking=args.blocking,
         )
         created = send_proposal(config, proposal)
     except (LookupError, ProposalError, RefError, ValueError, WorkflowError) as exc:
@@ -195,7 +201,11 @@ def run_incoming(args) -> int:
         return 0
     for proposal in incoming:
         prefix = "reply" if proposal.get("reply_to") else "proposal"
-        print(f"{proposal['id']}\t{prefix}\t{proposal['origin']}\t{proposal['title']}")
+        blocking = "blocking" if proposal.get("blocking") else "-"
+        print(
+            f"{proposal['id']}\t{prefix}\t{blocking}\t"
+            f"{proposal['origin']}\t{proposal['title']}"
+        )
     return 0
 
 
@@ -218,7 +228,11 @@ def run_outgoing(args) -> int:
     for proposal in outgoing:
         adopted = proposal.get("adopted_issue_number")
         adopted_ref = f"{args.to}#{adopted}" if adopted else "-"
-        print(f"{proposal['id']}\t{proposal.get('status')}\t{adopted_ref}\t{proposal.get('title')}")
+        blocking = "blocking" if proposal.get("blocking") else "-"
+        print(
+            f"{proposal['id']}\t{proposal.get('status')}\t"
+            f"{adopted_ref}\t{blocking}\t{proposal.get('title')}"
+        )
     return 0
 
 

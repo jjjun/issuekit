@@ -18,6 +18,7 @@ class Proposal:
     created: str
     title: str
     body: str
+    blocking: bool = False
 
 
 def origin_destination(origin: str) -> str:
