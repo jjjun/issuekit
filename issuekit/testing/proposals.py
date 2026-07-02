@@ -1,350 +1,20 @@
-"""Reusable test doubles for issuekit integrations."""
+"""Proposal and negotiation-thread fake client surface."""
 
 from __future__ import annotations
 
 from copy import deepcopy
 from datetime import date
-from threading import Lock
 from typing import Any
 
-from issuekit.negotiation.model import (
-    MAX_CONTRACT_LENGTH,
-    _validate_contract as validate_negotiation_contract,
-)
+from issuekit.core import _drop_none
+from issuekit.negotiation.model import _validate_contract as validate_negotiation_contract
 from issuekit.workflow import WorkflowError
 
 
 JsonDict = dict[str, Any]
-READY_STAGES = {"", "todo", "changes_requested"}
-CLAIMABLE_STATUSES = {"active", "in_progress"}
-PRIORITY_RANK = {"high": 0, "medium": 1, "low": 2}
 
 
-class FakeIssuekitClient:
-    """In-memory implementation of the IssuekitClient method surface."""
-
-    def __init__(
-        self,
-        issues: list[JsonDict] | None = None,
-        proposals: list[JsonDict] | None = None,
-    ) -> None:
-        self._lock = Lock()
-        self._issues: dict[int, JsonDict] = {}
-        self._proposals: dict[int, JsonDict] = {}
-        self._threads: dict[int, JsonDict] = {}
-        self._next_id = 1
-        self._next_proposal_id = 1
-        self._next_thread_id = 1
-        self.calls: list[JsonDict] = []
-        self.close_count = 0
-        for issue in issues or []:
-            self._store_issue(issue)
-        for proposal in proposals or []:
-            self._store_proposal(proposal)
-
-    def __enter__(self) -> "FakeIssuekitClient":
-        return self
-
-    def close(self) -> None:
-        self.close_count += 1
-
-    def count_issues(
-        self,
-        *,
-        status: str | None = None,
-        stage: str | None = None,
-        assignee: str | None = None,
-        include_completed: bool = False,
-    ) -> int:
-        return len(
-            self.list_all_issues(
-                status=status,
-                stage=stage,
-                assignee=assignee,
-                include_completed=include_completed,
-            )
-        )
-
-    def __exit__(self, *exc_info: object) -> None:
-        self.close()
-        return None
-
-    def health(self) -> JsonDict:
-        return {"status": "ok", "migration_revision": "test"}
-
-    def list_issues(
-        self,
-        *,
-        status: str | None = None,
-        stage: str | None = None,
-        assignee: str | None = None,
-        include_completed: bool = False,
-        limit: int | None = None,
-        offset: int | None = None,
-    ) -> list[JsonDict]:
-        with self._lock:
-            issues = [
-                issue
-                for issue in sorted(self._issues.values(), key=lambda item: int(item["id"]))
-                if (
-                    (status is None and (include_completed or issue.get("status") != "completed"))
-                    or (status is not None and issue.get("status") == status)
-                )
-                and (stage is None or issue.get("stage") == stage)
-                and (assignee is None or issue.get("assignee") == assignee)
-            ]
-            start = offset or 0
-            stop = start + (limit if limit is not None else 100)
-            issues = issues[start:stop]
-            return deepcopy(issues)
-
-    def list_all_issues(
-        self,
-        *,
-        status: str | None = None,
-        stage: str | None = None,
-        assignee: str | None = None,
-        include_completed: bool = False,
-        page_size: int = 500,
-    ) -> list[JsonDict]:
-        if page_size <= 0:
-            raise ValueError("page_size must be greater than zero")
-        page_size = min(page_size, 500)
-        offset = 0
-        issues: list[JsonDict] = []
-        while True:
-            batch = self.list_issues(
-                status=status,
-                stage=stage,
-                assignee=assignee,
-                include_completed=include_completed,
-                limit=page_size,
-                offset=offset,
-            )
-            issues.extend(batch)
-            if len(batch) < page_size:
-                return issues
-            offset += page_size
-
-    def get_issue(self, number: int) -> JsonDict:
-        with self._lock:
-            return deepcopy(self._find(number))
-
-    def create_issue(self, issue: JsonDict) -> JsonDict:
-        with self._lock:
-            self._record("create_issue", body=deepcopy(issue))
-            return deepcopy(self._store_issue(issue, allocate=True))
-
-    def update_issue(self, number: int, issue: JsonDict) -> JsonDict:
-        with self._lock:
-            self._record("update_issue", number=number, body=deepcopy(issue))
-            stored = self._find(number)
-            stored.update(deepcopy(issue))
-            return deepcopy(stored)
-
-    def claim(self, number: int, *, assignee: str, worker: str | None = None) -> JsonDict:
-        with self._lock:
-            self._record(
-                "claim",
-                number=number,
-                body={
-                    key: value
-                    for key, value in {"assignee": assignee, "worker": worker}.items()
-                    if value is not None
-                },
-            )
-            issue = self._find(number)
-            self._claim_issue(issue, assignee, worker=worker)
-            return deepcopy(issue)
-
-    def claim_next(
-        self,
-        *,
-        assignee: str,
-        priority: str | None = None,
-        worker: str | None = None,
-    ) -> JsonDict | None:
-        with self._lock:
-            self._record(
-                "claim_next",
-                body={
-                    key: value
-                    for key, value in {
-                        "assignee": assignee,
-                        "priority": priority,
-                        "worker": worker,
-                    }.items()
-                    if value is not None
-                },
-            )
-            candidates = [
-                issue
-                for issue in self._issues.values()
-                if issue.get("status") in CLAIMABLE_STATUSES
-                and issue.get("stage", "") in READY_STAGES
-                and issue.get("assignee", "") in {"", assignee}
-                and (priority is None or issue.get("priority") == priority)
-            ]
-            if not candidates:
-                return None
-            issue = sorted(
-                candidates,
-                key=lambda item: (PRIORITY_RANK.get(str(item.get("priority", "")), 99), int(item["id"])),
-            )[0]
-            self._claim_issue(issue, assignee, worker=worker)
-            return deepcopy(issue)
-
-    def submit(
-        self,
-        number: int,
-        *,
-        summary: str,
-        branch: str | None = None,
-        commit: str | None = None,
-        reviewer: str | None = None,
-    ) -> JsonDict:
-        with self._lock:
-            self._record(
-                "submit",
-                number=number,
-                body={
-                    key: value
-                    for key, value in {
-                        "summary": summary,
-                        "branch": branch,
-                        "commit": commit,
-                        "reviewer": reviewer,
-                    }.items()
-                    if value is not None
-                },
-            )
-            issue = self._find(number)
-            if reviewer and issue.get("implementer") == reviewer:
-                raise WorkflowError(
-                    f"Issue #{number} was implemented by {reviewer}; self-review is not allowed.",
-                    code="invalid_transition",
-                )
-            issue["stage"] = "review"
-            issue["assignee"] = reviewer or ""
-            return deepcopy(issue)
-
-    def request_changes(
-        self,
-        number: int,
-        *,
-        notes: str,
-        reviewer: str | None = None,
-        assignee: str | None = None,
-        worker: str | None = None,
-    ) -> JsonDict:
-        with self._lock:
-            self._record(
-                "request_changes",
-                number=number,
-                body={
-                    key: value
-                    for key, value in {
-                        "notes": notes,
-                        "reviewer": reviewer,
-                        "assignee": assignee,
-                        "worker": worker,
-                    }.items()
-                    if value is not None
-                },
-            )
-            issue = self._find(number)
-            issue["stage"] = "changes_requested"
-            issue["assignee"] = assignee or issue.get("implementer") or "codex"
-            return deepcopy(issue)
-
-    def approve(
-        self,
-        number: int,
-        *,
-        summary: str,
-        verification: str,
-        reviewer: str,
-        worker: str | None = None,
-    ) -> JsonDict:
-        with self._lock:
-            self._record(
-                "approve",
-                number=number,
-                body={
-                    key: value
-                    for key, value in {
-                        "summary": summary,
-                        "verification": verification,
-                        "reviewer": reviewer,
-                        "worker": worker,
-                    }.items()
-                    if value is not None
-                },
-            )
-            issue = self._find(number)
-            if issue.get("stage", "") != "review":
-                raise WorkflowError(
-                    f"Issue #{number} is not at the review stage.",
-                    code="invalid_transition",
-                )
-            if _is_self_review(issue, reviewer, worker):
-                raise WorkflowError(
-                    f"Issue #{number} was implemented by {reviewer}; self-review is not allowed.",
-                    code="invalid_transition",
-                )
-            issue["status"] = "completed"
-            issue["stage"] = "done"
-            issue["assignee"] = ""
-            return deepcopy(issue)
-
-    def complete(self, number: int, *, summary: str, verification: str, force: bool = False) -> JsonDict:
-        with self._lock:
-            self._record(
-                "complete",
-                number=number,
-                body={"summary": summary, "verification": verification, "force": force},
-            )
-            issue = self._find(number)
-            issue["status"] = "completed"
-            issue["stage"] = "done"
-            issue["assignee"] = ""
-            return deepcopy(issue)
-
-    def import_issues(self, issues: list[JsonDict] | JsonDict) -> JsonDict | list[JsonDict]:
-        raw_issues = issues.get("issues", []) if isinstance(issues, dict) else issues
-        if not isinstance(raw_issues, list):
-            raise WorkflowError("Import payload must be a list of issues.", code="invalid_value")
-        with self._lock:
-            self._record("import_issues", body={"issues": deepcopy(raw_issues)})
-            imported = [self._store_issue(issue) for issue in raw_issues]
-            return deepcopy(imported)
-
-    def upsert_worker(
-        self,
-        *,
-        machine_id: str,
-        repo_id: str,
-        worker_id: str,
-        path: str | None,
-    ) -> JsonDict:
-        body = {
-            "machine_id": machine_id,
-            "repo_id": repo_id,
-            "worker_id": worker_id,
-            "path": path,
-        }
-        with self._lock:
-            self._record("upsert_worker", body=body)
-            return {
-                "id": f"{machine_id}/{repo_id}/{worker_id}",
-                **body,
-                "status": "idle",
-                "current_issue": None,
-                "last_seen": "2026-01-01T00:00:00Z",
-                "created_at": "2026-01-01T00:00:00Z",
-                "updated_at": "2026-01-01T00:00:00Z",
-            }
-
+class FakeProposalSurface:
     def create_proposal(
         self,
         *,
@@ -359,9 +29,8 @@ class FakeIssuekitClient:
         contract: str | None = None,
     ) -> JsonDict:
         self._validate_contract(contract)
-        request = {
-            key: value
-            for key, value in {
+        request = _drop_none(
+            {
                 "origin": origin,
                 "title": title,
                 "body": body,
@@ -371,9 +40,8 @@ class FakeIssuekitClient:
                 "side": side,
                 "verdict": verdict,
                 "contract": contract,
-            }.items()
-            if value is not None
-        }
+            }
+        )
         with self._lock:
             self._record("create_proposal", body=deepcopy(request))
             has_thread_fields = any(
@@ -451,9 +119,8 @@ class FakeIssuekitClient:
         priority: str | None = None,
     ) -> JsonDict:
         self._validate_contract(contract)
-        request = {
-            key: value
-            for key, value in {
+        request = _drop_none(
+            {
                 "origin": origin,
                 "title": title,
                 "body": body,
@@ -461,9 +128,8 @@ class FakeIssuekitClient:
                 "verdict": verdict,
                 "contract": contract,
                 "priority": priority,
-            }.items()
-            if value is not None
-        }
+            }
+        )
         with self._lock:
             self._record("reply_proposal", number=proposal_id, body=deepcopy(request))
             parent = self._find_proposal(proposal_id)
@@ -545,16 +211,14 @@ class FakeIssuekitClient:
             self._record(
                 "patch_thread",
                 number=thread_id,
-                body={
-                    key: value
-                    for key, value in {
+                body=_drop_none(
+                    {
                         "status": status,
                         "agreed_contract": agreed_contract,
                         "backend_issue_ref": backend_issue_ref,
                         "frontend_issue_ref": frontend_issue_ref,
-                    }.items()
-                    if value is not None
-                },
+                    }
+                ),
             )
             thread = self._find_thread(thread_id)
             if status is not None:
@@ -597,7 +261,7 @@ class FakeIssuekitClient:
             self._record(
                 "adopt_proposal",
                 number=proposal_id,
-                body={key: value for key, value in {"priority": priority}.items() if value is not None},
+                body=_drop_none({"priority": priority}),
             )
             proposal = self._find_proposal(proposal_id)
             if proposal.get("status") != "pending":
@@ -649,12 +313,6 @@ class FakeIssuekitClient:
                 imported.append(existing)
             return deepcopy(imported)
 
-    def _find(self, number: int) -> JsonDict:
-        issue = self._issues.get(number)
-        if issue is None:
-            raise WorkflowError(f"Issue #{number} was not found.", code="not_found")
-        return issue
-
     def _find_proposal(self, proposal_id: int) -> JsonDict:
         proposal = self._proposals.get(proposal_id)
         if proposal is None:
@@ -674,31 +332,6 @@ class FakeIssuekitClient:
             if stored.get("origin") == origin and stored.get("status") == status:
                 return stored
         return None
-
-    def _store_issue(self, issue: JsonDict, *, allocate: bool = False) -> JsonDict:
-        stored = deepcopy(issue)
-        raw_id = stored.get("id", stored.get("number"))
-        if allocate or raw_id is None:
-            issue_id = self._next_id
-            self._next_id += 1
-        else:
-            issue_id = int(raw_id)
-            self._next_id = max(self._next_id, issue_id + 1)
-        stored["id"] = issue_id
-        stored.pop("number", None)
-        stored.setdefault("title", f"Issue #{issue_id}")
-        stored.setdefault("status", "active")
-        stored.setdefault("priority", "medium")
-        stored.setdefault("created", "2026-01-01")
-        stored.setdefault("completed", "")
-        stored.setdefault("assignee", "")
-        stored.setdefault("stage", "todo")
-        stored.setdefault("implementer", "")
-        stored.setdefault("author", "")
-        stored.setdefault("worker", "")
-        stored.setdefault("body", "")
-        self._issues[issue_id] = stored
-        return stored
 
     def _store_proposal(self, proposal: JsonDict, *, allocate: bool = False) -> JsonDict:
         stored = deepcopy(proposal)
@@ -790,54 +423,3 @@ class FakeIssuekitClient:
 
     def _validate_contract(self, contract: str | None) -> None:
         validate_negotiation_contract(contract)
-
-    def _claim_issue(self, issue: JsonDict, assignee: str, *, worker: str | None = None) -> None:
-        issue_id = issue["id"]
-        if issue.get("status") not in CLAIMABLE_STATUSES:
-            raise WorkflowError(
-                f"Issue #{issue_id} has status {issue.get('status')}; "
-                "only active or in_progress issues can be implemented.",
-                code="invalid_transition",
-            )
-        if issue.get("stage", "") not in READY_STAGES | {"implementing"}:
-            raise WorkflowError(
-                f"Issue #{issue_id} is at stage {issue.get('stage') or 'todo'}, not ready for implementation.",
-                code="invalid_transition",
-            )
-        if issue.get("assignee", "") not in {"", assignee}:
-            raise WorkflowError(
-                f"Issue #{issue_id} is assigned to {issue.get('assignee')}, not {assignee}.",
-                code="invalid_transition",
-            )
-        if issue.get("author") == assignee:
-            raise WorkflowError(
-                f"Issue #{issue_id} was authored by {assignee}; self-implementation is not allowed.",
-                code="invalid_transition",
-            )
-        issue["status"] = "in_progress"
-        issue["assignee"] = assignee
-        issue["stage"] = "implementing"
-        issue["implementer"] = assignee
-        if worker is not None:
-            issue["worker"] = worker
-
-    def _record(
-        self,
-        method: str,
-        *,
-        number: int | None = None,
-        body: JsonDict | None = None,
-    ) -> None:
-        call: JsonDict = {"method": method, "body": deepcopy(body or {})}
-        if number is not None:
-            call["number"] = number
-        self.calls.append(call)
-
-
-def _is_self_review(issue: JsonDict, reviewer: str, reviewer_worker: str | None) -> bool:
-    if issue.get("implementer") != reviewer:
-        return False
-    implementer_worker = str(issue.get("worker") or "")
-    if implementer_worker and reviewer_worker:
-        return implementer_worker == reviewer_worker
-    return True

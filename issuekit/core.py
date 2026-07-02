@@ -59,6 +59,35 @@ def _drop_none(values: Mapping[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in values.items() if value is not None}
 
 
+def optional_str(value: object) -> str | None:
+    if value is None:
+        return None
+    s = str(value).strip()
+    return s if s else None
+
+
+def optional_int(value: object) -> int | None:
+    if value is None:
+        return None
+    return int(value)
+
+
+def optional_float(value: object) -> float | None:
+    if value is None:
+        return None
+    return float(value)
+
+
+def last_nonempty_line(text: str) -> str | None:
+    if not text:
+        return None
+    for line in reversed(text.splitlines()):
+        stripped = line.strip()
+        if stripped:
+            return stripped
+    return None
+
+
 def parse_issue_id_arg(raw_issue_id: str) -> int:
     try:
         return int(raw_issue_id)

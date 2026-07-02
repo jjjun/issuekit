@@ -6,7 +6,7 @@ from dataclasses import dataclass, replace
 import os
 from pathlib import Path
 
-from issuekit.core import is_valid_workflow_token
+from issuekit.core import is_valid_workflow_token, optional_int, optional_str
 from issuekit.dotenv import load_dotenv
 from issuekit.localconfig import LocalConfigError, load_toml, read_local_config
 
@@ -303,17 +303,17 @@ def _agent_overrides(cfg: dict[str, object]) -> dict[str, object]:
         "known_paths": _string_tuple,
         "headless_argv": _string_tuple,
         "resumable": _bool_value,
-        "session_flag": _optional_str,
-        "approval_flag": _optional_str,
-        "approval_value": _optional_str,
-        "output_format_flag": _optional_str,
-        "output_format": _optional_str,
-        "model_flag": _optional_str,
-        "model": _optional_str,
-        "prompt_suffix": _optional_str,
+        "session_flag": optional_str,
+        "approval_flag": optional_str,
+        "approval_value": optional_str,
+        "output_format_flag": optional_str,
+        "output_format": optional_str,
+        "model_flag": optional_str,
+        "model": optional_str,
+        "prompt_suffix": optional_str,
         "model_prompts": _model_prompts,
         "mojibake_gate": _bool_value,
-        "diff_shape_warn_deletions": _optional_int,
+        "diff_shape_warn_deletions": optional_int,
     }
     overrides: dict[str, object] = {}
     for key, loader in loaders.items():
@@ -321,19 +321,6 @@ def _agent_overrides(cfg: dict[str, object]) -> dict[str, object]:
         if value is not _SENTINEL:
             overrides[key] = loader(value)
     return overrides
-
-
-def _optional_str(value: object) -> str | None:
-    if value is None:
-        return None
-    s = str(value).strip()
-    return s if s else None
-
-
-def _optional_int(value: object) -> int | None:
-    if value is None:
-        return None
-    return int(value)
 
 
 def _model_prompts(value: object) -> tuple[tuple[str, str], ...]:

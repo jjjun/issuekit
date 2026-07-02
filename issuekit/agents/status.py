@@ -10,6 +10,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
 
+from issuekit.core import optional_float, optional_int, optional_str
+
 
 RunStatusValue = Literal["running", "completed", "failed", "timed_out"]
 
@@ -47,19 +49,19 @@ class RunStatus:
         return cls(
             run_id=str(data["run_id"]),
             agent=str(data["agent"]),
-            issue=_optional_int(data.get("issue")),
+            issue=optional_int(data.get("issue")),
             status=_status_value(data["status"]),
-            pid=_optional_int(data.get("pid")),
+            pid=optional_int(data.get("pid")),
             started_at=str(data["started_at"]),
-            ended_at=_optional_str(data.get("ended_at")),
-            elapsed_sec=_optional_float(data.get("elapsed_sec")),
-            exit_code=_optional_int(data.get("exit_code")),
+            ended_at=optional_str(data.get("ended_at")),
+            elapsed_sec=optional_float(data.get("elapsed_sec")),
+            exit_code=optional_int(data.get("exit_code")),
             plan=str(data["plan"]),
             stdout_log=str(data["stdout_log"]),
             agent_log=str(data["agent_log"]),
-            last_log_line=_optional_str(data.get("last_log_line")),
-            last_log_at=_optional_str(data.get("last_log_at")),
-            heartbeat_at=_optional_str(data.get("heartbeat_at")),
+            last_log_line=optional_str(data.get("last_log_line")),
+            last_log_at=optional_str(data.get("last_log_at")),
+            heartbeat_at=optional_str(data.get("heartbeat_at")),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -172,21 +174,3 @@ def _status_value(value: Any) -> RunStatusValue:
     if value not in {"running", "completed", "failed", "timed_out"}:
         raise ValueError(f"Invalid run status: {value}")
     return value
-
-
-def _optional_int(value: Any) -> int | None:
-    if value is None:
-        return None
-    return int(value)
-
-
-def _optional_float(value: Any) -> float | None:
-    if value is None:
-        return None
-    return float(value)
-
-
-def _optional_str(value: Any) -> str | None:
-    if value is None:
-        return None
-    return str(value)

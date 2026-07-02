@@ -156,15 +156,8 @@ def _coerce_status(value: object) -> ThreadStatus:
         raise ValueError(f"Invalid thread status: {value}") from exc
 
 
-def _optional_int(value: object) -> int | None:
-    if value is None:
-        return None
-    return int(value)
-
-
 def _latest_agree_contract(entries: list[NegotiationEntry]) -> str | None:
     for entry in reversed(entries):
         if entry.verdict is Verdict.agree and entry.contract is not None:
             return entry.contract
     return None
-

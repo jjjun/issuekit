@@ -11,7 +11,7 @@ from typing import Protocol
 
 from issuekit.agents.runner import AgentAdapter, AgentResult, AgentRunner, resolve_adapter
 from issuekit.config import IssuekitConfig
-from issuekit.core import Issue
+from issuekit.core import Issue, last_nonempty_line
 from issuekit.negotiation.model import (
     NegotiationEntry,
     NegotiationIssueRefs,
@@ -526,7 +526,7 @@ def _failure_reason(result: AgentResult) -> str | None:
     if result.parsed:
         for key in ("stderr", "stdout"):
             value = result.parsed.get(key)
-            line = _last_nonempty_line(value)
+            line = last_nonempty_line(value)
             if line:
                 return line
     for path in (result.agent_log_path, result.stdout_path):
@@ -534,19 +534,9 @@ def _failure_reason(result: AgentResult) -> str | None:
             text = path.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
-        line = _last_nonempty_line(text)
+        line = last_nonempty_line(text)
         if line:
             return line
-    return None
-
-
-def _last_nonempty_line(text: str | None) -> str | None:
-    if not text:
-        return None
-    for line in reversed(text.splitlines()):
-        stripped = line.strip()
-        if stripped:
-            return stripped
     return None
 
 

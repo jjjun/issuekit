@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from issuekit.core import optional_int
 from issuekit.negotiation.model import (
     DEFAULT_NEGOTIATION_PATH,
     NegotiationEntry,
@@ -18,7 +19,6 @@ from issuekit.negotiation.model import (
     _coerce_status,
     _coerce_verdict,
     _latest_agree_contract,
-    _optional_int,
     _validate_contract,
     _validate_entry_input,
 )
@@ -311,7 +311,7 @@ def _entry_from_json(raw: Any) -> NegotiationEntry:
         body=str(raw.get("body", "")),
         origin=str(raw.get("origin", "")),
         created=str(raw.get("created", "")),
-        id=_optional_int(raw.get("id")),
+        id=optional_int(raw.get("id")),
     )
 
 

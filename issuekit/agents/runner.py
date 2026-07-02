@@ -24,6 +24,7 @@ from issuekit.agents.status import (
     write_status,
 )
 from issuekit.config import AgentRunConfig, IssuekitConfig
+from issuekit.core import last_nonempty_line
 from issuekit.gitutil import changed_file_count, git_status_short
 
 
@@ -247,12 +248,7 @@ class _RunWatcher:
             return None
         if not data:
             return None
-        lines = data.split(b"\n")
-        for line in reversed(lines):
-            stripped = line.strip()
-            if stripped:
-                return stripped.decode("utf-8", errors="replace")
-        return None
+        return last_nonempty_line(data.decode("utf-8", errors="replace"))
 
     @staticmethod
     def _changed_file_count(repo: Path) -> int:
