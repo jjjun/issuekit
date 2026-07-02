@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from datetime import date
 from pathlib import Path
+from typing import Any
 
 from issuekit.client import IssuekitClient
 from issuekit.config import IssuekitConfig, load_config
@@ -11,6 +13,9 @@ from issuekit.core import Issue, parse_issue_id_arg
 from issuekit.gitutil import git_short_head
 from issuekit.proposals import Proposal, ProposalError, origin_destination
 from issuekit.store import get_store
+
+
+OUTGOING_PROPOSAL_STATUSES = ("pending", "adopted", "discarded")
 
 
 def adopt_outcome(proposal_id: str | int, project: str, issue: dict) -> dict:
@@ -60,6 +65,76 @@ def api_client(config: IssuekitConfig, *, project: str | None = None) -> Issueki
         project=project or config.project,
         timeout=config.api_timeout,
     )
+
+
+def proposal_payload_mismatch(proposal: Proposal, created: Mapping[str, Any]) -> list[str]:
+    """Fields where an idempotent same-origin response differs from the request."""
+    if created.get("origin") != proposal.origin:
+        return []
+    mismatched = []
+    if _proposal_text(created.get("title")) != _proposal_text(proposal.title):
+        mismatched.append("title")
+    if _proposal_text(created.get("body")) != _proposal_text(proposal.body):
+        mismatched.append("body")
+    if (created.get("reply_to") or None) != (proposal.reply_to or None):
+        mismatched.append("reply_to")
+    return mismatched
+
+
+def payload_mismatch_guidance(
+    proposal: Proposal,
+    created: Mapping[str, Any],
+    mismatched: Sequence[str],
+) -> str:
+    return (
+        f"Proposal was not sent: {proposal.to} already has pending proposal "
+        f"#{created.get('id')} with origin {proposal.origin} but different "
+        f"{', '.join(mismatched)}. Use --from-issue <id> to derive a distinct "
+        f"origin, or adopt/discard the stale pending proposal in {proposal.to}. "
+        "Avoid reusing the implicit #0 origin for unrelated proposals from one commit."
+    )
+
+
+def list_outgoing_proposals(
+    config: IssuekitConfig,
+    *,
+    to: str,
+    status: str | None = None,
+) -> list[dict]:
+    """List proposals this project sent to another project's inbox (read-only)."""
+    if status is not None and status not in OUTGOING_PROPOSAL_STATUSES:
+        raise ProposalError(
+            f"Invalid proposal status: {status}. "
+            f"Expected one of {', '.join(OUTGOING_PROPOSAL_STATUSES)}."
+        )
+    client = api_client(config, project=to)
+    statuses = (status,) if status else OUTGOING_PROPOSAL_STATUSES
+    outgoing = [
+        proposal
+        for candidate_status in statuses
+        for proposal in client.list_proposals(status=candidate_status)
+        if _is_own_origin(proposal.get("origin"), config.project)
+    ]
+    outgoing.sort(key=lambda proposal: int(proposal.get("id", 0)))
+    return outgoing
+
+
+def get_outgoing_proposal(config: IssuekitConfig, *, to: str, proposal_id: int) -> dict:
+    """Read one proposal this project sent to another project's inbox."""
+    proposal = api_client(config, project=to).get_proposal(int(proposal_id))
+    if not _is_own_origin(proposal.get("origin"), config.project):
+        raise ProposalError(
+            f"Proposal #{proposal_id} in {to} was not sent by {config.project}."
+        )
+    return proposal
+
+
+def _is_own_origin(origin: object, project: str) -> bool:
+    return isinstance(origin, str) and origin.startswith(f"{project}#")
+
+
+def _proposal_text(value: object) -> str:
+    return str(value or "").strip()
 
 
 def proposal_id_arg(value: str) -> int:

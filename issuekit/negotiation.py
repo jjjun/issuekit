@@ -401,15 +401,29 @@ class ApiNegotiationStore:
     ) -> NegotiationEntry:
         _validate_entry_input(side, verdict)
         _validate_contract(contract)
-        proposal = self.client.create_proposal(
+        try:
+            proposal = self.client.create_proposal(
+                origin=origin,
+                title=title,
+                body=body,
+                side=side,
+                verdict=_coerce_verdict(verdict).value,
+                contract=contract,
+            )
+        except WorkflowError as exc:
+            raise _with_negotiation_context(exc, origin, self.config.project) from exc
+        entry = _entry_from_api(proposal)
+        _ensure_idempotent_entry(
+            entry,
             origin=origin,
+            side=side,
+            verdict=_coerce_verdict(verdict),
             title=title,
             body=body,
-            side=side,
-            verdict=_coerce_verdict(verdict).value,
             contract=contract,
+            target_project=self.config.project,
         )
-        return _entry_from_api(proposal)
+        return entry
 
     def append_entry(
         self,
@@ -436,15 +450,18 @@ class ApiNegotiationStore:
                 f"Negotiation thread {thread_id} last entry has no id.",
                 code="invalid_response",
             )
-        proposal = self.client.reply_proposal(
-            last_entry_id,
-            origin=origin,
-            title=title,
-            body=body,
-            side=side,
-            verdict=_coerce_verdict(verdict).value,
-            contract=contract,
-        )
+        try:
+            proposal = self.client.reply_proposal(
+                last_entry_id,
+                origin=origin,
+                title=title,
+                body=body,
+                side=side,
+                verdict=_coerce_verdict(verdict).value,
+                contract=contract,
+            )
+        except WorkflowError as exc:
+            raise _with_negotiation_context(exc, origin, self.config.project) from exc
         return _entry_from_api(proposal)
 
     def get_thread(self, thread_id: str) -> list[NegotiationEntry]:
@@ -527,6 +544,52 @@ def get_negotiation_store(
             code="missing_api_url",
         )
     return ApiNegotiationStore(config)
+
+
+def _with_negotiation_context(
+    exc: WorkflowError,
+    origin: str,
+    target_project: str,
+) -> WorkflowError:
+    return WorkflowError(
+        f"{exc} (negotiation origin {origin}, target project {target_project})",
+        code=exc.code,
+    )
+
+
+def _ensure_idempotent_entry(
+    entry: NegotiationEntry,
+    *,
+    origin: str,
+    side: str,
+    verdict: Verdict,
+    title: str,
+    body: str,
+    contract: str | None,
+    target_project: str,
+) -> None:
+    """Accept same-origin responses only as exact idempotent retries."""
+    if entry.origin != origin:
+        return
+    mismatched = [
+        name
+        for name, requested, returned in (
+            ("side", side, entry.side),
+            ("verdict", verdict, entry.verdict),
+            ("title", title, entry.title),
+            ("body", body, entry.body),
+            ("contract", contract, entry.contract),
+        )
+        if requested != returned
+    ]
+    if mismatched:
+        raise WorkflowError(
+            f"Target project {target_project} returned existing proposal "
+            f"#{entry.id} for origin {origin} with different "
+            f"{', '.join(mismatched)}; a pending entry already uses this origin. "
+            "Adopt or discard it before reopening a negotiation with this origin.",
+            code="duplicate_origin",
+        )
 
 
 def _entry_to_json(entry: NegotiationEntry) -> dict[str, Any]:

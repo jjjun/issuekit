@@ -13,7 +13,11 @@ from issuekit.proposals_api import (
     adopt_outcome,
     api_client,
     build_proposal,
+    get_outgoing_proposal,
+    list_outgoing_proposals,
+    payload_mismatch_guidance,
     proposal_id_arg,
+    proposal_payload_mismatch,
 )
 from issuekit.refs import (
     RefError,
@@ -76,10 +80,19 @@ def run_propose(args) -> int:
     except (LookupError, ProposalError, RefError, ValueError, WorkflowError) as exc:
         print(str(exc), file=sys.stderr)
         return 1
+    mismatched = proposal_payload_mismatch(proposal, created)
     if args.json:
-        print(json.dumps(created, indent=2))
-        return 0
-    print(f"Sent proposal #{created.get('id')}: {created.get('title', proposal.title)}")
+        output = dict(created)
+        output["payload_mismatch"] = bool(mismatched)
+        if mismatched:
+            output["idempotent_existing"] = True
+            output["payload_mismatch_fields"] = mismatched
+        print(json.dumps(output, indent=2))
+    if mismatched:
+        print(payload_mismatch_guidance(proposal, created, mismatched), file=sys.stderr)
+        return 1
+    if not args.json:
+        print(f"Sent proposal #{created.get('id')}: {created.get('title', proposal.title)}")
     return 0
 
 
@@ -99,6 +112,29 @@ def run_incoming(args) -> int:
     for proposal in incoming:
         prefix = "reply" if proposal.get("reply_to") else "proposal"
         print(f"{proposal['id']}\t{prefix}\t{proposal['origin']}\t{proposal['title']}")
+    return 0
+
+
+def run_outgoing(args) -> int:
+    config = load_config(Path.cwd())
+    try:
+        if args.id is not None:
+            outgoing = [get_outgoing_proposal(config, to=args.to, proposal_id=args.id)]
+        else:
+            outgoing = list_outgoing_proposals(config, to=args.to, status=args.status)
+    except (ProposalError, WorkflowError, ValueError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    if args.json:
+        print(json.dumps(outgoing, indent=2))
+        return 0
+    if not outgoing:
+        print(f"No outgoing proposals in {args.to}.")
+        return 0
+    for proposal in outgoing:
+        adopted = proposal.get("adopted_issue_number")
+        adopted_ref = f"{args.to}#{adopted}" if adopted else "-"
+        print(f"{proposal['id']}\t{proposal.get('status')}\t{adopted_ref}\t{proposal.get('title')}")
     return 0
 
 

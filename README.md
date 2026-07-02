@@ -138,6 +138,7 @@ copying the steps.
 | `issuekit list-refs` | List effective local project aliases and their source. |
 | `issuekit propose --to <project> --title "..."` | Send a proposal to a project API inbox. |
 | `issuekit incoming [--json]` | List inbound API proposals. |
+| `issuekit outgoing --to <project> [--id <id>] [--status <status>]` | List proposals this project sent to a target project's inbox (read-only, self-scoped). |
 | `issuekit adopt <proposal-id> [--json]` | Adopt an incoming API proposal as a local issue and print the created API issue id. |
 | `issuekit discard <proposal-id>` | Discard an incoming API proposal. |
 

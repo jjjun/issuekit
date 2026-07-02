@@ -33,6 +33,7 @@ EXPECTED_COMMANDS = {
     "list-refs",
     "propose",
     "incoming",
+    "outgoing",
     "adopt",
     "discard",
 }
@@ -124,6 +125,7 @@ def test_handlers_are_stubs(command: str) -> None:
         "list-refs",
         "propose",
         "incoming",
+        "outgoing",
         "adopt",
         "discard",
     }:

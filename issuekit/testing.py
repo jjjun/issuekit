@@ -349,7 +349,9 @@ class FakeIssuekitClient:
             has_thread_fields = any(
                 value is not None for value in (thread_id, side, verdict, contract)
             )
-            if not has_thread_fields:
+            if thread_id is None:
+                # mine-py (082f0220) returns the existing pending proposal for a
+                # duplicate origin on both plain and negotiation creates.
                 for proposal in sorted(self._proposals.values(), key=lambda item: int(item["id"])):
                     if proposal.get("origin") == origin and proposal.get("status") == "pending":
                         return deepcopy(proposal)

@@ -53,6 +53,9 @@ def test_api_cli_propose_posts_expected_body_and_dedupes(
     assert first["id"] == second["id"]
     assert first["origin"] == "source#0@unknown"
     assert first["title"] == "API Proposal"
+    assert first["payload_mismatch"] is False
+    assert second["payload_mismatch"] is False
+    assert "idempotent_existing" not in second
     assert client.calls[0] == {
         "method": "create_proposal",
         "body": {
@@ -98,6 +101,127 @@ def test_api_cli_propose_from_issue_reads_api_store(
     assert sent["origin"] == "source#7@unknown"
     assert sent["title"] == "Source Issue"
     assert sent["body"] == "# Issue #7: Source Issue\n\n## Suggested Change\n\nFrom API."
+
+
+def test_api_cli_propose_same_origin_payload_mismatch_fails(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient(
+        proposals=[
+            {
+                "id": 1,
+                "origin": "source#0@unknown",
+                "title": "Old title",
+                "body": "Old body.",
+                "status": "pending",
+            }
+        ]
+    )
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'source'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.chdir(tmp_path)
+
+    argv = ["propose", "--to", "target", "--title", "New title", "--body", "New body."]
+    assert cli.main([*argv, "--json"]) == 1
+    captured = capsys.readouterr()
+    output = json.loads(captured.out)
+
+    assert output["id"] == 1
+    assert output["title"] == "Old title"
+    assert output["idempotent_existing"] is True
+    assert output["payload_mismatch"] is True
+    assert output["payload_mismatch_fields"] == ["title", "body"]
+    assert "--from-issue" in captured.err
+    assert "source#0@unknown" in captured.err
+
+    assert cli.main(argv) == 1
+    captured = capsys.readouterr()
+    assert "Sent proposal" not in captured.out
+    assert "--from-issue" in captured.err
+
+
+def test_api_cli_outgoing_lists_own_proposals(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient(
+        proposals=[
+            {"id": 1, "origin": "source#1@abc", "title": "Mine pending", "body": "b", "status": "pending"},
+            {"id": 2, "origin": "other#1@abc", "title": "Not mine", "body": "b", "status": "pending"},
+            {
+                "id": 3,
+                "origin": "source#2@abc",
+                "title": "Mine adopted",
+                "body": "b",
+                "status": "adopted",
+                "adopted_issue_number": 42,
+            },
+        ]
+    )
+    created_projects: list[str] = []
+
+    def fake_client(*args, **kwargs):
+        created_projects.append(kwargs["project"])
+        return client
+
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'source'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setattr(proposals_api, "IssuekitClient", fake_client)
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["outgoing", "--to", "target", "--json"]) == 0
+    outgoing = json.loads(capsys.readouterr().out)
+    assert [proposal["id"] for proposal in outgoing] == [1, 3]
+    assert set(created_projects) == {"target"}
+
+    assert cli.main(["outgoing", "--to", "target", "--status", "adopted", "--json"]) == 0
+    adopted = json.loads(capsys.readouterr().out)
+    assert [proposal["id"] for proposal in adopted] == [3]
+
+    assert cli.main(["outgoing", "--to", "target", "--id", "3", "--json"]) == 0
+    single = json.loads(capsys.readouterr().out)
+    assert [proposal["id"] for proposal in single] == [3]
+
+    assert cli.main(["outgoing", "--to", "target"]) == 0
+    text = capsys.readouterr().out
+    assert "target#42" in text
+    assert "Mine pending" in text
+    assert "Not mine" not in text
+
+
+def test_api_cli_outgoing_rejects_foreign_and_invalid_lookups(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient(
+        proposals=[
+            {"id": 2, "origin": "other#1@abc", "title": "Not mine", "body": "b", "status": "pending"},
+        ]
+    )
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'source'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["outgoing", "--to", "target", "--id", "2"]) == 1
+    assert "was not sent by source" in capsys.readouterr().err
+
+    assert cli.main(["outgoing", "--to", "target", "--status", "bogus"]) == 1
+    assert "Invalid proposal status" in capsys.readouterr().err
 
 
 def test_api_cli_incoming_lists_pending_large_inbox(

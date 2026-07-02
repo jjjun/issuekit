@@ -15,7 +15,15 @@ from issuekit.core import (
     issue_dict,
 )
 from issuekit.protocol import render_protocol, render_server_instructions
-from issuekit.proposals_api import adopt_outcome, api_client, build_proposal, proposal_id_arg
+from issuekit.proposals_api import (
+    adopt_outcome,
+    api_client,
+    build_proposal,
+    list_outgoing_proposals,
+    payload_mismatch_guidance,
+    proposal_id_arg,
+    proposal_payload_mismatch,
+)
 from issuekit.store import get_store
 from issuekit.workflow import (
     AUTO_REVIEWER,
@@ -159,17 +167,35 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
             reply=reply,
         )
         config = _context(root)
-        return api_client(config, project=proposal.to).create_proposal(
+        created = api_client(config, project=proposal.to).create_proposal(
             origin=proposal.origin,
             title=proposal.title,
             body=proposal.body,
             reply_to=proposal.reply_to or None,
         )
+        result = dict(created)
+        mismatched = proposal_payload_mismatch(proposal, created)
+        result["payload_mismatch"] = bool(mismatched)
+        if mismatched:
+            result["idempotent_existing"] = True
+            result["payload_mismatch_fields"] = mismatched
+            result["warning"] = payload_mismatch_guidance(proposal, created, mismatched)
+        return result
 
     @server.tool(description="List incoming cross-repository proposals.")
     def list_incoming() -> list[dict[str, Any]]:
         config = _context(root)
         return api_client(config).list_proposals(status="pending")
+
+    @server.tool(
+        description=(
+            "List proposals this project sent to a target project's inbox "
+            "(read-only, scoped to proposals this project authored)."
+        )
+    )
+    def list_outgoing(to: str, status: str | None = None) -> list[dict[str, Any]]:
+        config = _context(root)
+        return list_outgoing_proposals(config, to=to, status=status)
 
     @server.tool(description="Adopt an incoming proposal as a local active issue.")
     def adopt_proposal(

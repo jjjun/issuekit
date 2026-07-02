@@ -347,6 +347,87 @@ def test_api_negotiation_store_round_trips_via_fake_client() -> None:
     assert status_exc.value.code == "invalid_transition"
 
 
+def test_api_store_create_thread_treats_same_payload_as_idempotent_retry() -> None:
+    client = FakeIssuekitClient()
+    store = ApiNegotiationStore(
+        IssuekitConfig(api_url="https://mine.example", project="target"),
+        client=client,
+    )
+    entry_kwargs = dict(
+        side="frontend",
+        verdict=Verdict.propose,
+        title="Initial",
+        body="Start.",
+        origin="source#1@abc:round-1",
+        contract="GET /items",
+    )
+
+    first = store.create_thread(**entry_kwargs)
+    retry = store.create_thread(**entry_kwargs)
+
+    assert retry.id == first.id
+    assert retry.thread_id == first.thread_id
+
+
+def test_api_store_create_thread_rejects_same_origin_with_different_payload() -> None:
+    client = FakeIssuekitClient()
+    store = ApiNegotiationStore(
+        IssuekitConfig(api_url="https://mine.example", project="target"),
+        client=client,
+    )
+    store.create_thread(
+        side="frontend",
+        verdict=Verdict.propose,
+        title="Initial",
+        body="Start.",
+        origin="source#1@abc:round-1",
+        contract="GET /items",
+    )
+
+    with pytest.raises(WorkflowError) as excinfo:
+        store.create_thread(
+            side="frontend",
+            verdict=Verdict.propose,
+            title="Different opener",
+            body="Other body.",
+            origin="source#1@abc:round-1",
+            contract="GET /items",
+        )
+
+    assert excinfo.value.code == "duplicate_origin"
+    message = str(excinfo.value)
+    assert "source#1@abc:round-1" in message
+    assert "title" in message and "body" in message
+
+
+def test_api_store_errors_include_negotiation_context() -> None:
+    class FailingClient(FakeIssuekitClient):
+        def create_proposal(self, **kwargs):
+            raise WorkflowError("Internal Server Error", code="http_500")
+
+        def reply_proposal(self, proposal_id, **kwargs):
+            raise WorkflowError("Internal Server Error", code="http_500")
+
+    store = ApiNegotiationStore(
+        IssuekitConfig(api_url="https://mine.example", project="target"),
+        client=FailingClient(),
+    )
+
+    with pytest.raises(WorkflowError) as excinfo:
+        store.create_thread(
+            side="frontend",
+            verdict=Verdict.propose,
+            title="Initial",
+            body="Start.",
+            origin="source#1@abc:round-1",
+        )
+
+    assert excinfo.value.code == "http_500"
+    message = str(excinfo.value)
+    assert "negotiation origin source#1@abc:round-1" in message
+    assert "target project target" in message
+
+
 def test_api_store_issue_refs_fail_clearly_when_thread_fields_are_missing() -> None:
     class OldThreadClient(FakeIssuekitClient):
         def get_thread(self, thread_id: int):

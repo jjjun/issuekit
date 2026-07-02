@@ -57,6 +57,7 @@ COMMANDS = (
     "list-refs",
     "propose",
     "incoming",
+    "outgoing",
     "adopt",
     "discard",
 )
@@ -497,6 +498,23 @@ def build_parser() -> argparse.ArgumentParser:
     )
     incoming_parser.add_argument("--json", action="store_true", help="Print JSON output.")
     incoming_parser.set_defaults(func=propose.run_incoming)
+
+    outgoing_parser = subparsers.add_parser(
+        "outgoing",
+        help="List proposals this project sent to a target project's inbox.",
+    )
+    outgoing_parser.add_argument(
+        "--to",
+        required=True,
+        help="Target project whose inbox holds the outgoing proposals.",
+    )
+    outgoing_parser.add_argument("--id", type=int, help="Look up a single proposal id.")
+    outgoing_parser.add_argument(
+        "--status",
+        help="Filter by proposal status (pending, adopted, or discarded).",
+    )
+    outgoing_parser.add_argument("--json", action="store_true", help="Print JSON output.")
+    outgoing_parser.set_defaults(func=propose.run_outgoing)
 
     adopt_parser = subparsers.add_parser(
         "adopt",

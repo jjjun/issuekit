@@ -54,6 +54,7 @@ def test_server_registers_expected_tools(tmp_path: Path) -> None:
         "list_queue",
         "propose",
         "list_incoming",
+        "list_outgoing",
         "adopt_proposal",
         "discard_proposal",
     }
@@ -532,10 +533,78 @@ def test_api_proposal_tools_send_list_adopt_and_discard(
 
     assert sent["origin"] == "target#0@unknown"
     assert sent["title"] == "MCP API Proposal"
+    assert sent["payload_mismatch"] is False
     assert [proposal["id"] for proposal in incoming] == [10, 11, sent["id"]]
     assert adopted["title"] == "Adopt"
     assert adopted["priority"] == "low"
     assert discarded["status"] == "discarded"
+
+
+def test_mcp_propose_flags_same_origin_payload_mismatch(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    client = FakeIssuekitClient(
+        proposals=[
+            {
+                "id": 1,
+                "origin": "target#0@unknown",
+                "title": "Old title",
+                "body": "Old body.",
+                "status": "pending",
+            }
+        ]
+    )
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'target'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    server = create_server(tmp_path)
+
+    sent = _call(
+        server,
+        "propose",
+        {"to": "other_project", "title": "New title", "body": "New body."},
+    )
+
+    assert sent["id"] == 1
+    assert sent["title"] == "Old title"
+    assert sent["idempotent_existing"] is True
+    assert sent["payload_mismatch"] is True
+    assert sent["payload_mismatch_fields"] == ["title", "body"]
+    assert "from-issue" in sent["warning"]
+
+
+def test_mcp_list_outgoing_scopes_to_own_origin(tmp_path: Path, monkeypatch) -> None:
+    client = FakeIssuekitClient(
+        proposals=[
+            {"id": 1, "origin": "target#1@abc", "title": "Mine", "body": "b", "status": "pending"},
+            {"id": 2, "origin": "other#1@abc", "title": "Not mine", "body": "b", "status": "pending"},
+            {
+                "id": 3,
+                "origin": "target#2@abc",
+                "title": "Mine adopted",
+                "body": "b",
+                "status": "adopted",
+                "adopted_issue_number": 42,
+            },
+        ]
+    )
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'target'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    server = create_server(tmp_path)
+
+    outgoing = _call(server, "list_outgoing", {"to": "other_project"})
+    adopted_only = _call(server, "list_outgoing", {"to": "other_project", "status": "adopted"})
+
+    assert [proposal["id"] for proposal in outgoing] == [1, 3]
+    assert [proposal["id"] for proposal in adopted_only] == [3]
 
 
 def test_cli_proposal_json_matches_mcp_output(tmp_path: Path, monkeypatch, capsys) -> None:
