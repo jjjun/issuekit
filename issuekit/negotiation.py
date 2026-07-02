@@ -70,6 +70,15 @@ class NegotiationIssueRefs:
         }
 
 
+@dataclass(frozen=True)
+class NegotiationThreadSummary:
+    thread_id: str
+    status: ThreadStatus
+    agreed_contract: str | None = None
+    issue_refs: NegotiationIssueRefs | None = None
+    updated: str = ""
+
+
 class NegotiationStore(Protocol):
     def create_thread(
         self,
@@ -98,6 +107,9 @@ class NegotiationStore(Protocol):
 
     def get_thread(self, thread_id: str) -> list[NegotiationEntry]:
         """Return a thread's entries in stable ascending order."""
+
+    def list_threads(self, *, status: ThreadStatus | None = None) -> list[NegotiationThreadSummary]:
+        """Return known negotiation threads in stable ascending order."""
 
     def set_status(
         self,
@@ -203,6 +215,21 @@ class MockNegotiationStore:
                 entry.created,
             ),
         )
+
+    def list_threads(self, *, status: ThreadStatus | None = None) -> list[NegotiationThreadSummary]:
+        requested_status = _coerce_status(status) if status is not None else None
+        summaries = [
+            NegotiationThreadSummary(
+                thread_id=thread_id,
+                status=thread_status,
+                agreed_contract=self._agreed_contracts.get(thread_id),
+                issue_refs=self._issue_refs.get(thread_id),
+                updated=max((entry.created for entry in self._threads[thread_id]), default=""),
+            )
+            for thread_id, thread_status in self._statuses.items()
+            if requested_status is None or thread_status is requested_status
+        ]
+        return sorted(summaries, key=lambda summary: _thread_sort_key(summary.thread_id))
 
     def set_status(
         self,
@@ -481,6 +508,13 @@ class ApiNegotiationStore:
             ),
         )
 
+    def list_threads(self, *, status: ThreadStatus | None = None) -> list[NegotiationThreadSummary]:
+        requested_status = _coerce_status(status).value if status is not None else None
+        return [
+            _thread_summary_from_api(thread)
+            for thread in self.client.list_threads(status=requested_status)
+        ]
+
     def set_status(
         self,
         thread_id: str,
@@ -629,6 +663,13 @@ def _issue_refs_from_json(raw: Any) -> NegotiationIssueRefs:
         ) from exc
 
 
+def _thread_sort_key(thread_id: str) -> tuple[int, int | str]:
+    try:
+        return (0, int(thread_id))
+    except (TypeError, ValueError):
+        return (1, str(thread_id))
+
+
 def _coerce_verdict(value: object) -> Verdict:
     try:
         return value if isinstance(value, Verdict) else Verdict(str(value))
@@ -773,6 +814,38 @@ def _issue_refs_from_api(
         )
     except ValueError as exc:
         raise WorkflowError(str(exc), code="invalid_response") from exc
+
+
+def _thread_summary_from_api(raw: Any) -> NegotiationThreadSummary:
+    if not isinstance(raw, dict):
+        raise WorkflowError("Proposal thread response was not a JSON object.", code="invalid_response")
+    try:
+        thread_id = raw["id"]
+    except KeyError as exc:
+        raise WorkflowError(
+            f"Proposal thread response missing {exc.args[0]}.",
+            code="invalid_response",
+        ) from exc
+    try:
+        status = _status_from_api(raw)
+    except WorkflowError:
+        raise
+    contract = raw.get("agreed_contract")
+    if contract is not None and not isinstance(contract, str):
+        raise WorkflowError(
+            "Proposal thread agreed_contract was not a string or null.",
+            code="invalid_response",
+        )
+    updated = raw.get("updated_at") or raw.get("updated") or ""
+    if not isinstance(updated, str):
+        raise WorkflowError("Proposal thread updated timestamp was invalid.", code="invalid_response")
+    return NegotiationThreadSummary(
+        thread_id=str(thread_id),
+        status=status,
+        agreed_contract=contract,
+        issue_refs=_issue_refs_from_api(raw),
+        updated=updated,
+    )
 
 
 def _status_from_api(raw: Any) -> ThreadStatus:

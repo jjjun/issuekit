@@ -38,6 +38,7 @@ COMMANDS = (
     "author",
     "implement",
     "negotiate",
+    "threads",
     "validate",
     "migrate-to-api",
     "migrate-proposals-to-api",
@@ -199,6 +200,24 @@ def build_parser() -> argparse.ArgumentParser:
     )
     negotiate_parser.add_argument("--json", action="store_true", help="Print JSON output.")
     negotiate_parser.set_defaults(func=negotiate.run)
+
+    threads_parser = subparsers.add_parser(
+        "threads",
+        help="Inspect negotiation thread status.",
+    )
+    threads_parser.add_argument("thread_id", nargs="?", help="Negotiation thread id to inspect.")
+    threads_parser.add_argument(
+        "--status",
+        choices=("negotiating", "agreed", "blocked"),
+        help="Filter listed threads by status.",
+    )
+    threads_parser.add_argument(
+        "--mock",
+        action="store_true",
+        help="Use the local mock negotiation store.",
+    )
+    threads_parser.add_argument("--json", action="store_true", help="Print JSON output.")
+    threads_parser.set_defaults(func=negotiate.run_threads)
 
     validate_parser = subparsers.add_parser(
         "validate",

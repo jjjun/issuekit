@@ -127,6 +127,32 @@ def test_mock_store_json_persistence_round_trips(tmp_path) -> None:
     assert next_entry.id == 3
 
 
+def test_mock_store_lists_thread_summaries(tmp_path) -> None:
+    store = MockNegotiationStore(tmp_path / "negotiations.json")
+    first = store.create_thread(
+        side="frontend",
+        verdict=Verdict.propose,
+        title="Initial",
+        body="Start.",
+        origin="frontend#1",
+        contract="GET /items",
+    )
+    second = store.create_thread(
+        side="frontend",
+        verdict=Verdict.propose,
+        title="Other",
+        body="Start.",
+        origin="frontend#2",
+    )
+    store.set_status(second.thread_id, ThreadStatus.blocked)
+
+    summaries = store.list_threads(status=ThreadStatus.negotiating)
+
+    assert [summary.thread_id for summary in summaries] == [first.thread_id]
+    assert summaries[0].status is ThreadStatus.negotiating
+    assert summaries[0].agreed_contract is None
+
+
 def test_mock_store_freezes_agreed_contract_and_persists_it(tmp_path) -> None:
     path = tmp_path / "negotiations.json"
     first_store = MockNegotiationStore(path)
@@ -322,6 +348,9 @@ def test_api_negotiation_store_round_trips_via_fake_client() -> None:
 
     assert first.thread_id == "1"
     assert [entry.id for entry in store.get_thread(first.thread_id)] == [first.id, second.id, third.id]
+    assert [summary.thread_id for summary in store.list_threads(status=ThreadStatus.agreed)] == [
+        first.thread_id
+    ]
     assert store.get_status(first.thread_id) is ThreadStatus.agreed
     assert store.get_agreed_contract(first.thread_id) == "GET /items?page=1"
     refs = NegotiationIssueRefs(
