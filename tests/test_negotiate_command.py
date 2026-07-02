@@ -629,6 +629,64 @@ def test_inspect_thread_explains_finalize_refusal() -> None:
     assert payload["entries"][0]["origin"] == "frontend#108@frontend:round-1"
 
 
+def test_inspect_thread_has_no_refusal_for_recoverable_agreement() -> None:
+    store = MockNegotiationStore(None)
+    first = store.create_thread(
+        side="frontend",
+        verdict=Verdict.propose,
+        title="frontend propose",
+        body="Start.",
+        origin="frontend#108@frontend:round-1",
+        contract="GET /items 200",
+    )
+    store.append_entry(
+        first.thread_id,
+        side="backend",
+        verdict=Verdict.agree,
+        title="backend agree",
+        body="Accepted.",
+        origin="frontend#108@backend:round-2",
+        contract="GET /items 200",
+    )
+
+    inspection = inspect_thread(first.thread_id, store=store)
+
+    payload = inspection.to_dict()
+    assert payload["status"] == "negotiating"
+    assert payload["outcome"] == "agreed"
+    assert payload["finalize_refusal"] is None
+
+
+def test_inspect_thread_reports_contract_mismatch_for_non_matching_agreement() -> None:
+    store = MockNegotiationStore(None)
+    first = store.create_thread(
+        side="frontend",
+        verdict=Verdict.propose,
+        title="frontend propose",
+        body="Start.",
+        origin="frontend#108@frontend:round-1",
+        contract="GET /items 200",
+    )
+    store.append_entry(
+        first.thread_id,
+        side="backend",
+        verdict=Verdict.agree,
+        title="backend agree",
+        body="Accepted.",
+        origin="frontend#108@backend:round-2",
+        contract="POST /items 201",
+    )
+
+    inspection = inspect_thread(first.thread_id, store=store)
+
+    payload = inspection.to_dict()
+    assert payload["status"] == "negotiating"
+    assert payload["outcome"] == "negotiating"
+    assert payload["finalize_refusal"] == (
+        "latest agree contract does not match a counterpart contract"
+    )
+
+
 def test_negotiate_cli_json_uses_mock_store_and_api_issue(tmp_path, monkeypatch, capsys) -> None:
     from issuekit import store as store_module
     from issuekit.commands import negotiate

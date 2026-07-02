@@ -841,8 +841,11 @@ def _finalize_refusal_reason(status: ThreadStatus, thread: list[NegotiationEntry
         return f"latest verdict is {latest.verdict.value}, not agree"
     if latest_hash is None:
         return "latest agree turn has no contract"
-    if not any(entry.side != latest.side for entry in thread[:-1]):
+    counterpart_entries = [entry for entry in thread[:-1] if entry.side != latest.side]
+    if not counterpart_entries:
         return "no counterpart turn exists"
+    if any(_contract_hash(entry.contract) == latest_hash for entry in counterpart_entries):
+        return None
     return "latest agree contract does not match a counterpart contract"
 
 
