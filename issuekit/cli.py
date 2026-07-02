@@ -329,13 +329,12 @@ def build_parser() -> argparse.ArgumentParser:
     submit_review_parser.add_argument("--summary", required=True, help="ASCII handoff summary.")
     submit_review_parser.add_argument("--branch", help="Branch containing the implementation.")
     submit_review_parser.add_argument("--commit", help="Commit containing the implementation.")
-    submit_review_parser.add_argument("--assignee", default="codex", help="Current implementer assignee.")
     submit_review_parser.add_argument("--reviewer", help="Reviewer assignee for this handoff.")
     submit_review_parser.set_defaults(func=handoff.run_submit_review)
 
     request_changes_parser = subparsers.add_parser(
         "request-changes",
-        help="Return an issue to codex with requested changes.",
+        help="Return an issue to its implementer with requested changes.",
     )
     request_changes_parser.add_argument("id", help="Issue id to return.")
     request_changes_parser.add_argument("--notes", required=True, help="ASCII review feedback.")

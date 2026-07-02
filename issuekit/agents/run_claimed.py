@@ -148,7 +148,6 @@ def run_and_submit(
         reviewed_issue = submit_for_review(
             issue_id,
             summary=f"Implemented by {agent} via issuekit implement.",
-            assignee=agent,
             config=config,
             store=store,
         )

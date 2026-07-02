@@ -48,7 +48,7 @@ def issue_dict(issue: "Issue", *, include_body: bool = False) -> dict[str, objec
         "stage": issue.stage,
         "implementer": issue.implementer,
         "author": issue.author,
-        "file": issue.ref,
+        "ref": issue.ref,
     }
     if include_body:
         data["body"] = issue.body

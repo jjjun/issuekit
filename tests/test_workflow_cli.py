@@ -36,7 +36,7 @@ def test_queue_command_uses_api_store_when_configured(
 
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert "id=1 file=demo#1 assignee=claude stage=review" in captured.out
+    assert "id=1 ref=demo#1 assignee=claude stage=review" in captured.out
     assert "id=2" not in captured.out
 
 
@@ -102,7 +102,7 @@ def test_claim_command_uses_api_claim_next(
 
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert "id=5 file=demo#5 assignee=codex stage=implementing" in captured.out
+    assert "id=5 ref=demo#5 assignee=codex stage=implementing" in captured.out
     assert client.calls == [
         {"method": "claim_next", "body": {"assignee": "codex", "priority": "high"}}
     ]
@@ -126,7 +126,7 @@ def test_claim_command_can_claim_specific_issue(
 
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert "id=5 file=demo#5 assignee=codex stage=implementing" in captured.out
+    assert "id=5 ref=demo#5 assignee=codex stage=implementing" in captured.out
     assert client.calls == [{"method": "claim", "number": 5, "body": {"assignee": "codex"}}]
 
 
@@ -193,8 +193,8 @@ def test_handoff_commands_use_api_structured_params_without_local_notes(
     captured = capsys.readouterr()
     assert submit_exit == 0
     assert request_exit == 0
-    assert "id=9 file=demo#9 assignee= stage=review" in captured.out
-    assert "id=9 file=demo#9 assignee=codex stage=changes_requested" in captured.out
+    assert "id=9 ref=demo#9 assignee= stage=review" in captured.out
+    assert "id=9 ref=demo#9 assignee=codex stage=changes_requested" in captured.out
     assert client.calls == [
         {
             "method": "submit",

@@ -13,7 +13,7 @@ from issuekit import store as store_module
 from issuekit.mcp.server import create_server
 from issuekit.testing import FakeIssuekitClient
 
-from tests.issue_helpers import api_issue, issue_text, write_indexes, write_issue
+from tests.issue_helpers import api_issue
 
 
 def _call(server, name: str, arguments: dict[str, Any]) -> Any:
@@ -34,6 +34,31 @@ def _tool_names(server) -> set[str]:
         return {tool.name for tool in await server.list_tools()}
 
     return asyncio.run(run())
+
+
+def _tool_schema(server, name: str) -> dict[str, Any]:
+    async def run() -> dict[str, Any]:
+        for tool in await server.list_tools():
+            if tool.name == name:
+                return tool.inputSchema
+        raise AssertionError(f"tool not found: {name}")
+
+    return asyncio.run(run())
+
+
+def _configure_api(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    client: FakeIssuekitClient,
+    *,
+    extra_config: str = "",
+) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'demo'\n" + extra_config,
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
 
 
 def test_importing_cli_does_not_import_mcp() -> None:
@@ -61,6 +86,12 @@ def test_server_registers_expected_tools(tmp_path: Path) -> None:
     }
 
 
+def test_submit_for_review_schema_omits_assignee(tmp_path: Path) -> None:
+    schema = _tool_schema(create_server(tmp_path), "submit_for_review")
+
+    assert "assignee" not in schema["properties"]
+
+
 def test_get_protocol_matches_canonical_text(tmp_path: Path) -> None:
     from issuekit.protocol import render_protocol
 
@@ -74,10 +105,9 @@ def test_get_protocol_matches_canonical_text(tmp_path: Path) -> None:
     assert _call(server, "get_protocol", {}) == render_protocol(None)
 
 
-def test_claim_next_task_claims_only_once(tmp_path: Path) -> None:
-    issues_dir = tmp_path / "docs" / "issues"
-    write_issue(issues_dir / "active" / "001_first.md", issue_text(1, "First"))
-    write_indexes(issues_dir)
+def test_claim_next_task_claims_only_once(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    client = FakeIssuekitClient([api_issue(1, "First")])
+    _configure_api(tmp_path, monkeypatch, client)
     server = create_server(tmp_path)
 
     first = _call(server, "claim_next_task", {"assignee": "codex"})
@@ -90,20 +120,20 @@ def test_claim_next_task_claims_only_once(tmp_path: Path) -> None:
     assert second["status"] == "none"
 
 
-def test_review_round_trip_and_approve(tmp_path: Path) -> None:
-    issues_dir = tmp_path / "docs" / "issues"
-    write_issue(
-        issues_dir / "active" / "001_first.md",
-        issue_text(
-            1,
-            "First",
-            status="in_progress",
-            assignee="codex",
-            stage="implementing",
-            implementer="codex",
-        ),
+def test_review_round_trip_and_approve(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                1,
+                "First",
+                status="in_progress",
+                assignee="codex",
+                stage="implementing",
+                implementer="codex",
+            )
+        ]
     )
-    write_indexes(issues_dir)
+    _configure_api(tmp_path, monkeypatch, client)
     server = create_server(tmp_path)
 
     submitted = _call(
@@ -112,34 +142,35 @@ def test_review_round_trip_and_approve(tmp_path: Path) -> None:
         {"id": 1, "summary": "Implemented.", "branch": "codex/test", "commit": "abc123"},
     )
     review = _call(server, "next_review", {})
-    approved = _call(server, "approve", {"id": 1, "verification": "uv run pytest"})
+    approved = _call(
+        server,
+        "approve",
+        {"id": 1, "verification": "uv run pytest", "reviewer": "claude"},
+    )
 
-    assert submitted["assignee"] == "claude"
+    assert submitted["assignee"] == ""
     assert submitted["stage"] == "review"
     assert review["id"] == 1
     assert "body" in review
     assert approved["status"] == "completed"
     assert approved["stage"] == "done"
-    assert (issues_dir / "completed" / "001_first.md").exists()
-    assert "Approved by claude." in (issues_dir / "completed" / "001_first.md").read_text(
-        encoding="utf-8"
-    )
+    assert client.get_issue(1)["stage"] == "done"
 
 
-def test_review_can_be_routed_to_codex(tmp_path: Path) -> None:
-    issues_dir = tmp_path / "docs" / "issues"
-    write_issue(
-        issues_dir / "active" / "001_first.md",
-        issue_text(
-            1,
-            "First",
-            status="in_progress",
-            assignee="claude",
-            stage="implementing",
-            implementer="claude",
-        ),
+def test_review_can_be_routed_to_codex(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                1,
+                "First",
+                status="in_progress",
+                assignee="claude",
+                stage="implementing",
+                implementer="claude",
+            )
+        ]
     )
-    write_indexes(issues_dir)
+    _configure_api(tmp_path, monkeypatch, client)
     server = create_server(tmp_path)
 
     submitted = _call(
@@ -150,7 +181,6 @@ def test_review_can_be_routed_to_codex(tmp_path: Path) -> None:
             "summary": "Implemented.",
             "branch": "claude/test",
             "commit": "abc123",
-            "assignee": "claude",
             "reviewer": "codex",
         },
     )
@@ -165,28 +195,28 @@ def test_review_can_be_routed_to_codex(tmp_path: Path) -> None:
     assert submitted["stage"] == "review"
     assert review["id"] == 1
     assert approved["status"] == "completed"
-    assert "Approved by codex." in (issues_dir / "completed" / "001_first.md").read_text(
-        encoding="utf-8"
-    )
 
 
-def test_submit_for_review_rejects_explicit_self_assignment(tmp_path: Path) -> None:
-    issues_dir = tmp_path / "docs" / "issues"
-    write_issue(
-        issues_dir / "active" / "001_first.md",
-        issue_text(
-            1,
-            "First",
-            status="in_progress",
-            assignee="codex",
-            stage="implementing",
-            implementer="codex",
-        ),
+def test_submit_for_review_rejects_explicit_self_assignment(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                1,
+                "First",
+                status="in_progress",
+                assignee="codex",
+                stage="implementing",
+                implementer="codex",
+            )
+        ]
     )
-    write_indexes(issues_dir)
+    _configure_api(tmp_path, monkeypatch, client)
     server = create_server(tmp_path)
 
-    with pytest.raises(Exception, match="omit `reviewer`"):
+    with pytest.raises(Exception, match="self-review is not allowed"):
         _call(
             server,
             "submit_for_review",
@@ -198,18 +228,14 @@ def test_submit_for_review_rejects_explicit_self_assignment(tmp_path: Path) -> N
         )
 
 
-def test_next_review_uses_configured_default_reviewer(tmp_path: Path) -> None:
-    (tmp_path / "issuekit.toml").write_text(
-        "default_reviewer = 'codex'\n",
-        encoding="utf-8",
-        newline="\n",
+def test_next_review_uses_configured_default_reviewer(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = FakeIssuekitClient(
+        [api_issue(1, "First", status="in_progress", assignee="codex", stage="review")]
     )
-    issues_dir = tmp_path / "docs" / "issues"
-    write_issue(
-        issues_dir / "active" / "001_first.md",
-        issue_text(1, "First", status="in_progress", assignee="codex", stage="review"),
-    )
-    write_indexes(issues_dir)
+    _configure_api(tmp_path, monkeypatch, client, extra_config="default_reviewer = 'codex'\n")
     server = create_server(tmp_path)
 
     review = _call(server, "next_review", {})
@@ -217,20 +243,23 @@ def test_next_review_uses_configured_default_reviewer(tmp_path: Path) -> None:
     assert review["id"] == 1
 
 
-def test_request_changes_returns_issue_to_codex(tmp_path: Path) -> None:
-    issues_dir = tmp_path / "docs" / "issues"
-    write_issue(
-        issues_dir / "active" / "001_first.md",
-        issue_text(
-            1,
-            "First",
-            status="in_progress",
-            assignee="claude",
-            stage="review",
-            implementer="codex",
-        ),
+def test_request_changes_returns_issue_to_codex(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                1,
+                "First",
+                status="in_progress",
+                assignee="claude",
+                stage="review",
+                implementer="codex",
+            )
+        ]
     )
-    write_indexes(issues_dir)
+    _configure_api(tmp_path, monkeypatch, client)
     server = create_server(tmp_path)
 
     returned = _call(server, "request_changes", {"id": 1, "notes": "Add tests."})
@@ -244,20 +273,23 @@ def test_request_changes_returns_issue_to_codex(tmp_path: Path) -> None:
     assert "body" in issue
 
 
-def test_request_changes_defaults_to_recorded_implementer(tmp_path: Path) -> None:
-    issues_dir = tmp_path / "docs" / "issues"
-    write_issue(
-        issues_dir / "active" / "001_first.md",
-        issue_text(
-            1,
-            "First",
-            status="in_progress",
-            assignee="codex",
-            stage="review",
-            implementer="claude",
-        ),
+def test_request_changes_defaults_to_recorded_implementer(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                1,
+                "First",
+                status="in_progress",
+                assignee="codex",
+                stage="review",
+                implementer="claude",
+            )
+        ]
     )
-    write_indexes(issues_dir)
+    _configure_api(tmp_path, monkeypatch, client)
     server = create_server(tmp_path)
 
     returned = _call(server, "request_changes", {"id": 1, "notes": "Add tests.", "reviewer": "codex"})
@@ -294,10 +326,10 @@ def test_mcp_read_tools_use_api_store_when_configured(tmp_path: Path, monkeypatc
     issue = _call(server, "get_issue", {"id": 1})
 
     assert review["id"] == 1
-    assert review["file"] == "demo#1"
+    assert review["ref"] == "demo#1"
     assert review["body"] == "# Issue #1: Review\n\nReview body.\n"
     assert [item["id"] for item in queue] == [1]
-    assert issue["file"] == "demo#1"
+    assert issue["ref"] == "demo#1"
 
 
 def test_mcp_update_issue_edits_and_appends(tmp_path: Path, monkeypatch) -> None:
@@ -366,60 +398,60 @@ def test_mcp_update_issue_requires_force_for_in_flight_issue(
     assert forced["title"] == "Forced"
 
 
-def test_auto_default_reviewer_opens_review_pool(tmp_path: Path) -> None:
-    (tmp_path / "issuekit.toml").write_text(
-        "default_reviewer = 'auto'\n",
-        encoding="utf-8",
-        newline="\n",
+def test_auto_default_reviewer_opens_review_pool(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                1,
+                "First",
+                status="in_progress",
+                assignee="codex",
+                stage="implementing",
+                implementer="codex",
+            )
+        ]
     )
-    issues_dir = tmp_path / "docs" / "issues"
-    write_issue(
-        issues_dir / "active" / "001_first.md",
-        issue_text(
-            1,
-            "First",
-            status="in_progress",
-            assignee="codex",
-            stage="implementing",
-            implementer="codex",
-        ),
-    )
-    write_indexes(issues_dir)
+    _configure_api(tmp_path, monkeypatch, client, extra_config="default_reviewer = 'auto'\n")
     server = create_server(tmp_path)
 
     submitted = _call(server, "submit_for_review", {"id": 1, "summary": "Implemented."})
     review = _call(server, "next_review", {})
-    approved = _call(server, "approve", {"id": 1, "verification": "uv run pytest"})
+    approved = _call(
+        server,
+        "approve",
+        {"id": 1, "verification": "uv run pytest", "reviewer": "claude"},
+    )
 
     assert submitted["assignee"] == ""
     assert review["id"] == 1
     assert approved["status"] == "completed"
-    assert "Approved by codex." in (issues_dir / "completed" / "001_first.md").read_text(
-        encoding="utf-8"
-    )
 
 
 def test_auto_default_reviewer_opens_review_even_when_guard_is_required(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    (tmp_path / "issuekit.toml").write_text(
-        "default_reviewer = 'auto'\nrequire_distinct_reviewer = true\n",
-        encoding="utf-8",
-        newline="\n",
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                1,
+                "First",
+                status="in_progress",
+                assignee="codex",
+                stage="implementing",
+                implementer="codex",
+            )
+        ]
     )
-    issues_dir = tmp_path / "docs" / "issues"
-    write_issue(
-        issues_dir / "active" / "001_first.md",
-        issue_text(
-            1,
-            "First",
-            status="in_progress",
-            assignee="codex",
-            stage="implementing",
-            implementer="codex",
-        ),
+    _configure_api(
+        tmp_path,
+        monkeypatch,
+        client,
+        extra_config="default_reviewer = 'auto'\nrequire_distinct_reviewer = true\n",
     )
-    write_indexes(issues_dir)
     server = create_server(tmp_path)
 
     submitted = _call(server, "submit_for_review", {"id": 1, "summary": "Implemented."})
@@ -429,25 +461,23 @@ def test_auto_default_reviewer_opens_review_even_when_guard_is_required(
     assert review["id"] == 1
 
 
-def test_open_review_allows_any_agent_to_approve(tmp_path: Path) -> None:
-    (tmp_path / "issuekit.toml").write_text(
-        "default_reviewer = 'auto'\n",
-        encoding="utf-8",
-        newline="\n",
+def test_open_review_allows_any_agent_to_approve(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                1,
+                "First",
+                status="in_progress",
+                assignee="codex",
+                stage="implementing",
+                implementer="codex",
+            )
+        ]
     )
-    issues_dir = tmp_path / "docs" / "issues"
-    write_issue(
-        issues_dir / "active" / "001_first.md",
-        issue_text(
-            1,
-            "First",
-            status="in_progress",
-            assignee="codex",
-            stage="implementing",
-            implementer="codex",
-        ),
-    )
-    write_indexes(issues_dir)
+    _configure_api(tmp_path, monkeypatch, client, extra_config="default_reviewer = 'auto'\n")
     server = create_server(tmp_path)
 
     submitted = _call(server, "submit_for_review", {"id": 1, "summary": "Implemented."})
@@ -455,30 +485,30 @@ def test_open_review_allows_any_agent_to_approve(tmp_path: Path) -> None:
 
     assert submitted["assignee"] == ""
     assert approved["status"] == "completed"
-    assert "Approved by claude." in (issues_dir / "completed" / "001_first.md").read_text(
-        encoding="utf-8"
-    )
 
 
-def test_open_review_rejects_self_review_when_guard_is_required(tmp_path: Path) -> None:
-    (tmp_path / "issuekit.toml").write_text(
-        "default_reviewer = 'auto'\nrequire_distinct_reviewer = true\n",
-        encoding="utf-8",
-        newline="\n",
+def test_open_review_rejects_self_review_when_guard_is_required(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                1,
+                "First",
+                status="in_progress",
+                assignee="codex",
+                stage="implementing",
+                implementer="codex",
+            )
+        ]
     )
-    issues_dir = tmp_path / "docs" / "issues"
-    write_issue(
-        issues_dir / "active" / "001_first.md",
-        issue_text(
-            1,
-            "First",
-            status="in_progress",
-            assignee="codex",
-            stage="implementing",
-            implementer="codex",
-        ),
+    _configure_api(
+        tmp_path,
+        monkeypatch,
+        client,
+        extra_config="default_reviewer = 'auto'\nrequire_distinct_reviewer = true\n",
     )
-    write_indexes(issues_dir)
     server = create_server(tmp_path)
 
     _call(server, "submit_for_review", {"id": 1, "summary": "Implemented."})
@@ -487,20 +517,23 @@ def test_open_review_rejects_self_review_when_guard_is_required(tmp_path: Path) 
         _call(server, "approve", {"id": 1, "verification": "uv run pytest", "reviewer": "codex"})
 
 
-def test_approve_allows_self_review_by_default(tmp_path: Path) -> None:
-    issues_dir = tmp_path / "docs" / "issues"
-    write_issue(
-        issues_dir / "active" / "001_first.md",
-        issue_text(
-            1,
-            "First",
-            status="in_progress",
-            assignee="codex",
-            stage="review",
-            implementer="codex",
-        ),
+def test_approve_allows_different_reviewer(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                1,
+                "First",
+                status="in_progress",
+                assignee="codex",
+                stage="review",
+                implementer="claude",
+            )
+        ]
     )
-    write_indexes(issues_dir)
+    _configure_api(tmp_path, monkeypatch, client)
     server = create_server(tmp_path)
 
     approved = _call(
@@ -512,50 +545,46 @@ def test_approve_allows_self_review_by_default(tmp_path: Path) -> None:
     assert approved["status"] == "completed"
 
 
-def test_approve_rejects_self_review_when_guard_is_required(tmp_path: Path) -> None:
-    (tmp_path / "issuekit.toml").write_text(
-        "require_distinct_reviewer = true\n",
-        encoding="utf-8",
-        newline="\n",
+def test_approve_rejects_self_review_when_guard_is_required(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                1,
+                "First",
+                status="in_progress",
+                assignee="",
+                stage="review",
+                implementer="codex",
+            )
+        ]
     )
-    issues_dir = tmp_path / "docs" / "issues"
-    write_issue(
-        issues_dir / "active" / "001_first.md",
-        issue_text(
-            1,
-            "First",
-            status="in_progress",
-            assignee="codex",
-            stage="review",
-            implementer="codex",
-        ),
-    )
-    write_indexes(issues_dir)
+    _configure_api(tmp_path, monkeypatch, client, extra_config="require_distinct_reviewer = true\n")
     server = create_server(tmp_path)
 
     with pytest.raises(Exception, match="self-review is not allowed"):
         _call(server, "approve", {"id": 1, "verification": "uv run pytest", "reviewer": "codex"})
 
 
-def test_approve_rejects_unassigned_reviewer_with_clear_message(tmp_path: Path) -> None:
-    (tmp_path / "issuekit.toml").write_text(
-        "default_reviewer = 'auto'\n",
-        encoding="utf-8",
-        newline="\n",
+def test_approve_rejects_unassigned_reviewer_with_clear_message(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                1,
+                "First",
+                status="in_progress",
+                assignee="codex",
+                stage="review",
+                implementer="claude",
+            )
+        ]
     )
-    issues_dir = tmp_path / "docs" / "issues"
-    write_issue(
-        issues_dir / "active" / "001_first.md",
-        issue_text(
-            1,
-            "First",
-            status="in_progress",
-            assignee="codex",
-            stage="review",
-            implementer="claude",
-        ),
-    )
-    write_indexes(issues_dir)
+    _configure_api(tmp_path, monkeypatch, client, extra_config="default_reviewer = 'auto'\n")
     server = create_server(tmp_path)
 
     with pytest.raises(Exception) as excinfo:

@@ -19,13 +19,12 @@ def run_submit_review(args) -> int:
             summary=args.summary,
             branch=args.branch,
             commit=args.commit,
-            assignee=args.assignee,
             reviewer=args.reviewer,
             config=config,
         )
 
         print(
-            f"id={issue.id} file={issue.ref} "
+            f"id={issue.id} ref={issue.ref} "
             f"assignee={issue.assignee} stage={issue.stage}"
         )
         return 0
@@ -46,7 +45,7 @@ def run_request_changes(args) -> int:
         )
 
         print(
-            f"id={issue.id} file={issue.ref} "
+            f"id={issue.id} ref={issue.ref} "
             f"assignee={issue.assignee} stage={issue.stage}"
         )
         return 0

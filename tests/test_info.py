@@ -50,9 +50,10 @@ def test_info_json_output(tmp_path: Path, monkeypatch, capsys) -> None:
     payload = json.loads(capsys.readouterr().out)
 
     assert payload["counts"] == {"active": 1, "completed": 1, "total": 2}
-    assert payload["nextIssueId"] is None
-    assert payload["indexes"] is None
-    assert payload["activeIssues"][0]["file"] == "demo#1"
+    assert "nextIssueId" not in payload
+    assert "duplicateIds" not in payload
+    assert "indexes" not in payload
+    assert payload["activeIssues"][0]["ref"] == "demo#1"
     assert payload["activeIssues"][0]["stage"] is None
     assert payload["incomingProposals"] == []
 
@@ -178,6 +179,7 @@ def test_info_text_omits_retired_index_status(tmp_path: Path, monkeypatch, capsy
     captured = capsys.readouterr()
     assert exit_code == 0
     assert "Indexes:" not in captured.out
+    assert "Next issue id:" not in captured.out
     assert "Incoming proposals: 0" in captured.out
     assert "\nIncoming proposals\n" not in captured.out
 

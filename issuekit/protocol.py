@@ -63,7 +63,7 @@ Copyable CLI examples:
 - Author: `issuekit author --title "Short title" --body-file issue.md --priority medium --agent codex`
 - Claim next: `issuekit claim --assignee codex`
 - Claim specific issue: `issuekit claim --id 123 --assignee codex`
-- Submit review: `issuekit submit-review 123 --summary "Implemented." --branch main --commit abc123 --assignee codex`
+- Submit review: `issuekit submit-review 123 --summary "Implemented." --branch main --commit abc123`
 - Request changes: `issuekit request-changes 123 --notes "Add focused tests." --reviewer claude`
 - Approve: `issuekit approve 123 --verification "uv run pytest" --reviewer claude`
 - Complete: `issuekit complete 123 --summary "Done." --verification "uv run pytest"`
@@ -147,13 +147,13 @@ commands. Run this protocol end to end:
    switch branches. When driven by `issuekit implement`, do not run git commit
    or git push; leave implementation changes unstaged for review.
 4. Run the relevant tests and `uv run issuekit check-encoding`.
-5. Call `submit_for_review(id, summary, branch, commit, assignee="<agent>",
-   reviewer=None)` with an ASCII summary and optional branch/commit metadata.
-   Set assignee to the implementer. Omit reviewer to use `default_reviewer`, or
-   pass another configured assignee. If `default_reviewer` is `auto`, the issue
-   enters the open review pool so any agent (including another session of the
-   same name) may review it. An implementer may not name itself as the explicit
-   reviewer; use the open pool for same-name review.
+5. Call `submit_for_review(id, summary, branch, commit, reviewer=None)` with an
+   ASCII summary and optional branch/commit metadata. Omit reviewer to use
+   `default_reviewer`, or pass another configured assignee. If
+   `default_reviewer` is `auto`, the issue enters the open review pool so any
+   agent (including another session of the same name) may review it. An
+   implementer may not name itself as the explicit reviewer; use the open pool
+   for same-name review.
 6. If a reviewer returns the issue with stage=changes_requested, call
    `claim_next_task(assignee="<agent>")` again, read the Review Feedback note,
    re-plan for just that feedback, address it, and submit for review again.

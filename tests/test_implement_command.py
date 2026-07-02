@@ -96,8 +96,8 @@ def test_implement_command_materializes_api_issue_and_submits_review(
     assert agent_name == "kimi"
     assert issue_id == 1
     assert prompt_suffix is None
-    assert "issue=1 file=demo#1 agent=kimi" in captured.out
-    assert "submitted_review id=1 file=demo#1 assignee= stage=review" in captured.out
+    assert "issue=1 ref=demo#1 agent=kimi" in captured.out
+    assert "submitted_review id=1 ref=demo#1 assignee= stage=review" in captured.out
     assert client.calls[0] == {"method": "claim", "number": 1, "body": {"assignee": "kimi"}}
     assert client.calls[-1]["method"] == "submit"
 
@@ -198,7 +198,7 @@ def test_implement_command_accepts_agent_side_review_when_no_changes(
     captured = capsys.readouterr()
     assert exit_code == 0
     assert "already at review after the agent run" in captured.out
-    assert "submitted_review id=1 file=demo#1 assignee= stage=review" in captured.out
+    assert "submitted_review id=1 ref=demo#1 assignee= stage=review" in captured.out
     assert [call["method"] for call in client.calls] == ["claim", "submit"]
 
 

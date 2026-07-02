@@ -67,7 +67,6 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
         summary: str,
         branch: str | None = None,
         commit: str | None = None,
-        assignee: str = "codex",
         reviewer: str | None = None,
     ) -> dict[str, Any]:
         config = load_config(root)
@@ -77,7 +76,6 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
                 summary=summary,
                 branch=branch,
                 commit=commit,
-                assignee=assignee,
                 reviewer=reviewer,
                 config=config,
                 store=store,
@@ -105,7 +103,7 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
         return issue_dict(issues[0], include_body=True)
 
     @server.tool(
-        description="Reviewer protocol decision: return a review issue to codex with notes."
+        description="Reviewer protocol decision: return a review issue to its implementer with notes."
     )
     def request_changes(
         id: int,

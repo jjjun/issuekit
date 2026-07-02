@@ -20,7 +20,7 @@ def run(args) -> int:
 
         for issue in issues:
             print(
-                f"id={issue.id} file={issue.ref} "
+                f"id={issue.id} ref={issue.ref} "
                 f"assignee={issue.assignee or '-'} stage={issue.stage or '-'}"
             )
         return 0

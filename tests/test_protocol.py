@@ -39,7 +39,8 @@ def test_render_protocol_returns_each_agent_and_both() -> None:
         assert "issuekit outgoing --to issuekit" in rendered
     assert "claim_next_task" in codex
     assert "submit_for_review" in codex
-    assert 'assignee="<agent>"' in codex
+    assert 'submit_for_review(id, summary, branch, commit, reviewer=None)' in codex
+    assert 'submit_for_review(id, summary, branch, commit, assignee="<agent>"' not in codex
     assert "ASCII summary" in codex
     assert "next_review" in claude
     assert "request_changes" in claude

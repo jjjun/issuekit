@@ -79,7 +79,7 @@ def test_api_store_maps_json_to_issue_and_issue_dict() -> None:
         "stage": "review",
         "implementer": "codex",
         "author": "kimi",
-        "file": "demo#7",
+        "ref": "demo#7",
         "body": body,
     }
 

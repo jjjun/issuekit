@@ -62,7 +62,7 @@ def run(args) -> int:
 
 
 def _print_run_report(issue: Issue, result: AgentResult, agent: str) -> None:
-    print(f"issue={issue.id} file={issue.ref} agent={agent}")
+    print(f"issue={issue.id} ref={issue.ref} agent={agent}")
     print(
         "exit_code={exit_code} timed_out={timed_out} elapsed_sec={elapsed:.2f}".format(
             exit_code=result.exit_code,
@@ -94,6 +94,6 @@ def _print_submit_report(outcome: RunOutcome) -> None:
     if reviewed_issue is None:
         return
     print(
-        f"submitted_review id={reviewed_issue.id} file={reviewed_issue.ref} "
+        f"submitted_review id={reviewed_issue.id} ref={reviewed_issue.ref} "
         f"assignee={reviewed_issue.assignee} stage={reviewed_issue.stage}"
     )

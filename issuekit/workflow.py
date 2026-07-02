@@ -70,13 +70,11 @@ def submit_for_review(
     summary: str,
     branch: str | None = None,
     commit: str | None = None,
-    assignee: str = "codex",
     reviewer: str | None = None,
     config: IssuekitConfig | None = None,
     store=None,
 ) -> Issue:
     config = config or IssuekitConfig()
-    _validate_assignee(assignee, config)
     _validate_stage("review", config)
     _validate_ascii_text(summary, "--summary")
     _validate_ascii_text(branch or "", "--branch")

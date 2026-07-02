@@ -37,7 +37,7 @@ def run(args) -> int:
             return 0
 
         print(
-            f"id={issue.id} file={issue.ref} "
+            f"id={issue.id} ref={issue.ref} "
             f"assignee={issue.assignee} stage={issue.stage}"
         )
         return 0

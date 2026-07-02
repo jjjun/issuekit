@@ -27,7 +27,6 @@ def run(args) -> int:
             "completed": completed_count,
             "total": len(active_issues) + completed_count,
         },
-        "nextIssueId": None,
         "latestCompletedId": latest_completed_id,
         "activeIssues": [
             {
@@ -36,7 +35,7 @@ def run(args) -> int:
                 "priority": issue.priority or None,
                 "status": issue.issue_status,
                 "stage": issue.stage or None,
-                "file": issue.ref,
+                "ref": issue.ref,
             }
             for issue in active_issues
         ],
@@ -49,8 +48,6 @@ def run(args) -> int:
             }
             for proposal in incoming_proposals
         ],
-        "duplicateIds": [],
-        "indexes": None,
     }
 
     if args.json:
@@ -61,7 +58,6 @@ def run(args) -> int:
     print(f"- Active issues: {summary['counts']['active']}")
     print(f"- Completed issues: {summary['counts']['completed']}")
     print(f"- Total issues: {summary['counts']['total']}")
-    print("- Next issue id: allocated by API")
     print(f"- Latest completed id: {summary['latestCompletedId']}")
     print(f"- Incoming proposals: {len(summary['incomingProposals'])}")
 
@@ -70,7 +66,7 @@ def run(args) -> int:
         print("Active issues")
         for issue in summary["activeIssues"]:
             status_display = f"{issue['status']}, stage={issue['stage']}" if issue.get('stage') else issue['status']
-            print(f"- #{issue['id']}: {issue['title']} [{status_display}] ({issue['file']})")
+            print(f"- #{issue['id']}: {issue['title']} [{status_display}] ({issue['ref']})")
 
     if summary["incomingProposals"]:
         print()
