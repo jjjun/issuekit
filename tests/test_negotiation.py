@@ -347,6 +347,94 @@ def test_api_negotiation_store_round_trips_via_fake_client() -> None:
     assert status_exc.value.code == "invalid_transition"
 
 
+def test_api_store_issue_refs_fail_clearly_when_thread_fields_are_missing() -> None:
+    class OldThreadClient(FakeIssuekitClient):
+        def get_thread(self, thread_id: int):
+            payload = super().get_thread(thread_id)
+            payload.pop("backend_issue_ref", None)
+            payload.pop("frontend_issue_ref", None)
+            return payload
+
+    client = OldThreadClient()
+    store = ApiNegotiationStore(
+        IssuekitConfig(api_url="https://mine.example", project="target"),
+        client=client,
+    )
+    first = store.create_thread(
+        side="frontend",
+        verdict=Verdict.propose,
+        title="Initial",
+        body="Use the public endpoint.",
+        origin="source#1",
+        contract="GET /items",
+    )
+
+    with pytest.raises(WorkflowError) as excinfo:
+        store.get_issue_refs(first.thread_id)
+
+    assert excinfo.value.code == "server_schema_drift"
+    assert "issue-ref fields" in str(excinfo.value)
+
+
+def test_api_store_accepts_empty_nested_issue_refs_as_supported() -> None:
+    class NestedIssueRefsClient(FakeIssuekitClient):
+        def get_thread(self, thread_id: int):
+            payload = super().get_thread(thread_id)
+            payload.pop("backend_issue_ref", None)
+            payload.pop("frontend_issue_ref", None)
+            payload["issue_refs"] = {}
+            return payload
+
+    client = NestedIssueRefsClient()
+    store = ApiNegotiationStore(
+        IssuekitConfig(api_url="https://mine.example", project="target"),
+        client=client,
+    )
+    first = store.create_thread(
+        side="frontend",
+        verdict=Verdict.propose,
+        title="Initial",
+        body="Use the public endpoint.",
+        origin="source#1",
+        contract="GET /items",
+    )
+
+    assert store.get_issue_refs(first.thread_id) is None
+
+
+def test_api_store_set_issue_refs_requires_patch_confirmation() -> None:
+    class IgnoredIssueRefsClient(FakeIssuekitClient):
+        def patch_thread(self, thread_id: int, **kwargs):
+            payload = super().patch_thread(thread_id, **kwargs)
+            payload["backend_issue_ref"] = None
+            payload["frontend_issue_ref"] = None
+            return payload
+
+    client = IgnoredIssueRefsClient()
+    store = ApiNegotiationStore(
+        IssuekitConfig(api_url="https://mine.example", project="target"),
+        client=client,
+    )
+    first = store.create_thread(
+        side="frontend",
+        verdict=Verdict.propose,
+        title="Initial",
+        body="Use the public endpoint.",
+        origin="source#1",
+        contract="GET /items",
+    )
+    refs = NegotiationIssueRefs(
+        backend_issue_ref="target#4",
+        frontend_issue_ref="source#8",
+    )
+
+    with pytest.raises(WorkflowError) as excinfo:
+        store.set_issue_refs(first.thread_id, refs)
+
+    assert excinfo.value.code == "server_schema_drift"
+    assert "did not confirm" in str(excinfo.value)
+
+
 def test_get_negotiation_store_selects_mock_or_api(tmp_path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
 

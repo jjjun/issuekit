@@ -85,6 +85,44 @@ def test_client_list_issues_uses_collection_path_without_trailing_slash() -> Non
     assert seen_requests[0].url.path == "/api/issues/demo_project/issues"
 
 
+def test_client_health_gets_unauthenticated_top_level_endpoint() -> None:
+    seen_requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen_requests.append(request)
+        assert "authorization" not in request.headers
+        return httpx.Response(200, json={"status": "ok", "migration_revision": "abc123"})
+
+    client = IssuekitClient(
+        "https://mine.example",
+        project="demo_project",
+        username="svc",
+        password="secret",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    assert client.health() == {"status": "ok", "migration_revision": "abc123"}
+    assert len(seen_requests) == 1
+    assert seen_requests[0].method == "GET"
+    assert seen_requests[0].url.path == "/health"
+
+
+def test_client_health_requires_json_object_response() -> None:
+    client = IssuekitClient(
+        "https://mine.example",
+        token="static-token",
+        http_client=httpx.Client(
+            transport=httpx.MockTransport(lambda request: httpx.Response(200, json=[]))
+        ),
+    )
+
+    with pytest.raises(WorkflowError) as excinfo:
+        client.health()
+
+    assert excinfo.value.code == "invalid_response"
+    assert str(excinfo.value) == "Health response was not a JSON object."
+
+
 def test_client_list_all_issues_paginates_until_empty_final_page() -> None:
     all_issues = [{"id": issue_id} for issue_id in range(1, 7)]
     seen_pages: list[tuple[int, int]] = []

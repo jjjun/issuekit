@@ -180,6 +180,12 @@ class IssuekitClient:
             raise WorkflowError("List response was not a JSON array.", code="invalid_response")
         return payload
 
+    def health(self) -> JsonDict:
+        """Read the unauthenticated backend health payload."""
+        response = self._send("GET", "/health", headers={"Accept": "application/json"})
+        payload = self._parse_response(response)
+        return _ensure_dict(payload, "Health response")
+
     def list_all_issues(
         self,
         *,
@@ -614,7 +620,13 @@ class IssuekitClient:
         if 200 <= response.status_code < 300:
             if not response.content:
                 return {}
-            return response.json()
+            try:
+                return response.json()
+            except ValueError as exc:
+                raise WorkflowError(
+                    "API response was not valid JSON.",
+                    code="invalid_response",
+                ) from exc
 
         code = f"http_{response.status_code}"
         message = response.reason_phrase or f"HTTP {response.status_code}"

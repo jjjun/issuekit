@@ -44,6 +44,9 @@ class FakeIssuekitClient:
     def __exit__(self, *exc_info: object) -> None:
         return None
 
+    def health(self) -> JsonDict:
+        return {"status": "ok", "migration_revision": "test"}
+
     def list_issues(
         self,
         *,
@@ -712,6 +715,8 @@ class FakeIssuekitClient:
         stored.setdefault("target_project", "issuekit")
         stored.setdefault("status", "negotiating")
         stored.setdefault("agreed_contract", None)
+        stored.setdefault("backend_issue_ref", None)
+        stored.setdefault("frontend_issue_ref", None)
         stored.setdefault("created_at", date.today().isoformat())
         stored.setdefault("updated_at", stored["created_at"])
         self._threads[thread_id] = stored
