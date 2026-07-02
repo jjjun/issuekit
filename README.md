@@ -185,6 +185,28 @@ Related projects exchange suggestions through API proposal inboxes. Proposals
 are not workflow items until they are adopted, so the API-backed issue queue is
 separate from proposal triage.
 
+Use `issuekit author` only for work that originates in and belongs to the
+current project. If you are acting in project A and discover that the required
+change belongs to project B, stay in project A and send a proposal:
+
+```powershell
+issuekit propose --to project-b --title "Short proposal title" --body-file proposal.md
+```
+
+Do not `cd` into project B and run `issuekit author`; that bypasses B's proposal
+triage and makes the issue look locally originated. When `author` sees related
+project context that looks cross-project, it stops before creating the issue and
+prints the proposal command template. Pass `--direct-local-author` only when the
+work is deliberately local despite mentioning a related project.
+
+If a direct target-project issue was created by mistake, recover without editing
+tracker metadata directly: send the proposal from the origin project, then close
+the mistaken direct issue in the target project as superseded:
+
+```powershell
+issuekit complete <direct-issue-id> --force --summary "Superseded by proposal <proposal-ref>" --verification "Recovery bookkeeping only."
+```
+
 `--to` takes the target API project key. The old workspace ref registry is kept
 only as an optional local alias map for operators who want to remember sibling
 project names; proposal delivery no longer resolves a target repo path or writes

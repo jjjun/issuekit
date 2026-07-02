@@ -194,7 +194,12 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
                 for issue in find_for(assignee, stage=stage, config=config, store=store)
             ]
 
-    @server.tool(description="Send a cross-repository proposal to a configured ref.")
+    @server.tool(
+        description=(
+            "Send a cross-repository proposal from the origin project to the target "
+            "project inbox; use this instead of authoring directly in the target repo."
+        )
+    )
     def propose(
         to: str | None = None,
         title: str | None = None,

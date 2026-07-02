@@ -48,6 +48,18 @@ report gets a distinct origin. The issuekit project triages its inbox
 continuously and adopts worthwhile reports as issues; check the outcome later
 with `issuekit outgoing --to issuekit`.
 
+Local issues vs. cross-project proposals:
+
+- Use `issuekit author` only for work that originates in and belongs to the
+  current project.
+- If you are acting from project A and the change belongs to project B, stay in
+  project A and run `issuekit propose --to B --title <t> --body <b>` instead of
+  changing directories into B and running `issuekit author`.
+- If a direct issue was created in B by mistake, recover by sending the proposal
+  from A, then close the mistaken B issue as superseded with
+  `issuekit complete <id> --force --summary "Superseded by proposal <ref>"`
+  and an audit-style verification note.
+
 Separation-of-duties invariants:
 
 - The author role and implementer role must be different sessions. If the same
@@ -187,6 +199,8 @@ of only reporting it. Use `issuekit propose --to <project> --title <t> --body
 <b>` (or the MCP `propose` tool). Proposals are non-destructive suggestions in
 the target project's API inbox; the target project owns triage, so do not mutate
 its state directly. Add `--blocking` when the proposal is a hard dependency.
+Do not `cd` into the target project and run `issuekit author`; that makes the
+target queue look like the work originated locally and bypasses proposal triage.
 
 When the proposal-system MCP tools hang or error, fall back to the equivalent
 CLI: `issuekit propose --to <project> --title <t> --body <b> --json`,
@@ -196,10 +210,12 @@ same implementation and emit the same structured output.
 
 When asked to write or plan an issue:
 
-1. Create the issue with `issuekit author`; the API allocates the issue id.
-2. Leave the issue unstarted with no assignee unless a specific implementer is
+1. First decide whether this is local work. If it originates in another project,
+   use `issuekit propose --to <project>` from the origin project instead.
+2. Create local issues with `issuekit author`; the API allocates the issue id.
+3. Leave the issue unstarted with no assignee unless a specific implementer is
    required.
-3. STOP_NOW. The command writes a local author-session guard. Do not call `claim_next_task`,
+4. STOP_NOW. The command writes a local author-session guard. Do not call `claim_next_task`,
    `issuekit claim`, `issuekit implement`, or `submit_for_review` in the same
    session. An implementer claims it later via `claim_next_task`.
 
