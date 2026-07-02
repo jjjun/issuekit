@@ -504,7 +504,7 @@ def _run_side_turn(
         timeout=float(timeout),
         agent_name=agent,
         issue_id=issue.id,
-        prompt_override=prompt,
+        prompt_override=_round_prompt_pointer(plan_path),
         session_id=session_id,
     )
     run_id = _run_id(result)
@@ -553,6 +553,14 @@ def _write_round_prompt(
     path = run_dir / f"negotiate-issue-{issue_token}-round-{round_number}-{side}.md"
     path.write_text(prompt, encoding="utf-8", newline="\n")
     return path
+
+
+def _round_prompt_pointer(plan_path: Path) -> str:
+    return (
+        f"Read the negotiation round prompt at: {plan_path} and respond with exactly "
+        "one fenced negotiation block per its instructions. Do not implement code; "
+        "do not modify the tracker."
+    )
 
 
 def _evaluate_convergence(thread: list[NegotiationEntry]) -> str:

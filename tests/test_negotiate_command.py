@@ -92,6 +92,12 @@ class CannedRunner:
         )
 
 
+def _call_plan_text(runner: CannedRunner, index: int) -> str:
+    plan_path = runner.calls[index]["plan_path"]
+    assert isinstance(plan_path, Path)
+    return plan_path.read_text(encoding="utf-8")
+
+
 def test_negotiate_converges_when_both_sides_agree_on_same_contract(tmp_path) -> None:
     store = MockNegotiationStore(None)
     runner = CannedRunner(
@@ -128,9 +134,8 @@ def test_negotiate_converges_when_both_sides_agree_on_same_contract(tmp_path) ->
     ]
     assert runner.calls[0]["agent_name"] == "codex"
     assert runner.calls[1]["agent_name"] == "claude"
-    assert "Perspective: you represent the frontend side." in str(
-        runner.calls[0]["prompt_override"]
-    )
+    assert "Read the negotiation round prompt at:" in str(runner.calls[0]["prompt_override"])
+    assert "Perspective: you represent the frontend side." in _call_plan_text(runner, 0)
 
 
 def test_negotiate_reuses_resumable_side_session_and_shrinks_prompt(tmp_path) -> None:
@@ -160,12 +165,47 @@ def test_negotiate_reuses_resumable_side_session_and_shrinks_prompt(tmp_path) ->
     assert runner.calls[0]["session_id"] == runner.calls[2]["session_id"]
     assert isinstance(runner.calls[0]["session_id"], str)
     assert runner.calls[1]["session_id"] is None
-    assert "Compact thread so far:" in str(runner.calls[1]["prompt_override"])
-    resumed_prompt = str(runner.calls[2]["prompt_override"])
+    assert "Compact thread so far:" in _call_plan_text(runner, 1)
+    resumed_prompt = _call_plan_text(runner, 2)
     assert "Latest counterpart entry:" in resumed_prompt
     assert "backend agree | verdict=agree | contract=GET /items" in resumed_prompt
     assert "Compact thread so far:" not in resumed_prompt
     assert "frontend propose | verdict=propose" not in resumed_prompt
+
+
+def test_negotiate_passes_single_line_pointer_prompt_and_writes_full_plan(tmp_path) -> None:
+    store = MockNegotiationStore(None)
+    runner = CannedRunner(
+        [
+            _block(side="frontend", verdict="propose", contract="GET /items"),
+        ]
+    )
+
+    run_negotiation(
+        issue=_issue(),
+        to_project="backend",
+        frontend_agent="codex",
+        backend_agent="claude",
+        max_rounds=1,
+        timeout=9.0,
+        config=IssuekitConfig(api_url="https://mine.example", project="frontend"),
+        cwd=tmp_path,
+        store=store,
+        runner=runner,
+    )
+
+    prompt_override = str(runner.calls[0]["prompt_override"])
+    plan_path = runner.calls[0]["plan_path"]
+    assert isinstance(plan_path, Path)
+    assert "\n" not in prompt_override
+    assert str(plan_path) in prompt_override
+    assert "Read the negotiation round prompt at:" in prompt_override
+    assert "Do not implement code; do not modify the tracker." in prompt_override
+
+    plan_text = plan_path.read_text(encoding="utf-8")
+    assert "You are participating in an issuekit cross-repo design negotiation." in plan_text
+    assert "Perspective: you represent the frontend side." in plan_text
+    assert "Compact thread so far:" in plan_text
 
 
 def test_negotiate_blocked_path_stops_immediately(tmp_path) -> None:
