@@ -545,7 +545,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     reload_mcp_parser = dev_tool_subparsers.add_parser(
         "reload-mcp",
-        help="Stop running issuekit-mcp.exe processes so clients can restart them.",
+        help="Stop running issuekit-mcp processes so clients can restart them.",
     )
     reload_mcp_parser.add_argument("--json", action="store_true", help="Print JSON output.")
     reload_mcp_parser.set_defaults(func=dev_tool.run)

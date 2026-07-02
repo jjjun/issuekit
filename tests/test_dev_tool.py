@@ -160,6 +160,53 @@ def test_reload_mcp_stops_only_issuekit_mcp_processes(monkeypatch, capsys) -> No
     ]
 
 
+def test_reload_mcp_stops_only_issuekit_mcp_processes_posix(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(dev_tool, "_is_windows", lambda: False)
+    stopped: list[list[str]] = []
+    ps_output = "\n".join(
+        [
+            "  7 /home/jj/.local/share/uv/tools/issuekit/bin/python3 /home/jj/.local/bin/issuekit-mcp",
+            "  8 /usr/bin/python3 /home/jj/projects/issuekit/.venv/bin/issuekit dev-tool reload-mcp",
+            "  9 /usr/bin/python3 -m http.server",
+        ]
+    )
+
+    def runner(argv):
+        argv = list(argv)
+        if argv[0] == "ps":
+            return dev_tool.CommandResult(argv, 0, ps_output)
+        if argv[0] == "kill":
+            stopped.append(argv)
+            return dev_tool.CommandResult(argv, 0, "")
+        raise AssertionError(f"unexpected command: {argv}")
+
+    exit_code = dev_tool._run_reload_mcp(SimpleNamespace(json=True), runner=runner)
+
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert payload["ok"] is True
+    assert stopped == [["kill", "-TERM", "7"]]
+    assert payload["stopped_processes"] == [
+        {
+            "pid": 7,
+            "name": "issuekit-mcp",
+            "executable_path": "/home/jj/.local/bin/issuekit-mcp",
+            "status": "stopped",
+        }
+    ]
+
+
+def test_filter_issuekit_mcp_processes_posix_matches_script_token() -> None:
+    processes = [
+        dev_tool.PosixProcess(1, "/usr/bin/python3 -m http.server"),
+        dev_tool.PosixProcess(2, "/home/jj/.local/share/uv/tools/issuekit/bin/issuekit-mcp"),
+        dev_tool.PosixProcess(3, "/usr/bin/python3 /home/jj/.local/bin/issuekit-mcp"),
+        dev_tool.PosixProcess(4, "/home/jj/.venv/bin/issuekit dev-tool reload-mcp"),
+    ]
+
+    assert dev_tool.filter_issuekit_mcp_processes_posix(processes) == processes[1:3]
+
+
 def test_filter_issuekit_mcp_processes_matches_name_or_executable() -> None:
     processes = [
         dev_tool.WindowsProcess(1, name="python.exe", executable_path=r"C:\Python312\python.exe"),

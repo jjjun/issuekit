@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path, PureWindowsPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from collections.abc import Callable, Sequence
 import json
 import platform
@@ -12,6 +12,7 @@ import sys
 
 
 MCP_PROCESS_NAME = "issuekit-mcp.exe"
+MCP_PROCESS_NAME_POSIX = "issuekit-mcp"
 
 
 @dataclass(frozen=True)
@@ -27,6 +28,12 @@ class WindowsProcess:
     pid: int
     executable_path: str | None = None
     name: str | None = None
+
+
+@dataclass(frozen=True)
+class PosixProcess:
+    pid: int
+    args: str
 
 
 Runner = Callable[[Sequence[str]], CommandResult]
@@ -70,6 +77,12 @@ def default_runner(argv: Sequence[str]) -> CommandResult:
 def stop_issuekit_mcp_processes(runner: Runner | None = None) -> dict[str, object]:
     if runner is None:
         runner = default_runner
+    if _is_windows():
+        return _stop_issuekit_mcp_processes_windows(runner)
+    return _stop_issuekit_mcp_processes_posix(runner)
+
+
+def _stop_issuekit_mcp_processes_windows(runner: Runner) -> dict[str, object]:
     payload: dict[str, object] = {
         "ok": True,
         "actions": [],
@@ -113,6 +126,45 @@ def stop_issuekit_mcp_processes(runner: Runner | None = None) -> dict[str, objec
 
 def filter_issuekit_mcp_processes(processes: Sequence[WindowsProcess]) -> list[WindowsProcess]:
     return [process for process in processes if _is_issuekit_mcp_process(process)]
+
+
+def _stop_issuekit_mcp_processes_posix(runner: Runner) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "ok": True,
+        "actions": [],
+        "stopped_processes": [],
+        "commands": [],
+        "diagnostics": [],
+    }
+    list_result = runner(_list_processes_command_posix())
+    payload["commands"].append(_command_record(list_result))
+    if list_result.returncode != 0:
+        payload["ok"] = False
+        payload["diagnostics"].append(
+            _diagnostic("error", "Failed to list processes with ps.")
+        )
+        return payload
+
+    processes = filter_issuekit_mcp_processes_posix(_parse_ps_output(list_result.stdout))
+    for process in processes:
+        stop_result = runner(["kill", "-TERM", str(process.pid)])
+        payload["commands"].append(_command_record(stop_result))
+        record = _posix_process_record(process)
+        if stop_result.returncode == 0:
+            record["status"] = "stopped"
+        else:
+            record["status"] = "failed"
+            record["stderr"] = stop_result.stderr
+            payload["ok"] = False
+        payload["stopped_processes"].append(record)
+    payload["actions"].append(
+        {"action": "stop_mcp", "ok": payload["ok"], "count": len(payload["stopped_processes"])}
+    )
+    return payload
+
+
+def filter_issuekit_mcp_processes_posix(processes: Sequence[PosixProcess]) -> list[PosixProcess]:
+    return [process for process in processes if _is_issuekit_mcp_process_posix(process)]
 
 
 def _run_install(args, *, editable: bool, runner: Runner | None = None) -> int:
@@ -172,11 +224,6 @@ def _run_reload_mcp(args, runner: Runner | None = None) -> int:
     if runner is None:
         runner = default_runner
     payload = _empty_payload()
-    if not _is_windows():
-        payload["diagnostics"].append(
-            _diagnostic("error", "issuekit dev-tool reload-mcp is currently supported only on Windows.")
-        )
-        return _finish(payload, json_output=args.json)
     stop_payload = stop_issuekit_mcp_processes(runner)
     _merge_payload(payload, stop_payload)
     payload["diagnostics"].append(
@@ -279,6 +326,49 @@ def _list_processes_command() -> list[str]:
         "ConvertTo-Json -Compress"
     )
     return ["powershell", "-NoProfile", "-Command", script]
+
+
+def _list_processes_command_posix() -> list[str]:
+    return ["ps", "-A", "-o", "pid=,args="]
+
+
+def _parse_ps_output(stdout: str) -> list[PosixProcess]:
+    processes: list[PosixProcess] = []
+    for line in stdout.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        parts = line.split(None, 1)
+        if len(parts) != 2:
+            continue
+        pid_str, args = parts
+        try:
+            pid = int(pid_str)
+        except ValueError:
+            continue
+        processes.append(PosixProcess(pid=pid, args=args))
+    return processes
+
+
+def _issuekit_mcp_token(args: str) -> str | None:
+    # The MCP server may run either as the issuekit-mcp entry-point directly or
+    # as `python .../issuekit-mcp`, so match the script token wherever it sits.
+    for token in args.split():
+        if PurePosixPath(token).name == MCP_PROCESS_NAME_POSIX:
+            return token
+    return None
+
+
+def _is_issuekit_mcp_process_posix(process: PosixProcess) -> bool:
+    return bool(process.args) and _issuekit_mcp_token(process.args) is not None
+
+
+def _posix_process_record(process: PosixProcess) -> dict[str, object]:
+    return {
+        "pid": process.pid,
+        "name": MCP_PROCESS_NAME_POSIX,
+        "executable_path": _issuekit_mcp_token(process.args) if process.args else None,
+    }
 
 
 def _parse_process_json(stdout: str) -> list[WindowsProcess]:
