@@ -13,6 +13,7 @@ from issuekit.agents.runner import AgentResult, AgentRunner, resolve_adapter
 from issuekit.config import IssuekitConfig
 from issuekit.core import Issue, has_mojibake
 from issuekit.gitutil import git_root, git_status_short, run_git
+from issuekit.store import get_store
 from issuekit.workflow import submit_for_review
 
 
@@ -41,6 +42,7 @@ def run_and_submit(
     model: str | None = None,
     follow: bool = False,
     prompt_suffix: str | None = None,
+    allow_no_changes: bool = False,
     abort_event: threading.Event | None = None,
     reporter: RunReporter | None = None,
     runner_factory: RunnerFactory | None = None,
@@ -90,12 +92,31 @@ def run_and_submit(
         )
 
     if git_root(cwd) == cwd.resolve() and not _touched_implementation_paths(cwd, issues_dir):
+        current_issue = get_store(config).get_issue(issue_id)
+        if current_issue is not None and current_issue.stage == "review":
+            print(
+                "Issue is already at review after the agent run; treating it as submitted.",
+                file=out,
+            )
+            return RunOutcome(
+                issue=issue,
+                result=result,
+                exit_code=0,
+                reviewed_issue=current_issue,
+            )
+        if not allow_no_changes:
+            current_stage = current_issue.stage if current_issue is not None else "unknown"
+            print(
+                "ERROR: agent produced no implementation changes; not submitting for review. "
+                f"The issue is currently at stage={current_stage}.",
+                file=err,
+            )
+            return RunOutcome(issue=issue, result=result, exit_code=1)
         print(
-            "ERROR: agent produced no implementation changes; not submitting for review. "
-            "The issue remains claimed in implementation.",
-            file=err,
+            "No implementation changes detected; submitting for review because "
+            "--allow-no-changes was set.",
+            file=out,
         )
-        return RunOutcome(issue=issue, result=result, exit_code=1)
 
     run_config = dict(config.agents).get(agent)
     if run_config is not None and run_config.diff_shape_warn_deletions is not None:

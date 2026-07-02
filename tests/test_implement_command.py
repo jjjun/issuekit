@@ -176,6 +176,56 @@ def test_implement_command_blocks_when_git_has_no_implementation_changes(
     assert [call["method"] for call in client.calls] == ["claim"]
 
 
+def test_implement_command_accepts_agent_side_review_when_no_changes(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
+    _configure_api(tmp_path, monkeypatch, client)
+    (tmp_path / ".gitignore").write_text(".agent-runs/\n", encoding="utf-8", newline="\n")
+    _init_git_repo(tmp_path)
+
+    class AgentSubmittingRunner(FakeRunner):
+        def run(self, adapter, plan_path, repo, timeout, **kwargs) -> FakeResult:
+            client.submit(1, summary="Submitted by agent.")
+            return FakeResult(status_short="")
+
+    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", AgentSubmittingRunner)
+
+    exit_code = cli.main(["implement", "1", "--agent", "codex"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "already at review after the agent run" in captured.out
+    assert "submitted_review id=1 file=demo#1 assignee= stage=review" in captured.out
+    assert [call["method"] for call in client.calls] == ["claim", "submit"]
+
+
+def test_implement_command_allows_no_change_submit_with_flag(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
+    _configure_api(tmp_path, monkeypatch, client)
+    (tmp_path / ".gitignore").write_text(".agent-runs/\n", encoding="utf-8", newline="\n")
+    _init_git_repo(tmp_path)
+
+    class CleanRunner(FakeRunner):
+        def run(self, adapter, plan_path, repo, timeout, **kwargs) -> FakeResult:
+            return FakeResult(status_short="")
+
+    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", CleanRunner)
+
+    exit_code = cli.main(["implement", "1", "--agent", "codex", "--allow-no-changes"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "No implementation changes detected" in captured.out
+    assert [call["method"] for call in client.calls] == ["claim", "submit"]
+
+
 def test_implement_command_reinjects_review_feedback(
     tmp_path: Path,
     monkeypatch,

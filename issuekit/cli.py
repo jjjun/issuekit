@@ -176,6 +176,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Emit a live heartbeat to stderr while the agent runs.",
     )
+    implement_parser.add_argument(
+        "--allow-no-changes",
+        action="store_true",
+        help="Submit for review even when the agent produces no implementation diff.",
+    )
     implement_parser.set_defaults(func=implement.run)
 
     negotiate_parser = subparsers.add_parser(

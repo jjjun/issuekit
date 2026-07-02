@@ -46,6 +46,7 @@ def run(args) -> int:
             model=args.model,
             follow=getattr(args, "follow", False),
             prompt_suffix=reviewer_prompt,
+            allow_no_changes=getattr(args, "allow_no_changes", False),
             reporter=lambda issue, result: _print_run_report(issue, result, args.agent),
             runner_factory=AgentRunner,
         )

@@ -92,6 +92,10 @@ def test_runner_prompt_describes_api_lifecycle_without_file_tracker(
 
     assert "Do NOT run git commit or git push" in adapter.prompt
     assert "Issuekit owns the API-backed issue lifecycle" in adapter.prompt
+    assert (
+        "do not run issuekit claim, submit-review, request-changes, approve, or complete"
+        in adapter.prompt
+    )
     assert "do not mutate tracker state or issue lifecycle metadata directly" in adapter.prompt
     assert "docs/issues" not in adapter.prompt
 
