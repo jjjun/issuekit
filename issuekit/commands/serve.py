@@ -16,6 +16,7 @@ from types import FrameType
 from typing import Iterator
 
 from issuekit.agents.run_claimed import review_feedback_prompt, run_and_submit
+from issuekit.agents.review import ReviewParseError, run_review_and_decide
 from issuekit.config import IssuekitConfig, load_config
 from issuekit.core import Issue
 from issuekit.proposals import ProposalError
@@ -26,7 +27,7 @@ from issuekit.worker_registry import (
     WorkerHeartbeat,
     try_post_worker_registration,
 )
-from issuekit.workflow import WorkflowError, claim_next
+from issuekit.workflow import WorkflowError, claim_next, next_review
 
 
 BACKOFF_INITIAL_SEC = 1.0
@@ -59,6 +60,11 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         "--triage",
         action="store_true",
         help="Auto-adopt matching incoming proposals before each claim attempt.",
+    )
+    serve_parser.add_argument(
+        "--review",
+        action="store_true",
+        help="Poll the review pool and run this checkout's reviewer agent.",
     )
     serve_parser.add_argument(
         "--max-issues",
@@ -155,6 +161,9 @@ def run(args) -> int:
     if args.max_issues is not None and args.max_issues < 1:
         print("--max-issues must be greater than zero.", file=sys.stderr)
         return 1
+    if args.review and args.triage:
+        print("--review cannot be combined with --triage.", file=sys.stderr)
+        return 1
 
     issues_dir = config.issues_path(cwd)
     run_dir = cwd / ".agent-runs"
@@ -196,8 +205,22 @@ def _serve_loop(
     backoff = _Backoff()
     attempt_count = 0
     store = get_store(config) if config.api_url else None
-    recovery_store = get_store(config) if config.api_url else None
+    recovery_store = None
     try:
+        if getattr(args, "review", False):
+            review_store = store
+            store = None
+            return _serve_review_loop(
+                args,
+                agent=agent,
+                config=config,
+                cwd=cwd,
+                log_path=log_path,
+                controller=controller,
+                store=review_store,
+            )
+
+        recovery_store = get_store(config) if config.api_url else None
         submitted_count, exit_code, recovery_store = _recover_orphaned_issues(
             args,
             agent=agent,
@@ -310,6 +333,84 @@ def _serve_loop(
     finally:
         _close_store(store)
         _close_store(recovery_store)
+
+
+def _serve_review_loop(
+    args,
+    *,
+    agent: str,
+    config: IssuekitConfig,
+    cwd: Path,
+    log_path: Path,
+    controller: ShutdownController,
+    store,
+) -> int:
+    decided_count = 0
+    backoff = _Backoff()
+    attempt_count = 0
+    try:
+        while not controller.requested:
+            attempt_count += 1
+            try:
+                issue = next_review(agent, config=config, store=store, include_open=True)
+            except (TimeoutError, WorkflowError, ValueError) as exc:
+                _log(sys.stderr, log_path, "review_poll_error", error=str(exc), backoff=backoff.current)
+                if _should_recreate_store(exc):
+                    store = _recreate_store(store, config)
+                if args.once:
+                    return 1
+                controller.sleep(backoff.current)
+                backoff.step()
+                continue
+
+            if issue is None:
+                _log(sys.stderr, log_path, "review_idle", attempt=attempt_count)
+                if args.once:
+                    return 0
+                controller.sleep(float(args.interval))
+                continue
+
+            _log(sys.stderr, log_path, "reviewing", issue=issue.id, agent=agent)
+            result = _run_review_issue(
+                args,
+                issue,
+                agent=agent,
+                config=config,
+                cwd=cwd,
+                log_path=log_path,
+                controller=controller,
+                backoff=backoff.current,
+                store=store,
+            )
+            if result.recreate_store:
+                store = _recreate_store(store, config)
+            if result.status == "error":
+                if args.once:
+                    return 1
+                controller.sleep(backoff.current)
+                backoff.step()
+                continue
+            if result.status == "failed":
+                if args.once:
+                    return result.exit_code
+                if controller.abort_event.is_set():
+                    return 0
+                controller.sleep(backoff.current)
+                backoff.step()
+                continue
+
+            decided_count += 1
+            backoff.reset()
+            _log_reviewed(log_path, result.reviewed_issue, decided_count)
+            if args.once:
+                return 0
+            if args.max_issues is not None and decided_count >= args.max_issues:
+                return 0
+
+        _log(sys.stderr, log_path, "stopped")
+        return 0
+    finally:
+        _close_store(store)
 
 
 def _recover_orphaned_issues(
@@ -434,6 +535,70 @@ def _run_claimed_issue(
     )
 
 
+def _run_review_issue(
+    args,
+    issue: Issue,
+    *,
+    agent: str,
+    config: IssuekitConfig,
+    cwd: Path,
+    log_path: Path,
+    controller: ShutdownController,
+    backoff: float,
+    store=None,
+) -> IssueRunResult:
+    try:
+        outcome = run_review_and_decide(
+            issue,
+            agent=agent,
+            config=config,
+            cwd=cwd,
+            timeout=float(args.timeout_sec),
+            abort_event=controller.abort_event,
+            store=store,
+            out=sys.stderr,
+            err=sys.stderr,
+        )
+    except (
+        FileNotFoundError,
+        RuntimeError,
+        ValueError,
+        TimeoutError,
+        WorkflowError,
+        ReviewParseError,
+    ) as exc:
+        _log(
+            sys.stderr,
+            log_path,
+            "review_error",
+            issue=issue.id,
+            error=str(exc),
+            backoff=backoff,
+        )
+        return IssueRunResult(
+            status="error",
+            exit_code=1,
+            recreate_store=_should_recreate_store(exc),
+        )
+
+    if outcome.exit_code != 0 or outcome.decided_issue is None:
+        _log(
+            sys.stderr,
+            log_path,
+            "review_failed",
+            issue=issue.id,
+            exit_code=outcome.exit_code,
+            backoff=backoff,
+        )
+        return IssueRunResult(status="failed", exit_code=outcome.exit_code)
+
+    return IssueRunResult(
+        status="reviewed",
+        exit_code=0,
+        reviewed_issue=outcome.decided_issue,
+    )
+
+
 def _should_recreate_store(exc: BaseException) -> bool:
     if isinstance(exc, TimeoutError):
         return True
@@ -464,6 +629,21 @@ def _log_submitted(log_path: Path, reviewed_issue: Issue | None, submitted_count
         assignee=reviewed_issue.assignee,
         stage=reviewed_issue.stage,
         count=submitted_count,
+    )
+
+
+def _log_reviewed(log_path: Path, reviewed_issue: Issue | None, decided_count: int) -> None:
+    if reviewed_issue is None:
+        return
+    _log(
+        sys.stderr,
+        log_path,
+        "reviewed",
+        issue=reviewed_issue.id,
+        assignee=reviewed_issue.assignee,
+        stage=reviewed_issue.stage,
+        status=reviewed_issue.issue_status,
+        count=decided_count,
     )
 
 

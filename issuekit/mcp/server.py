@@ -25,11 +25,10 @@ from issuekit.proposals_api import (
 from issuekit.store import get_store
 from issuekit.worker_registry import list_api_workers
 from issuekit.workflow import (
-    AUTO_REVIEWER,
     claim_next,
     find_for,
+    next_review as workflow_next_review,
     request_changes as workflow_request_changes,
-    resolve_reviewer,
     submit_for_review as workflow_submit_for_review,
 )
 
@@ -105,16 +104,14 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
     def next_review(reviewer: str | None = None) -> dict[str, Any]:
         config = load_config(root)
         with get_store(config) as store:
-            if reviewer is None and config.default_reviewer == AUTO_REVIEWER:
-                issues = find_for(stage="review", config=config, store=store)
-                if not issues:
-                    return {"status": "none", "assignee": AUTO_REVIEWER, "stage": "review"}
-                return issue_dict(issues[0], include_body=True)
-            reviewer = resolve_reviewer(reviewer, config)
-            issues = find_for(reviewer, stage="review", config=config, store=store)
-        if not issues:
-            return {"status": "none", "assignee": reviewer, "stage": "review"}
-        return issue_dict(issues[0], include_body=True)
+            issue = workflow_next_review(reviewer, config=config, store=store)
+        if issue is None:
+            return {
+                "status": "none",
+                "assignee": reviewer or config.default_reviewer,
+                "stage": "review",
+            }
+        return issue_dict(issue, include_body=True)
 
     @server.tool(
         description="Reviewer protocol decision: return a review issue to its implementer with notes."

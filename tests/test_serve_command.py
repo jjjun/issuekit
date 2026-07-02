@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from pathlib import Path
 import os
 import signal
+import subprocess
 
 from issuekit import cli
 from issuekit import proposals_api
@@ -51,6 +52,33 @@ class FakeRunner:
             )
         )
         return FakeResult(parsed={"resume_session_id": "abc123"})
+
+
+class ReviewApprovingRunner:
+    calls: list[int | None] = []
+
+    def run(
+        self,
+        adapter,
+        plan_path: Path,
+        repo: Path,
+        timeout: float,
+        agent_name: str | None = None,
+        issue_id: int | None = None,
+        follow: bool = False,
+        **kwargs,
+    ) -> FakeResult:
+        self.calls.append(issue_id)
+        return FakeResult(
+            parsed={
+                "stdout": (
+                    "```review\n"
+                    '{"verdict":"approve","verification":"uv run pytest","notes":""}\n'
+                    "```"
+                )
+            },
+            status_short="",
+        )
 
 
 class ExplodingRunner:
@@ -105,6 +133,27 @@ def _configure_registered_api(
     monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
     monkeypatch.setattr(worker_registry, "IssuekitClient", lambda *args, **kwargs: client)
     monkeypatch.chdir(tmp_path)
+
+
+def _init_git_repo(path: Path) -> None:
+    subprocess.run(["git", "init"], cwd=str(path), check=True, stdout=subprocess.DEVNULL)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=str(path), check=True)
+    subprocess.run(["git", "config", "user.name", "Test User"], cwd=str(path), check=True)
+    subprocess.run(["git", "config", "core.autocrlf", "false"], cwd=str(path), check=True)
+    subprocess.run(["git", "add", "."], cwd=str(path), check=True)
+    subprocess.run(
+        ["git", "commit", "-m", "baseline"],
+        cwd=str(path),
+        check=True,
+        stdout=subprocess.DEVNULL,
+    )
+
+
+def _create_reviewable_diff(path: Path) -> None:
+    (path / ".gitignore").write_text(".agent-runs/\n", encoding="utf-8", newline="\n")
+    (path / "code.py").write_text("value = 1\n", encoding="utf-8", newline="\n")
+    _init_git_repo(path)
+    (path / "code.py").write_text("value = 2\n", encoding="utf-8", newline="\n")
 
 
 def test_serve_once_empty_queue_exits_without_agent(
@@ -163,6 +212,70 @@ def test_serve_once_claims_runs_and_submits(
     assert [call["method"] for call in client.calls] == ["upsert_worker", "claim_next", "submit"]
     assert client.calls[1]["body"]["worker"] == "machine/demo/checkout"
     assert "event=submitted issue=1" in capsys.readouterr().err
+
+
+def test_serve_review_once_reviews_open_pool_issue(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                1,
+                "Review",
+                status="in_progress",
+                assignee="",
+                stage="review",
+                implementer="codex",
+                worker="machine/demo/implementer",
+                author="claude",
+            )
+        ]
+    )
+    ReviewApprovingRunner.calls.clear()
+    _configure_registered_api(tmp_path, monkeypatch, client)
+    _create_reviewable_diff(tmp_path)
+    monkeypatch.setattr("issuekit.agents.review.AgentRunner", ReviewApprovingRunner)
+
+    exit_code = cli.main(["serve", "--agent", "codex", "--review", "--once"])
+
+    assert exit_code == 0
+    assert ReviewApprovingRunner.calls == [1]
+    assert [call["method"] for call in client.calls] == ["upsert_worker", "approve"]
+    assert client.calls[1]["body"]["worker"] == "machine/demo/checkout"
+    captured = capsys.readouterr()
+    assert "event=reviewing issue=1" in captured.err
+    assert "event=reviewed issue=1" in captured.err
+
+
+def test_serve_review_once_ignores_issue_assigned_to_other_reviewer(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                1,
+                "Other reviewer",
+                status="in_progress",
+                assignee="claude",
+                stage="review",
+                implementer="codex",
+                worker="machine/demo/implementer",
+                author="claude",
+            )
+        ]
+    )
+    ReviewApprovingRunner.calls.clear()
+    _configure_registered_api(tmp_path, monkeypatch, client)
+    monkeypatch.setattr("issuekit.agents.review.AgentRunner", ReviewApprovingRunner)
+
+    exit_code = cli.main(["serve", "--agent", "codex", "--review", "--once"])
+
+    assert exit_code == 0
+    assert ReviewApprovingRunner.calls == []
+    assert [call["method"] for call in client.calls] == ["upsert_worker"]
 
 
 def test_serve_triage_auto_adopts_before_claiming(

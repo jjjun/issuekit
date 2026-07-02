@@ -38,6 +38,10 @@ implementer instead of waiting for the pull model, use
 claims or operates on the assigned issue, launches the configured agent, and
 submits the completed work for review.
 
+When a reviewer daemon is needed, run it from a separate registered checkout:
+`issuekit serve --agent <reviewer> --review`. For a one-shot agent review of a
+specific review-stage issue, use `issuekit review <id> --agent <reviewer>`.
+
 Upstream feedback loop: the issuekit tool itself accepts proposals. Whenever
 work in any project surfaces an issuekit bug, limitation, or improvement idea
 (CLI, MCP tools, protocol text, agent adapters), report it before finishing
@@ -79,6 +83,7 @@ Copyable CLI examples:
 - Claim next: `issuekit claim --assignee codex`
 - Claim specific issue: `issuekit claim --id 123 --assignee codex`
 - Submit review: `issuekit submit-review 123 --summary "Implemented." --branch main --commit abc123`
+- Agent review: `issuekit review 123 --agent claude`
 - Request changes: `issuekit request-changes 123 --notes "Add focused tests." --reviewer claude`
 - Approve: `issuekit approve 123 --verification "uv run pytest" --reviewer claude`
 - Complete: `issuekit complete 123 --summary "Done." --verification "uv run pytest"`
@@ -88,6 +93,7 @@ Copyable CLI examples:
 - Adopt proposal: `issuekit adopt 42 --priority medium --json`
 - Outgoing proposal status: `issuekit outgoing --to <project> --json`
 - Serve with target-owned inbox triage: `issuekit serve --agent codex --triage`
+- Serve as a reviewer worker: `issuekit serve --agent claude --review`
 """
 
 
@@ -245,7 +251,8 @@ when the proposal is a hard dependency.
    use `default_reviewer`, or pass the reviewer assignee to inspect. With
    `default_reviewer = "auto"`, omitted reviewer means the next issue already
    assigned at stage=review.
-2. Review the referenced branch and commit diff against the issue body.
+2. Review the referenced branch and commit diff against the issue body. For an
+   automated one-shot review, run `issuekit review <id> --agent <reviewer>`.
 3. If the implementation is acceptable, approve it through the reviewer flow:
    call `approve(id, verification, reviewer=None)` with ASCII verification, or
    use the CLI `issuekit approve <id> --verification <text>` command. The CLI
@@ -262,6 +269,9 @@ implementer. The assigned reviewer owns the review decision. The approving
 session or agent must not be the same session that implemented the issue;
 same-name review is allowed only when the issue was routed through the open
 review pool.
+
+To run continuously as a reviewer worker, use a separate registered checkout:
+`issuekit serve --agent <reviewer> --review`.
 
 When the proposal-system MCP tools hang or error, fall back to the equivalent
 CLI: `issuekit propose --to <project> --title <t> --body <b> --json`,

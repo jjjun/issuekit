@@ -149,6 +149,36 @@ def request_changes(
             owned_store.close()
 
 
+def next_review(
+    reviewer: str | None = None,
+    *,
+    config: IssuekitConfig | None = None,
+    store=None,
+    include_open: bool = False,
+) -> Issue | None:
+    """Return the next issue waiting for a reviewer."""
+    config = config or IssuekitConfig()
+    owned_store = _ensure_store(config, store)
+    try:
+        if reviewer is None and config.default_reviewer == AUTO_REVIEWER:
+            issues = owned_store.find_for(None, "review")  # type: ignore[attr-defined]
+            return issues[0] if issues else None
+
+        resolved = resolve_reviewer(reviewer, config)
+        issues = owned_store.find_for(resolved, "review")  # type: ignore[attr-defined]
+        if include_open:
+            open_issues = owned_store.find_for(None, "review")  # type: ignore[attr-defined]
+            issues.extend(issue for issue in open_issues if not issue.assignee)
+            issues = sorted(
+                {issue.id or 0: issue for issue in issues}.values(),
+                key=lambda issue: (issue.id or 0, issue.ref),
+            )
+        return issues[0] if issues else None
+    finally:
+        if store is None:
+            owned_store.close()
+
+
 def find_for(
     assignee: str | None = None,
     *,

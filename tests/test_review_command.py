@@ -1,0 +1,305 @@
+from dataclasses import dataclass
+from pathlib import Path
+import subprocess
+
+from issuekit import cli
+from issuekit import store as store_module
+from issuekit.testing import FakeIssuekitClient
+
+from tests.issue_helpers import api_issue
+
+
+@dataclass(frozen=True)
+class FakeResult:
+    exit_code: int = 0
+    stdout_path: Path = Path("out.log")
+    agent_log_path: Path = Path("agent.log")
+    elapsed_sec: float = 1.25
+    timed_out: bool = False
+    parsed: dict[str, str] | None = None
+    status_short: str | None = ""
+    status_path: Path | None = Path("status.json")
+
+
+class ApprovingRunner:
+    calls: list[tuple[Path, Path, float, str | None, int | None, str | None]] = []
+
+    def run(
+        self,
+        adapter,
+        plan_path: Path,
+        repo: Path,
+        timeout: float,
+        agent_name: str | None = None,
+        issue_id: int | None = None,
+        follow: bool = False,
+        **kwargs,
+    ) -> FakeResult:
+        self.calls.append(
+            (
+                plan_path,
+                repo,
+                timeout,
+                agent_name,
+                issue_id,
+                kwargs.get("prompt_override"),
+            )
+        )
+        return FakeResult(
+            parsed={
+                "stdout": (
+                    "```review\n"
+                    '{"verdict":"approve","verification":"uv run pytest","notes":"Looks good."}\n'
+                    "```"
+                )
+            }
+        )
+
+
+class RequestChangesRunner(ApprovingRunner):
+    def run(self, *args, **kwargs) -> FakeResult:
+        return FakeResult(
+            parsed={
+                "stdout": (
+                    "```review\n"
+                    '{"verdict":"request-changes","verification":"","notes":"Add focused tests."}\n'
+                    "```"
+                )
+            }
+        )
+
+
+def _configure_registered_api(tmp_path: Path, monkeypatch, client: FakeIssuekitClient) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'demo'\ndefault_reviewer = 'auto'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    (tmp_path / "issuekit.local.toml").write_text(
+        (
+            "[worker]\n"
+            "machine_id = 'machine'\n"
+            "repo_id = 'demo'\n"
+            "worker_id = 'reviewer'\n"
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.chdir(tmp_path)
+
+
+def _init_git_repo(path: Path) -> None:
+    subprocess.run(["git", "init"], cwd=str(path), check=True, stdout=subprocess.DEVNULL)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=str(path), check=True)
+    subprocess.run(["git", "config", "user.name", "Test User"], cwd=str(path), check=True)
+    subprocess.run(["git", "config", "core.autocrlf", "false"], cwd=str(path), check=True)
+    subprocess.run(["git", "add", "."], cwd=str(path), check=True)
+    subprocess.run(
+        ["git", "commit", "-m", "baseline"],
+        cwd=str(path),
+        check=True,
+        stdout=subprocess.DEVNULL,
+    )
+
+
+def _create_reviewable_diff(path: Path) -> None:
+    (path / ".gitignore").write_text(".agent-runs/\n", encoding="utf-8", newline="\n")
+    (path / "code.py").write_text("value = 1\n", encoding="utf-8", newline="\n")
+    _init_git_repo(path)
+    (path / "code.py").write_text("value = 2\n", encoding="utf-8", newline="\n")
+
+
+def test_review_command_approves_with_distinct_worker_identity(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                1,
+                "Review me",
+                status="in_progress",
+                assignee="",
+                stage="review",
+                implementer="codex",
+                worker="machine/demo/implementer",
+                author="claude",
+            )
+        ]
+    )
+    ApprovingRunner.calls.clear()
+    _configure_registered_api(tmp_path, monkeypatch, client)
+    _create_reviewable_diff(tmp_path)
+    monkeypatch.setattr("issuekit.commands.review.AgentRunner", ApprovingRunner)
+
+    exit_code = cli.main(["review", "1", "--agent", "codex", "--timeout-sec", "9"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert len(ApprovingRunner.calls) == 1
+    plan_path, repo, timeout, agent_name, issue_id, prompt_override = ApprovingRunner.calls[0]
+    assert plan_path == tmp_path / ".agent-runs" / "review-issue-1.md"
+    assert "Review issue demo#1" in plan_path.read_text(encoding="utf-8")
+    assert repo == tmp_path
+    assert timeout == 9
+    assert agent_name == "codex"
+    assert issue_id == 1
+    assert "fenced review block" in (prompt_override or "")
+    assert "review_decision verdict=approve" in captured.out
+    assert client.get_issue(1)["status"] == "completed"
+    assert client.calls[-1] == {
+        "method": "approve",
+        "number": 1,
+        "body": {
+            "summary": "Approved by reviewer agent.",
+            "verification": "uv run pytest",
+            "reviewer": "codex",
+            "worker": "machine/demo/reviewer",
+        },
+    }
+
+
+def test_review_command_requests_changes(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                1,
+                "Needs tests",
+                status="in_progress",
+                assignee="claude",
+                stage="review",
+                implementer="codex",
+                worker="machine/demo/implementer",
+                author="claude",
+            )
+        ]
+    )
+    _configure_registered_api(tmp_path, monkeypatch, client)
+    _create_reviewable_diff(tmp_path)
+    monkeypatch.setattr("issuekit.commands.review.AgentRunner", RequestChangesRunner)
+
+    exit_code = cli.main(["review", "1", "--agent", "claude"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "review_decision verdict=request-changes" in captured.out
+    assert client.get_issue(1)["stage"] == "changes_requested"
+    assert client.calls[-1] == {
+        "method": "request_changes",
+        "number": 1,
+        "body": {
+            "notes": "Add focused tests.",
+            "reviewer": "claude",
+            "worker": "machine/demo/reviewer",
+        },
+    }
+
+
+def test_review_command_rejects_same_worker_self_review(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                1,
+                "Same worker",
+                status="in_progress",
+                assignee="",
+                stage="review",
+                implementer="codex",
+                worker="machine/demo/reviewer",
+                author="claude",
+            )
+        ]
+    )
+    ApprovingRunner.calls.clear()
+    _configure_registered_api(tmp_path, monkeypatch, client)
+    monkeypatch.setattr("issuekit.commands.review.AgentRunner", ApprovingRunner)
+
+    exit_code = cli.main(["review", "1", "--agent", "codex"])
+
+    assert exit_code == 1
+    assert not ApprovingRunner.calls
+    assert "self-review by the same worker is not allowed" in capsys.readouterr().err
+
+
+def test_review_command_rejects_empty_implementation_diff_before_agent(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                1,
+                "Nothing local",
+                status="in_progress",
+                assignee="",
+                stage="review",
+                implementer="codex",
+                worker="machine/demo/implementer",
+                author="claude",
+            )
+        ]
+    )
+    ApprovingRunner.calls.clear()
+    _configure_registered_api(tmp_path, monkeypatch, client)
+    (tmp_path / ".gitignore").write_text(".agent-runs/\n", encoding="utf-8", newline="\n")
+    (tmp_path / "code.py").write_text("value = 1\n", encoding="utf-8", newline="\n")
+    _init_git_repo(tmp_path)
+    monkeypatch.setattr("issuekit.commands.review.AgentRunner", ApprovingRunner)
+
+    exit_code = cli.main(["review", "1", "--agent", "codex"])
+
+    assert exit_code == 1
+    assert not ApprovingRunner.calls
+    assert not (tmp_path / ".agent-runs" / "review-issue-1.md").exists()
+    assert "No implementation diff is available" in capsys.readouterr().err
+    assert [call["method"] for call in client.calls] == []
+
+
+def test_review_command_blocks_verdict_when_agent_mutates_worktree(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                1,
+                "Read only",
+                status="in_progress",
+                assignee="",
+                stage="review",
+                implementer="codex",
+                worker="machine/demo/implementer",
+                author="claude",
+            )
+        ]
+    )
+    _configure_registered_api(tmp_path, monkeypatch, client)
+    (tmp_path / ".gitignore").write_text(".agent-runs/\n", encoding="utf-8", newline="\n")
+    (tmp_path / "code.py").write_text("value = 1\n", encoding="utf-8", newline="\n")
+    _init_git_repo(tmp_path)
+    (tmp_path / "code.py").write_text("value = 2\n", encoding="utf-8", newline="\n")
+
+    class MutatingRunner(ApprovingRunner):
+        def run(self, adapter, plan_path, repo, timeout, **kwargs) -> FakeResult:
+            (repo / "code.py").write_text("value = 3\n", encoding="utf-8", newline="\n")
+            return super().run(adapter, plan_path, repo, timeout, **kwargs)
+
+    monkeypatch.setattr("issuekit.commands.review.AgentRunner", MutatingRunner)
+
+    exit_code = cli.main(["review", "1", "--agent", "codex"])
+
+    assert exit_code == 1
+    assert "reviewer run modified the worktree" in capsys.readouterr().err
+    assert [call["method"] for call in client.calls] == []
