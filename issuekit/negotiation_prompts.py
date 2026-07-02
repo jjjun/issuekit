@@ -209,3 +209,93 @@ def _optional_string(value: object, key: str) -> str | None:
     if not isinstance(value, str):
         raise NegotiationParseError(f"Negotiation key {key} must be a string or null.")
     return value
+
+
+def _backend_issue_body(
+    *,
+    thread_id: str,
+    origin_issue_ref: str | None,
+    frontend_issue_ref: str,
+    contract: str,
+) -> str:
+    lines = [
+        "## Implementation Task",
+        "",
+        "Implement the backend/API side of the agreed cross-repository contract.",
+        "",
+        "## Links",
+        "",
+        f"- Negotiation thread: {thread_id}",
+        f"- Frontend/origin issue: {frontend_issue_ref}",
+    ]
+    if origin_issue_ref:
+        lines.append(f"- Originating issue: {origin_issue_ref}")
+    fence = _markdown_fence_for(contract)
+    lines.extend(
+        [
+            "",
+            "## Agreed Contract",
+            "",
+            fence,
+            contract,
+            fence,
+            "",
+            "## Acceptance Criteria",
+            "",
+            "- The API behavior described in the agreed contract is implemented.",
+            "- The contract is covered by focused tests.",
+            "- Any documented request/response shape remains compatible with the frontend issue.",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def _frontend_issue_body(
+    *,
+    thread_id: str,
+    origin_issue_ref: str | None,
+    backend_issue_ref: str,
+    contract: str,
+) -> str:
+    lines = [
+        "## Implementation Task",
+        "",
+        "Integrate the frontend/origin project with the agreed backend contract.",
+        "",
+        "## Links",
+        "",
+        f"- Negotiation thread: {thread_id}",
+        f"- Backend/API issue: {backend_issue_ref}",
+    ]
+    if origin_issue_ref:
+        lines.append(f"- Originating issue: {origin_issue_ref}")
+    fence = _markdown_fence_for(contract)
+    lines.extend(
+        [
+            "",
+            "## Agreed Contract",
+            "",
+            fence,
+            contract,
+            fence,
+            "",
+            "## Acceptance Criteria",
+            "",
+            "- The integration consumes the agreed contract.",
+            "- User-facing behavior from the originating issue is covered.",
+            "- The implementation handles backend errors or unavailable data clearly.",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def _markdown_fence_for(content: str) -> str:
+    longest_run = 0
+    current_run = 0
+    for char in content:
+        if char == "`":
+            current_run += 1
+            longest_run = max(longest_run, current_run)
+        else:
+            current_run = 0
+    return "`" * max(3, longest_run + 1)

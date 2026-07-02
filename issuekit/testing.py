@@ -7,6 +7,10 @@ from datetime import date
 from threading import Lock
 from typing import Any
 
+from issuekit.negotiation.model import (
+    MAX_CONTRACT_LENGTH,
+    _validate_contract as validate_negotiation_contract,
+)
 from issuekit.workflow import WorkflowError
 
 
@@ -14,7 +18,6 @@ JsonDict = dict[str, Any]
 READY_STAGES = {"", "todo", "changes_requested"}
 CLAIMABLE_STATUSES = {"active", "in_progress"}
 PRIORITY_RANK = {"high": 0, "medium": 1, "low": 2}
-MAX_CONTRACT_LENGTH = 100000
 
 
 class FakeIssuekitClient:
@@ -786,11 +789,7 @@ class FakeIssuekitClient:
         return None
 
     def _validate_contract(self, contract: str | None) -> None:
-        if contract is not None and len(contract) > MAX_CONTRACT_LENGTH:
-            raise WorkflowError(
-                f"Negotiation contract exceeds {MAX_CONTRACT_LENGTH} characters.",
-                code="invalid_value",
-            )
+        validate_negotiation_contract(contract)
 
     def _claim_issue(self, issue: JsonDict, assignee: str, *, worker: str | None = None) -> None:
         issue_id = issue["id"]
