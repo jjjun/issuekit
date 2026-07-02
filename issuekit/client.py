@@ -398,18 +398,33 @@ class IssuekitClient:
         repo_id: str,
         worker_id: str,
         path: str | None,
+        role: str | None = None,
+        description: str | None = None,
     ) -> JsonDict:
-        payload = self._authorized_request(
-            "POST",
-            "/api/workers",
-            json={
-                "machine_id": machine_id,
-                "repo_id": repo_id,
-                "worker_id": worker_id,
-                "path": path,
-            },
-        )
+        body = {
+            "machine_id": machine_id,
+            "repo_id": repo_id,
+            "worker_id": worker_id,
+            "path": path,
+        }
+        # role/description are optional, backward-compatible fields: only send
+        # them when set so older backends keep accepting the payload.
+        body.update(_drop_none({"role": role, "description": description}))
+        payload = self._authorized_request("POST", "/api/workers", json=body)
         return _ensure_dict(payload, "Worker response")
+
+    def list_workers(
+        self,
+        *,
+        repo_id: str | None = None,
+        project: str | None = None,
+    ) -> list[JsonDict]:
+        payload = self._authorized_request(
+            "GET",
+            "/api/workers",
+            params=_drop_none({"repo_id": repo_id, "project": project}),
+        )
+        return _worker_rows(payload)
 
     def create_proposal(
         self,
@@ -715,3 +730,18 @@ def _ensure_dict(payload: Any, label: str) -> JsonDict:
     if not isinstance(payload, dict):
         raise WorkflowError(f"{label} was not a JSON object.", code="invalid_response")
     return payload
+
+
+def _worker_rows(payload: Any) -> list[JsonDict]:
+    # Accept either a bare JSON array or a paginated {"items": [...]} envelope so
+    # the client tolerates either backend list shape.
+    if isinstance(payload, list):
+        return [_ensure_dict(item, "Worker response") for item in payload]
+    page = _ensure_dict(payload, "Worker list response")
+    items = page.get("items")
+    if not isinstance(items, list):
+        raise WorkflowError(
+            "Worker list response items was not a JSON array.",
+            code="invalid_response",
+        )
+    return [_ensure_dict(item, "Worker response") for item in items]

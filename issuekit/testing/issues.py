@@ -278,6 +278,8 @@ class FakeIssueSurface:
         repo_id: str,
         worker_id: str,
         path: str | None,
+        role: str | None = None,
+        description: str | None = None,
     ) -> JsonDict:
         body = {
             "machine_id": machine_id,
@@ -285,17 +287,46 @@ class FakeIssueSurface:
             "worker_id": worker_id,
             "path": path,
         }
+        if role is not None:
+            body["role"] = role
+        if description is not None:
+            body["description"] = description
         with self._lock:
             self._record("upsert_worker", body=body)
-            return {
+            record = {
                 "id": f"{machine_id}/{repo_id}/{worker_id}",
-                **body,
+                "machine_id": machine_id,
+                "repo_id": repo_id,
+                "worker_id": worker_id,
+                "path": path,
+                "role": role,
+                "description": description,
                 "status": "idle",
                 "current_issue": None,
                 "last_seen": "2026-01-01T00:00:00Z",
                 "created_at": "2026-01-01T00:00:00Z",
                 "updated_at": "2026-01-01T00:00:00Z",
             }
+            self._workers[record["id"]] = record
+            return deepcopy(record)
+
+    def list_workers(
+        self,
+        *,
+        repo_id: str | None = None,
+        project: str | None = None,
+    ) -> list[JsonDict]:
+        with self._lock:
+            self._record(
+                "list_workers",
+                body={"repo_id": repo_id, "project": project},
+            )
+            rows = [
+                deepcopy(worker)
+                for worker in self._workers.values()
+                if repo_id is None or worker.get("repo_id") == repo_id
+            ]
+            return rows
 
     def _find(self, number: int) -> JsonDict:
         issue = self._issues.get(number)

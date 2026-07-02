@@ -873,6 +873,82 @@ def test_client_upsert_worker_posts_top_level_workers_endpoint() -> None:
     ) == response
 
 
+def test_client_upsert_worker_includes_role_and_description_when_set() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/workers"
+        assert json.loads(request.content) == {
+            "machine_id": "machine",
+            "repo_id": "repo",
+            "worker_id": "checkout",
+            "path": "/repo",
+            "role": "api-server",
+            "description": "Hosts the API.",
+        }
+        return httpx.Response(201, json={"id": "machine/repo/checkout"})
+
+    client = IssuekitClient(
+        "https://mine.example",
+        project="demo",
+        token="static-token",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    client.upsert_worker(
+        machine_id="machine",
+        repo_id="repo",
+        worker_id="checkout",
+        path="/repo",
+        role="api-server",
+        description="Hosts the API.",
+    )
+
+
+def test_client_list_workers_parses_array_and_sends_filters() -> None:
+    rows = [
+        {
+            "machine_id": "machine",
+            "repo_id": "mine-py",
+            "worker_id": "checkout",
+            "path": "/repo",
+            "role": "api-server",
+            "description": "Hosts the API.",
+            "last_seen": "2026-07-02T00:00:00Z",
+        }
+    ]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "GET"
+        assert request.url.path == "/api/workers"
+        assert dict(request.url.params) == {"repo_id": "mine-py", "project": "issuekit"}
+        return httpx.Response(200, json=rows)
+
+    client = IssuekitClient(
+        "https://mine.example",
+        project="demo",
+        token="static-token",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    assert client.list_workers(repo_id="mine-py", project="issuekit") == rows
+
+
+def test_client_list_workers_parses_paginated_items_envelope() -> None:
+    rows = [{"machine_id": "m", "repo_id": "r", "worker_id": "w"}]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert dict(request.url.params) == {}
+        return httpx.Response(200, json={"items": rows, "total": 1})
+
+    client = IssuekitClient(
+        "https://mine.example",
+        project="demo",
+        token="static-token",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    assert client.list_workers() == rows
+
+
 def test_client_import_issues_posts_wrapped_issues_body() -> None:
     items = [
         {

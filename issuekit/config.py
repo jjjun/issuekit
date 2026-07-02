@@ -18,6 +18,11 @@ from issuekit.localconfig import LocalConfigError, load_toml, read_local_config
 
 _SENTINEL = object()
 
+# Repo-level worker metadata length limits agreed with the mine-py backend
+# (negotiation thread 18): role stays short, description allows a sentence or two.
+WORKER_ROLE_MAX_LEN = 80
+WORKER_DESCRIPTION_MAX_LEN = 500
+
 
 @dataclass(frozen=True)
 class AgentRunConfig:
@@ -70,6 +75,8 @@ class IssuekitConfig:
     default_reviewer: str = "claude"
     require_distinct_reviewer: bool = False
     worker: WorkerIdentity | None = None
+    worker_role: str = ""
+    worker_description: str = ""
     triage: TriagePolicy = field(default_factory=TriagePolicy)
     agents: tuple[tuple[str, AgentRunConfig], ...] = (
         (
@@ -191,6 +198,14 @@ def load_config(cwd: Path | str = ".") -> IssuekitConfig:
     _validate_default_reviewer(default_reviewer, assignees)
     agents = _load_agents(raw_config.get("agents", {}))
     triage = _load_triage_policy(raw_config.get("triage", {}))
+    worker_role = _worker_metadata(
+        raw_config.get("worker_role"), field="worker_role", max_len=WORKER_ROLE_MAX_LEN
+    )
+    worker_description = _worker_metadata(
+        raw_config.get("worker_description"),
+        field="worker_description",
+        max_len=WORKER_DESCRIPTION_MAX_LEN,
+    )
     return IssuekitConfig(
         api_url=api_url,
         project=project,
@@ -213,6 +228,8 @@ def load_config(cwd: Path | str = ".") -> IssuekitConfig:
             )
         ),
         worker=worker,
+        worker_role=worker_role,
+        worker_description=worker_description,
         triage=triage,
         agents=agents,
     )
@@ -309,6 +326,15 @@ def _load_worker(raw: object) -> WorkerIdentity | None:
     if not (machine_id and repo_id and worker_id):
         return None
     return WorkerIdentity(machine_id=machine_id, repo_id=repo_id, worker_id=worker_id)
+
+
+def _worker_metadata(value: object, *, field: str, max_len: int) -> str:
+    text = optional_str(value)
+    if text is None:
+        return ""
+    if len(text) > max_len:
+        raise ValueError(f"{field} must be at most {max_len} characters.")
+    return text
 
 
 def _load_triage_policy(raw: object) -> TriagePolicy:

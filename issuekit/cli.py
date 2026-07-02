@@ -29,6 +29,7 @@ from issuekit.commands import (
     serve,
     setup,
     validate,
+    workers,
 )
 
 
@@ -48,6 +49,7 @@ COMMAND_MODULES = (
     claim,
     handoff,
     queue,
+    workers,
     runs,
     serve,
     check_encoding,

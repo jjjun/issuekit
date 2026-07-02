@@ -167,6 +167,7 @@ copying the steps.
 | `issuekit dev-tool reinstall [--repo <path>] [--no-stop] [--json]` | Windows developer recovery command to reinstall the global tool from an absolute checkout path. |
 | `issuekit dev-tool reload-mcp [--json]` | Stop only running `issuekit-mcp.exe` processes so MCP clients can restart them. |
 | `issuekit add` / `issuekit register` | Register this checkout as a worker (auto-derives machine/repo/worker ids). |
+| `issuekit workers [--repo-id <id>] [--project <name>] [--json]` | List registered workers and their repo-level roles across projects. |
 | `issuekit add-ref <name> --path <repo> [--scope local\|workspace]` | Register an optional local project alias. |
 | `issuekit list-refs` | List effective local project aliases and their source. |
 | `issuekit propose --to <project> --title "..."` | Send a proposal to a project API inbox. |
@@ -333,6 +334,19 @@ suppress that warning.
 When both files exist, `[tool.issuekit]` in `pyproject.toml` takes precedence.
 If `pyproject.toml` exists without `[tool.issuekit]`, issuekit falls back to
 `issuekit.toml`.
+
+A repo can advertise its role so agents in other projects recognize peers when
+choosing proposal or negotiation targets. Set `worker_role` (max 80 chars) and
+optional `worker_description` (max 500 chars) in shared config; they are keyed by
+repo/project and reused by every local checkout, unlike the machine-local
+worker identity in `issuekit.local.toml`. `issuekit add` and `issuekit serve`
+send them to the backend, and `issuekit workers` lists the catalog:
+
+```toml
+[tool.issuekit]
+worker_role = "api-server"
+worker_description = "Hosts the mine-py issue API and issuekit backend."
+```
 
 Built-in agent configs can be patched by name. A table such as
 `[tool.issuekit.agents.codex]` overlays only the keys it specifies and leaves

@@ -6,11 +6,15 @@ from collections.abc import Callable
 from pathlib import Path
 import threading
 
-from issuekit.client import IssuekitClient
+from issuekit.client import IssuekitClient, JsonDict
 from issuekit.config import IssuekitConfig
 
 
 WORKER_HEARTBEAT_INTERVAL_SEC = 60.0
+
+
+class WorkerListingError(RuntimeError):
+    """Raised when the worker catalog cannot be listed."""
 
 
 def post_worker_registration(config: IssuekitConfig, cwd: Path | str) -> bool:
@@ -29,8 +33,29 @@ def post_worker_registration(config: IssuekitConfig, cwd: Path | str) -> bool:
             repo_id=worker.repo_id,
             worker_id=worker.worker_id,
             path=repo_path.as_posix(),
+            role=config.worker_role or None,
+            description=config.worker_description or None,
         )
     return True
+
+
+def list_api_workers(
+    config: IssuekitConfig,
+    *,
+    repo_id: str | None = None,
+    project: str | None = None,
+) -> list[JsonDict]:
+    if not config.api_url:
+        raise WorkerListingError(
+            "Listing workers requires api_url in issuekit.toml/[tool.issuekit] "
+            "or ISSUEKIT_API_URL."
+        )
+    with IssuekitClient(
+        config.api_url,
+        project=config.project,
+        timeout=config.api_timeout,
+    ) as client:
+        return client.list_workers(repo_id=repo_id, project=project)
 
 
 def try_post_worker_registration(

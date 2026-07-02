@@ -116,6 +116,51 @@ def test_load_config_reads_triage_policy(tmp_path: Path) -> None:
     )
 
 
+def test_load_config_reads_worker_role_and_description(tmp_path: Path) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        (
+            "worker_role = 'api-server'\n"
+            "worker_description = 'Hosts the mine-py issue API.'\n"
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    config = load_config(tmp_path)
+
+    assert config.worker_role == "api-server"
+    assert config.worker_description == "Hosts the mine-py issue API."
+
+
+def test_load_config_defaults_worker_metadata_to_empty(tmp_path: Path) -> None:
+    config = load_config(tmp_path)
+
+    assert config.worker_role == ""
+    assert config.worker_description == ""
+
+
+def test_load_config_rejects_overlong_worker_role(tmp_path: Path) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        f"worker_role = '{'x' * 81}'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    with pytest.raises(ValueError, match="worker_role"):
+        load_config(tmp_path)
+
+
+def test_load_config_rejects_overlong_worker_description(tmp_path: Path) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        f"worker_description = '{'x' * 501}'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    with pytest.raises(ValueError, match="worker_description"):
+        load_config(tmp_path)
+
+
 def test_load_config_rejects_invalid_triage_policy(tmp_path: Path) -> None:
     (tmp_path / "issuekit.toml").write_text(
         (

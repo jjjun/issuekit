@@ -10,6 +10,7 @@ pytest.importorskip("mcp")
 from issuekit import cli
 from issuekit import proposals_api
 from issuekit import store as store_module
+from issuekit import worker_registry
 from issuekit.mcp.server import create_server
 from issuekit.testing import FakeIssuekitClient
 
@@ -78,11 +79,35 @@ def test_server_registers_expected_tools(tmp_path: Path) -> None:
         "get_issue",
         "update_issue",
         "list_queue",
+        "list_workers",
         "propose",
         "list_incoming",
         "list_outgoing",
         "adopt_proposal",
         "discard_proposal",
+    }
+
+
+def test_list_workers_returns_catalog(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    client = FakeIssuekitClient()
+    client.upsert_worker(
+        machine_id="machine",
+        repo_id="mine-py",
+        worker_id="checkout",
+        path="/repo",
+        role="api-server",
+        description="Hosts the API.",
+    )
+    _configure_api(tmp_path, monkeypatch, client)
+    monkeypatch.setattr(worker_registry, "IssuekitClient", lambda *args, **kwargs: client)
+    server = create_server(tmp_path)
+
+    workers = _call(server, "list_workers", {"repo_id": "mine-py"})
+
+    assert [row["role"] for row in workers] == ["api-server"]
+    assert client.calls[-1] == {
+        "method": "list_workers",
+        "body": {"repo_id": "mine-py", "project": None},
     }
 
 

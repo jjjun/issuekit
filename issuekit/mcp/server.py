@@ -23,6 +23,7 @@ from issuekit.proposals_api import (
     send_proposal,
 )
 from issuekit.store import get_store
+from issuekit.worker_registry import list_api_workers
 from issuekit.workflow import (
     AUTO_REVIEWER,
     claim_next,
@@ -193,6 +194,19 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
                 issue_dict(issue)
                 for issue in find_for(assignee, stage=stage, config=config, store=store)
             ]
+
+    @server.tool(
+        description=(
+            "List registered workers and their repo-level roles across issuekit "
+            "checkouts, optionally filtered by repo_id and project."
+        )
+    )
+    def list_workers(
+        repo_id: str | None = None,
+        project: str | None = None,
+    ) -> list[dict[str, Any]]:
+        config = load_config(root)
+        return list_api_workers(config, repo_id=repo_id, project=project)
 
     @server.tool(
         description=(

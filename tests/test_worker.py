@@ -298,6 +298,42 @@ def test_add_cli_ignores_worker_registry_failure(
     assert "worker registry update failed" in captured.err
 
 
+def test_add_cli_posts_configured_role_and_description(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from issuekit import worker_registry
+
+    client = FakeRegistryClient()
+    (tmp_path / "issuekit.toml").write_text(
+        (
+            "api_url = 'https://mine.example'\n"
+            "project = 'demo'\n"
+            "worker_role = 'api-server'\n"
+            "worker_description = 'Hosts the mine-py issue API.'\n"
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("ISSUEKIT_WORKER_REGISTRY", str(tmp_path / "workers.toml"))
+    monkeypatch.setattr("issuekit.worker.platform.node", lambda: "win-desktop")
+    monkeypatch.setattr(worker_registry, "IssuekitClient", lambda *args, **kwargs: client)
+
+    assert cli.main(["add", "--repo-id", "demo", "--worker-id", "checkout"]) == 0
+
+    assert client.calls == [
+        {
+            "machine_id": "win-desktop",
+            "repo_id": "demo",
+            "worker_id": "checkout",
+            "path": tmp_path.resolve().as_posix(),
+            "role": "api-server",
+            "description": "Hosts the mine-py issue API.",
+        }
+    ]
+
+
 class FakeRegistryClient:
     def __init__(self) -> None:
         self.calls: list[dict[str, str | None]] = []
@@ -315,6 +351,8 @@ class FakeRegistryClient:
         repo_id: str,
         worker_id: str,
         path: str | None,
+        role: str | None = None,
+        description: str | None = None,
     ) -> dict[str, str | None]:
         call = {
             "machine_id": machine_id,
@@ -322,6 +360,10 @@ class FakeRegistryClient:
             "worker_id": worker_id,
             "path": path,
         }
+        if role is not None:
+            call["role"] = role
+        if description is not None:
+            call["description"] = description
         self.calls.append(call)
         return {"id": f"{machine_id}/{repo_id}/{worker_id}", **call}
 
