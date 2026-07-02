@@ -24,6 +24,7 @@ class FakeProposalSurface:
         reply_to: str | None = None,
         blocking: bool | None = None,
         priority: str | None = None,
+        depends_on: list[str] | tuple[str, ...] | str | None = None,
         thread_id: int | None = None,
         side: str | None = None,
         verdict: str | None = None,
@@ -38,6 +39,7 @@ class FakeProposalSurface:
                 "reply_to": reply_to,
                 "blocking": blocking,
                 "priority": priority,
+                "depends_on": depends_on,
                 "thread_id": thread_id,
                 "side": side,
                 "verdict": verdict,
@@ -353,6 +355,7 @@ class FakeProposalSurface:
         stored.setdefault("body", "")
         stored.setdefault("priority", None)
         stored.setdefault("blocking", False)
+        stored.setdefault("depends_on", None)
         stored.setdefault("status", "pending")
         stored.setdefault("created", date.today().isoformat())
         stored.setdefault("created_at", stored["created"])

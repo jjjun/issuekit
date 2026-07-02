@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from datetime import date
 from pathlib import Path
+import re
 from typing import Any
 
 from issuekit.client import IssuekitClient
@@ -17,6 +18,16 @@ from issuekit.workflow import WorkflowError
 
 
 OUTGOING_PROPOSAL_STATUSES = ("pending", "adopted", "discarded")
+DEPENDENCY_REF_PATTERN = re.compile(r"^[A-Za-z0-9_.-]+#[A-Za-z0-9_.:-]+$")
+DEPENDENCY_REF_TOKEN_PATTERN = re.compile(r"\b[A-Za-z0-9_.-]+#[A-Za-z0-9_.:-]+\b")
+STRUCTURED_DEPENDENCY_PATTERN = re.compile(
+    r"(?im)^\s*(?:depends[-_ ]?on|upstream[-_ ]?dependency|dependency|"
+    r"blocked[-_ ]?by|prerequisite)\s*:\s*(?P<refs>[^\n]+)$"
+)
+DEPENDENCY_LINE_PATTERN = re.compile(
+    r"(?i)\b(depends?\s+on|requires?|prerequisite|blocked\s+by|upstream)\b"
+)
+PROJECT_TOKEN_PATTERN = re.compile(r"\b[a-z][a-z0-9]+(?:-[a-z0-9]+)+\b")
 
 
 def adopt_outcome(proposal_id: str | int, project: str, issue: dict) -> dict:
@@ -86,8 +97,13 @@ def send_proposal(config: IssuekitConfig, proposal: Proposal) -> dict:
             body=proposal.body,
             reply_to=proposal.reply_to or None,
             blocking=True if proposal.blocking else None,
+            depends_on=list(proposal.depends_on) or None,
         )
     result = dict(created)
+    if proposal.depends_on and "depends_on" not in result:
+        result["depends_on"] = list(proposal.depends_on)
+    if proposal.warnings:
+        result["warnings"] = list(proposal.warnings)
     mismatched = proposal_payload_mismatch(proposal, created)
     result["payload_mismatch"] = bool(mismatched)
     if mismatched:
@@ -154,6 +170,8 @@ def proposal_payload_mismatch(proposal: Proposal, created: Mapping[str, Any]) ->
         mismatched.append("reply_to")
     if bool(created.get("blocking", False)) != proposal.blocking:
         mismatched.append("blocking")
+    if "depends_on" in created and _dependency_tuple(created.get("depends_on")) != proposal.depends_on:
+        mismatched.append("depends_on")
     return mismatched
 
 
@@ -281,6 +299,7 @@ def build_proposal(
     from_issue: str | None,
     reply: str | None,
     blocking: bool = False,
+    depends_on: str | Sequence[str] | None = None,
 ) -> Proposal:
     config = load_config(cwd)
     if not config.api_url:
@@ -307,9 +326,17 @@ def build_proposal(
         raise ProposalError("--title is required unless --from-issue or --reply provides one.")
 
     proposal_body = _proposal_body(body, body_file, source_issue)
+    dependency_refs = _proposal_dependency_refs(depends_on, proposal_body)
     origin_id = str(source_issue.id) if source_issue is not None and source_issue.id is not None else "0"
     origin_project = config.project
     origin = f"{origin_project}#{origin_id}@{_git_commit(cwd)}"
+    warnings = proposal_preflight_warnings(
+        origin_project=origin_project,
+        target_project=to,
+        body=proposal_body,
+        depends_on=dependency_refs,
+        is_reply=bool(reply_to),
+    )
     return Proposal(
         origin=origin,
         to=to,
@@ -318,7 +345,43 @@ def build_proposal(
         title=title,
         body=proposal_body,
         blocking=blocking,
+        depends_on=dependency_refs,
+        warnings=warnings,
     )
+
+
+def proposal_preflight_warnings(
+    *,
+    origin_project: str,
+    target_project: str,
+    body: str,
+    depends_on: Sequence[str],
+    is_reply: bool,
+) -> tuple[str, ...]:
+    warnings: list[str] = []
+    if target_project == origin_project and not is_reply:
+        warnings.append(
+            "Self-target proposal preflight: this proposal targets the current "
+            "project. Use `issuekit author` for local work unless this is a "
+            "reply or cross-project handoff."
+        )
+    if not depends_on:
+        dependency_projects = _dependency_project_mentions(body)
+        upstream_projects = [
+            project
+            for project in dependency_projects
+            if project not in {origin_project, target_project}
+        ]
+        if upstream_projects:
+            project_list = ", ".join(upstream_projects)
+            warnings.append(
+                "Dependency preflight: proposal body appears to depend on "
+                f"{project_list}, but no upstream reference was supplied. "
+                "Create or propose the upstream owner work first, then pass "
+                "`--depends-on <project#issue-or-proposal>` or add a "
+                "`Depends-On: <project#issue-or-proposal>` body line."
+            )
+    return tuple(warnings)
 
 
 def _get_issue(config: IssuekitConfig, raw_id: str) -> Issue:
@@ -338,6 +401,71 @@ def _proposal_body(body: str | None, body_file: str | None, source_issue: Issue 
     if source_issue is not None:
         return source_issue.body.strip()
     return "## Context\n\n## Suggested Change\n\n## Rationale"
+
+
+def _proposal_dependency_refs(
+    explicit: str | Sequence[str] | None,
+    body: str,
+) -> tuple[str, ...]:
+    refs = [*_dependency_tuple(explicit), *_structured_dependency_refs(body)]
+    return _dedupe_refs(refs)
+
+
+def _dependency_tuple(value: object) -> tuple[str, ...]:
+    if value is None:
+        return ()
+    if isinstance(value, str):
+        raw_items = _split_dependency_refs(value)
+    elif isinstance(value, Sequence):
+        raw_items = []
+        for item in value:
+            raw_items.extend(_split_dependency_refs(str(item)))
+    else:
+        raw_items = _split_dependency_refs(str(value))
+    return _dedupe_refs(raw_items)
+
+
+def _split_dependency_refs(value: str) -> list[str]:
+    refs: list[str] = []
+    for raw in re.split(r"[\s,]+", value):
+        ref = raw.strip().strip(".;")
+        if not ref:
+            continue
+        if not DEPENDENCY_REF_PATTERN.match(ref):
+            raise ProposalError(
+                f"Invalid dependency reference: {ref}. Expected project#issue-or-proposal."
+            )
+        refs.append(ref)
+    return refs
+
+
+def _structured_dependency_refs(body: str) -> tuple[str, ...]:
+    refs: list[str] = []
+    for match in STRUCTURED_DEPENDENCY_PATTERN.finditer(body):
+        refs.extend(DEPENDENCY_REF_TOKEN_PATTERN.findall(match.group("refs")))
+    return _dedupe_refs(refs)
+
+
+def _dedupe_refs(refs: Sequence[str]) -> tuple[str, ...]:
+    seen: set[str] = set()
+    deduped: list[str] = []
+    for ref in refs:
+        if ref in seen:
+            continue
+        seen.add(ref)
+        deduped.append(ref)
+    return tuple(deduped)
+
+
+def _dependency_project_mentions(body: str) -> tuple[str, ...]:
+    projects: list[str] = []
+    for line in body.splitlines():
+        if not DEPENDENCY_LINE_PATTERN.search(line):
+            continue
+        for project in PROJECT_TOKEN_PATTERN.findall(line):
+            if project not in projects:
+                projects.append(project)
+    return tuple(projects)
 
 
 def _git_commit(cwd: Path) -> str:

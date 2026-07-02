@@ -20,6 +20,8 @@ def test_render_protocol_returns_each_agent_and_both() -> None:
         assert "belongs to another project" in rendered
         assert "issuekit propose --to <project>" in rendered
         assert "owns triage" in rendered
+        assert "dependency-first" in rendered
+        assert "--depends-on <project#issue-or-proposal>" in rendered
         assert "issuekit implement <id> --agent <agent> --timeout-sec <n>" in rendered
         assert "launches the configured agent" in rendered
         assert "submits the completed work for review" in rendered
@@ -33,6 +35,7 @@ def test_render_protocol_returns_each_agent_and_both() -> None:
         assert 'issuekit complete 123 --summary "Done."' in rendered
         assert "issuekit incoming --json" in rendered
         assert "issuekit propose --to <project> --title <t> --body <b> --blocking --json" in rendered
+        assert "issuekit propose --to <project> --title <t> --body <b> --depends-on upstream#123 --json" in rendered
         assert "issuekit adopt 42 --priority medium --json" in rendered
         assert "issuekit outgoing --to <project> --json" in rendered
         assert "issuekit serve --agent codex --triage" in rendered
@@ -85,9 +88,10 @@ def test_render_protocol_returns_triage_role() -> None:
     assert "Delegation cycle overview" in triage
     assert "Handoff protocol (triage)" in triage
     assert "issuekit incoming --json" in triage
-    assert "value" in triage and "fit" in triage and "cost" in triage
+    assert "value" in triage and "fit" in triage and "dependencies" in triage and "cost" in triage
     assert "issuekit adopt <id> --priority <p>" in triage
     assert "issuekit discard <id>" in triage
+    assert "missing a required upstream prerequisite" in triage
     assert "Do not implement adopted issues in the triage session" in triage
     assert "[triage] trusted_origins" in triage
     assert "issuekit serve --triage" in triage

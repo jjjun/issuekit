@@ -703,6 +703,31 @@ def test_mcp_propose_flags_same_origin_payload_mismatch(
     assert "from-issue" in sent["warning"]
 
 
+def test_mcp_propose_attaches_dependency_refs(tmp_path: Path, monkeypatch) -> None:
+    client = FakeIssuekitClient()
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'target'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    server = create_server(tmp_path)
+
+    sent = _call(
+        server,
+        "propose",
+        {
+            "to": "other_project",
+            "title": "MCP API Proposal",
+            "body": "Use the accepted API contract.",
+            "depends_on": "mine-py#42",
+        },
+    )
+
+    assert sent["depends_on"] == ["mine-py#42"]
+    assert client.calls[0]["body"]["depends_on"] == ["mine-py#42"]
+
+
 def test_mcp_list_outgoing_scopes_to_own_origin(tmp_path: Path, monkeypatch) -> None:
     client = FakeIssuekitClient(
         proposals=[

@@ -255,6 +255,19 @@ Send a proposal:
 issuekit propose --to fast-domain --title "Short proposal title" --body-file proposal.md
 ```
 
+For multi-project changes, create or propose the upstream project that owns the
+first required API or contract change before sending downstream consumer
+proposals. Attach the upstream reference with `--depends-on`:
+
+```powershell
+issuekit propose --to mine-js-monorepo --title "Use new API" --body-file proposal.md --depends-on mine-py#123
+```
+
+Structured body lines such as `Depends-On: mine-py#123` are also recognized.
+If the proposal body appears to depend on a third project but no upstream
+reference is supplied, issuekit prints an advisory warning and still sends the
+proposal.
+
 Triage inbound proposals:
 
 ```powershell

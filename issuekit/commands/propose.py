@@ -71,6 +71,12 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         action="store_true",
         help="Mark the proposal as a hard dependency for the origin project.",
     )
+    propose_parser.add_argument(
+        "--depends-on",
+        action="append",
+        dest="depends_on",
+        help="Attach an upstream dependency reference such as project#123.",
+    )
     propose_parser.add_argument("--json", action="store_true", help="Print JSON output.")
     propose_parser.set_defaults(func=run_propose)
 
@@ -168,6 +174,7 @@ def run_propose(args) -> int:
             from_issue=args.from_issue,
             reply=args.reply,
             blocking=args.blocking,
+            depends_on=args.depends_on,
         )
         created = send_proposal(config, proposal)
     except (LookupError, ProposalError, RefError, ValueError, WorkflowError) as exc:
@@ -183,6 +190,8 @@ def run_propose(args) -> int:
             print(json.dumps(output, indent=2))
         print(warning, file=sys.stderr)
         return 1
+    for preflight_warning in created.get("warnings", []):
+        print(preflight_warning, file=sys.stderr)
     guard = create_author_guard(
         Path.cwd(),
         config=config,

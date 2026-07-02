@@ -208,7 +208,8 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
     @server.tool(
         description=(
             "Send a cross-repository proposal from the origin project to the target "
-            "project inbox; use this instead of authoring directly in the target repo."
+            "project inbox; use this instead of authoring directly in the target repo. "
+            "Pass depends_on as project#issue-or-proposal for upstream dependencies."
         )
     )
     def propose(
@@ -218,6 +219,7 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
         from_issue: str | None = None,
         reply: str | None = None,
         blocking: bool = False,
+        depends_on: str | None = None,
         agent: str | None = None,
     ) -> dict[str, Any]:
         proposal = build_proposal(
@@ -229,6 +231,7 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
             from_issue=from_issue,
             reply=reply,
             blocking=blocking,
+            depends_on=depends_on,
         )
         config = load_config(root)
         sent = send_proposal(config, proposal)

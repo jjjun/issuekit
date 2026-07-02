@@ -120,6 +120,215 @@ def test_api_cli_propose_can_mark_blocking(
     }
 
 
+def test_api_cli_propose_attaches_dependency_refs(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient()
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'source'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.chdir(tmp_path)
+
+    assert (
+        cli.main(
+            [
+                "propose",
+                "--to",
+                "mine-js-monorepo",
+                "--title",
+                "Dashboard follow-up",
+                "--body",
+                "Use the accepted API contract.",
+                "--depends-on",
+                "mine-py#42",
+                "--json",
+            ]
+        )
+        == 0
+    )
+    sent = json.loads(capsys.readouterr().out)
+
+    assert sent["depends_on"] == ["mine-py#42"]
+    assert "warnings" not in sent
+    assert client.calls[0] == {
+        "method": "create_proposal",
+        "body": {
+            "origin": "source#0@unknown",
+            "title": "Dashboard follow-up",
+            "body": "Use the accepted API contract.",
+            "depends_on": ["mine-py#42"],
+        },
+    }
+
+
+def test_api_cli_propose_reads_structured_dependency_body_refs(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient()
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'source'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.chdir(tmp_path)
+
+    assert (
+        cli.main(
+            [
+                "propose",
+                "--to",
+                "mine-js-monorepo",
+                "--title",
+                "Dashboard follow-up",
+                "--body",
+                "Depends-On: mine-py#42\n\nUse the accepted API contract.",
+                "--json",
+            ]
+        )
+        == 0
+    )
+    sent = json.loads(capsys.readouterr().out)
+
+    assert sent["depends_on"] == ["mine-py#42"]
+    assert client.calls[0]["body"]["depends_on"] == ["mine-py#42"]
+
+
+def test_api_cli_propose_warns_for_unreferenced_upstream_dependency(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient()
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'mine-js-monorepo'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.chdir(tmp_path)
+
+    assert (
+        cli.main(
+            [
+                "propose",
+                "--to",
+                "dashboard-ui",
+                "--title",
+                "Dashboard follow-up",
+                "--body",
+                "This depends on mine-py adding the dashboard API.",
+                "--json",
+            ]
+        )
+        == 0
+    )
+    captured = capsys.readouterr()
+    sent = json.loads(captured.out)
+
+    assert "Dependency preflight" in captured.err
+    assert "mine-py" in captured.err
+    assert sent["warnings"] == [
+        "Dependency preflight: proposal body appears to depend on mine-py, "
+        "but no upstream reference was supplied. Create or propose the "
+        "upstream owner work first, then pass "
+        "`--depends-on <project#issue-or-proposal>` or add a "
+        "`Depends-On: <project#issue-or-proposal>` body line."
+    ]
+    assert "depends_on" not in client.calls[0]["body"]
+
+
+def test_api_cli_propose_warns_instead_of_rejecting_freeform_dependency_line(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient()
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'mine-js-monorepo'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.chdir(tmp_path)
+
+    assert (
+        cli.main(
+            [
+                "propose",
+                "--to",
+                "dashboard-ui",
+                "--title",
+                "Dashboard follow-up",
+                "--body",
+                "Depends on: mine-py adding the dashboard API.",
+            ]
+        )
+        == 0
+    )
+
+    assert "Dependency preflight" in capsys.readouterr().err
+    assert "depends_on" not in client.calls[0]["body"]
+
+
+def test_api_cli_propose_warns_for_self_target_without_reply(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient()
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'source'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["propose", "--to", "source", "--title", "Local", "--body", "Body."]) == 0
+
+    assert "Self-target proposal preflight" in capsys.readouterr().err
+
+
+def test_api_cli_propose_rejects_invalid_dependency_ref(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'source'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    assert (
+        cli.main(
+            [
+                "propose",
+                "--to",
+                "target",
+                "--title",
+                "Bad dependency",
+                "--body",
+                "Body.",
+                "--depends-on",
+                "mine-py",
+            ]
+        )
+        == 1
+    )
+
+    assert "Invalid dependency reference" in capsys.readouterr().err
+
+
 def test_api_cli_propose_from_issue_reads_api_store(
     tmp_path: Path,
     monkeypatch,

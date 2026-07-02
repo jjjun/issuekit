@@ -19,6 +19,8 @@ class Proposal:
     title: str
     body: str
     blocking: bool = False
+    depends_on: tuple[str, ...] = ()
+    warnings: tuple[str, ...] = ()
 
 
 def origin_destination(origin: str) -> str:
