@@ -1,6 +1,7 @@
 import pytest
 
 from issuekit import store as store_module
+from issuekit.author_guard import create_author_guard
 from issuekit.commands.approve import approve_issue
 from issuekit.commands.complete import complete_issue
 from issuekit.config import IssuekitConfig, WorkerIdentity
@@ -112,6 +113,79 @@ def test_claim_issue_surfaces_api_transition_error(monkeypatch) -> None:
 
     with pytest.raises(WorkflowError, match="self-implementation is not allowed"):
         claim_issue(1, "codex", config=_config(client, monkeypatch))
+
+
+def test_author_guard_blocks_claim_in_same_checkout(tmp_path, monkeypatch) -> None:
+    client = FakeIssuekitClient([api_issue(1, "Ready", author="claude")])
+    config = _config(client, monkeypatch)
+    create_author_guard(
+        tmp_path,
+        config=config,
+        kind="issue",
+        item_id=1,
+        ref="demo#1",
+        author_agent="codex",
+    )
+
+    with pytest.raises(WorkflowError, match="STOP_NOW"):
+        claim_issue(1, "codex", config=config, cwd=tmp_path)
+
+    issue = claim_issue(
+        1,
+        "codex",
+        config=config,
+        cwd=tmp_path,
+        allow_author_guard_override=True,
+    )
+    assert issue.id == 1
+
+
+def test_author_guard_does_not_block_different_checkout(tmp_path, monkeypatch) -> None:
+    client = FakeIssuekitClient([api_issue(1, "Ready", author="claude")])
+    config = _config(client, monkeypatch)
+    author_checkout = tmp_path / "author"
+    implementer_checkout = tmp_path / "implementer"
+    author_checkout.mkdir()
+    implementer_checkout.mkdir()
+    create_author_guard(
+        author_checkout,
+        config=config,
+        kind="issue",
+        item_id=1,
+        ref="demo#1",
+        author_agent="codex",
+    )
+
+    issue = claim_issue(1, "codex", config=config, cwd=implementer_checkout)
+
+    assert issue.id == 1
+
+
+def test_author_guard_blocks_submit_for_review_for_authored_issue(tmp_path, monkeypatch) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                1,
+                "First",
+                status="in_progress",
+                assignee="codex",
+                stage="implementing",
+                implementer="codex",
+            )
+        ]
+    )
+    config = _config(client, monkeypatch)
+    create_author_guard(
+        tmp_path,
+        config=config,
+        kind="issue",
+        item_id=1,
+        ref="demo#1",
+        author_agent="codex",
+    )
+
+    with pytest.raises(WorkflowError, match="Author-session guard blocks submit"):
+        submit_for_review(1, summary="Implemented.", config=config, cwd=tmp_path)
 
 
 def test_submit_for_review_passes_structured_fields(monkeypatch) -> None:

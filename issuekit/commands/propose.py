@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 import sys
 
+from issuekit.author_guard import STOP_SENTINEL, create_author_guard, guard_dict, stop_message
 from issuekit.config import load_config
 from issuekit.core import VALID_ISSUE_PRIORITIES
 from issuekit.proposals import ProposalError
@@ -64,6 +65,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     propose_parser.add_argument("--body-file", help="File containing proposal body.")
     propose_parser.add_argument("--from-issue", help="Local issue id to propose from.")
     propose_parser.add_argument("--reply", help="Local adopted issue id to reply from.")
+    propose_parser.add_argument("--agent", help="Optional author agent for the local STOP guard.")
     propose_parser.add_argument(
         "--blocking",
         action="store_true",
@@ -176,12 +178,27 @@ def run_propose(args) -> int:
     if args.json:
         output = dict(created)
         output.pop("warning", None)
-        print(json.dumps(output, indent=2))
     if mismatched:
+        if args.json:
+            print(json.dumps(output, indent=2))
         print(warning, file=sys.stderr)
         return 1
+    guard = create_author_guard(
+        Path.cwd(),
+        config=config,
+        kind="proposal",
+        item_id=created.get("id"),
+        ref=f"{proposal.to}#{created.get('id')}",
+        target_project=proposal.to,
+        author_agent=args.agent,
+    )
+    if args.json:
+        output["authorGuard"] = guard_dict(guard)
+        output["stop"] = STOP_SENTINEL
+        print(json.dumps(output, indent=2))
     if not args.json:
         print(f"Sent proposal #{created.get('id')}: {created.get('title', proposal.title)}")
+        print(stop_message(guard))
     return 0
 
 

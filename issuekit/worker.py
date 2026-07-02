@@ -116,7 +116,11 @@ def save_local_worker(identity: WorkerIdentity, cwd: Path | str = ".") -> bool:
         "repo_id": identity.repo_id,
         "worker_id": identity.worker_id,
     }
-    desired_content = local_config_text(worker=desired_worker, refs=local_config.refs)
+    desired_content = local_config_text(
+        worker=desired_worker,
+        refs=local_config.refs,
+        author_guard=local_config.author_guard,
+    )
     if path.exists():
         existing_content = path.read_text(encoding="utf-8-sig")
     else:

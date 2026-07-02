@@ -3,6 +3,8 @@ import json
 import subprocess
 
 from issuekit import cli
+from issuekit.author_guard import create_author_guard
+from issuekit.config import IssuekitConfig
 from issuekit.commands.init import init_repo
 from issuekit.commands import setup
 
@@ -196,6 +198,52 @@ def test_setup_check_json_stale_repo_reports_updates_without_writing(
     assert "AGENTS.md" in paths
     assert "docs/issues/indexes/active.md" not in paths
     assert _file_snapshot(tmp_path) == before
+
+
+def test_setup_check_reports_stale_precommit_without_author_guard_hook(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    _force_mcp_available(monkeypatch)
+    init_repo(tmp_path, with_mcp=True)
+    (tmp_path / ".pre-commit-config.yaml").write_text(
+        (
+            "repos:\n"
+            "  - repo: local\n"
+            "    hooks:\n"
+            "      - id: issuekit-check-encoding\n"
+            "        entry: issuekit check-encoding\n"
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = cli.main(["setup", "check", "--json"])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert any(
+        item["path"] == ".pre-commit-config.yaml"
+        and "author-session guard hook" in item["reason"]
+        for item in payload["actions"]
+    )
+
+
+def test_setup_diagnostics_warn_when_author_guard_is_active(tmp_path: Path) -> None:
+    create_author_guard(
+        tmp_path,
+        config=IssuekitConfig(project="demo"),
+        kind="issue",
+        item_id=3,
+        ref="demo#3",
+        author_agent="codex",
+    )
+
+    diagnostics = setup.collect_diagnostics(tmp_path)
+
+    assert _diagnostic_status(diagnostics, "Local author-session guard is active.") == "WARN"
 
 
 def test_setup_check_json_blocked_repo_reports_manual_action_without_writing(

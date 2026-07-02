@@ -21,6 +21,10 @@ class LocalConfigError(RuntimeError):
 class LocalConfig:
     worker: dict[str, object] | None
     refs: dict[str, str]
+    author_guard: dict[str, object] | None
+
+
+_PRESERVE = object()
 
 
 def load_toml(path: Path) -> dict[str, object]:
@@ -33,7 +37,7 @@ def load_toml(path: Path) -> dict[str, object]:
 def read_local_config(cwd: Path | str = ".") -> LocalConfig:
     path = Path(cwd) / LOCAL_CONFIG_NAME
     if not path.exists():
-        return LocalConfig(worker=None, refs={})
+        return LocalConfig(worker=None, refs={}, author_guard=None)
     data = load_toml(path)
     refs = data.get("refs", {})
     if not isinstance(refs, dict):
@@ -41,6 +45,7 @@ def read_local_config(cwd: Path | str = ".") -> LocalConfig:
     return LocalConfig(
         worker=_worker_table(data),
         refs={str(name): str(value) for name, value in refs.items()},
+        author_guard=_author_guard_table(data),
     )
 
 
@@ -49,10 +54,13 @@ def write_local_config(
     *,
     worker: Mapping[str, object] | None,
     refs: Mapping[str, str],
+    author_guard: Mapping[str, object] | None | object = _PRESERVE,
 ) -> None:
     path = Path(cwd) / LOCAL_CONFIG_NAME
+    if author_guard is _PRESERVE:
+        author_guard = read_local_config(cwd).author_guard if path.exists() else None
     path.write_text(
-        local_config_text(worker=worker, refs=refs),
+        local_config_text(worker=worker, refs=refs, author_guard=author_guard),
         encoding="utf-8",
         newline="\n",
     )
@@ -62,8 +70,9 @@ def local_config_text(
     *,
     worker: Mapping[str, object] | None,
     refs: Mapping[str, str],
+    author_guard: Mapping[str, object] | None = None,
 ) -> str:
-    return _local_config_text(worker=worker, refs=refs)
+    return _local_config_text(worker=worker, refs=refs, author_guard=author_guard)
 
 
 def missing_gitignore_entries(content: str) -> list[str]:
@@ -102,6 +111,7 @@ def _local_config_text(
     *,
     worker: Mapping[str, object] | None,
     refs: Mapping[str, str],
+    author_guard: Mapping[str, object] | None,
 ) -> str:
     lines: list[str] = []
     if worker:
@@ -109,6 +119,22 @@ def _local_config_text(
         for key in ("machine_id", "repo_id", "worker_id"):
             if key in worker:
                 lines.append(f"{key} = {json.dumps(str(worker[key]))}")
+        lines.append("")
+    if author_guard:
+        lines.append("[author_guard]")
+        for key in (
+            "project",
+            "kind",
+            "id",
+            "ref",
+            "target_project",
+            "author_agent",
+            "worker",
+            "created",
+            "required_next_action",
+        ):
+            if key in author_guard:
+                lines.append(f"{key} = {json.dumps(str(author_guard[key]))}")
         lines.append("")
     lines.append("[refs]")
     for name in sorted(refs):
@@ -128,3 +154,8 @@ def _worker_table(data: dict[str, object]) -> dict[str, object] | None:
         return None
     worker = issuekit.get("worker")
     return worker if isinstance(worker, dict) else None
+
+
+def _author_guard_table(data: dict[str, object]) -> dict[str, object] | None:
+    guard = data.get("author_guard")
+    return guard if isinstance(guard, dict) else None

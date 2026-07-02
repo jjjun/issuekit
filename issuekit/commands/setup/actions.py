@@ -34,6 +34,7 @@ def collect_setup_actions(cwd: Path) -> list[SetupAction]:
             ".pre-commit-config.yaml",
         ),
     )
+    _add_pre_commit_action(cwd, actions)
     _add_gitignore_action(cwd, actions)
     _add_mcp_json_action(cwd, actions)
     _add_codex_config_action(cwd, actions)
@@ -79,6 +80,22 @@ def _add_gitignore_action(cwd: Path, actions: list[SetupAction]) -> None:
                 "stale",
                 "update",
                 "issuekit setup would add missing issuekit local entries.",
+            )
+        )
+
+
+def _add_pre_commit_action(cwd: Path, actions: list[SetupAction]) -> None:
+    path = cwd / ".pre-commit-config.yaml"
+    if not path.exists():
+        return
+    content = path.read_text(encoding="utf-8-sig", errors="ignore")
+    if "issuekit author-guard check" not in content:
+        actions.append(
+            SetupAction(
+                ".pre-commit-config.yaml",
+                "stale",
+                "update",
+                "issuekit setup would add the optional author-session guard hook.",
             )
         )
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from issuekit.config import IssuekitConfig
+from issuekit.author_guard import enforce_no_author_guard
 from issuekit.core import (
     Issue,
     VALID_ISSUE_PRIORITIES,
@@ -28,12 +29,20 @@ def claim_next(
     priority: str | None = None,
     config: IssuekitConfig | None = None,
     store=None,
+    cwd: str = ".",
+    allow_author_guard_override: bool = False,
 ) -> Issue | None:
     config = config or IssuekitConfig()
     _validate_assignee(assignee, config)
     _validate_stage("implementing", config)
     if priority is not None and priority not in VALID_ISSUE_PRIORITIES:
         raise WorkflowError(f"Invalid priority: {priority}")
+    enforce_no_author_guard(
+        cwd=cwd,
+        config=config,
+        action="claim-next",
+        allow_override=allow_author_guard_override,
+    )
 
     owned_store = _ensure_store(config, store)
     try:
@@ -50,10 +59,19 @@ def claim_issue(
     *,
     config: IssuekitConfig | None = None,
     store=None,
+    cwd: str = ".",
+    allow_author_guard_override: bool = False,
 ) -> Issue:
     config = config or IssuekitConfig()
     _validate_assignee(assignee, config)
     _validate_stage("implementing", config)
+    enforce_no_author_guard(
+        cwd=cwd,
+        config=config,
+        action=f"claim issue #{issue_id}",
+        issue_id=issue_id,
+        allow_override=allow_author_guard_override,
+    )
 
     owned_store = _ensure_store(config, store)
     try:
@@ -73,12 +91,21 @@ def submit_for_review(
     reviewer: str | None = None,
     config: IssuekitConfig | None = None,
     store=None,
+    cwd: str = ".",
+    allow_author_guard_override: bool = False,
 ) -> Issue:
     config = config or IssuekitConfig()
     _validate_stage("review", config)
     _validate_ascii_text(summary, "--summary")
     _validate_ascii_text(branch or "", "--branch")
     _validate_ascii_text(commit or "", "--commit")
+    enforce_no_author_guard(
+        cwd=cwd,
+        config=config,
+        action=f"submit issue #{issue_id} for review",
+        issue_id=issue_id,
+        allow_override=allow_author_guard_override,
+    )
     owned_store = _ensure_store(config, store)
     try:
         return owned_store.submit_for_review(  # type: ignore[attr-defined]

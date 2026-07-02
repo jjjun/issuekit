@@ -53,6 +53,9 @@ Separation-of-duties invariants:
 - The author role and implementer role must be different sessions. If the same
   agent name appears through the open implement pool, it represents a distinct
   operator/session; explicit author self-assignment is rejected.
+- After `issuekit author` or `issuekit propose` succeeds, issuekit writes a
+  machine-local author-session guard and emits `STOP_NOW`. The author session
+  must stop instead of claiming, implementing, or submitting review work.
 - The implementer and reviewer must be different sessions; explicit implementer
   self-review is rejected.
 - The author may also be the reviewer when a different implementer did the work.
@@ -196,8 +199,14 @@ When asked to write or plan an issue:
 1. Create the issue with `issuekit author`; the API allocates the issue id.
 2. Leave the issue unstarted with no assignee unless a specific implementer is
    required.
-3. STOP. Do not call `claim_next_task` or implement the issue in the same
+3. STOP_NOW. The command writes a local author-session guard. Do not call `claim_next_task`,
+   `issuekit claim`, `issuekit implement`, or `submit_for_review` in the same
    session. An implementer claims it later via `claim_next_task`.
+
+After `issuekit propose` succeeds, treat the `STOP_NOW` sentinel the same way:
+stop the author session and let the target project triage the proposal. For
+recovery from an accidental guard after handoff, run `issuekit author-guard clear`.
+Human emergency lifecycle commands can pass `--allow-author-session`.
 """
 
 

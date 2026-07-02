@@ -20,6 +20,11 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     claim_parser.add_argument("--id", help="Specific issue id to claim.")
     claim_parser.add_argument("--assignee", required=True, help="Assignee to claim for.")
     claim_parser.add_argument("--priority", choices=("high", "medium", "low"), help="Priority filter.")
+    claim_parser.add_argument(
+        "--allow-author-session",
+        action="store_true",
+        help="Override a local author-session STOP guard for human recovery.",
+    )
     claim_parser.set_defaults(func=run)
 
 
@@ -36,12 +41,16 @@ def run(args) -> int:
                 args.assignee,
                 priority=args.priority,
                 config=config,
+                cwd=Path.cwd(),
+                allow_author_guard_override=args.allow_author_session,
             )
         else:
             issue = claim_issue(
                 issue_id,
                 args.assignee,
                 config=config,
+                cwd=Path.cwd(),
+                allow_author_guard_override=args.allow_author_session,
             )
 
         if issue is None:

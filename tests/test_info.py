@@ -4,6 +4,8 @@ from pathlib import Path
 from issuekit import cli
 from issuekit.commands import info as info_command
 from issuekit import store as store_module
+from issuekit.author_guard import create_author_guard
+from issuekit.config import load_config
 from issuekit.testing import FakeIssuekitClient
 
 from tests.issue_helpers import api_issue
@@ -223,3 +225,20 @@ def test_info_text_renders_status_only_when_no_stage(tmp_path: Path, monkeypatch
     assert exit_code == 0
     assert "[active]" in captured.out
     assert "stage=" not in captured.out
+
+
+def test_info_surfaces_author_guard(tmp_path: Path, monkeypatch, capsys) -> None:
+    _configure_api(tmp_path, monkeypatch, _issue_client())
+    create_author_guard(
+        tmp_path,
+        config=load_config(tmp_path),
+        kind="issue",
+        item_id=7,
+        ref="demo#7",
+        author_agent="codex",
+    )
+
+    cli.main(["info"])
+    text = capsys.readouterr().out
+
+    assert "Author guard: STOP_NOW issue demo#7" in text

@@ -4,6 +4,7 @@ from pathlib import Path
 
 from issuekit import cli
 from issuekit import proposals_api
+from issuekit.author_guard import read_author_guard
 from issuekit.config import IssuekitConfig, TriagePolicy
 from issuekit.proposals_api import _git_commit
 from issuekit.proposals import ProposalError, origin_destination
@@ -55,6 +56,12 @@ def test_api_cli_propose_posts_expected_body_and_dedupes(
     assert first["origin"] == "source#0@unknown"
     assert first["title"] == "API Proposal"
     assert first["payload_mismatch"] is False
+    assert first["stop"] == "STOP_NOW"
+    guard = read_author_guard(tmp_path)
+    assert guard is not None
+    assert guard.kind == "proposal"
+    assert guard.project == "source"
+    assert guard.target_project == "target"
     assert second["payload_mismatch"] is False
     assert "idempotent_existing" not in second
     assert client.calls[0] == {

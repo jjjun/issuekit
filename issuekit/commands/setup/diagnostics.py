@@ -10,6 +10,7 @@ from importlib import import_module
 import shutil
 import tomllib
 
+from issuekit.author_guard import read_author_guard
 from issuekit.commands.init import CODEX_MCP_HEADER, HANDOFF_HEADER
 
 
@@ -36,6 +37,7 @@ def collect_diagnostics(
         _codex_config_diagnostic(cwd),
         _handoff_reference_diagnostic(cwd, "AGENTS.md"),
         _handoff_reference_diagnostic(cwd, "CLAUDE.md"),
+        _author_guard_diagnostic(cwd),
     ]
 
 
@@ -123,4 +125,18 @@ def _handoff_reference_diagnostic(cwd: Path, filename: str) -> Diagnostic:
         "ACTION",
         f"{filename} does not contain the handoff reference.",
         ("Run issuekit setup.",),
+    )
+
+
+def _author_guard_diagnostic(cwd: Path) -> Diagnostic:
+    guard = read_author_guard(cwd)
+    if guard is None:
+        return Diagnostic("OK", "No local author-session guard is active.")
+    return Diagnostic(
+        "WARN",
+        "Local author-session guard is active.",
+        (
+            f"STOP_NOW: authored {guard.kind} {guard.ref or guard.id}.",
+            "Stop this session before implementing, or run issuekit author-guard clear after handoff.",
+        ),
     )

@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from issuekit.author_guard import create_author_guard, stop_message
 from issuekit.commands._common import require_ascii, run_command
 from issuekit.config import IssuekitConfig, load_config
 from issuekit.core import (
@@ -47,8 +48,17 @@ def run(args) -> int:
             assign=args.assign,
             config=config,
         )
+        guard = create_author_guard(
+            Path.cwd(),
+            config=config,
+            kind="issue",
+            item_id=authored.id,
+            ref=authored.ref,
+            author_agent=args.agent,
+        )
 
         print(f"Authored issue: {_authored_ref(authored)}")
+        print(stop_message(guard))
         return 0
 
     return run_command(

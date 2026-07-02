@@ -6,6 +6,7 @@ import argparse
 import json
 from pathlib import Path
 
+from issuekit.author_guard import guard_dict, read_author_guard
 from issuekit.config import load_config
 from issuekit.proposals_api import api_client
 from issuekit.store import get_store
@@ -28,6 +29,7 @@ def run(args) -> int:
             total=completed_count,
         )
     incoming_proposals = _incoming_proposals(config)
+    author_guard = read_author_guard(Path.cwd())
     summary = {
         "counts": {
             "active": len(active_issues),
@@ -55,6 +57,7 @@ def run(args) -> int:
             }
             for proposal in incoming_proposals
         ],
+        "authorGuard": guard_dict(author_guard),
     }
 
     if args.json:
@@ -67,6 +70,11 @@ def run(args) -> int:
     print(f"- Total issues: {summary['counts']['total']}")
     print(f"- Latest completed id: {summary['latestCompletedId']}")
     print(f"- Incoming proposals: {len(summary['incomingProposals'])}")
+    if summary["authorGuard"]:
+        guard = summary["authorGuard"]
+        print(
+            f"- Author guard: STOP_NOW {guard['kind']} {guard.get('ref') or guard.get('id')}"
+        )
 
     if summary["activeIssues"]:
         print()

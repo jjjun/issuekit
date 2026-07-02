@@ -6,3 +6,8 @@ repos:
         entry: issuekit check-encoding
         language: system
         pass_filenames: false
+      - id: issuekit-author-guard
+        name: issuekit author-guard
+        entry: issuekit author-guard check
+        language: system
+        pass_filenames: false

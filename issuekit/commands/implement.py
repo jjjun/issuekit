@@ -47,6 +47,11 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         action="store_true",
         help="Submit for review even when the agent produces no implementation diff.",
     )
+    implement_parser.add_argument(
+        "--allow-author-session",
+        action="store_true",
+        help="Override a local author-session STOP guard for human recovery.",
+    )
     implement_parser.set_defaults(func=run)
 
 
@@ -67,7 +72,13 @@ def run(args) -> int:
             if issue.stage == "changes_requested"
             else None
         )
-        claimed_issue = claim_issue(issue.id or issue_id, args.agent, config=config)
+        claimed_issue = claim_issue(
+            issue.id or issue_id,
+            args.agent,
+            config=config,
+            cwd=cwd,
+            allow_author_guard_override=args.allow_author_session,
+        )
         outcome = run_and_submit(
             claimed_issue,
             agent=args.agent,
@@ -79,6 +90,7 @@ def run(args) -> int:
             follow=getattr(args, "follow", False),
             prompt_suffix=reviewer_prompt,
             allow_no_changes=getattr(args, "allow_no_changes", False),
+            allow_author_guard_override=args.allow_author_session,
             reporter=lambda issue, result: _print_run_report(issue, result, args.agent),
             runner_factory=AgentRunner,
         )

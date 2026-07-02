@@ -21,6 +21,11 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     submit_review_parser.add_argument("--branch", help="Branch containing the implementation.")
     submit_review_parser.add_argument("--commit", help="Commit containing the implementation.")
     submit_review_parser.add_argument("--reviewer", help="Reviewer assignee for this handoff.")
+    submit_review_parser.add_argument(
+        "--allow-author-session",
+        action="store_true",
+        help="Override a local author-session STOP guard for human recovery.",
+    )
     submit_review_parser.set_defaults(func=run_submit_review)
 
     request_changes_parser = subparsers.add_parser(
@@ -45,6 +50,8 @@ def run_submit_review(args) -> int:
             commit=args.commit,
             reviewer=args.reviewer,
             config=config,
+            cwd=Path.cwd(),
+            allow_author_guard_override=args.allow_author_session,
         )
 
         print(

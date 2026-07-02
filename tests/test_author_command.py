@@ -2,6 +2,7 @@ from pathlib import Path
 
 from issuekit import cli
 from issuekit import store as store_module
+from issuekit.author_guard import read_author_guard
 from issuekit.testing import FakeIssuekitClient
 
 
@@ -43,6 +44,13 @@ def test_author_command_creates_issue_via_api(tmp_path: Path, monkeypatch, capsy
     assert exit_code == 0
     assert "API validation passed" not in captured.out
     assert "Authored issue: demo#1" in captured.out
+    assert "STOP_NOW" in captured.out
+    guard = read_author_guard(tmp_path)
+    assert guard is not None
+    assert guard.kind == "issue"
+    assert guard.id == "1"
+    assert guard.project == "demo"
+    assert guard.author_agent == "codex"
     assert client.calls[0] == {
         "method": "create_issue",
         "body": {

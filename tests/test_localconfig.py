@@ -33,6 +33,25 @@ def test_local_config_round_trips_worker_and_refs(tmp_path: Path) -> None:
     )
 
 
+def test_local_config_round_trips_author_guard(tmp_path: Path) -> None:
+    guard = {
+        "project": "demo",
+        "kind": "issue",
+        "id": "12",
+        "ref": "demo#12",
+        "author_agent": "codex",
+        "worker": "machine/repo/checkout",
+        "created": "2026-07-02T00:00:00+00:00",
+        "required_next_action": "STOP",
+    }
+
+    write_local_config(tmp_path, worker=None, refs={}, author_guard=guard)
+
+    local_config = read_local_config(tmp_path)
+    assert local_config.author_guard == guard
+    assert "[author_guard]" in (tmp_path / LOCAL_CONFIG_NAME).read_text(encoding="utf-8")
+
+
 def test_missing_gitignore_entries_accepts_agent_runs_without_slash() -> None:
     assert missing_gitignore_entries("issuekit.local.toml\n.agent-runs\n") == []
     assert missing_gitignore_entries("issuekit.local.toml\n") == [".agent-runs/"]

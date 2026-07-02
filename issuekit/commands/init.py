@@ -17,7 +17,7 @@ from issuekit.localconfig import ensure_gitignore_entries
 ISSUEKIT_BLOCK_HEADER = "[tool.issuekit]"
 CODEX_MCP_HEADER = "[mcp_servers.issuekit]"
 HANDOFF_HEADER = "## Handoff protocol"
-PRE_COMMIT_GUIDANCE = """Add this hook to .pre-commit-config.yaml:
+PRE_COMMIT_GUIDANCE = """Add these hooks to .pre-commit-config.yaml:
 
 repos:
   - repo: local
@@ -25,6 +25,11 @@ repos:
       - id: issuekit-check-encoding
         name: issuekit check-encoding
         entry: issuekit check-encoding
+        language: system
+        pass_filenames: false
+      - id: issuekit-author-guard
+        name: issuekit author-guard
+        entry: issuekit author-guard check
         language: system
         pass_filenames: false
 """
@@ -103,7 +108,7 @@ def _write_pre_commit(cwd: Path, force: bool, result: InitResult) -> None:
     if path.exists() and not force:
         result.skipped.append(".pre-commit-config.yaml")
         content = path.read_text(encoding="utf-8-sig", errors="ignore")
-        if "issuekit check-encoding" not in content:
+        if "issuekit check-encoding" not in content or "issuekit author-guard check" not in content:
             result.guidance.append(PRE_COMMIT_GUIDANCE.rstrip())
         return
     path.write_text(_template_text("pre-commit-config.yaml"), encoding="utf-8", newline="\n")

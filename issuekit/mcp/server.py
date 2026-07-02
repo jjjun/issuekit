@@ -8,6 +8,7 @@ from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
+from issuekit.author_guard import STOP_SENTINEL, create_author_guard, guard_dict
 from issuekit.commands.approve import approve_issue
 from issuekit.commands.edit import edit_issue
 from issuekit.config import load_config
@@ -46,10 +47,21 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
             "submit_for_review."
         )
     )
-    def claim_next_task(assignee: str = "codex", priority: str | None = None) -> dict[str, Any]:
+    def claim_next_task(
+        assignee: str = "codex",
+        priority: str | None = None,
+        allow_author_session: bool = False,
+    ) -> dict[str, Any]:
         config = load_config(root)
         with get_store(config) as store:
-            issue = claim_next(assignee, priority=priority, config=config, store=store)
+            issue = claim_next(
+                assignee,
+                priority=priority,
+                config=config,
+                store=store,
+                cwd=root,
+                allow_author_guard_override=allow_author_session,
+            )
         if issue is None:
             return {"status": "none", "assignee": assignee}
         return issue_dict(issue, include_body=True)
@@ -66,6 +78,7 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
         branch: str | None = None,
         commit: str | None = None,
         reviewer: str | None = None,
+        allow_author_session: bool = False,
     ) -> dict[str, Any]:
         config = load_config(root)
         with get_store(config) as store:
@@ -77,6 +90,8 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
                 reviewer=reviewer,
                 config=config,
                 store=store,
+                cwd=root,
+                allow_author_guard_override=allow_author_session,
             )
         return issue_dict(issue)
 
@@ -187,6 +202,7 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
         from_issue: str | None = None,
         reply: str | None = None,
         blocking: bool = False,
+        agent: str | None = None,
     ) -> dict[str, Any]:
         proposal = build_proposal(
             root,
@@ -199,7 +215,22 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
             blocking=blocking,
         )
         config = load_config(root)
-        return send_proposal(config, proposal)
+        sent = send_proposal(config, proposal)
+        if sent.get("payload_mismatch"):
+            return sent
+        guard = create_author_guard(
+            root,
+            config=config,
+            kind="proposal",
+            item_id=sent.get("id"),
+            ref=f"{proposal.to}#{sent.get('id')}",
+            target_project=proposal.to,
+            author_agent=agent,
+        )
+        sent = dict(sent)
+        sent["authorGuard"] = guard_dict(guard)
+        sent["stop"] = STOP_SENTINEL
+        return sent
 
     @server.tool(description="List incoming cross-repository proposals.")
     def list_incoming() -> list[dict[str, Any]]:

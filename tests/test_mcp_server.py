@@ -738,7 +738,12 @@ def test_cli_proposal_json_matches_mcp_output(tmp_path: Path, monkeypatch, capsy
         ]
     )
     cli_sent = json.loads(capsys.readouterr().out)
-    assert cli_sent == mcp_sent
+    assert cli_sent["id"] == mcp_sent["id"]
+    assert cli_sent["origin"] == mcp_sent["origin"]
+    assert cli_sent["title"] == mcp_sent["title"]
+    assert cli_sent["payload_mismatch"] == mcp_sent["payload_mismatch"]
+    assert cli_sent["stop"] == mcp_sent["stop"] == "STOP_NOW"
+    assert cli_sent["authorGuard"]["kind"] == mcp_sent["authorGuard"]["kind"] == "proposal"
 
     # list_incoming parity
     target_server = create_server(tmp_path)
