@@ -2,12 +2,21 @@
 
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
 import sys
 
 from issuekit.config import load_config
 from issuekit.store import get_store
 from issuekit.workflow import WorkflowError
+
+
+def register(subparsers: argparse._SubParsersAction) -> None:
+    validate_parser = subparsers.add_parser(
+        "validate",
+        help="Validate API connectivity and issue response shape.",
+    )
+    validate_parser.set_defaults(func=run)
 
 
 def run(_args) -> int:

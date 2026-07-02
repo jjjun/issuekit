@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 from pathlib import Path
 import subprocess
@@ -33,6 +34,34 @@ SOURCE_EXTENSIONS = {
     "txt",
 }
 BOM = b"\xef\xbb\xbf"
+
+
+def register(subparsers: argparse._SubParsersAction) -> None:
+    check_encoding_parser = subparsers.add_parser(
+        "check-encoding",
+        help="Check tracked files for encoding problems.",
+    )
+    check_encoding_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Print JSON output.",
+    )
+    check_encoding_parser.add_argument(
+        "--no-mojibake",
+        action="store_true",
+        help="Disable likely mojibake text scanning.",
+    )
+    check_encoding_parser.add_argument(
+        "--no-crlf",
+        action="store_true",
+        help="Disable CRLF line-ending scanning.",
+    )
+    check_encoding_parser.add_argument(
+        "--fix",
+        action="store_true",
+        help="Strip leading UTF-8 BOM bytes from tracked source files.",
+    )
+    check_encoding_parser.set_defaults(func=run)
 
 
 def run(args) -> int:

@@ -2,12 +2,19 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 from pathlib import Path
 
 from issuekit.config import load_config
 from issuekit.proposals_api import api_client
 from issuekit.store import get_store
+
+
+def register(subparsers: argparse._SubParsersAction) -> None:
+    info_parser = subparsers.add_parser("info", help="Show issue tracker status.")
+    info_parser.add_argument("--json", action="store_true", help="Print JSON output.")
+    info_parser.set_defaults(func=run)
 
 
 def run(args) -> int:

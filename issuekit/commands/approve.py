@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
 
 from issuekit.commands._common import active_issue_not_found, require_ascii, run_command
@@ -16,6 +17,18 @@ from issuekit.workflow import (
     ensure_assigned_reviewer,
     resolve_reviewer,
 )
+
+
+def register(subparsers: argparse._SubParsersAction) -> None:
+    approve_parser = subparsers.add_parser(
+        "approve",
+        help="Approve a review-stage issue.",
+    )
+    approve_parser.add_argument("id", help="Issue id to approve.")
+    approve_parser.add_argument("--verification", required=True, help="Verification notes.")
+    approve_parser.add_argument("--summary", help="Approval summary.")
+    approve_parser.add_argument("--reviewer", help="Reviewer approving this issue.")
+    approve_parser.set_defaults(func=run)
 
 
 def run(args) -> int:

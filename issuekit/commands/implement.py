@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
 import sys
 
@@ -16,6 +17,37 @@ from issuekit.config import load_config
 from issuekit.core import Issue, parse_issue_id_arg
 from issuekit.store import get_store
 from issuekit.workflow import WorkflowError, claim_issue
+
+
+def register(subparsers: argparse._SubParsersAction) -> None:
+    implement_parser = subparsers.add_parser(
+        "implement",
+        help="Drive an agent to implement an active issue.",
+    )
+    implement_parser.add_argument("id", help="Issue id to implement.")
+    implement_parser.add_argument(
+        "--agent",
+        required=True,
+        help="Configured agent name to run.",
+    )
+    implement_parser.add_argument("--model", help="Optional model name passed to the agent.")
+    implement_parser.add_argument(
+        "--timeout-sec",
+        type=float,
+        default=600.0,
+        help="Hard timeout for the agent run in seconds.",
+    )
+    implement_parser.add_argument(
+        "--follow",
+        action="store_true",
+        help="Emit a live heartbeat to stderr while the agent runs.",
+    )
+    implement_parser.add_argument(
+        "--allow-no-changes",
+        action="store_true",
+        help="Submit for review even when the agent produces no implementation diff.",
+    )
+    implement_parser.set_defaults(func=run)
 
 
 def run(args) -> int:

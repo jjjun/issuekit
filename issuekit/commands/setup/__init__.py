@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 from importlib import import_module
 from pathlib import Path
 import json
@@ -15,6 +16,50 @@ from issuekit.commands.setup.diagnostics import Diagnostic, collect_diagnostics 
 CODEX_MCP_ADD_COMMAND = "codex mcp add issuekit -- issuekit-mcp"
 MCP_INSTALL_COMMAND = 'uv tool install "issuekit[mcp] @ <absolute-path-or-url>"'
 MCP_REINSTALL_COMMAND = 'uv tool install --reinstall "issuekit[mcp] @ <absolute-path-or-url>"'
+
+
+def register(subparsers: argparse._SubParsersAction) -> None:
+    setup_parser = subparsers.add_parser(
+        "setup",
+        help="Initialize repo MCP handoff scaffolding and print setup diagnostics.",
+    )
+    _add_setup_apply_options(setup_parser)
+    setup_parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Check setup state without writing files.",
+    )
+    setup_subparsers = setup_parser.add_subparsers(dest="setup_action", metavar="<action>")
+    setup_check_parser = setup_subparsers.add_parser(
+        "check",
+        help="Check setup state without writing files.",
+    )
+    _add_setup_check_options(setup_check_parser)
+    setup_check_parser.set_defaults(func=run)
+    setup_apply_parser = setup_subparsers.add_parser(
+        "apply",
+        help="Initialize repo MCP handoff scaffolding and print setup diagnostics.",
+    )
+    _add_setup_apply_options(setup_apply_parser)
+    setup_apply_parser.set_defaults(func=run)
+    setup_parser.set_defaults(func=run)
+
+
+def _add_setup_check_options(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Print JSON output.",
+    )
+
+
+def _add_setup_apply_options(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Overwrite existing templated files.",
+    )
+    _add_setup_check_options(parser)
 
 
 def run(args) -> int:

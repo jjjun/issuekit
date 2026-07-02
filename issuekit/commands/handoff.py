@@ -2,12 +2,36 @@
 
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
 
 from issuekit.commands._common import run_command
 from issuekit.config import load_config
 from issuekit.core import parse_issue_id_arg
 from issuekit.workflow import WorkflowError, request_changes, submit_for_review
+
+
+def register(subparsers: argparse._SubParsersAction) -> None:
+    submit_review_parser = subparsers.add_parser(
+        "submit-review",
+        help="Submit an issue for review.",
+    )
+    submit_review_parser.add_argument("id", help="Issue id to submit.")
+    submit_review_parser.add_argument("--summary", required=True, help="ASCII handoff summary.")
+    submit_review_parser.add_argument("--branch", help="Branch containing the implementation.")
+    submit_review_parser.add_argument("--commit", help="Commit containing the implementation.")
+    submit_review_parser.add_argument("--reviewer", help="Reviewer assignee for this handoff.")
+    submit_review_parser.set_defaults(func=run_submit_review)
+
+    request_changes_parser = subparsers.add_parser(
+        "request-changes",
+        help="Return an issue to its implementer with requested changes.",
+    )
+    request_changes_parser.add_argument("id", help="Issue id to return.")
+    request_changes_parser.add_argument("--notes", required=True, help="ASCII review feedback.")
+    request_changes_parser.add_argument("--assignee", help="Implementation assignee to return to.")
+    request_changes_parser.add_argument("--reviewer", help="Reviewer assignee returning the issue.")
+    request_changes_parser.set_defaults(func=run_request_changes)
 
 
 def run_submit_review(args) -> int:

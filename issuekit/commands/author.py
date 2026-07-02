@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
 
 from issuekit.commands._common import require_ascii, run_command
@@ -12,6 +13,26 @@ from issuekit.core import (
     is_valid_workflow_token,
 )
 from issuekit.workflow import WorkflowError
+
+
+def register(subparsers: argparse._SubParsersAction) -> None:
+    author_parser = subparsers.add_parser(
+        "author",
+        help="Create an active issue authored by an agent.",
+    )
+    author_parser.add_argument("--title", required=True, help="Issue title.")
+    body_group = author_parser.add_mutually_exclusive_group(required=True)
+    body_group.add_argument("--body", help="Inline issue body.")
+    body_group.add_argument("--body-file", help="File containing the issue body.")
+    author_parser.add_argument(
+        "--priority",
+        choices=("high", "medium", "low"),
+        default="medium",
+        help="Issue priority.",
+    )
+    author_parser.add_argument("--agent", required=True, help="Configured author agent.")
+    author_parser.add_argument("--assign", help="Optional implementer assignee.")
+    author_parser.set_defaults(func=run)
 
 
 def run(args) -> int:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
 import sys
 
@@ -9,6 +10,17 @@ from issuekit.commands._common import run_command
 from issuekit.config import load_config
 from issuekit.core import parse_issue_id_arg
 from issuekit.workflow import WorkflowError, claim_issue, claim_next
+
+
+def register(subparsers: argparse._SubParsersAction) -> None:
+    claim_parser = subparsers.add_parser(
+        "claim",
+        help="Claim an issue for an assignee; defaults to the next eligible issue.",
+    )
+    claim_parser.add_argument("--id", help="Specific issue id to claim.")
+    claim_parser.add_argument("--assignee", required=True, help="Assignee to claim for.")
+    claim_parser.add_argument("--priority", choices=("high", "medium", "low"), help="Priority filter.")
+    claim_parser.set_defaults(func=run)
 
 
 def run(args) -> int:

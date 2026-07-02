@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 from pathlib import Path
 
@@ -9,6 +10,32 @@ from issuekit.commands._common import active_issue_not_found, require_ascii, run
 from issuekit.config import IssuekitConfig, load_config
 from issuekit.core import Issue, VALID_ISSUE_PRIORITIES, issue_dict, parse_issue_id_arg
 from issuekit.workflow import WorkflowError
+
+
+def register(subparsers: argparse._SubParsersAction) -> None:
+    edit_parser = subparsers.add_parser(
+        "edit",
+        help="Edit an API-backed issue title, body, or priority.",
+    )
+    edit_parser.add_argument("id", help="Issue id to edit.")
+    edit_parser.add_argument("--title", help="Replacement issue title.")
+    edit_body_group = edit_parser.add_mutually_exclusive_group()
+    edit_body_group.add_argument("--body", help="Replacement inline issue body.")
+    edit_body_group.add_argument("--body-file", help="File containing replacement issue body.")
+    edit_body_group.add_argument("--append", help="Inline text to append to the issue body.")
+    edit_body_group.add_argument("--append-file", help="File containing text to append to the issue body.")
+    edit_parser.add_argument(
+        "--priority",
+        choices=("high", "medium", "low"),
+        help="Replacement issue priority.",
+    )
+    edit_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Allow editing an issue that is already in flight.",
+    )
+    edit_parser.add_argument("--json", action="store_true", help="Print JSON output.")
+    edit_parser.set_defaults(func=run)
 
 
 def run(args) -> int:

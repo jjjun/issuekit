@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 from pathlib import Path
 import sys
@@ -33,6 +34,77 @@ from issuekit.negotiation.engine import (
 from issuekit.negotiation_prompts import NegotiationParseError
 from issuekit.store import get_store
 from issuekit.workflow import WorkflowError
+
+
+def register(subparsers: argparse._SubParsersAction) -> None:
+    negotiate_parser = subparsers.add_parser(
+        "negotiate",
+        help="Drive a bounded cross-repository design negotiation.",
+    )
+    negotiate_parser.add_argument("--from-issue", help="Originating issue id.")
+    negotiate_parser.add_argument("--to", help="Target project name.")
+    negotiate_parser.add_argument(
+        "--finalize",
+        metavar="THREAD_ID",
+        help="Create cross-linked implementation issues for an agreed thread.",
+    )
+    negotiate_parser.add_argument(
+        "--frontend-agent",
+        help="Configured agent representing the frontend side.",
+    )
+    negotiate_parser.add_argument(
+        "--backend-agent",
+        help="Configured agent representing the backend side.",
+    )
+    negotiate_parser.add_argument(
+        "--max-rounds",
+        type=int,
+        default=DEFAULT_MAX_ROUNDS,
+        help="Maximum total agent turns, including the opening turn.",
+    )
+    negotiate_parser.add_argument(
+        "--mock",
+        action="store_true",
+        help="Use the local mock negotiation store.",
+    )
+    negotiate_parser.add_argument("--model", help="Optional model name passed to both agents.")
+    negotiate_parser.add_argument(
+        "--timeout-sec",
+        type=float,
+        default=120.0,
+        help="Hard timeout for each negotiation turn in seconds.",
+    )
+    negotiate_parser.add_argument(
+        "--author-agent",
+        default="codex",
+        help="Author agent for issues created by --finalize.",
+    )
+    negotiate_parser.add_argument(
+        "--priority",
+        choices=("high", "medium", "low"),
+        default="medium",
+        help="Priority for issues created by --finalize.",
+    )
+    negotiate_parser.add_argument("--json", action="store_true", help="Print JSON output.")
+    negotiate_parser.set_defaults(func=run)
+
+    threads_parser = subparsers.add_parser(
+        "threads",
+        help="Inspect negotiation thread status.",
+    )
+    threads_parser.add_argument("thread_id", nargs="?", help="Negotiation thread id to inspect.")
+    threads_parser.add_argument(
+        "--status",
+        choices=("negotiating", "agreed", "blocked"),
+        help="Filter listed threads by status.",
+    )
+    threads_parser.add_argument(
+        "--mock",
+        action="store_true",
+        help="Use the local mock negotiation store.",
+    )
+    threads_parser.add_argument("--json", action="store_true", help="Print JSON output.")
+    threads_parser.set_defaults(func=run_threads)
 
 
 def run(args) -> int:

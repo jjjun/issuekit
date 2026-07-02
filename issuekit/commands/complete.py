@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
 
 from issuekit.commands._common import active_issue_not_found, require_ascii, run_command
@@ -10,6 +11,22 @@ from issuekit.core import (
     Issue,
     parse_issue_id_arg,
 )
+
+
+def register(subparsers: argparse._SubParsersAction) -> None:
+    complete_parser = subparsers.add_parser(
+        "complete",
+        help="Complete an active issue.",
+    )
+    complete_parser.add_argument("id", help="Issue id to complete.")
+    complete_parser.add_argument("--summary", help="Completion summary.")
+    complete_parser.add_argument("--verification", help="Verification notes.")
+    complete_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Directly complete an active issue without requiring review stage.",
+    )
+    complete_parser.set_defaults(func=run)
 
 
 def run(args) -> int:

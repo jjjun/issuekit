@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
@@ -28,6 +29,42 @@ from issuekit.workflow import WorkflowError, claim_next
 
 BACKOFF_INITIAL_SEC = 1.0
 BACKOFF_MAX_SEC = 60.0
+
+
+def register(subparsers: argparse._SubParsersAction) -> None:
+    serve_parser = subparsers.add_parser(
+        "serve",
+        help="Poll for eligible issues and run this checkout's worker agent.",
+    )
+    serve_parser.add_argument("--agent", help="Configured agent name to run.")
+    serve_parser.add_argument(
+        "--interval",
+        type=float,
+        default=15.0,
+        help="Idle poll interval in seconds.",
+    )
+    serve_parser.add_argument(
+        "--priority",
+        choices=("high", "medium", "low"),
+        help="Priority filter for claim-next.",
+    )
+    serve_parser.add_argument(
+        "--once",
+        action="store_true",
+        help="Attempt at most one claim and then exit.",
+    )
+    serve_parser.add_argument(
+        "--max-issues",
+        type=int,
+        help="Exit after this many successful submissions.",
+    )
+    serve_parser.add_argument(
+        "--timeout-sec",
+        type=float,
+        default=1800.0,
+        help="Hard timeout for each agent run in seconds.",
+    )
+    serve_parser.set_defaults(func=run)
 
 
 @dataclass

@@ -2,11 +2,22 @@
 
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
 
 from issuekit.commands._common import run_command
 from issuekit.config import load_config
 from issuekit.workflow import WorkflowError, find_for
+
+
+def register(subparsers: argparse._SubParsersAction) -> None:
+    queue_parser = subparsers.add_parser(
+        "queue",
+        help="List active issues for an assignee.",
+    )
+    queue_parser.add_argument("--assignee", required=True, help="Assignee to list.")
+    queue_parser.add_argument("--stage", help="Workflow stage filter.")
+    queue_parser.set_defaults(func=run)
 
 
 def run(args) -> int:

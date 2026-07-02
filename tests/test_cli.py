@@ -80,6 +80,16 @@ def test_subcommand_help_exits_zero(capsys: pytest.CaptureFixture[str]) -> None:
     assert "Directly complete an active issue" in captured.out
 
 
+def test_all_registered_subcommand_help_exits_zero(capsys: pytest.CaptureFixture[str]) -> None:
+    parser = cli.build_parser()
+    subparsers = _subparser_action(parser)
+
+    for command in sorted(subparsers.choices):
+        assert cli.main([command, "--help"]) == 0
+        captured = capsys.readouterr()
+        assert "usage: issuekit" in captured.out
+
+
 def test_approve_help_exits_zero(capsys: pytest.CaptureFixture[str]) -> None:
     exit_code = cli.main(["approve", "--help"])
 

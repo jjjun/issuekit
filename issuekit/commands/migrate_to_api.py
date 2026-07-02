@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 from collections import Counter
 from pathlib import Path
 import re
@@ -21,6 +22,38 @@ from issuekit.workflow import WorkflowError
 
 
 EXPLICIT_IMPORT_KEYS = MANAGED_FRONTMATTER_KEYS | {"origin", "reviewer"}
+
+
+def register(subparsers: argparse._SubParsersAction) -> None:
+    migrate_parser = subparsers.add_parser(
+        "migrate-to-api",
+        help="Import legacy docs/issues issue files into the API backend.",
+    )
+    migrate_parser.add_argument(
+        "--issues-dir",
+        help="Legacy issue directory to import (defaults to configured issues_dir).",
+    )
+    migrate_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Build and validate the import payload without posting it.",
+    )
+    migrate_parser.set_defaults(func=run)
+
+    migrate_proposals_parser = subparsers.add_parser(
+        "migrate-proposals-to-api",
+        help="Import legacy docs/issues incoming proposal files into the API backend.",
+    )
+    migrate_proposals_parser.add_argument(
+        "--issues-dir",
+        help="Legacy issue directory containing incoming proposals (defaults to configured issues_dir).",
+    )
+    migrate_proposals_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Build and validate the proposal import payload without posting it.",
+    )
+    migrate_proposals_parser.set_defaults(func=run_proposals)
 
 
 def run(args) -> int:

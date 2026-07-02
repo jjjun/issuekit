@@ -2,12 +2,30 @@
 
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
 import sys
 
 from issuekit.config import load_config
 from issuekit.worker import WorkerRegistrationError, register_worker
 from issuekit.worker_registry import try_post_worker_registration
+
+
+def register(subparsers: argparse._SubParsersAction) -> None:
+    add_parser = subparsers.add_parser(
+        "add",
+        aliases=("register",),
+        help="Register this checkout as a local worker.",
+    )
+    add_parser.add_argument("--machine-id", help="Override the hostname-derived machine id.")
+    add_parser.add_argument("--repo-id", help="Override the git-origin-derived repository id.")
+    add_parser.add_argument("--worker-id", help="Override the checkout worker id.")
+    add_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Overwrite an existing pinned worker id or local collision.",
+    )
+    add_parser.set_defaults(func=run)
 
 
 def run(args) -> int:

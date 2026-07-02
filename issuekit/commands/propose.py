@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 from pathlib import Path
 import sys
@@ -26,6 +27,95 @@ from issuekit.refs import (
     list_effective_refs,
 )
 from issuekit.workflow import WorkflowError
+
+
+def register(subparsers: argparse._SubParsersAction) -> None:
+    add_ref_parser = subparsers.add_parser(
+        "add-ref",
+        help="Register a machine-local related repository ref.",
+    )
+    add_ref_parser.add_argument("name", help="Short ref name.")
+    add_ref_parser.add_argument("--path", required=True, help="Absolute or relative repository path.")
+    add_ref_parser.add_argument(
+        "--scope",
+        choices=("local", "workspace"),
+        default="local",
+        help="Write to issuekit.local.toml or issuekit.workspace.toml.",
+    )
+    add_ref_parser.add_argument(
+        "--path-to-workspace",
+        help="Explicit workspace registry file for --scope workspace.",
+    )
+    add_ref_parser.set_defaults(func=run_add_ref)
+
+    list_refs_parser = subparsers.add_parser(
+        "list-refs",
+        help="List effective related repository refs.",
+    )
+    list_refs_parser.set_defaults(func=run_list_refs)
+
+    propose_parser = subparsers.add_parser(
+        "propose",
+        help="Send a cross-repository proposal to a related repository.",
+    )
+    propose_parser.add_argument("--to", help="Target related repository ref.")
+    propose_parser.add_argument("--title", help="Proposal title.")
+    propose_parser.add_argument("--body", help="Inline proposal body.")
+    propose_parser.add_argument("--body-file", help="File containing proposal body.")
+    propose_parser.add_argument("--from-issue", help="Local issue id to propose from.")
+    propose_parser.add_argument("--reply", help="Local adopted issue id to reply from.")
+    propose_parser.add_argument("--json", action="store_true", help="Print JSON output.")
+    propose_parser.set_defaults(func=run_propose)
+
+    incoming_parser = subparsers.add_parser(
+        "incoming",
+        help="List incoming cross-repository proposals.",
+    )
+    incoming_parser.add_argument("--json", action="store_true", help="Print JSON output.")
+    incoming_parser.set_defaults(func=run_incoming)
+
+    outgoing_parser = subparsers.add_parser(
+        "outgoing",
+        help="List proposals this project sent to a target project's inbox.",
+    )
+    outgoing_parser.add_argument(
+        "--to",
+        required=True,
+        help="Target project whose inbox holds the outgoing proposals.",
+    )
+    outgoing_parser.add_argument("--id", type=int, help="Look up a single proposal id.")
+    outgoing_parser.add_argument(
+        "--status",
+        help="Filter by proposal status (pending, adopted, or discarded).",
+    )
+    outgoing_parser.add_argument("--json", action="store_true", help="Print JSON output.")
+    outgoing_parser.set_defaults(func=run_outgoing)
+
+    adopt_parser = subparsers.add_parser(
+        "adopt",
+        help="Adopt an incoming proposal as a local active issue.",
+    )
+    adopt_parser.add_argument("proposal", help="Proposal id.")
+    adopt_parser.add_argument(
+        "--priority",
+        choices=("high", "medium", "low"),
+        default="medium",
+        help="Priority for the adopted issue.",
+    )
+    adopt_parser.add_argument(
+        "--append-file",
+        help="File containing text to append to the adopted issue body.",
+    )
+    adopt_parser.add_argument("--json", action="store_true", help="Print JSON output.")
+    adopt_parser.set_defaults(func=run_adopt)
+
+    discard_parser = subparsers.add_parser(
+        "discard",
+        help="Discard an incoming proposal.",
+    )
+    discard_parser.add_argument("proposal", help="Proposal id.")
+    discard_parser.add_argument("--json", action="store_true", help="Print JSON output.")
+    discard_parser.set_defaults(func=run_discard)
 
 
 def run_add_ref(args) -> int:

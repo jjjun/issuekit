@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 from datetime import datetime
 from pathlib import Path
@@ -11,6 +12,21 @@ from issuekit.agents.status import RunStatus, find_status, is_stale, list_status
 
 
 TAIL_LINES = 40
+
+
+def register(subparsers: argparse._SubParsersAction) -> None:
+    runs_parser = subparsers.add_parser(
+        "runs",
+        help="List and inspect agent runs.",
+    )
+    runs_parser.add_argument("run_id", nargs="?", help="Run id to inspect.")
+    runs_parser.add_argument(
+        "--active",
+        action="store_true",
+        help="Show only running agent runs.",
+    )
+    runs_parser.add_argument("--json", action="store_true", help="Print JSON output.")
+    runs_parser.set_defaults(func=run)
 
 
 def run(args) -> int:

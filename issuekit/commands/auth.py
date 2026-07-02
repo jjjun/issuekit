@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 from datetime import datetime, timezone
 import getpass
 import os
@@ -11,6 +12,21 @@ import sys
 from issuekit.client import IssuekitClient
 from issuekit.config import load_config
 from issuekit.workflow import WorkflowError
+
+
+def register(subparsers: argparse._SubParsersAction) -> None:
+    login_parser = subparsers.add_parser(
+        "login",
+        help="Authenticate to the API and cache the access token.",
+    )
+    login_parser.add_argument("--user", help="API username (defaults to ISSUEKIT_API_USER).")
+    login_parser.set_defaults(func=run_login)
+
+    logout_parser = subparsers.add_parser(
+        "logout",
+        help="Log out of the API and remove the cached access token.",
+    )
+    logout_parser.set_defaults(func=run_logout)
 
 
 def run_login(args) -> int:

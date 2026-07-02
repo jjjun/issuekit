@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 from dataclasses import dataclass
 from importlib import resources
 import json
@@ -27,6 +28,24 @@ repos:
         language: system
         pass_filenames: false
 """
+
+
+def register(subparsers: argparse._SubParsersAction) -> None:
+    init_parser = subparsers.add_parser(
+        "init",
+        help="Install docs/issues tracker templates in the current repository.",
+    )
+    init_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Overwrite existing templated files.",
+    )
+    init_parser.add_argument(
+        "--with-mcp",
+        action="store_true",
+        help="Also scaffold MCP registration and thin agent protocol references.",
+    )
+    init_parser.set_defaults(func=run)
 
 
 @dataclass
