@@ -69,6 +69,22 @@ def test_api_store_maps_json_to_issue_and_issue_dict() -> None:
     }
 
 
+def test_api_store_update_issue_body_sends_body_only_update() -> None:
+    client = FakeIssuekitClient([api_issue(7, "Read Path", body="Old body")])
+    store = ApiStore(IssuekitConfig(api_url="https://mine.example", project="demo"), client=client)
+
+    issue = store.update_issue_body(7, body="Updated body")
+
+    assert issue.body == "Updated body"
+    assert client.calls == [
+        {
+            "method": "update_issue",
+            "number": 7,
+            "body": {"body": "Updated body"},
+        }
+    ]
+
+
 def test_api_store_worker_field_is_optional() -> None:
     class MissingWorkerClient(FakeIssuekitClient):
         def get_issue(self, number: int) -> dict[str, object]:

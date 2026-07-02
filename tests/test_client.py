@@ -198,6 +198,31 @@ def test_client_create_issue_uses_collection_path_without_trailing_slash() -> No
     assert seen_requests[0].url.path == "/api/issues/demo_project/issues"
 
 
+def test_client_update_issue_uses_issue_resource_path_and_body_only_payload() -> None:
+    seen_requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen_requests.append(request)
+        assert json.loads(request.content) == {"body": "Updated body"}
+        return httpx.Response(200, json={"id": 7, "body": "Updated body"})
+
+    client = IssuekitClient(
+        "https://mine.example",
+        project="demo_project",
+        token="static-token",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    assert client.update_issue(7, {"body": "Updated body", "title": "Ignored"}) == {
+        "id": 7,
+        "body": "Updated body",
+    }
+
+    assert len(seen_requests) == 1
+    assert seen_requests[0].method == "PATCH"
+    assert seen_requests[0].url.path == "/api/issues/demo_project/issues/7"
+
+
 def test_client_owned_http_client_follows_redirects() -> None:
     client = IssuekitClient("https://mine.example", token="static-token")
     try:

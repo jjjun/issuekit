@@ -217,7 +217,9 @@ class IssuekitClient:
         return _ensure_dict(payload, "Create response")
 
     def update_issue(self, number: int, issue: Mapping[str, Any]) -> JsonDict:
-        payload = self._request("PATCH", f"/{number}", json=dict(issue))
+        if "body" not in issue:
+            raise ValueError("Issue update requires a body.")
+        payload = self._request("PATCH", f"/{number}", json={"body": issue["body"]})
         return _ensure_dict(payload, "Update response")
 
     def claim(self, number: int, *, assignee: str, worker: str | None = None) -> JsonDict:
