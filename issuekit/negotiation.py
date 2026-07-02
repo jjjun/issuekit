@@ -644,7 +644,7 @@ def _entry_from_api(raw: Any) -> NegotiationEntry:
         raise WorkflowError("Proposal response contract was not a string or null.", code="invalid_response")
     if not isinstance(title, str) or not isinstance(body, str) or not isinstance(origin, str):
         raise WorkflowError("Proposal response text fields were invalid.", code="invalid_response")
-    created = raw.get("created_at", raw.get("created", ""))
+    created = raw.get("created_at") or raw.get("created") or ""
     if not isinstance(created, str):
         raise WorkflowError("Proposal response created timestamp was invalid.", code="invalid_response")
     try:
