@@ -48,12 +48,15 @@ def run(args) -> int:
     for file in source_files:
         path = Path(file)
         try:
-            if _starts_with_bom(path):
+            content = path.read_bytes()
+            has_bom = content.startswith(BOM)
+            if has_bom:
                 bom_files.append(file)
                 if args.fix:
-                    _strip_bom(path)
+                    path.write_bytes(content[len(BOM) :])
+                    content = content[len(BOM) :]
                     fixed_files.append(file)
-            if not args.no_mojibake and has_mojibake(path.read_text(encoding="utf-8-sig", errors="ignore")):
+            if not args.no_mojibake and has_mojibake(content.decode("utf-8", errors="ignore")):
                 mojibake_files.append(file)
         except OSError:
             continue
@@ -162,14 +165,3 @@ def _has_source_extension(file: str) -> bool:
 
 def _is_issue_file(file: str) -> bool:
     return Path(file).as_posix().startswith("docs/issues/")
-
-
-def _starts_with_bom(path: Path) -> bool:
-    with path.open("rb") as handle:
-        return handle.read(3) == BOM
-
-
-def _strip_bom(path: Path) -> None:
-    content = path.read_bytes()
-    if content.startswith(BOM):
-        path.write_bytes(content[len(BOM) :])

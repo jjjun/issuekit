@@ -62,10 +62,20 @@ def test_info_reads_issue_list_once_for_counts(tmp_path: Path, monkeypatch, caps
         def __init__(self, *args, **kwargs) -> None:
             super().__init__(*args, **kwargs)
             self.list_calls: list[dict[str, object]] = []
+            self.count_calls: list[dict[str, object]] = []
 
         def list_all_issues(self, **kwargs):
             self.list_calls.append(kwargs)
             return super().list_all_issues(**kwargs)
+
+        def count_issues(self, **kwargs):
+            self.count_calls.append(kwargs)
+            return len(
+                super().list_all_issues(
+                    status=kwargs.get("status"),
+                    include_completed=bool(kwargs.get("include_completed")),
+                )
+            )
 
     client = RecordingClient(
         [
@@ -80,8 +90,9 @@ def test_info_reads_issue_list_once_for_counts(tmp_path: Path, monkeypatch, caps
 
     assert payload["counts"] == {"active": 1, "completed": 1, "total": 2}
     assert client.list_calls == [
-        {"status": None, "assignee": None, "stage": None, "include_completed": True}
+        {"status": None, "assignee": None, "stage": None, "include_completed": False}
     ]
+    assert client.count_calls == [{"status": "completed", "include_completed": True}]
 
 
 def test_info_json_lists_incoming_proposals(tmp_path: Path, monkeypatch, capsys) -> None:

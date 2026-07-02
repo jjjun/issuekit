@@ -22,6 +22,21 @@ def test_get_store_uses_api_when_api_url_is_set() -> None:
     assert isinstance(store, ApiStore)
 
 
+def test_api_store_context_manager_closes_only_owned_clients(monkeypatch) -> None:
+    owned_client = FakeIssuekitClient()
+    monkeypatch.setattr("issuekit.store.IssuekitClient", lambda *args, **kwargs: owned_client)
+
+    with ApiStore(IssuekitConfig(api_url="https://mine.example")):
+        pass
+
+    injected_client = FakeIssuekitClient()
+    with ApiStore(IssuekitConfig(api_url="https://mine.example"), client=injected_client):
+        pass
+
+    assert owned_client.close_count == 1
+    assert injected_client.close_count == 0
+
+
 def test_api_store_maps_json_to_issue_and_issue_dict() -> None:
     body = "# Issue #7: Read Path\n\nBody text.\n"
     client = FakeIssuekitClient(

@@ -73,12 +73,13 @@ def run_propose(args) -> int:
             from_issue=args.from_issue,
             reply=args.reply,
         )
-        created = api_client(config, project=proposal.to).create_proposal(
-            origin=proposal.origin,
-            title=proposal.title,
-            body=proposal.body,
-            reply_to=proposal.reply_to or None,
-        )
+        with api_client(config, project=proposal.to) as client:
+            created = client.create_proposal(
+                origin=proposal.origin,
+                title=proposal.title,
+                body=proposal.body,
+                reply_to=proposal.reply_to or None,
+            )
     except (LookupError, ProposalError, RefError, ValueError, WorkflowError) as exc:
         print(str(exc), file=sys.stderr)
         return 1
@@ -101,7 +102,8 @@ def run_propose(args) -> int:
 def run_incoming(args) -> int:
     config = load_config(Path.cwd())
     try:
-        incoming = api_client(config).list_proposals(status="pending")
+        with api_client(config) as client:
+            incoming = client.list_proposals(status="pending")
     except (ProposalError, WorkflowError, ValueError) as exc:
         print(str(exc), file=sys.stderr)
         return 1
@@ -145,6 +147,7 @@ def run_adopt(args) -> int:
         print(f"Invalid priority: {args.priority}", file=sys.stderr)
         return 1
     config = load_config(Path.cwd())
+    client = None
     try:
         client = api_client(config)
         issue = client.adopt_proposal(
@@ -152,6 +155,8 @@ def run_adopt(args) -> int:
             priority=args.priority,
         )
     except (ProposalError, WorkflowError, ValueError) as exc:
+        if client is not None:
+            client.close()
         print(str(exc), file=sys.stderr)
         return 1
     if args.append_file:
@@ -164,6 +169,8 @@ def run_adopt(args) -> int:
                 output["append_error"] = message
                 print(json.dumps(output, indent=2))
             print(message, file=sys.stderr)
+            if client is not None:
+                client.close()
             return 1
         try:
             edit_issue(
@@ -175,12 +182,16 @@ def run_adopt(args) -> int:
             issue = client.get_issue(issue_id)
         except (OSError, UnicodeError, ValueError, WorkflowError) as exc:
             message = f"Adopted proposal as issue #{issue_id}, but append failed: {exc}"
+            if client is not None:
+                client.close()
             if args.json:
                 output = dict(outcome)
                 output["append_error"] = str(exc)
                 print(json.dumps(output, indent=2))
             print(message, file=sys.stderr)
             return 1
+    if client is not None:
+        client.close()
     outcome = adopt_outcome(args.proposal, config.project, issue)
     if args.json:
         print(json.dumps(outcome, indent=2))
@@ -208,7 +219,8 @@ def _adopted_issue_id(issue: dict) -> int | None:
 def run_discard(args) -> int:
     config = load_config(Path.cwd())
     try:
-        discarded = api_client(config).discard_proposal(proposal_id_arg(args.proposal))
+        with api_client(config) as client:
+            discarded = client.discard_proposal(proposal_id_arg(args.proposal))
     except (ProposalError, WorkflowError, ValueError) as exc:
         print(str(exc), file=sys.stderr)
         return 1

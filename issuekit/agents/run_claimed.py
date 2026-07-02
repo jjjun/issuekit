@@ -46,6 +46,7 @@ def run_and_submit(
     abort_event: threading.Event | None = None,
     reporter: RunReporter | None = None,
     runner_factory: RunnerFactory | None = None,
+    store=None,
     out: TextIO | None = None,
     err: TextIO | None = None,
 ) -> RunOutcome:
@@ -91,65 +92,75 @@ def run_and_submit(
             file=out,
         )
 
-    if git_root(cwd) == cwd.resolve() and not _touched_implementation_paths(cwd, issues_dir):
-        current_issue = get_store(config).get_issue(issue_id)
-        if current_issue is not None and current_issue.stage == "review":
+    owned_store = None
+    if store is None:
+        owned_store = get_store(config)
+        store = owned_store
+
+    try:
+        if git_root(cwd) == cwd.resolve() and not _touched_implementation_paths(cwd, issues_dir):
+            current_issue = store.get_issue(issue_id)
+            if current_issue is not None and current_issue.stage == "review":
+                print(
+                    "Issue is already at review after the agent run; treating it as submitted.",
+                    file=out,
+                )
+                return RunOutcome(
+                    issue=issue,
+                    result=result,
+                    exit_code=0,
+                    reviewed_issue=current_issue,
+                )
+            if not allow_no_changes:
+                current_stage = current_issue.stage if current_issue is not None else "unknown"
+                print(
+                    "ERROR: agent produced no implementation changes; not submitting for review. "
+                    f"The issue is currently at stage={current_stage}.",
+                    file=err,
+                )
+                return RunOutcome(issue=issue, result=result, exit_code=1)
             print(
-                "Issue is already at review after the agent run; treating it as submitted.",
+                "No implementation changes detected; submitting for review because "
+                "--allow-no-changes was set.",
                 file=out,
             )
-            return RunOutcome(
-                issue=issue,
-                result=result,
-                exit_code=0,
-                reviewed_issue=current_issue,
-            )
-        if not allow_no_changes:
-            current_stage = current_issue.stage if current_issue is not None else "unknown"
-            print(
-                "ERROR: agent produced no implementation changes; not submitting for review. "
-                f"The issue is currently at stage={current_stage}.",
-                file=err,
-            )
-            return RunOutcome(issue=issue, result=result, exit_code=1)
-        print(
-            "No implementation changes detected; submitting for review because "
-            "--allow-no-changes was set.",
-            file=out,
-        )
 
-    run_config = dict(config.agents).get(agent)
-    if run_config is not None and run_config.diff_shape_warn_deletions is not None:
-        _warn_heavy_deletions(
-            cwd,
-            issues_dir,
-            deletion_threshold=run_config.diff_shape_warn_deletions,
-            err=err,
-        )
-    if run_config is not None and run_config.mojibake_gate:
-        mojibake_files = _mojibake_touched_files(cwd, issues_dir)
-        if mojibake_files:
-            print(
-                "ERROR: mojibake gate blocked submit_for_review. "
-                "Fix the following touched files before submitting:",
-                file=err,
+        run_config = dict(config.agents).get(agent)
+        if run_config is not None and run_config.diff_shape_warn_deletions is not None:
+            _warn_heavy_deletions(
+                cwd,
+                issues_dir,
+                deletion_threshold=run_config.diff_shape_warn_deletions,
+                err=err,
             )
-            for path in mojibake_files:
-                print(f"- {path}", file=err)
-            return RunOutcome(issue=issue, result=result, exit_code=1)
+        if run_config is not None and run_config.mojibake_gate:
+            mojibake_files = _mojibake_touched_files(cwd, issues_dir)
+            if mojibake_files:
+                print(
+                    "ERROR: mojibake gate blocked submit_for_review. "
+                    "Fix the following touched files before submitting:",
+                    file=err,
+                )
+                for path in mojibake_files:
+                    print(f"- {path}", file=err)
+                return RunOutcome(issue=issue, result=result, exit_code=1)
 
-    reviewed_issue = submit_for_review(
-        issue_id,
-        summary=f"Implemented by {agent} via issuekit implement.",
-        assignee=agent,
-        config=config,
-    )
-    return RunOutcome(
-        issue=issue,
-        result=result,
-        exit_code=0,
-        reviewed_issue=reviewed_issue,
-    )
+        reviewed_issue = submit_for_review(
+            issue_id,
+            summary=f"Implemented by {agent} via issuekit implement.",
+            assignee=agent,
+            config=config,
+            store=store,
+        )
+        return RunOutcome(
+            issue=issue,
+            result=result,
+            exit_code=0,
+            reviewed_issue=reviewed_issue,
+        )
+    finally:
+        if owned_store is not None:
+            owned_store.close()
 
 
 def review_feedback_prompt(issue_body: str) -> str | None:

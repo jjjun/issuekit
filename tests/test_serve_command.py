@@ -426,6 +426,67 @@ def test_serve_backs_off_after_claim_error(monkeypatch, tmp_path: Path, capsys) 
     assert "event=claim_error" in capsys.readouterr().err
 
 
+def test_serve_loop_reuses_store_across_idle_polls(monkeypatch, tmp_path: Path) -> None:
+    class Args:
+        priority = None
+        once = False
+        interval = 0
+        timeout_sec = 1
+        max_issues = None
+
+    class StopAfterThreeSleeps:
+        requested = False
+
+        def __init__(self) -> None:
+            self.sleep_count = 0
+            self.abort_event = serve.threading.Event()
+
+        def sleep(self, seconds: float) -> bool:
+            self.sleep_count += 1
+            if self.sleep_count >= 3:
+                self.requested = True
+            return True
+
+    class IdleStore:
+        def __init__(self) -> None:
+            self.claim_count = 0
+            self.close_count = 0
+
+        def claim_next(self, **kwargs):
+            self.claim_count += 1
+            return None
+
+        def close(self) -> None:
+            self.close_count += 1
+
+    stores: list[IdleStore] = []
+
+    def fake_get_store(config):
+        store = IdleStore()
+        stores.append(store)
+        return store
+
+    monkeypatch.setattr(serve, "get_store", fake_get_store)
+    controller = StopAfterThreeSleeps()
+    config = serve.IssuekitConfig(api_url="https://mine.example")
+
+    exit_code = serve._serve_loop(
+        Args(),
+        agent="codex",
+        config=config,
+        cwd=tmp_path,
+        issues_dir=tmp_path / "docs" / "issues",
+        log_path=tmp_path / "serve.log",
+        controller=controller,
+    )
+
+    assert exit_code == 0
+    assert len(stores) == 2
+    assert stores[0].claim_count == 3
+    assert stores[0].close_count == 1
+    assert stores[1].close_count == 1
+
+
 def test_serve_sigint_during_idle_releases_lock(
     tmp_path: Path,
     monkeypatch,

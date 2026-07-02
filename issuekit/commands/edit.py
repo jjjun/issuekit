@@ -59,36 +59,42 @@ def edit_issue(
         priority=priority,
     )
     config = config or IssuekitConfig()
+    owned_store = None
     if store is None:
         from issuekit.store import get_store
 
-        store = get_store(config)
+        owned_store = get_store(config)
+        store = owned_store
 
-    existing = store.get_issue(issue_id)
-    if existing is None:
-        raise ValueError(active_issue_not_found(issue_id))
-    if existing.issue_status == "completed":
-        raise WorkflowError(f"Issue #{issue_id} is completed and cannot be edited.")
-    stage = existing.stage or "todo"
-    if stage != "todo" and not force:
-        raise WorkflowError(
-            f"Issue #{issue_id} is at stage {stage}; "
-            "pass --force to edit an issue that is already in flight."
+    try:
+        existing = store.get_issue(issue_id)
+        if existing is None:
+            raise ValueError(active_issue_not_found(issue_id))
+        if existing.issue_status == "completed":
+            raise WorkflowError(f"Issue #{issue_id} is completed and cannot be edited.")
+        stage = existing.stage or "todo"
+        if stage != "todo" and not force:
+            raise WorkflowError(
+                f"Issue #{issue_id} is at stage {stage}; "
+                "pass --force to edit an issue that is already in flight."
+            )
+
+        update_body = _body_update(
+            existing=existing,
+            body=body,
+            body_file=body_file,
+            append=append,
+            append_file=append_file,
         )
-
-    update_body = _body_update(
-        existing=existing,
-        body=body,
-        body_file=body_file,
-        append=append,
-        append_file=append_file,
-    )
-    return store.update_issue(
-        issue_id,
-        title=title.strip() if title is not None else None,
-        body=update_body,
-        priority=priority,
-    )
+        return store.update_issue(
+            issue_id,
+            title=title.strip() if title is not None else None,
+            body=update_body,
+            priority=priority,
+        )
+    finally:
+        if owned_store is not None:
+            owned_store.close()
 
 
 def _validate_edit_input(

@@ -29,6 +29,15 @@ REQUIRED_API_FIELDS = {
 
 
 class IssueStore(Protocol):
+    def __enter__(self) -> "IssueStore":
+        """Enter a store lifecycle context."""
+
+    def __exit__(self, *exc_info: object) -> None:
+        """Exit a store lifecycle context."""
+
+    def close(self) -> None:
+        """Release any store-owned resources."""
+
     def read_all_issues(self) -> tuple[list[Issue], list[Issue], list[Issue]]:
         """Read active, completed, and combined issues."""
 
@@ -55,11 +64,22 @@ class IssueStore(Protocol):
 class ApiStore:
     def __init__(self, config: IssuekitConfig, client: IssuekitClient | None = None) -> None:
         self.config = config
+        self._owns_client = client is None
         self.client = client or IssuekitClient(
             config.api_url,
             project=config.project,
             timeout=config.api_timeout,
         )
+
+    def close(self) -> None:
+        if self._owns_client:
+            self.client.close()
+
+    def __enter__(self) -> "ApiStore":
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        self.close()
 
     def read_all_issues(self) -> tuple[list[Issue], list[Issue], list[Issue]]:
         all_issues = self._list_issues(include_completed=True)
@@ -76,6 +96,38 @@ class ApiStore:
 
     def find_for(self, assignee: str | None = None, stage: str | None = None) -> list[Issue]:
         return self._list_issues(assignee=assignee, stage=stage)
+
+    def count_issues(
+        self,
+        *,
+        status: str | None = None,
+        include_completed: bool = False,
+    ) -> int:
+        count = getattr(self.client, "count_issues", None)
+        if count is not None:
+            return int(count(status=status, include_completed=include_completed))
+        return len(self.client.list_all_issues(status=status, include_completed=include_completed))
+
+    def latest_issue_id(
+        self,
+        *,
+        status: str | None = None,
+        include_completed: bool = False,
+        total: int | None = None,
+    ) -> int:
+        count = total if total is not None else self.count_issues(
+            status=status,
+            include_completed=include_completed,
+        )
+        if count <= 0:
+            return 0
+        items = self.client.list_issues(
+            status=status,
+            include_completed=include_completed,
+            limit=1,
+            offset=count - 1,
+        )
+        return max((int(item.get("id", 0)) for item in items), default=0)
 
     def find_implementing_for_worker(self, worker: str) -> list[Issue]:
         issues = self._list_issues(stage="implementing")

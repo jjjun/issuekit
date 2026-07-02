@@ -214,6 +214,38 @@ class IssuekitClient:
                 return issues
             offset += page_size
 
+    def count_issues(
+        self,
+        *,
+        status: str | None = None,
+        stage: str | None = None,
+        assignee: str | None = None,
+        include_completed: bool = False,
+    ) -> int:
+        payload = self._authorized_request(
+            "GET",
+            "/api/issues/board",
+            params=_drop_none(
+                {
+                    "projects": self.project,
+                    "status": status,
+                    "include_completed": include_completed,
+                    "stage": stage,
+                    "assignee": assignee,
+                    "limit": 1,
+                    "offset": 0,
+                }
+            ),
+        )
+        page = _ensure_dict(payload, "Issue board response")
+        total = page.get("total")
+        if not isinstance(total, int):
+            raise WorkflowError(
+                "Issue board response total was not an integer.",
+                code="invalid_response",
+            )
+        return total
+
     def get_issue(self, number: int) -> JsonDict:
         payload = self._request("GET", f"/{number}")
         return _ensure_dict(payload, "Issue response")

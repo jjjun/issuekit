@@ -107,21 +107,23 @@ def list_outgoing_proposals(
             f"Invalid proposal status: {status}. "
             f"Expected one of {', '.join(OUTGOING_PROPOSAL_STATUSES)}."
         )
-    client = api_client(config, project=to)
     statuses = (status,) if status else OUTGOING_PROPOSAL_STATUSES
-    outgoing = [
-        proposal
-        for candidate_status in statuses
-        for proposal in client.list_proposals(status=candidate_status)
-        if _is_own_origin(proposal.get("origin"), config.project)
-    ]
+    outgoing = []
+    with api_client(config, project=to) as client:
+        for candidate_status in statuses:
+            outgoing.extend(
+                proposal
+                for proposal in client.list_proposals(status=candidate_status)
+                if _is_own_origin(proposal.get("origin"), config.project)
+            )
     outgoing.sort(key=lambda proposal: int(proposal.get("id", 0)))
     return outgoing
 
 
 def get_outgoing_proposal(config: IssuekitConfig, *, to: str, proposal_id: int) -> dict:
     """Read one proposal this project sent to another project's inbox."""
-    proposal = api_client(config, project=to).get_proposal(int(proposal_id))
+    with api_client(config, project=to) as client:
+        proposal = client.get_proposal(int(proposal_id))
     if not _is_own_origin(proposal.get("origin"), config.project):
         raise ProposalError(
             f"Proposal #{proposal_id} in {to} was not sent by {config.project}."
@@ -197,7 +199,8 @@ def build_proposal(
 
 def _get_issue(config: IssuekitConfig, raw_id: str) -> Issue:
     issue_id = parse_issue_id_arg(raw_id)
-    issue = get_store(config).get_issue(issue_id)
+    with get_store(config) as store:
+        issue = store.get_issue(issue_id)
     if issue is None:
         raise LookupError(f"Issue #{issue_id} was not found.")
     return issue

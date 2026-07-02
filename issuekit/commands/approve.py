@@ -46,6 +46,7 @@ def approve_issue(
     summary: str | None = None,
     reviewer: str | None = None,
     config: IssuekitConfig | None = None,
+    store=None,
 ) -> Issue:
     require_ascii(
         summary or "",
@@ -54,18 +55,25 @@ def approve_issue(
     )
 
     config = config or IssuekitConfig()
-    from issuekit.store import get_store
+    owned_store = None
+    if store is None:
+        from issuekit.store import get_store
 
-    store = get_store(config)
-    resolved_reviewer = _resolve_api_approval_reviewer(store, issue_id, reviewer, config)
-    worker = config.worker_key()
-    return store.approve_issue(  # type: ignore[attr-defined]
-        issue_id,
-        summary=summary if summary is not None else "Approved.",
-        verification=verification,
-        reviewer=resolved_reviewer,
-        worker=worker,
-    )
+        owned_store = get_store(config)
+        store = owned_store
+    try:
+        resolved_reviewer = _resolve_api_approval_reviewer(store, issue_id, reviewer, config)
+        worker = config.worker_key()
+        return store.approve_issue(  # type: ignore[attr-defined]
+            issue_id,
+            summary=summary if summary is not None else "Approved.",
+            verification=verification,
+            reviewer=resolved_reviewer,
+            worker=worker,
+        )
+    finally:
+        if owned_store is not None:
+            owned_store.close()
 
 
 def _resolve_api_approval_reviewer(

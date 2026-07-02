@@ -44,6 +44,7 @@ def complete_issue(
     reviewer: str | None = None,
     force: bool = False,
     config: IssuekitConfig | None = None,
+    store=None,
 ) -> Issue:
     require_ascii(
         summary,
@@ -52,12 +53,19 @@ def complete_issue(
     )
 
     config = config or IssuekitConfig()
-    from issuekit.store import get_store
+    owned_store = None
+    if store is None:
+        from issuekit.store import get_store
 
-    store = get_store(config)
-    return store.complete_issue(  # type: ignore[attr-defined]
-        issue_id,
-        summary=summary,
-        verification=verification,
-        force=force,
-    )
+        owned_store = get_store(config)
+        store = owned_store
+    try:
+        return store.complete_issue(  # type: ignore[attr-defined]
+            issue_id,
+            summary=summary,
+            verification=verification,
+            force=force,
+        )
+    finally:
+        if owned_store is not None:
+            owned_store.close()

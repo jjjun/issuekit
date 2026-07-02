@@ -12,17 +12,23 @@ from issuekit.store import get_store
 
 def run(args) -> int:
     config = load_config(Path.cwd())
-    store = get_store(config)
-    active_issues, completed_issues, all_issues = store.read_all_issues()
+    with get_store(config) as store:
+        active_issues = store.find_for()
+        completed_count = store.count_issues(status="completed", include_completed=True)
+        latest_completed_id = store.latest_issue_id(
+            status="completed",
+            include_completed=True,
+            total=completed_count,
+        )
     incoming_proposals = _incoming_proposals(config)
     summary = {
         "counts": {
             "active": len(active_issues),
-            "completed": len(completed_issues),
-            "total": len(all_issues),
+            "completed": completed_count,
+            "total": len(active_issues) + completed_count,
         },
         "nextIssueId": None,
-        "latestCompletedId": max((issue.id or 0 for issue in completed_issues), default=0),
+        "latestCompletedId": latest_completed_id,
         "activeIssues": [
             {
                 "id": issue.id,
@@ -78,4 +84,5 @@ def run(args) -> int:
 def _incoming_proposals(config) -> list[dict]:
     if not config.api_url:
         return []
-    return api_client(config).list_proposals(status="pending")
+    with api_client(config) as client:
+        return client.list_proposals(status="pending")

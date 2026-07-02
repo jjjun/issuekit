@@ -33,6 +33,7 @@ class FakeIssuekitClient:
         self._next_proposal_id = 1
         self._next_thread_id = 1
         self.calls: list[JsonDict] = []
+        self.close_count = 0
         for issue in issues or []:
             self._store_issue(issue)
         for proposal in proposals or []:
@@ -41,7 +42,28 @@ class FakeIssuekitClient:
     def __enter__(self) -> "FakeIssuekitClient":
         return self
 
+    def close(self) -> None:
+        self.close_count += 1
+
+    def count_issues(
+        self,
+        *,
+        status: str | None = None,
+        stage: str | None = None,
+        assignee: str | None = None,
+        include_completed: bool = False,
+    ) -> int:
+        return len(
+            self.list_all_issues(
+                status=status,
+                stage=stage,
+                assignee=assignee,
+                include_completed=include_completed,
+            )
+        )
+
     def __exit__(self, *exc_info: object) -> None:
+        self.close()
         return None
 
     def health(self) -> JsonDict:

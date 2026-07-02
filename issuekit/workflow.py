@@ -27,17 +27,21 @@ def claim_next(
     *,
     priority: str | None = None,
     config: IssuekitConfig | None = None,
+    store=None,
 ) -> Issue | None:
     config = config or IssuekitConfig()
     _validate_assignee(assignee, config)
     _validate_stage("implementing", config)
     if priority is not None and priority not in VALID_ISSUE_PRIORITIES:
         raise WorkflowError(f"Invalid priority: {priority}")
-    from issuekit.store import get_store
 
-    store = get_store(config)
-    worker = config.worker_key()
-    return store.claim_next(assignee=assignee, priority=priority, worker=worker)  # type: ignore[attr-defined]
+    owned_store = _ensure_store(config, store)
+    try:
+        worker = config.worker_key()
+        return owned_store.claim_next(assignee=assignee, priority=priority, worker=worker)  # type: ignore[attr-defined]
+    finally:
+        if store is None:
+            owned_store.close()
 
 
 def claim_issue(
@@ -45,15 +49,19 @@ def claim_issue(
     assignee: str,
     *,
     config: IssuekitConfig | None = None,
+    store=None,
 ) -> Issue:
     config = config or IssuekitConfig()
     _validate_assignee(assignee, config)
     _validate_stage("implementing", config)
-    from issuekit.store import get_store
 
-    store = get_store(config)
-    worker = config.worker_key()
-    return store.claim_issue(issue_id, assignee=assignee, worker=worker)  # type: ignore[attr-defined]
+    owned_store = _ensure_store(config, store)
+    try:
+        worker = config.worker_key()
+        return owned_store.claim_issue(issue_id, assignee=assignee, worker=worker)  # type: ignore[attr-defined]
+    finally:
+        if store is None:
+            owned_store.close()
 
 
 def submit_for_review(
@@ -65,6 +73,7 @@ def submit_for_review(
     assignee: str = "codex",
     reviewer: str | None = None,
     config: IssuekitConfig | None = None,
+    store=None,
 ) -> Issue:
     config = config or IssuekitConfig()
     _validate_assignee(assignee, config)
@@ -72,16 +81,18 @@ def submit_for_review(
     _validate_ascii_text(summary, "--summary")
     _validate_ascii_text(branch or "", "--branch")
     _validate_ascii_text(commit or "", "--commit")
-    from issuekit.store import get_store
-
-    store = get_store(config)
-    return store.submit_for_review(  # type: ignore[attr-defined]
-        issue_id,
-        summary=summary,
-        branch=branch,
-        commit=commit,
-        reviewer=reviewer,
-    )
+    owned_store = _ensure_store(config, store)
+    try:
+        return owned_store.submit_for_review(  # type: ignore[attr-defined]
+            issue_id,
+            summary=summary,
+            branch=branch,
+            commit=commit,
+            reviewer=reviewer,
+        )
+    finally:
+        if store is None:
+            owned_store.close()
 
 
 def request_changes(
@@ -91,23 +102,26 @@ def request_changes(
     reviewer: str | None = None,
     assignee: str | None = None,
     config: IssuekitConfig | None = None,
+    store=None,
 ) -> Issue:
     config = config or IssuekitConfig()
     if assignee is not None:
         _validate_assignee(assignee, config)
     _validate_stage("changes_requested", config)
     _validate_ascii_text(notes, "--notes")
-    from issuekit.store import get_store
-
-    store = get_store(config)
-    worker = config.worker_key()
-    return store.request_changes(  # type: ignore[attr-defined]
-        issue_id,
-        notes=notes,
-        reviewer=reviewer,
-        assignee=assignee,
-        worker=worker,
-    )
+    owned_store = _ensure_store(config, store)
+    try:
+        worker = config.worker_key()
+        return owned_store.request_changes(  # type: ignore[attr-defined]
+            issue_id,
+            notes=notes,
+            reviewer=reviewer,
+            assignee=assignee,
+            worker=worker,
+        )
+    finally:
+        if store is None:
+            owned_store.close()
 
 
 def find_for(
@@ -115,6 +129,7 @@ def find_for(
     *,
     stage: str | None = None,
     config: IssuekitConfig | None = None,
+    store=None,
 ) -> list[Issue]:
     config = config or IssuekitConfig()
     if assignee:
@@ -122,9 +137,12 @@ def find_for(
     if stage:
         _validate_stage(stage, config)
 
-    from issuekit.store import get_store
-
-    return get_store(config).find_for(assignee, stage)
+    owned_store = _ensure_store(config, store)
+    try:
+        return owned_store.find_for(assignee, stage)
+    finally:
+        if store is None:
+            owned_store.close()
 
 
 def ensure_assigned_reviewer(
@@ -201,3 +219,11 @@ def _validate_stage(value: str, config: IssuekitConfig) -> None:
 def _validate_ascii_text(value: str, label: str) -> None:
     if has_non_ascii(value):
         raise WorkflowError(f"{label} must be ASCII-only.")
+
+
+def _ensure_store(config: IssuekitConfig, store):
+    if store is not None:
+        return store
+    from issuekit.store import get_store
+
+    return get_store(config)

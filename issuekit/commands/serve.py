@@ -39,6 +39,7 @@ class IssueRunResult:
     status: str
     exit_code: int
     reviewed_issue: Issue | None = None
+    recreate_store: bool = False
 
 
 @dataclass
@@ -139,81 +140,94 @@ def _serve_loop(
     submitted_count = 0
     backoff = BACKOFF_INITIAL_SEC
     attempt_count = 0
-    submitted_count, backoff, exit_code = _recover_orphaned_issues(
-        args,
-        agent=agent,
-        config=config,
-        cwd=cwd,
-        issues_dir=issues_dir,
-        log_path=log_path,
-        controller=controller,
-        submitted_count=submitted_count,
-        backoff=backoff,
-    )
-    if exit_code is not None:
-        return exit_code
-
-    while not controller.requested:
-        attempt_count += 1
-        try:
-            issue = claim_next(
-                agent,
-                priority=args.priority,
-                config=config,
-            )
-        except (TimeoutError, WorkflowError, ValueError) as exc:
-            _log(sys.stderr, log_path, "claim_error", error=str(exc), backoff=backoff)
-            if args.once:
-                return 1
-            controller.sleep(backoff)
-            backoff = min(backoff * 2, BACKOFF_MAX_SEC)
-            continue
-
-        if issue is None:
-            _log(sys.stderr, log_path, "idle", attempt=attempt_count)
-            if args.once:
-                return 0
-            controller.sleep(float(args.interval))
-            continue
-
-        _log(sys.stderr, log_path, "claimed", issue=issue.id, agent=agent)
-        result = _run_claimed_issue(
+    store = get_store(config) if config.api_url else None
+    recovery_store = get_store(config) if config.api_url else None
+    try:
+        submitted_count, backoff, exit_code, recovery_store = _recover_orphaned_issues(
             args,
-            issue,
             agent=agent,
             config=config,
             cwd=cwd,
             issues_dir=issues_dir,
             log_path=log_path,
             controller=controller,
+            submitted_count=submitted_count,
             backoff=backoff,
+            store=recovery_store,
         )
-        if result.status == "error":
-            if args.once:
-                return 1
-            controller.sleep(backoff)
-            backoff = min(backoff * 2, BACKOFF_MAX_SEC)
-            continue
+        if exit_code is not None:
+            return exit_code
 
-        if result.status == "failed":
+        while not controller.requested:
+            attempt_count += 1
+            try:
+                issue = claim_next(
+                    agent,
+                    priority=args.priority,
+                    config=config,
+                    store=store,
+                )
+            except (TimeoutError, WorkflowError, ValueError) as exc:
+                _log(sys.stderr, log_path, "claim_error", error=str(exc), backoff=backoff)
+                if _should_recreate_store(exc):
+                    store = _recreate_store(store, config)
+                if args.once:
+                    return 1
+                controller.sleep(backoff)
+                backoff = min(backoff * 2, BACKOFF_MAX_SEC)
+                continue
+
+            if issue is None:
+                _log(sys.stderr, log_path, "idle", attempt=attempt_count)
+                if args.once:
+                    return 0
+                controller.sleep(float(args.interval))
+                continue
+
+            _log(sys.stderr, log_path, "claimed", issue=issue.id, agent=agent)
+            result = _run_claimed_issue(
+                args,
+                issue,
+                agent=agent,
+                config=config,
+                cwd=cwd,
+                issues_dir=issues_dir,
+                log_path=log_path,
+                controller=controller,
+                backoff=backoff,
+                store=store,
+            )
+            if result.recreate_store:
+                store = _recreate_store(store, config)
+            if result.status == "error":
+                if args.once:
+                    return 1
+                controller.sleep(backoff)
+                backoff = min(backoff * 2, BACKOFF_MAX_SEC)
+                continue
+
+            if result.status == "failed":
+                if args.once:
+                    return result.exit_code
+                if controller.abort_event.is_set():
+                    return 0
+                controller.sleep(backoff)
+                backoff = min(backoff * 2, BACKOFF_MAX_SEC)
+                continue
+
+            submitted_count += 1
+            backoff = BACKOFF_INITIAL_SEC
+            _log_submitted(log_path, result.reviewed_issue, submitted_count)
             if args.once:
-                return result.exit_code
-            if controller.abort_event.is_set():
                 return 0
-            controller.sleep(backoff)
-            backoff = min(backoff * 2, BACKOFF_MAX_SEC)
-            continue
+            if args.max_issues is not None and submitted_count >= args.max_issues:
+                return 0
 
-        submitted_count += 1
-        backoff = BACKOFF_INITIAL_SEC
-        _log_submitted(log_path, result.reviewed_issue, submitted_count)
-        if args.once:
-            return 0
-        if args.max_issues is not None and submitted_count >= args.max_issues:
-            return 0
-
-    _log(sys.stderr, log_path, "stopped")
-    return 0
+        _log(sys.stderr, log_path, "stopped")
+        return 0
+    finally:
+        _close_store(store)
+        _close_store(recovery_store)
 
 
 def _recover_orphaned_issues(
@@ -227,19 +241,21 @@ def _recover_orphaned_issues(
     controller: ShutdownController,
     submitted_count: int,
     backoff: float,
-) -> tuple[int, float, int | None]:
+    store,
+) -> tuple[int, float, int | None, object]:
     if config.worker is None:
-        return submitted_count, backoff, None
+        return submitted_count, backoff, None, store
 
     me = config.worker_key()
     if me is None:
-        return submitted_count, backoff, None
+        return submitted_count, backoff, None, store
     try:
-        store = get_store(config)
         issues = store.find_implementing_for_worker(me)
     except (AttributeError, RuntimeError, TimeoutError, WorkflowError, ValueError) as exc:
         _log(sys.stderr, log_path, "recovery_error", worker=me, error=str(exc))
-        return submitted_count, backoff, None
+        if _should_recreate_store(exc):
+            store = _recreate_store(store, config)
+        return submitted_count, backoff, None, store
 
     for issue in issues:
         if controller.requested:
@@ -261,18 +277,20 @@ def _recover_orphaned_issues(
             backoff = BACKOFF_INITIAL_SEC
             _log_submitted(log_path, result.reviewed_issue, submitted_count)
             if args.once:
-                return submitted_count, backoff, 0
+                return submitted_count, backoff, 0, store
             if args.max_issues is not None and submitted_count >= args.max_issues:
-                return submitted_count, backoff, 0
+                return submitted_count, backoff, 0, store
             continue
 
         if result.status == "failed" and controller.abort_event.is_set():
-            return submitted_count, backoff, 0
+            return submitted_count, backoff, 0, store
+        if result.recreate_store:
+            store = _recreate_store(store, config)
         if not args.once:
             controller.sleep(backoff)
             backoff = min(backoff * 2, BACKOFF_MAX_SEC)
 
-    return submitted_count, backoff, None
+    return submitted_count, backoff, None, store
 
 
 def _run_claimed_issue(
@@ -286,6 +304,7 @@ def _run_claimed_issue(
     log_path: Path,
     controller: ShutdownController,
     backoff: float,
+    store=None,
 ) -> IssueRunResult:
     try:
         outcome = run_and_submit(
@@ -297,6 +316,7 @@ def _run_claimed_issue(
             timeout=float(args.timeout_sec),
             prompt_suffix=review_feedback_prompt(issue.body),
             abort_event=controller.abort_event,
+            store=store,
             out=sys.stderr,
             err=sys.stderr,
         )
@@ -308,7 +328,11 @@ def _run_claimed_issue(
         WorkflowError,
     ) as exc:
         _log(sys.stderr, log_path, "run_error", issue=issue.id, error=str(exc), backoff=backoff)
-        return IssueRunResult(status="error", exit_code=1)
+        return IssueRunResult(
+            status="error",
+            exit_code=1,
+            recreate_store=_should_recreate_store(exc),
+        )
 
     if outcome.exit_code != 0 or outcome.reviewed_issue is None:
         _log(
@@ -326,6 +350,25 @@ def _run_claimed_issue(
         exit_code=0,
         reviewed_issue=outcome.reviewed_issue,
     )
+
+
+def _should_recreate_store(exc: BaseException) -> bool:
+    if isinstance(exc, TimeoutError):
+        return True
+    return isinstance(exc, WorkflowError) and exc.code == "request_failed"
+
+
+def _recreate_store(store, config: IssuekitConfig):
+    _close_store(store)
+    return get_store(config) if config.api_url else None
+
+
+def _close_store(store) -> None:
+    if store is None:
+        return
+    close = getattr(store, "close", None)
+    if close is not None:
+        close()
 
 
 def _log_submitted(log_path: Path, reviewed_issue: Issue | None, submitted_count: int) -> None:
