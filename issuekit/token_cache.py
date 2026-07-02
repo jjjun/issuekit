@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+import csv
+import io
 import json
 import os
 from pathlib import Path
@@ -15,6 +17,7 @@ from issuekit.workflow import WorkflowError
 
 
 _TOKEN_CACHE_ENV = "ISSUEKIT_TOKEN_CACHE"
+_WARNED_LOOSE_TOKEN_CACHE_PATHS: set[Path] = set()
 
 
 def _token_cache_path() -> Path:
@@ -65,6 +68,7 @@ def _delete_cached_token(api_url: str) -> None:
 
 def _read_token_cache() -> dict[str, Any]:
     path = _token_cache_path()
+    _warn_if_token_cache_is_loose(path)
     try:
         raw = path.read_text(encoding="utf-8")
     except FileNotFoundError:
@@ -81,7 +85,8 @@ def _read_token_cache() -> dict[str, Any]:
 def _write_token_cache(cache: Mapping[str, Any]) -> None:
     path = _token_cache_path()
     try:
-        path.parent.mkdir(parents=True, exist_ok=True)
+        path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        _chmod_700(path.parent)
     except OSError as exc:
         raise WorkflowError(f"Failed to create API token cache directory: {exc}", code="token_cache_error") from exc
 
@@ -115,9 +120,37 @@ def _chmod_600(path: Path) -> None:
         pass
 
 
+def _chmod_700(path: Path) -> None:
+    if os.name == "nt":
+        return
+    try:
+        os.chmod(path, 0o700)
+    except OSError:
+        pass
+
+
+def _warn_if_token_cache_is_loose(path: Path) -> None:
+    if os.name == "nt":
+        return
+    try:
+        mode = path.stat().st_mode
+    except OSError:
+        return
+    if mode & 0o044 == 0:
+        return
+    resolved = path.resolve()
+    if resolved in _WARNED_LOOSE_TOKEN_CACHE_PATHS:
+        return
+    _WARNED_LOOSE_TOKEN_CACHE_PATHS.add(resolved)
+    _warn_token_cache_permissions(
+        path,
+        "cache file is group/other-readable; run `chmod 600` on the file",
+    )
+
+
 def _restrict_windows_acl(path: Path) -> None:
-    user = os.getenv("USERNAME")
-    if not user:
+    grantee = _current_windows_acl_grantee()
+    if not grantee:
         _warn_token_cache_permissions(path, "current Windows user could not be determined")
         return
     try:
@@ -127,7 +160,7 @@ def _restrict_windows_acl(path: Path) -> None:
                 str(path),
                 "/inheritance:r",
                 "/grant:r",
-                f"{user}:F",
+                f"{grantee}:F",
             ],
             check=False,
             stdout=subprocess.DEVNULL,
@@ -140,6 +173,48 @@ def _restrict_windows_acl(path: Path) -> None:
     if result.returncode != 0:
         reason = result.stderr.strip() or f"icacls exited with {result.returncode}"
         _warn_token_cache_permissions(path, reason)
+
+
+def _current_windows_acl_grantee() -> str | None:
+    sid = _current_windows_user_sid()
+    if sid:
+        return f"*{sid}"
+    try:
+        login = os.getlogin()
+    except OSError:
+        login = ""
+    if login:
+        return login
+    username = os.getenv("USERNAME")
+    if not username:
+        return None
+    domain = os.getenv("USERDOMAIN")
+    if domain:
+        return f"{domain}\\{username}"
+    return username
+
+
+def _current_windows_user_sid() -> str | None:
+    try:
+        result = subprocess.run(
+            ["whoami", "/user", "/fo", "csv"],
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode != 0:
+        return None
+    try:
+        rows = list(csv.DictReader(io.StringIO(result.stdout or "")))
+    except csv.Error:
+        return None
+    if not rows:
+        return None
+    sid = (rows[0].get("SID") or "").strip()
+    return sid if sid.startswith("S-1-") else None
 
 
 def _warn_token_cache_permissions(path: Path, reason: str) -> None:

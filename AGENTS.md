@@ -16,6 +16,8 @@ from the repo root so the MCP server resolves the repo configuration.
 - Run `issuekit migrate-proposals-to-api` once per legacy repo before deleting
   its old `docs/issues/` tree.
 - This repo dogfoods its own issue tracker.
+- Repo-local `.env` is trusted input for `ISSUEKIT_*` keys only; sensitive API
+  settings loaded from `.env` print a stderr notice.
 - Write all files as UTF-8 without a BOM and with LF line endings.
 - Build and test with `uv sync`, `uv run pytest`, and
   `uv run issuekit check-encoding`.

@@ -23,6 +23,7 @@ def isolated_token_cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Non
     monkeypatch.setenv("ISSUEKIT_TOKEN_CACHE", str(tmp_path / "token.json"))
     monkeypatch.delenv("ISSUEKIT_ALLOW_INSECURE", raising=False)
     security_module._WARNED_INSECURE_API_URLS.clear()
+    token_cache_module._WARNED_LOOSE_TOKEN_CACHE_PATHS.clear()
 
 
 def test_client_logs_in_once_and_sends_expected_request_shape() -> None:
@@ -367,6 +368,47 @@ def test_login_writes_token_cache_with_expiry(
         assert cache_path.stat().st_mode & 0o777 == 0o600
 
 
+@pytest.mark.skipif(os.name == "nt", reason="POSIX mode bits are not used on Windows")
+def test_token_cache_directory_is_created_private(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cache_path = tmp_path / "nested" / "token.json"
+    monkeypatch.setenv("ISSUEKIT_TOKEN_CACHE", str(cache_path))
+
+    token_cache_module._write_token_cache({"https://mine.example": {"token": "cached-token"}})
+
+    assert cache_path.parent.stat().st_mode & 0o777 == 0o700
+    assert cache_path.stat().st_mode & 0o777 == 0o600
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX mode bits are not used on Windows")
+def test_token_cache_read_warns_once_when_file_is_group_or_other_readable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    cache_path = tmp_path / "token.json"
+    monkeypatch.setenv("ISSUEKIT_TOKEN_CACHE", str(cache_path))
+    cache_path.write_text(
+        json.dumps({"https://mine.example": {"token": "cached-token"}}),
+        encoding="utf-8",
+        newline="\n",
+    )
+    cache_path.chmod(0o644)
+
+    assert token_cache_module._read_token_cache() == {
+        "https://mine.example": {"token": "cached-token"}
+    }
+    assert token_cache_module._read_token_cache() == {
+        "https://mine.example": {"token": "cached-token"}
+    }
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err.count("group/other-readable") == 1
+
+
 def test_insecure_api_url_warning_goes_to_stderr_once(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -482,6 +524,13 @@ def test_windows_token_cache_acl_tightening_is_best_effort(
 
     def fake_run(argv: list[str], **kwargs: object):
         calls.append(argv)
+        if argv == ["whoami", "/user", "/fo", "csv"]:
+            return subprocess.CompletedProcess(
+                argv,
+                0,
+                stdout='"User Name","SID"\n"DOMAIN\\svc-user","S-1-5-21-123"\n',
+                stderr="",
+            )
         return subprocess.CompletedProcess(argv, 5, stderr="access denied")
 
     monkeypatch.setenv("USERNAME", "svc-user")
@@ -494,19 +543,21 @@ def test_windows_token_cache_acl_tightening_is_best_effort(
     payload = json.loads(cache_path.read_text(encoding="utf-8"))
     assert payload == {"https://mine.example": {"token": "cached-token"}}
     assert calls == [
+        ["whoami", "/user", "/fo", "csv"],
         [
             "icacls",
             str(cache_path.with_name(f".{cache_path.name}.{os.getpid()}.tmp")),
             "/inheritance:r",
             "/grant:r",
-            "svc-user:F",
+            "*S-1-5-21-123:F",
         ],
+        ["whoami", "/user", "/fo", "csv"],
         [
             "icacls",
             str(cache_path),
             "/inheritance:r",
             "/grant:r",
-            "svc-user:F",
+            "*S-1-5-21-123:F",
         ],
     ]
     assert "could not restrict API token cache permissions" in capsys.readouterr().err

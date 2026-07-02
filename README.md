@@ -113,6 +113,10 @@ MCP entries run the global `issuekit-mcp` binary; they do not use `uv run`, so
 they work outside the issuekit checkout. Launch codex or Claude Code from the
 target repo root so the server resolves repo configuration.
 
+Repo-local `.env` files are treated as trusted repository input only for
+`ISSUEKIT_*` keys. Sensitive API settings loaded from `.env` are announced on
+stderr so credential redirection is visible.
+
 For local development, install the optional MCP group and start the stdio server
 from a checkout with:
 

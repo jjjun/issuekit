@@ -883,14 +883,15 @@ def _backend_issue_body(
     ]
     if origin_issue_ref:
         lines.append(f"- Originating issue: {origin_issue_ref}")
+    fence = _markdown_fence_for(contract)
     lines.extend(
         [
             "",
             "## Agreed Contract",
             "",
-            "```",
+            fence,
             contract,
-            "```",
+            fence,
             "",
             "## Acceptance Criteria",
             "",
@@ -921,14 +922,15 @@ def _frontend_issue_body(
     ]
     if origin_issue_ref:
         lines.append(f"- Originating issue: {origin_issue_ref}")
+    fence = _markdown_fence_for(contract)
     lines.extend(
         [
             "",
             "## Agreed Contract",
             "",
-            "```",
+            fence,
             contract,
-            "```",
+            fence,
             "",
             "## Acceptance Criteria",
             "",
@@ -938,6 +940,18 @@ def _frontend_issue_body(
         ]
     )
     return "\n".join(lines)
+
+
+def _markdown_fence_for(content: str) -> str:
+    longest_run = 0
+    current_run = 0
+    for char in content:
+        if char == "`":
+            current_run += 1
+            longest_run = max(longest_run, current_run)
+        else:
+            current_run = 0
+    return "`" * max(3, longest_run + 1)
 
 
 def _origin_issue_ref(thread: list[NegotiationEntry]) -> str | None:

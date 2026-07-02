@@ -466,7 +466,7 @@ def test_origin_issue_ref_extracts_issue_ref_from_entry_origin() -> None:
     assert _origin_issue_ref(store.get_thread(first.thread_id)) == "frontend#108"
 
 
-def _agreed_store() -> tuple[MockNegotiationStore, str]:
+def _agreed_store(contract: str = "GET /items 200") -> tuple[MockNegotiationStore, str]:
     store = MockNegotiationStore(None)
     first = store.create_thread(
         side="frontend",
@@ -474,7 +474,7 @@ def _agreed_store() -> tuple[MockNegotiationStore, str]:
         title="frontend agree",
         body="Accepted.",
         origin="frontend#108@frontend:round-1",
-        contract="GET /items 200",
+        contract=contract,
     )
     store.append_entry(
         first.thread_id,
@@ -483,7 +483,7 @@ def _agreed_store() -> tuple[MockNegotiationStore, str]:
         title="backend agree",
         body="Accepted.",
         origin="frontend#108@backend:round-2",
-        contract="GET /items 200",
+        contract=contract,
     )
     store.set_status(first.thread_id, ThreadStatus.agreed)
     return store, first.thread_id
@@ -517,6 +517,26 @@ def test_finalize_negotiation_creates_cross_linked_issues() -> None:
     assert "Backend/API issue: backend#1" in frontend.body
     assert "Originating issue: frontend#108" in backend.body
     assert "Originating issue: frontend#108" in frontend.body
+
+
+def test_finalize_negotiation_uses_longer_fence_for_contract_with_backticks() -> None:
+    contract = 'GET /items\n```json\n{"ok": true}\n```'
+    store, thread_id = _agreed_store(contract=contract)
+    creator = MockIssueCreator()
+
+    result = finalize_negotiation(
+        thread_id=thread_id,
+        to_project="backend",
+        author_agent="codex",
+        priority="medium",
+        config=IssuekitConfig(project="frontend"),
+        store=store,
+        issue_creator=creator,
+    )
+
+    fenced_contract = f"````\n{contract}\n````"
+    assert fenced_contract in creator.issues[result.backend_issue_ref].body
+    assert fenced_contract in creator.issues[result.frontend_issue_ref].body
 
 
 def test_finalize_negotiation_is_idempotent() -> None:

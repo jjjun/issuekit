@@ -4,6 +4,16 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+import sys
+
+
+_ISSUEKIT_PREFIX = "ISSUEKIT_"
+_SENSITIVE_DOTENV_KEYS = {
+    "ISSUEKIT_API_URL",
+    "ISSUEKIT_API_USER",
+    "ISSUEKIT_API_PASSWORD",
+    "ISSUEKIT_API_TOKEN",
+}
 
 
 def load_dotenv(cwd: Path | str = ".") -> None:
@@ -19,7 +29,16 @@ def load_dotenv(cwd: Path | str = ".") -> None:
         if parsed is None:
             continue
         key, value = parsed
-        os.environ.setdefault(key, value)
+        if not key.startswith(_ISSUEKIT_PREFIX):
+            continue
+        if key in os.environ:
+            continue
+        os.environ[key] = value
+        if key in _SENSITIVE_DOTENV_KEYS:
+            print(
+                f"Notice: loaded {key} from repo-local dotenv file {dotenv_path}.",
+                file=sys.stderr,
+            )
 
 
 def _parse_dotenv_line(line: str) -> tuple[str, str] | None:

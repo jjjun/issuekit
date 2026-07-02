@@ -105,6 +105,7 @@ def test_load_config_reads_api_url_from_dotenv(
 def test_load_config_real_environment_overrides_dotenv(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     monkeypatch.setenv("ISSUEKIT_API_URL", "https://mine.real-env")
     (tmp_path / ".env").write_text(
@@ -116,6 +117,7 @@ def test_load_config_real_environment_overrides_dotenv(
     config = load_config(tmp_path)
 
     assert config.api_url == "https://mine.real-env"
+    assert capsys.readouterr().err == ""
 
 
 def test_load_config_dotenv_parses_comments_quotes_export_and_skips_malformed(
@@ -149,8 +151,29 @@ def test_load_config_dotenv_parses_comments_quotes_export_and_skips_malformed(
     assert config.api_url == "https://mine.quoted"
     assert config.project == "quoted_project"
     assert config.api_timeout == 7.5
-    assert os.environ["DOTENV_EXTRA"] == "extra value"
+    assert "DOTENV_EXTRA" not in os.environ
     assert "MALFORMED_LINE" not in os.environ
+
+
+def test_load_config_dotenv_warns_when_sensitive_api_key_is_loaded(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    dotenv_path = tmp_path / ".env"
+    dotenv_path.write_text(
+        "ISSUEKIT_API_TOKEN=repo-token\nISSUEKIT_PROJECT=demo\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    config = load_config(tmp_path)
+
+    assert config.project == "demo"
+    assert os.environ["ISSUEKIT_API_TOKEN"] == "repo-token"
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert str(dotenv_path) in captured.err
+    assert "ISSUEKIT_API_TOKEN" in captured.err
 
 
 def test_load_config_missing_dotenv_is_noop(
