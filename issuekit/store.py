@@ -41,6 +41,16 @@ class IssueStore(Protocol):
     def get_issue(self, issue_id: int) -> Issue | None:
         """Read one issue by id."""
 
+    def update_issue(
+        self,
+        issue_id: int,
+        *,
+        title: str | None = None,
+        body: str | None = None,
+        priority: str | None = None,
+    ) -> Issue:
+        """Update editable issue fields."""
+
     def find_for(self, assignee: str | None = None, stage: str | None = None) -> list[Issue]:
         """Find active issues matching workflow fields."""
 
@@ -107,7 +117,22 @@ class ApiStore:
         )
 
     def update_issue_body(self, issue_id: int, *, body: str) -> Issue:
-        return self._issue_from_response(self.client.update_issue(issue_id, {"body": body}))
+        return self.update_issue(issue_id, body=body)
+
+    def update_issue(
+        self,
+        issue_id: int,
+        *,
+        title: str | None = None,
+        body: str | None = None,
+        priority: str | None = None,
+    ) -> Issue:
+        return self._issue_from_response(
+            self.client.update_issue(
+                issue_id,
+                _drop_none({"title": title, "body": body, "priority": priority}),
+            )
+        )
 
     def claim_issue(self, issue_id: int, *, assignee: str, worker: str | None = None) -> Issue:
         return self._issue_from_response(self.client.claim(issue_id, assignee=assignee, worker=worker))

@@ -9,6 +9,7 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 
 from issuekit.commands.approve import approve_issue
+from issuekit.commands.edit import edit_issue
 from issuekit.config import load_config
 from issuekit.core import (
     Issue,
@@ -24,9 +25,10 @@ from issuekit.proposals_api import (
     proposal_id_arg,
     proposal_payload_mismatch,
 )
-from issuekit.store import get_store
+from issuekit.store import ApiStore, get_store
 from issuekit.workflow import (
     AUTO_REVIEWER,
+    WorkflowError,
     claim_next,
     find_for,
     request_changes as workflow_request_changes,
@@ -141,6 +143,29 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
             return {"status": "none", "id": id}
         return _issue_dict(issue, include_body=True)
 
+    @server.tool(description="Edit an API-backed issue title, body, appended text, or priority.")
+    def update_issue(
+        id: int,
+        title: str | None = None,
+        body: str | None = None,
+        append: str | None = None,
+        priority: str | None = None,
+        force: bool = False,
+    ) -> dict[str, Any]:
+        if body is not None and append is not None:
+            raise ValueError("body and append are mutually exclusive.")
+        config = _context(root)
+        issue = edit_issue(
+            id,
+            title=title,
+            body=body,
+            append=append,
+            priority=priority,
+            force=force,
+            config=config,
+        )
+        return _issue_dict(issue, include_body=True)
+
     @server.tool(description="List active queue entries, optionally filtered by assignee and stage.")
     def list_queue(assignee: str | None = None, stage: str | None = None) -> list[dict[str, Any]]:
         config = _context(root)
@@ -202,10 +227,25 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
         proposal_id: int | None = None,
         proposal_file: str | None = None,
         priority: str = "medium",
+        append: str | None = None,
     ) -> dict[str, Any]:
         config = _context(root)
         raw_id = proposal_id if proposal_id is not None else proposal_id_arg(proposal_file or "")
-        issue = api_client(config).adopt_proposal(int(raw_id), priority=priority)
+        client = api_client(config)
+        issue = client.adopt_proposal(int(raw_id), priority=priority)
+        if append is not None:
+            issue_id = _adopted_issue_id(issue)
+            if issue_id is None:
+                raise WorkflowError(
+                    "Adoption did not return a created API issue; cannot append to the issue body."
+                )
+            edit_issue(
+                issue_id,
+                append=append,
+                config=config,
+                store=ApiStore(config, client=client),
+            )
+            issue = client.get_issue(issue_id)
         return adopt_outcome(raw_id, config.project, issue)
 
     @server.tool(description="Discard an incoming cross-repository proposal.")
@@ -231,3 +271,11 @@ def _context(root: Path):
 
 def _issue_dict(issue: Issue, *, include_body: bool = False) -> dict[str, Any]:
     return issue_dict(issue, include_body=include_body)
+
+
+def _adopted_issue_id(issue: dict[str, Any]) -> int | None:
+    try:
+        issue_id = int(issue.get("id"))
+    except (TypeError, ValueError):
+        return None
+    return issue_id if issue_id > 0 else None

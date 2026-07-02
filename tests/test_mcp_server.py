@@ -51,6 +51,7 @@ def test_server_registers_expected_tools(tmp_path: Path) -> None:
         "request_changes",
         "approve",
         "get_issue",
+        "update_issue",
         "list_queue",
         "propose",
         "list_incoming",
@@ -299,6 +300,72 @@ def test_mcp_read_tools_use_api_store_when_configured(tmp_path: Path, monkeypatc
     assert issue["file"] == "demo#1"
 
 
+def test_mcp_update_issue_edits_and_appends(tmp_path: Path, monkeypatch) -> None:
+    client = FakeIssuekitClient([api_issue(1, "Old", body="Original body")])
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'demo'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    server = create_server(tmp_path)
+
+    updated = _call(
+        server,
+        "update_issue",
+        {"id": 1, "title": "New", "body": "Replacement", "priority": "high"},
+    )
+    appended = _call(server, "update_issue", {"id": 1, "append": "Plan section"})
+
+    assert updated["title"] == "New"
+    assert updated["body"] == "Replacement"
+    assert appended["body"] == "Replacement\n\nPlan section"
+    assert client.calls == [
+        {
+            "method": "update_issue",
+            "number": 1,
+            "body": {"title": "New", "body": "Replacement", "priority": "high"},
+        },
+        {
+            "method": "update_issue",
+            "number": 1,
+            "body": {"body": "Replacement\n\nPlan section"},
+        },
+    ]
+
+
+def test_mcp_update_issue_requires_force_for_in_flight_issue(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                1,
+                "In flight",
+                status="in_progress",
+                stage="implementing",
+                assignee="codex",
+                implementer="codex",
+            )
+        ]
+    )
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'demo'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    server = create_server(tmp_path)
+
+    with pytest.raises(Exception, match="pass --force"):
+        _call(server, "update_issue", {"id": 1, "title": "Blocked"})
+
+    forced = _call(server, "update_issue", {"id": 1, "title": "Forced", "force": True})
+
+    assert forced["title"] == "Forced"
+
+
 def test_auto_default_reviewer_opens_review_pool(tmp_path: Path) -> None:
     (tmp_path / "issuekit.toml").write_text(
         "default_reviewer = 'auto'\n",
@@ -528,7 +595,11 @@ def test_api_proposal_tools_send_list_adopt_and_discard(
         },
     )
     incoming = _call(server, "list_incoming", {})
-    adopted = _call(server, "adopt_proposal", {"proposal_id": 10, "priority": "low"})
+    adopted = _call(
+        server,
+        "adopt_proposal",
+        {"proposal_id": 10, "priority": "low", "append": "Implementation plan."},
+    )
     discarded = _call(server, "discard_proposal", {"proposal_id": 11})
 
     assert sent["origin"] == "target#0@unknown"
@@ -537,6 +608,7 @@ def test_api_proposal_tools_send_list_adopt_and_discard(
     assert [proposal["id"] for proposal in incoming] == [10, 11, sent["id"]]
     assert adopted["title"] == "Adopt"
     assert adopted["priority"] == "low"
+    assert adopted["body"] == "Adopt body.\n\nImplementation plan."
     assert discarded["status"] == "discarded"
 
 

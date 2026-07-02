@@ -275,8 +275,10 @@ def test_api_cli_adopt_and_discard_use_proposal_ids(
     )
     monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
     monkeypatch.chdir(tmp_path)
+    append_file = tmp_path / "plan.md"
+    append_file.write_text("## Implementation Plan\n\nDo this.\n", encoding="utf-8", newline="\n")
 
-    assert cli.main(["adopt", "1", "--priority", "high", "--json"]) == 0
+    assert cli.main(["adopt", "1", "--priority", "high", "--append-file", str(append_file), "--json"]) == 0
     adopted = json.loads(capsys.readouterr().out)
     assert cli.main(["discard", "2", "--json"]) == 0
     discarded = json.loads(capsys.readouterr().out)
@@ -290,7 +292,9 @@ def test_api_cli_adopt_and_discard_use_proposal_ids(
     assert adopted["issue_ref"] == "target#1"
     assert adopted["next_command"] == "issuekit claim --id 1 --assignee <agent>"
     assert adopted["issue"]["title"] == "Adopt"
+    assert adopted["issue"]["body"] == "Adopt body.\n\n## Implementation Plan\n\nDo this."
     assert client.get_proposal(1)["status"] == "adopted"
+    assert client.get_issue(1)["body"] == "Adopt body.\n\n## Implementation Plan\n\nDo this."
     assert discarded["status"] == "discarded"
     assert client.get_proposal(2)["status"] == "discarded"
 

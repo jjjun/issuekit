@@ -14,6 +14,7 @@ from issuekit.commands import (
     claim,
     complete,
     dev_tool,
+    edit,
     handoff,
     implement,
     info,
@@ -37,6 +38,7 @@ COMMANDS = (
     "login",
     "logout",
     "author",
+    "edit",
     "implement",
     "negotiate",
     "threads",
@@ -127,6 +129,30 @@ def build_parser() -> argparse.ArgumentParser:
     author_parser.add_argument("--agent", required=True, help="Configured author agent.")
     author_parser.add_argument("--assign", help="Optional implementer assignee.")
     author_parser.set_defaults(func=author.run)
+
+    edit_parser = subparsers.add_parser(
+        "edit",
+        help="Edit an API-backed issue title, body, or priority.",
+    )
+    edit_parser.add_argument("id", help="Issue id to edit.")
+    edit_parser.add_argument("--title", help="Replacement issue title.")
+    edit_body_group = edit_parser.add_mutually_exclusive_group()
+    edit_body_group.add_argument("--body", help="Replacement inline issue body.")
+    edit_body_group.add_argument("--body-file", help="File containing replacement issue body.")
+    edit_body_group.add_argument("--append", help="Inline text to append to the issue body.")
+    edit_body_group.add_argument("--append-file", help="File containing text to append to the issue body.")
+    edit_parser.add_argument(
+        "--priority",
+        choices=("high", "medium", "low"),
+        help="Replacement issue priority.",
+    )
+    edit_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Allow editing an issue that is already in flight.",
+    )
+    edit_parser.add_argument("--json", action="store_true", help="Print JSON output.")
+    edit_parser.set_defaults(func=edit.run)
 
     implement_parser = subparsers.add_parser(
         "implement",
@@ -595,6 +621,10 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("high", "medium", "low"),
         default="medium",
         help="Priority for the adopted issue.",
+    )
+    adopt_parser.add_argument(
+        "--append-file",
+        help="File containing text to append to the adopted issue body.",
     )
     adopt_parser.add_argument("--json", action="store_true", help="Print JSON output.")
     adopt_parser.set_defaults(func=propose.run_adopt)

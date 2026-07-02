@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import sys
 
+from issuekit.commands.edit import edit_issue
 from issuekit.config import load_config
 from issuekit.core import VALID_ISSUE_PRIORITIES
 from issuekit.proposals import ProposalError
@@ -25,6 +26,7 @@ from issuekit.refs import (
     add_workspace_ref,
     list_effective_refs,
 )
+from issuekit.store import ApiStore
 from issuekit.workflow import WorkflowError
 
 
@@ -144,13 +146,41 @@ def run_adopt(args) -> int:
         return 1
     config = load_config(Path.cwd())
     try:
-        issue = api_client(config).adopt_proposal(
+        client = api_client(config)
+        issue = client.adopt_proposal(
             proposal_id_arg(args.proposal),
             priority=args.priority,
         )
     except (ProposalError, WorkflowError, ValueError) as exc:
         print(str(exc), file=sys.stderr)
         return 1
+    if args.append_file:
+        issue_id = _adopted_issue_id(issue)
+        outcome = adopt_outcome(args.proposal, config.project, issue)
+        if issue_id is None:
+            message = "Adopted proposal, but no API issue id was returned; cannot append file."
+            if args.json:
+                output = dict(outcome)
+                output["append_error"] = message
+                print(json.dumps(output, indent=2))
+            print(message, file=sys.stderr)
+            return 1
+        try:
+            edit_issue(
+                issue_id,
+                append_file=args.append_file,
+                config=config,
+                store=ApiStore(config, client=client),
+            )
+            issue = client.get_issue(issue_id)
+        except (OSError, UnicodeError, ValueError, WorkflowError) as exc:
+            message = f"Adopted proposal as issue #{issue_id}, but append failed: {exc}"
+            if args.json:
+                output = dict(outcome)
+                output["append_error"] = str(exc)
+                print(json.dumps(output, indent=2))
+            print(message, file=sys.stderr)
+            return 1
     outcome = adopt_outcome(args.proposal, config.project, issue)
     if args.json:
         print(json.dumps(outcome, indent=2))
@@ -165,6 +195,14 @@ def run_adopt(args) -> int:
         print(f"Adopted proposal #{args.proposal}, but no API issue id was returned.")
         print(outcome["instruction"])
     return 0
+
+
+def _adopted_issue_id(issue: dict) -> int | None:
+    try:
+        issue_id = int(issue.get("id"))
+    except (TypeError, ValueError):
+        return None
+    return issue_id if issue_id > 0 else None
 
 
 def run_discard(args) -> int:

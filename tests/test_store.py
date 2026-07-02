@@ -85,6 +85,23 @@ def test_api_store_update_issue_body_sends_body_only_update() -> None:
     ]
 
 
+def test_api_store_update_issue_sends_editable_fields() -> None:
+    client = FakeIssuekitClient([api_issue(7, "Read Path", body="Old body")])
+    store = ApiStore(IssuekitConfig(api_url="https://mine.example", project="demo"), client=client)
+
+    issue = store.update_issue(7, title="Updated title", priority="high")
+
+    assert issue.title == "Updated title"
+    assert issue.priority == "high"
+    assert client.calls == [
+        {
+            "method": "update_issue",
+            "number": 7,
+            "body": {"title": "Updated title", "priority": "high"},
+        }
+    ]
+
+
 def test_api_store_worker_field_is_optional() -> None:
     class MissingWorkerClient(FakeIssuekitClient):
         def get_issue(self, number: int) -> dict[str, object]:
