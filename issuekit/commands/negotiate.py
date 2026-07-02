@@ -666,7 +666,7 @@ def _entry_origin(
     round_number: int,
 ) -> str:
     issue_id = issue.id if issue.id is not None else "unknown"
-    return f"{config.project}#{issue_id}:{side}:round-{round_number}"
+    return f"{config.project}#{issue_id}@{side}:round-{round_number}"
 
 
 def _backend_issue_body(
@@ -748,7 +748,7 @@ def _frontend_issue_body(
 def _origin_issue_ref(thread: list[NegotiationEntry]) -> str | None:
     if not thread:
         return None
-    origin = thread[0].origin.split(":", 1)[0].strip()
+    origin = thread[0].origin.split("@", 1)[0].strip()
     return origin or None
 
 

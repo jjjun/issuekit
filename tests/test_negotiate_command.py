@@ -1,11 +1,18 @@
 import json
+import re
 from pathlib import Path
 
 import pytest
 
 from issuekit import cli
 from issuekit.agents.runner import AgentResult
-from issuekit.commands.negotiate import MockIssueCreator, finalize_negotiation, run_negotiation
+from issuekit.commands.negotiate import (
+    MockIssueCreator,
+    _entry_origin,
+    _origin_issue_ref,
+    finalize_negotiation,
+    run_negotiation,
+)
 from issuekit.config import IssuekitConfig
 from issuekit.core import Issue
 from issuekit.negotiation import MockNegotiationStore, ThreadStatus, Verdict
@@ -291,6 +298,32 @@ def test_negotiate_materially_different_agreements_do_not_converge(tmp_path) -> 
     assert store.get_status(result.thread_id) is ThreadStatus.negotiating
 
 
+def test_entry_origin_matches_api_proposal_origin_contract() -> None:
+    origin = _entry_origin(
+        _issue(),
+        config=IssuekitConfig(project="frontend"),
+        side="frontend",
+        round_number=1,
+    )
+
+    assert origin == "frontend#108@frontend:round-1"
+    assert re.fullmatch(r"^([^#]+)#([^@]+)@(.+)$", origin)
+
+
+def test_origin_issue_ref_extracts_issue_ref_from_entry_origin() -> None:
+    store = MockNegotiationStore(None)
+    first = store.create_thread(
+        side="frontend",
+        verdict=Verdict.agree,
+        title="frontend agree",
+        body="Accepted.",
+        origin="frontend#108@frontend:round-1",
+        contract="GET /items 200",
+    )
+
+    assert _origin_issue_ref(store.get_thread(first.thread_id)) == "frontend#108"
+
+
 def _agreed_store() -> tuple[MockNegotiationStore, str]:
     store = MockNegotiationStore(None)
     first = store.create_thread(
@@ -298,7 +331,7 @@ def _agreed_store() -> tuple[MockNegotiationStore, str]:
         verdict=Verdict.agree,
         title="frontend agree",
         body="Accepted.",
-        origin="frontend#108:frontend:round-1",
+        origin="frontend#108@frontend:round-1",
         contract="GET /items 200",
     )
     store.append_entry(
@@ -307,7 +340,7 @@ def _agreed_store() -> tuple[MockNegotiationStore, str]:
         verdict=Verdict.agree,
         title="backend agree",
         body="Accepted.",
-        origin="frontend#108:backend:round-2",
+        origin="frontend#108@backend:round-2",
         contract="GET /items 200",
     )
     store.set_status(first.thread_id, ThreadStatus.agreed)
@@ -380,7 +413,7 @@ def test_finalize_negotiation_refuses_non_agreed_thread() -> None:
         verdict=Verdict.propose,
         title="frontend propose",
         body="Start.",
-        origin="frontend#108:frontend:round-1",
+        origin="frontend#108@frontend:round-1",
         contract="GET /items",
     )
 
@@ -455,7 +488,7 @@ def test_negotiate_cli_finalize_json_uses_mock_store(tmp_path, monkeypatch, caps
         verdict=Verdict.agree,
         title="frontend agree",
         body="Accepted.",
-        origin="frontend#108:frontend:round-1",
+        origin="frontend#108@frontend:round-1",
         contract="GET /items 200",
     )
     store.append_entry(
@@ -464,7 +497,7 @@ def test_negotiate_cli_finalize_json_uses_mock_store(tmp_path, monkeypatch, caps
         verdict=Verdict.agree,
         title="backend agree",
         body="Accepted.",
-        origin="frontend#108:backend:round-2",
+        origin="frontend#108@backend:round-2",
         contract="GET /items 200",
     )
     store.set_status(first.thread_id, ThreadStatus.agreed)
