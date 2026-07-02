@@ -38,6 +38,16 @@ implementer instead of waiting for the pull model, use
 claims or operates on the assigned issue, launches the configured agent, and
 submits the completed work for review.
 
+Upstream feedback loop: the issuekit tool itself accepts proposals. Whenever
+work in any project surfaces an issuekit bug, limitation, or improvement idea
+(CLI, MCP tools, protocol text, agent adapters), report it before finishing
+the task with `issuekit propose --to issuekit --title <t> --body <b>` (or the
+MCP `propose` tool). Include reproduction steps or the concrete gap, and pass
+`--from-issue <id>` when the report stems from a specific local issue so each
+report gets a distinct origin. The issuekit project triages its inbox
+continuously and adopts worthwhile reports as issues; check the outcome later
+with `issuekit outgoing --to issuekit`.
+
 Separation-of-duties invariants:
 
 - The author role and implementer role must be different sessions. If the same
@@ -59,6 +69,33 @@ Copyable CLI examples:
 - Complete: `issuekit complete 123 --summary "Done." --verification "uv run pytest"`
 - Incoming proposals: `issuekit incoming --json`
 - Adopt proposal: `issuekit adopt 42 --priority medium --json`
+- Outgoing proposal status: `issuekit outgoing --to <project> --json`
+"""
+
+
+TRIAGE_PROTOCOL = """# Handoff protocol (triage)
+
+The triage role reviews this project's incoming proposal inbox and decides
+what enters the issue queue. Run it on a schedule or whenever asked to check
+or triage proposals.
+
+1. List pending proposals with `issuekit incoming --json` (MCP
+   `list_incoming`). If the inbox is empty, stop.
+2. Evaluate each proposal on three axes before deciding: value (fixes a real
+   defect, removes friction, or unblocks another project), fit (belongs in
+   this project rather than the origin or a third project), and cost (a
+   simple, well-scoped implementation exists). Read the referenced code and
+   check whether the change already landed before judging.
+3. Adopt worthwhile proposals with `issuekit adopt <id> --priority <p>
+   --json`. Adoption creates an active issue in the open implement pool; keep
+   one issue per proposal and do not merge unrelated proposals.
+4. Discard proposals that are already implemented, duplicates, consumed
+   negotiation-thread entries, or out of scope with `issuekit discard <id>`.
+   When the origin project needs to know why, send a reply proposal with the
+   reasoning instead of leaving the decision implicit.
+5. Do not implement adopted issues in the triage session. Implementers claim
+   them through the normal cycle, or an orchestrator drives
+   `issuekit implement <id> --agent <agent>`.
 """
 
 
@@ -196,6 +233,7 @@ _ROLE_PROTOCOLS = {
     "author": AUTHOR_PROTOCOL,
     "implementer": IMPLEMENTER_PROTOCOL,
     "reviewer": REVIEWER_PROTOCOL,
+    "triage": TRIAGE_PROTOCOL,
 }
 
 _AGENT_ROLE = {
@@ -211,6 +249,7 @@ To see the full protocol steps for your role, call:
 - `get_protocol(role="author")` for the author protocol
 - `get_protocol(role="implementer")` for the implementer protocol
 - `get_protocol(role="reviewer")` for the reviewer protocol
+- `get_protocol(role="triage")` for the proposal-inbox triage protocol
 """
 
 
@@ -222,7 +261,8 @@ def render_protocol(agent: str | None = None, role: str | None = None) -> str:
                 CYCLE_PROTOCOL.rstrip(),
                 AUTHOR_PROTOCOL.rstrip(),
                 IMPLEMENTER_PROTOCOL.rstrip(),
-                REVIEWER_PROTOCOL,
+                REVIEWER_PROTOCOL.rstrip(),
+                TRIAGE_PROTOCOL,
             )
         )
     if role is not None:

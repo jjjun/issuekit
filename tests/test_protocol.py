@@ -33,6 +33,10 @@ def test_render_protocol_returns_each_agent_and_both() -> None:
         assert 'issuekit complete 123 --summary "Done."' in rendered
         assert "issuekit incoming --json" in rendered
         assert "issuekit adopt 42 --priority medium --json" in rendered
+        assert "issuekit outgoing --to <project> --json" in rendered
+        assert "Upstream feedback loop" in rendered
+        assert "issuekit propose --to issuekit" in rendered
+        assert "issuekit outgoing --to issuekit" in rendered
     assert "claim_next_task" in codex
     assert "submit_for_review" in codex
     assert 'assignee="<agent>"' in codex
@@ -48,6 +52,7 @@ def test_render_protocol_returns_each_agent_and_both() -> None:
     assert "Handoff protocol (author)" in both
     assert "Handoff protocol (implementer)" in both
     assert "Handoff protocol (reviewer)" in both
+    assert "Handoff protocol (triage)" in both
     assert "The implementer handles issuekit tasks" in both
     assert "The reviewer handles issuekit tasks" in both
     both.encode("ascii")
@@ -70,6 +75,18 @@ def test_render_protocol_returns_author_role() -> None:
     assert "Do not call `claim_next_task`" in author
     assert "implementation-ready issues" in author
     author.encode("ascii")
+
+
+def test_render_protocol_returns_triage_role() -> None:
+    triage = render_protocol(role="triage")
+    assert "Delegation cycle overview" in triage
+    assert "Handoff protocol (triage)" in triage
+    assert "issuekit incoming --json" in triage
+    assert "value" in triage and "fit" in triage and "cost" in triage
+    assert "issuekit adopt <id> --priority <p>" in triage
+    assert "issuekit discard <id>" in triage
+    assert "Do not implement adopted issues in the triage session" in triage
+    triage.encode("ascii")
 
 
 def test_render_protocol_rejects_unknown_role() -> None:
@@ -136,6 +153,7 @@ def test_render_server_instructions_includes_cycle_and_pointer() -> None:
     assert 'get_protocol(role="author")' in lean
     assert 'get_protocol(role="implementer")' in lean
     assert 'get_protocol(role="reviewer")' in lean
+    assert 'get_protocol(role="triage")' in lean
     assert "author" in lean
     assert "implementer" in lean
     assert "reviewer" in lean
@@ -149,7 +167,7 @@ def test_render_server_instructions_is_substantially_smaller_than_full() -> None
 
 
 def test_render_protocol_roles_remain_self_contained() -> None:
-    for role in ("author", "implementer", "reviewer"):
+    for role in ("author", "implementer", "reviewer", "triage"):
         rendered = render_protocol(role=role)
         assert "Delegation cycle overview" in rendered
         assert f"Handoff protocol ({role})" in rendered

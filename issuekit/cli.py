@@ -387,7 +387,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     protocol_parser.add_argument(
         "--role",
-        choices=("author", "implementer", "reviewer"),
+        choices=("author", "implementer", "reviewer", "triage"),
         help="Print the protocol for a specific role instead of the agent default.",
     )
     protocol_parser.set_defaults(func=protocol.run)
