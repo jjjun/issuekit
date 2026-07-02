@@ -147,7 +147,7 @@ copying the steps.
 | `issuekit validate` | Check API connectivity and issue response shape. |
 | `issuekit migrate-to-api [--dry-run]` | Import legacy `docs/issues/{active,completed}` files into the API backend. |
 | `issuekit migrate-proposals-to-api [--dry-run]` | Import legacy proposal inbox files into the API backend. |
-| `issuekit complete <id> --summary "..." --verification "..."` | Complete an issue through the API. |
+| `issuekit complete <id> --summary "..." --verification "..." [--force]` | Complete an issue through the API; use `--force` to close an active no-op, duplicate, obsolete, or anchor issue without claim and review ceremony. |
 | `issuekit approve <id> --verification "..." [--reviewer claude]` | Approve a review-stage issue and move it to completed. |
 | `issuekit claim --assignee codex` | Claim the next active issue for an implementer. |
 | `issuekit claim --id <id> --assignee codex` | Claim a specific active issue for an implementer. |

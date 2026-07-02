@@ -50,6 +50,32 @@ def test_approve_completes_review_stage_issue(tmp_path: Path, monkeypatch, capsy
     }
 
 
+def test_approve_rejects_non_review_stage_issue(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient([api_issue(1, "Anchor", stage="todo")])
+    _configure_api(tmp_path, monkeypatch, client)
+
+    exit_code = cli.main(["approve", "1", "--verification", "no local code scope"])
+
+    assert exit_code == 1
+    assert "not at the review stage" in capsys.readouterr().err
+    assert client.get_issue(1)["status"] == "active"
+    assert client.calls == [
+        {
+            "method": "approve",
+            "number": 1,
+            "body": {
+                "summary": "Approved.",
+                "verification": "no local code scope",
+                "reviewer": "codex",
+            },
+        },
+    ]
+
+
 def test_approve_accepts_explicit_summary_and_reviewer(
     tmp_path: Path,
     monkeypatch,

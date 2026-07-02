@@ -283,7 +283,7 @@ def test_api_server_rejected_transition_surfaces_workflow_error(
                 "API Flow",
                 status="in_progress",
                 assignee="codex",
-                stage="implementing",
+                stage="review",
                 implementer="codex",
                 author="claude",
             )

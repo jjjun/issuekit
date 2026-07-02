@@ -67,6 +67,7 @@ Copyable CLI examples:
 - Request changes: `issuekit request-changes 123 --notes "Add focused tests." --reviewer claude`
 - Approve: `issuekit approve 123 --verification "uv run pytest" --reviewer claude`
 - Complete: `issuekit complete 123 --summary "Done." --verification "uv run pytest"`
+- Close no-op issue: `issuekit complete 123 --force --summary "Obsolete." --verification "no local code scope"`
 - Incoming proposals: `issuekit incoming --json`
 - Adopt proposal: `issuekit adopt 42 --priority medium --json`
 - Outgoing proposal status: `issuekit outgoing --to <project> --json`
@@ -211,7 +212,9 @@ project owns triage, so do not mutate its state directly.
    call `approve(id, verification, reviewer=None)` with ASCII verification, or
    use the CLI `issuekit approve <id> --verification <text>` command. The CLI
    `issuekit complete <id>` command remains available when a completion summary
-   is needed.
+   is needed. Use `issuekit complete <id> --force --summary <text>
+   --verification <text>` to close an active no-op, duplicate, obsolete, or
+   anchor issue without creating a fake implementation and review cycle.
 4. If changes are needed or the work is incomplete, call
    `request_changes(id, notes, reviewer=None, assignee=None)` with ASCII notes.
    Omit assignee to return the issue to its recorded implementer.

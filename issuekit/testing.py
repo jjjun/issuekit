@@ -257,6 +257,11 @@ class FakeIssuekitClient:
                 },
             )
             issue = self._find(number)
+            if issue.get("stage", "") != "review":
+                raise WorkflowError(
+                    f"Issue #{number} is not at the review stage.",
+                    code="invalid_transition",
+                )
             if _is_self_review(issue, reviewer, worker):
                 raise WorkflowError(
                     f"Issue #{number} was implemented by {reviewer}; self-review is not allowed.",

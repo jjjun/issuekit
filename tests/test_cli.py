@@ -76,6 +76,8 @@ def test_subcommand_help_exits_zero(capsys: pytest.CaptureFixture[str]) -> None:
     assert "id" in captured.out
     assert "--summary" in captured.out
     assert "--verification" in captured.out
+    assert "--force" in captured.out
+    assert "Directly complete an active issue" in captured.out
 
 
 def test_approve_help_exits_zero(capsys: pytest.CaptureFixture[str]) -> None:
@@ -87,6 +89,8 @@ def test_approve_help_exits_zero(capsys: pytest.CaptureFixture[str]) -> None:
     assert "id" in captured.out
     assert "--verification" in captured.out
     assert "--reviewer" in captured.out
+    assert "--force" not in captured.out
+    assert "Bypass the review-stage requirement." not in captured.out
 
 
 def test_complete_requires_id(capsys: pytest.CaptureFixture[str]) -> None:

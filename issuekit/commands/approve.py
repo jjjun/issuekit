@@ -30,7 +30,6 @@ def run(args) -> int:
             summary=args.summary,
             verification=args.verification,
             reviewer=args.reviewer,
-            force=args.force,
             config=config,
         )
 
@@ -46,7 +45,6 @@ def approve_issue(
     verification: str,
     summary: str | None = None,
     reviewer: str | None = None,
-    force: bool = False,
     config: IssuekitConfig | None = None,
 ) -> Issue:
     require_ascii(

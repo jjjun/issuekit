@@ -293,7 +293,7 @@ def build_parser() -> argparse.ArgumentParser:
     complete_parser.add_argument(
         "--force",
         action="store_true",
-        help="Bypass the review-stage requirement.",
+        help="Directly complete an active issue without requiring review stage.",
     )
     complete_parser.set_defaults(func=complete.run)
 
@@ -305,11 +305,6 @@ def build_parser() -> argparse.ArgumentParser:
     approve_parser.add_argument("--verification", required=True, help="Verification notes.")
     approve_parser.add_argument("--summary", help="Approval summary.")
     approve_parser.add_argument("--reviewer", help="Reviewer approving this issue.")
-    approve_parser.add_argument(
-        "--force",
-        action="store_true",
-        help="Bypass the review-stage requirement.",
-    )
     approve_parser.set_defaults(func=approve.run)
 
     claim_parser = subparsers.add_parser(

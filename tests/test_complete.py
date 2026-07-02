@@ -70,15 +70,27 @@ def test_complete_rejects_non_ascii_summary(tmp_path: Path, monkeypatch, capsys)
     assert "ASCII-only" in capsys.readouterr().err
 
 
-def test_complete_passes_force_to_api(tmp_path: Path, monkeypatch, capsys) -> None:
-    client = FakeIssuekitClient([api_issue(1, "First", stage="implementing")])
+def test_complete_force_closes_todo_issue(tmp_path: Path, monkeypatch, capsys) -> None:
+    client = FakeIssuekitClient([api_issue(1, "First", stage="todo")])
     _configure_api(tmp_path, monkeypatch, client)
 
-    exit_code = cli.main(["complete", "1", "--force", "--summary", "Done."])
+    exit_code = cli.main(
+        [
+            "complete",
+            "1",
+            "--force",
+            "--summary",
+            "Closing obsolete anchor.",
+            "--verification",
+            "no local code scope",
+        ]
+    )
 
     captured = capsys.readouterr()
     assert exit_code == 0
     assert "Completed issue #1" in captured.out
+    assert client.get_issue(1)["status"] == "completed"
+    assert client.calls[0]["method"] == "complete"
     assert client.calls[0]["body"]["force"] is True
 
 
