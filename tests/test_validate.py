@@ -1,7 +1,10 @@
 from pathlib import Path
 
+import pytest
+
 from issuekit import cli
 from issuekit import store as store_module
+from issuekit.commands import validate
 from issuekit.testing import FakeIssuekitClient
 from issuekit.workflow import WorkflowError
 
@@ -94,6 +97,34 @@ def test_validate_api_mode_fails_when_health_revision_is_missing(
     assert exit_code == 1
     assert "API validation failed" in captured.err
     assert "Health response did not include migration_revision" in captured.err
+
+
+def test_validate_health_missing_revision_uses_schema_drift_code() -> None:
+    class MissingRevisionClient:
+        def health(self):
+            return {"status": "ok"}
+
+    class Store:
+        client = MissingRevisionClient()
+
+    with pytest.raises(WorkflowError) as excinfo:
+        validate._validate_health(Store())
+
+    assert excinfo.value.code == "server_schema_drift"
+
+
+def test_validate_health_non_object_payload_uses_invalid_response_code() -> None:
+    class NonObjectClient:
+        def health(self):
+            return ["ok"]
+
+    class Store:
+        client = NonObjectClient()
+
+    with pytest.raises(WorkflowError) as excinfo:
+        validate._validate_health(Store())
+
+    assert excinfo.value.code == "invalid_response"
 
 
 def test_validate_api_mode_reports_health_request_errors(
