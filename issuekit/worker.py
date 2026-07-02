@@ -8,16 +8,22 @@ import os
 from pathlib import Path
 import platform
 import re
-import tomllib
 from urllib.parse import urlparse
 
 from issuekit.config import WorkerIdentity
 from issuekit.core import is_valid_workflow_token
 from issuekit.gitutil import git_origin_url as _git_origin_url
+from issuekit.localconfig import (
+    LOCAL_CONFIG_NAME,
+    LocalConfigError,
+    ensure_gitignore_entries,
+    local_config_text,
+    load_toml,
+    read_local_config,
+    write_local_config,
+)
 
 
-LOCAL_CONFIG_NAME = "issuekit.local.toml"
-LOCAL_GITIGNORE_ENTRIES = (LOCAL_CONFIG_NAME, ".agent-runs/")
 WORKER_REGISTRY_ENV_VAR = "ISSUEKIT_WORKER_REGISTRY"
 
 
@@ -77,7 +83,7 @@ def register_worker(
 
     written = save_local_worker(identity, repo_path)
     _record_worker(identity, repo_path, registry_path=registry_path)
-    _ensure_local_config_ignored(repo_path)
+    ensure_gitignore_entries(repo_path)
 
     return WorkerRegistration(
         identity=identity,
@@ -91,11 +97,7 @@ def register_worker(
 
 
 def load_local_worker(cwd: Path | str = ".") -> WorkerIdentity | None:
-    path = Path(cwd) / LOCAL_CONFIG_NAME
-    if not path.exists():
-        return None
-    data = _load_toml(path)
-    worker = _worker_table(data)
+    worker = _read_local_config(cwd).worker
     if worker is None:
         return None
     machine_id = str(worker.get("machine_id", "")).strip()
@@ -108,20 +110,20 @@ def load_local_worker(cwd: Path | str = ".") -> WorkerIdentity | None:
 
 def save_local_worker(identity: WorkerIdentity, cwd: Path | str = ".") -> bool:
     path = Path(cwd) / LOCAL_CONFIG_NAME
-    existing_data = _load_toml(path) if path.exists() else {}
-    existing_worker = _worker_table(existing_data)
-    refs = existing_data.get("refs", {})
-    if not isinstance(refs, dict):
-        refs = {}
+    local_config = _read_local_config(cwd)
     desired_worker = {
         "machine_id": identity.machine_id,
         "repo_id": identity.repo_id,
         "worker_id": identity.worker_id,
     }
-    if existing_worker == desired_worker:
+    desired_content = local_config_text(worker=desired_worker, refs=local_config.refs)
+    if path.exists():
+        existing_content = path.read_text(encoding="utf-8-sig")
+    else:
+        existing_content = ""
+    if existing_content == desired_content:
         return False
-    content = _local_config_text(worker=desired_worker, refs={str(k): str(v) for k, v in refs.items()})
-    path.write_text(content, encoding="utf-8", newline="\n")
+    write_local_config(cwd, worker=desired_worker, refs=local_config.refs)
     return True
 
 
@@ -281,62 +283,18 @@ def _worker_key(identity: WorkerIdentity) -> str:
     return worker_key(identity)
 
 
-def _local_config_text(*, worker: dict[str, str], refs: dict[str, str]) -> str:
-    lines = ["[worker]"]
-    for key in ("machine_id", "repo_id", "worker_id"):
-        lines.append(f"{key} = {json.dumps(worker[key])}")
-    if refs:
-        lines.append("")
-        lines.append("[refs]")
-        for name in sorted(refs):
-            lines.append(f"{name} = {json.dumps(refs[name])}")
-    return "\n".join(lines) + "\n"
-
-
-def _ensure_local_config_ignored(cwd: Path) -> None:
-    path = cwd / ".gitignore"
-    if not path.exists():
-        path.write_text(
-            "".join(f"{entry}\n" for entry in LOCAL_GITIGNORE_ENTRIES),
-            encoding="utf-8",
-            newline="\n",
-        )
-        return
-    content = path.read_text(encoding="utf-8-sig", errors="ignore")
-    entries = {line.strip() for line in content.splitlines()}
-    missing_entries = [
-        entry
-        for entry in LOCAL_GITIGNORE_ENTRIES
-        if entry not in entries and not (entry == ".agent-runs/" and ".agent-runs" in entries)
-    ]
-    if not missing_entries:
-        return
-    separator = "" if content.endswith("\n") or not content else "\n"
-    with path.open("a", encoding="utf-8", newline="\n") as handle:
-        handle.write(separator)
-        for entry in missing_entries:
-            handle.write(f"{entry}\n")
-
-
 def _load_toml(path: Path) -> dict[str, object]:
     try:
-        return dict(tomllib.loads(path.read_text(encoding="utf-8-sig")))
-    except tomllib.TOMLDecodeError as exc:
-        raise WorkerRegistrationError(f"Failed to parse {path}: {exc}") from exc
+        return load_toml(path)
+    except LocalConfigError as exc:
+        raise WorkerRegistrationError(str(exc)) from exc
 
 
-def _worker_table(data: dict[str, object]) -> dict[str, object] | None:
-    worker = data.get("worker")
-    if isinstance(worker, dict):
-        return worker
-    tool = data.get("tool")
-    if not isinstance(tool, dict):
-        return None
-    issuekit = tool.get("issuekit")
-    if not isinstance(issuekit, dict):
-        return None
-    worker = issuekit.get("worker")
-    return worker if isinstance(worker, dict) else None
+def _read_local_config(cwd: Path | str = "."):
+    try:
+        return read_local_config(cwd)
+    except LocalConfigError as exc:
+        raise WorkerRegistrationError(str(exc)) from exc
 
 
 def _repo_name_from_path(value: str) -> str | None:

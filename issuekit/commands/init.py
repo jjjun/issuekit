@@ -10,6 +10,7 @@ from pathlib import Path
 from issuekit.config import IssuekitConfig, load_config
 from issuekit.core import has_non_ascii
 from issuekit.legacy_markdown import read_all_issues
+from issuekit.localconfig import ensure_gitignore_entries
 
 
 ISSUEKIT_BLOCK_HEADER = "[tool.issuekit]"
@@ -26,7 +27,6 @@ repos:
         language: system
         pass_filenames: false
 """
-LOCAL_GITIGNORE_ENTRIES = ("issuekit.local.toml", ".agent-runs/")
 
 
 @dataclass
@@ -93,30 +93,11 @@ def _write_pre_commit(cwd: Path, force: bool, result: InitResult) -> None:
 
 def _write_local_config_ignore(cwd: Path, result: InitResult) -> None:
     path = cwd / ".gitignore"
-    if not path.exists():
-        path.write_text(
-            "".join(f"{entry}\n" for entry in LOCAL_GITIGNORE_ENTRIES),
-            encoding="utf-8",
-            newline="\n",
-        )
+    wrote = ensure_gitignore_entries(cwd)
+    if wrote:
         result.written.append(".gitignore")
-        return
-    content = path.read_text(encoding="utf-8-sig", errors="ignore")
-    entries = {line.strip() for line in content.splitlines()}
-    missing_entries = [
-        entry
-        for entry in LOCAL_GITIGNORE_ENTRIES
-        if entry not in entries and not (entry == ".agent-runs/" and ".agent-runs" in entries)
-    ]
-    if not missing_entries:
+    elif path.exists():
         result.skipped.append(".gitignore")
-        return
-    separator = "" if content.endswith("\n") or not content else "\n"
-    with path.open("a", encoding="utf-8", newline="\n") as handle:
-        handle.write(separator)
-        for entry in missing_entries:
-            handle.write(f"{entry}\n")
-    result.written.append(".gitignore")
 
 
 def _write_mcp_scaffold(cwd: Path, force: bool, result: InitResult) -> None:

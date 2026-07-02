@@ -5,10 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 import os
 from pathlib import Path
-import tomllib
 
 from issuekit.core import is_valid_workflow_token
 from issuekit.dotenv import load_dotenv
+from issuekit.localconfig import LocalConfigError, load_toml, read_local_config
 
 
 _SENTINEL = object()
@@ -204,7 +204,7 @@ def _load_raw_config(cwd: Path) -> dict[str, object]:
     pyproject_has_issuekit = False
     pyproject_path = cwd / "pyproject.toml"
     if pyproject_path.exists():
-        data = tomllib.loads(pyproject_path.read_text(encoding="utf-8-sig"))
+        data = _load_config_toml(pyproject_path)
         pyproject_config = data.get("tool", {}).get("issuekit")
         if pyproject_config is not None:
             pyproject_has_issuekit = True
@@ -214,24 +214,16 @@ def _load_raw_config(cwd: Path) -> dict[str, object]:
 
     issuekit_path = cwd / "issuekit.toml"
     if not pyproject_has_issuekit and issuekit_path.exists():
-        try:
-            raw_config = dict(tomllib.loads(issuekit_path.read_text(encoding="utf-8-sig")))
-        except tomllib.TOMLDecodeError as exc:
-            raise ValueError(f"Failed to parse {issuekit_path}: {exc}") from exc
+        raw_config = _load_config_toml(issuekit_path)
 
     return _merge_local_worker_config(cwd, raw_config)
 
 
 def _merge_local_worker_config(cwd: Path, raw_config: dict[str, object]) -> dict[str, object]:
-    local_path = cwd / "issuekit.local.toml"
-    if not local_path.exists():
-        return raw_config
     try:
-        local_data = tomllib.loads(local_path.read_text(encoding="utf-8-sig"))
-    except tomllib.TOMLDecodeError as exc:
-        raise ValueError(f"Failed to parse {local_path}: {exc}") from exc
-
-    local_worker = _raw_worker_table(local_data)
+        local_worker = read_local_config(cwd).worker
+    except LocalConfigError as exc:
+        raise ValueError(str(exc)) from exc
     if local_worker is None:
         return raw_config
     merged = dict(raw_config)
@@ -239,18 +231,11 @@ def _merge_local_worker_config(cwd: Path, raw_config: dict[str, object]) -> dict
     return merged
 
 
-def _raw_worker_table(data: dict[str, object]) -> dict[str, object] | None:
-    worker = data.get("worker")
-    if isinstance(worker, dict):
-        return worker
-    tool = data.get("tool")
-    if not isinstance(tool, dict):
-        return None
-    issuekit = tool.get("issuekit")
-    if not isinstance(issuekit, dict):
-        return None
-    worker = issuekit.get("worker")
-    return worker if isinstance(worker, dict) else None
+def _load_config_toml(path: Path) -> dict[str, object]:
+    try:
+        return load_toml(path)
+    except LocalConfigError as exc:
+        raise ValueError(str(exc)) from exc
 
 
 def _string_tuple(value: object) -> tuple[str, ...]:

@@ -10,8 +10,8 @@ import tomllib
 from issuekit.commands.init import (
     CODEX_MCP_HEADER,
     HANDOFF_HEADER,
-    LOCAL_GITIGNORE_ENTRIES,
 )
+from issuekit.localconfig import missing_gitignore_entries
 
 
 @dataclass(frozen=True)
@@ -72,13 +72,7 @@ def _add_gitignore_action(cwd: Path, actions: list[SetupAction]) -> None:
         )
         return
     content = path.read_text(encoding="utf-8-sig", errors="ignore")
-    entries = {line.strip() for line in content.splitlines()}
-    missing_entries = [
-        entry
-        for entry in LOCAL_GITIGNORE_ENTRIES
-        if entry not in entries and not (entry == ".agent-runs/" and ".agent-runs" in entries)
-    ]
-    if missing_entries:
+    if missing_gitignore_entries(content):
         actions.append(
             SetupAction(
                 ".gitignore",

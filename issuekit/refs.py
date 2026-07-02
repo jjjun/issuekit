@@ -6,12 +6,17 @@ from dataclasses import dataclass
 import json
 import os
 from pathlib import Path
-import tomllib
 
 from issuekit.core import is_valid_workflow_token
+from issuekit.localconfig import (
+    LOCAL_CONFIG_NAME,
+    LocalConfigError,
+    load_toml,
+    read_local_config,
+    write_local_config,
+)
 
 
-LOCAL_CONFIG_NAME = "issuekit.local.toml"
 WORKSPACE_CONFIG_NAME = "issuekit.workspace.toml"
 WORKSPACE_ENV_VAR = "ISSUEKIT_WORKSPACE"
 
@@ -27,17 +32,7 @@ class RefEntry:
 
 
 def load_refs(cwd: Path | str = ".") -> dict[str, str]:
-    path = Path(cwd) / LOCAL_CONFIG_NAME
-    if not path.exists():
-        return {}
-    try:
-        data = tomllib.loads(path.read_text(encoding="utf-8-sig"))
-    except tomllib.TOMLDecodeError as exc:
-        raise RefError(f"Failed to parse {path}: {exc}") from exc
-    refs = data.get("refs", {})
-    if not isinstance(refs, dict):
-        raise RefError(f"{LOCAL_CONFIG_NAME} must contain a [refs] table.")
-    return {str(name): str(value) for name, value in refs.items()}
+    return _read_local_config(cwd).refs
 
 
 def find_workspace_file(cwd: Path | str = ".") -> Path | None:
@@ -87,20 +82,8 @@ def load_effective_refs(cwd: Path | str = ".") -> dict[str, RefEntry]:
 
 
 def save_refs(refs: dict[str, str], cwd: Path | str = ".") -> None:
-    path = Path(cwd) / LOCAL_CONFIG_NAME
-    lines: list[str] = []
-    worker = _load_local_worker_table(path)
-    if worker:
-        lines.append("[worker]")
-        for key in ("machine_id", "repo_id", "worker_id"):
-            if key in worker:
-                lines.append(f"{key} = {json.dumps(str(worker[key]))}")
-        lines.append("")
-    lines.append("[refs]")
-    for name in sorted(refs):
-        lines.append(f"{name} = {json.dumps(refs[name])}")
-    content = "\n".join(lines) + "\n"
-    path.write_text(content, encoding="utf-8", newline="\n")
+    local_config = _read_local_config(cwd)
+    write_local_config(cwd, worker=local_config.worker, refs=refs)
 
 
 def add_ref(name: str, repo_path: Path | str, cwd: Path | str = ".") -> dict[str, str]:
@@ -201,9 +184,9 @@ def _load_workspace_refs_from_file(workspace_file: Path) -> dict[str, str]:
 
 def _load_workspace_raw_refs(workspace_file: Path) -> dict[str, str]:
     try:
-        data = tomllib.loads(workspace_file.read_text(encoding="utf-8-sig"))
-    except tomllib.TOMLDecodeError as exc:
-        raise RefError(f"Failed to parse {workspace_file}: {exc}") from exc
+        data = load_toml(workspace_file)
+    except LocalConfigError as exc:
+        raise RefError(str(exc)) from exc
     projects = data.get("projects", {})
     if not isinstance(projects, dict):
         raise RefError(f"{WORKSPACE_CONFIG_NAME} must contain a [projects] table.")
@@ -213,17 +196,6 @@ def _load_workspace_raw_refs(workspace_file: Path) -> dict[str, str]:
             raise RefError(f"Workspace ref {name} must be a string path.")
         refs[str(name)] = value
     return refs
-
-
-def _load_local_worker_table(path: Path) -> dict[str, object]:
-    if not path.exists():
-        return {}
-    try:
-        data = tomllib.loads(path.read_text(encoding="utf-8-sig"))
-    except tomllib.TOMLDecodeError:
-        return {}
-    worker = data.get("worker", {})
-    return worker if isinstance(worker, dict) else {}
 
 
 def _workspace_file_for_write(
@@ -266,3 +238,10 @@ def _slug_token(value: str) -> str:
     if not token[0].isalnum():
         token = f"repo-{token}"
     return token[:32]
+
+
+def _read_local_config(cwd: Path | str = "."):
+    try:
+        return read_local_config(cwd)
+    except LocalConfigError as exc:
+        raise RefError(str(exc)) from exc
