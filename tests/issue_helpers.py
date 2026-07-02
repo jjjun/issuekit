@@ -85,7 +85,7 @@ def make_issue_tree(tmp_path: Path) -> Path:
     return issues_dir
 
 
-def write_indexes(issues_dir: Path, recent_count: int = 30) -> None:
+def write_indexes(issues_dir: Path) -> None:
     indexes_dir = issues_dir / "indexes"
     indexes_dir.mkdir(parents=True, exist_ok=True)
     (indexes_dir / "active.md").write_text("", encoding="utf-8", newline="\n")

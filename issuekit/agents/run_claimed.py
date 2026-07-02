@@ -84,7 +84,7 @@ def run_and_submit(
             result=result,
             exit_code=result.exit_code if result.exit_code >= 0 else 1,
         )
-    if result.status_short and not _has_recorded_implementation_commit(result.parsed):
+    if result.status_short:
         print(
             "WARNING: implementation changes are unstaged and not committed. "
             "Review the diff, then stage and commit the changes after review.",
@@ -174,12 +174,6 @@ def review_feedback_prompt(issue_body: str) -> str | None:
         "do not re-touch unrelated lines:\n\n"
         f"{notes}"
     )
-
-
-def _has_recorded_implementation_commit(parsed: dict[str, str] | None) -> bool:
-    if not parsed:
-        return False
-    return bool(parsed.get("implementation_commit") or parsed.get("commit"))
 
 
 def _mojibake_touched_files(repo: Path, issues_dir: Path) -> list[str]:

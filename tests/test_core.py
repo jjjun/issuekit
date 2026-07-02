@@ -60,12 +60,6 @@ def test_read_issues_returns_decode_error_issue_for_non_utf8_file(tmp_path: Path
     assert issues[0].decode_error is True
 
 
-def test_slugify_defaults_and_limit() -> None:
-    assert core.slugify("Hello, Issue Name!!", default="issue") == "hello_issue_name"
-    assert core.slugify("###", default="proposal") == "proposal"
-    assert core.slugify("A" * 80, default="proposal", max_len=64) == "a" * 64
-
-
 def test_mojibake_detection() -> None:
     assert core.has_mojibake("\u7e67")
     assert core.has_mojibake("\ufffd")
@@ -74,14 +68,13 @@ def test_mojibake_detection() -> None:
 
 def test_load_config_reads_tool_issuekit(tmp_path: Path) -> None:
     (tmp_path / "pyproject.toml").write_text(
-        "[tool.issuekit]\nrecent_count = 5\nascii_id_threshold = 100\nissues_dir = 'custom/issues'\n",
+        "[tool.issuekit]\nascii_id_threshold = 100\nissues_dir = 'custom/issues'\n",
         encoding="utf-8",
     )
 
     config = load_config(tmp_path)
 
     assert config == IssuekitConfig(
-        recent_count=5,
         ascii_id_threshold=100,
         issues_dir="custom/issues",
         assignees=IssuekitConfig.assignees,
@@ -94,25 +87,3 @@ def test_parse_issue_id_arg() -> None:
     assert core.parse_issue_id_arg("42") == 42
     with pytest.raises(ValueError, match="Invalid issue id: not-a-number"):
         core.parse_issue_id_arg("not-a-number")
-
-
-def test_find_issue_by_id_matches_by_id() -> None:
-    issues = [
-        core.Issue(
-            id=1,
-            ref="demo#1",
-            title="First",
-            issue_status="active",
-            created="2026-01-01",
-            completed="",
-            priority="high",
-            assignee="",
-            stage="todo",
-            implementer="",
-            author="",
-            body="# Issue #1: First\n",
-            metadata={},
-        )
-    ]
-    assert core.find_issue_by_id(issues, 1) == issues[0]
-    assert core.find_issue_by_id(issues, 99) is None

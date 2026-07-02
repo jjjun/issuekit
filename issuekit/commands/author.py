@@ -10,7 +10,6 @@ from issuekit.core import (
     Issue,
     VALID_ISSUE_PRIORITIES,
     is_valid_workflow_token,
-    slugify as _core_slugify,
 )
 from issuekit.workflow import WorkflowError
 
@@ -100,10 +99,6 @@ def _read_body(*, body: str | None, body_file: str | None) -> str:
     if body_file:
         return Path(body_file).read_text(encoding="utf-8-sig").strip()
     raise ValueError("--body or --body-file is required.")
-
-
-def _slugify(title: str) -> str:
-    return _core_slugify(title.strip(), default="issue")
 
 
 def _authored_ref(authored: Issue) -> str:

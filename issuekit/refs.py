@@ -8,7 +8,6 @@ import os
 from pathlib import Path
 import tomllib
 
-from issuekit.config import load_config
 from issuekit.core import is_valid_workflow_token
 
 
@@ -19,13 +18,6 @@ WORKSPACE_ENV_VAR = "ISSUEKIT_WORKSPACE"
 
 class RefError(RuntimeError):
     """Raised when a repository ref cannot be loaded or resolved."""
-
-
-@dataclass(frozen=True)
-class RefResolution:
-    name: str
-    repo_path: Path
-    issues_dir: Path
 
 
 @dataclass(frozen=True)
@@ -154,25 +146,8 @@ def save_workspace_refs(refs: dict[str, str], workspace_file: Path | str) -> Non
     path.write_text(content, encoding="utf-8", newline="\n")
 
 
-def list_refs(cwd: Path | str = ".") -> dict[str, str]:
-    return dict(sorted(load_refs(cwd).items()))
-
-
 def list_effective_refs(cwd: Path | str = ".") -> dict[str, RefEntry]:
     return load_effective_refs(cwd)
-
-
-def resolve_ref(name: str, cwd: Path | str = ".") -> RefResolution:
-    refs = load_effective_refs(cwd)
-    if name not in refs:
-        raise RefError(f"Unknown ref: {name}")
-    repo_path = refs[name].path
-    if not repo_path.exists():
-        raise RefError(f"Ref target path does not exist: {repo_path}")
-    if not repo_path.is_dir():
-        raise RefError(f"Ref target path is not a directory: {repo_path}")
-    config = load_config(repo_path)
-    return RefResolution(name=name, repo_path=repo_path, issues_dir=config.issues_path(repo_path))
 
 
 def default_repo_ref(cwd: Path | str = ".") -> str:

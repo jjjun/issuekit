@@ -66,10 +66,6 @@ def parse_issue_id_arg(raw_issue_id: str) -> int:
         raise ValueError(f"Invalid issue id: {raw_issue_id}") from exc
 
 
-def find_issue_by_id(issues: list[Issue], issue_id: int) -> Issue | None:
-    return next((issue for issue in issues if issue.id == issue_id), None)
-
-
 def get_issue_heading(content: str) -> re.Match[str] | None:
     return re.search(r"^#\s+Issue\s+#\d+:\s*(.+)$", content, re.MULTILINE) or re.search(
         r"^#\s+(.+)$", content, re.MULTILINE
@@ -86,16 +82,3 @@ def has_non_ascii(text: str) -> bool:
 
 def is_valid_workflow_token(value: str) -> bool:
     return value == "" or bool(WORKFLOW_TOKEN_PATTERN.fullmatch(value))
-
-
-def slugify(
-    value: str,
-    *,
-    default: str,
-    max_len: int | None = None,
-) -> str:
-    slug = re.sub(r"[^a-z0-9]+", "_", value.lower())
-    slug = re.sub(r"_+", "_", slug).strip("_")
-    if max_len is not None:
-        slug = slug[:max_len]
-    return slug or default

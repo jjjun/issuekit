@@ -127,20 +127,6 @@ def find_for(
     return get_store(config).find_for(assignee, stage)
 
 
-def ensure_not_self_review(
-    issue: Issue,
-    reviewer: str,
-    config: IssuekitConfig | None = None,
-) -> None:
-    config = config or IssuekitConfig()
-    if not config.require_distinct_reviewer:
-        return
-    if issue.implementer and issue.implementer == reviewer:
-        raise WorkflowError(
-            f"Issue #{issue.id} was implemented by {issue.implementer}; self-review is not allowed."
-        )
-
-
 def ensure_assigned_reviewer(
     issue: Issue,
     reviewer_arg: str | None,

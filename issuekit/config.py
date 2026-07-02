@@ -47,14 +47,12 @@ class IssuekitConfig:
     api_url: str = ""
     project: str = "issuekit"
     api_timeout: float = 30.0
-    recent_count: int = 30
     ascii_id_threshold: int = 0
     issues_dir: str = "docs/issues"
     assignees: tuple[str, ...] = ("codex", "claude", "kimi")
     stages: tuple[str, ...] = ("todo", "implementing", "review", "changes_requested", "done")
     default_reviewer: str = "claude"
     require_distinct_reviewer: bool = False
-    require_review_before_complete: bool = True
     worker: WorkerIdentity | None = None
     agents: tuple[tuple[str, AgentRunConfig], ...] = (
         (
@@ -181,7 +179,6 @@ def load_config(cwd: Path | str = ".") -> IssuekitConfig:
         api_timeout=float(
             os.getenv("ISSUEKIT_API_TIMEOUT", raw_config.get("api_timeout", IssuekitConfig.api_timeout))
         ),
-        recent_count=int(raw_config.get("recent_count", IssuekitConfig.recent_count)),
         ascii_id_threshold=int(
             raw_config.get("ascii_id_threshold", IssuekitConfig.ascii_id_threshold)
         ),
@@ -195,12 +192,6 @@ def load_config(cwd: Path | str = ".") -> IssuekitConfig:
             else raw_config.get(
                 "require_distinct_reviewer",
                 IssuekitConfig.require_distinct_reviewer,
-            )
-        ),
-        require_review_before_complete=_bool_value(
-            raw_config.get(
-                "require_review_before_complete",
-                IssuekitConfig.require_review_before_complete,
             )
         ),
         worker=worker,

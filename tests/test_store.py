@@ -174,13 +174,9 @@ def test_api_store_partitions_and_filters_active_issues() -> None:
     assert [issue.id for issue in active] == [1]
     assert [issue.id for issue in completed] == [2]
     assert [issue.id for issue in all_issues] == [1, 2]
-    assert [issue.id for issue in store.read_active_issues()] == [1]
-    assert [issue.id for issue in store.read_completed_issues()] == [2]
     assert [issue.id for issue in store.find_for("claude", "review")] == [1]
     assert client.list_calls == [
         {"status": None, "assignee": None, "stage": None, "include_completed": True},
-        {"status": None, "assignee": None, "stage": None, "include_completed": False},
-        {"status": "completed", "assignee": None, "stage": None, "include_completed": False},
         {"status": None, "assignee": "claude", "stage": "review", "include_completed": False},
     ]
 
@@ -200,12 +196,10 @@ def test_api_store_reads_all_pages() -> None:
     client = FakeIssuekitClient(active + completed)
     store = ApiStore(IssuekitConfig(api_url="https://mine.example"), client=client)
 
-    completed_issues = store.read_completed_issues()
     active_issues, all_completed_issues, all_issues = store.read_all_issues()
 
-    assert len(completed_issues) == 525
-    assert [issue.id for issue in completed_issues[:2]] == [526, 527]
-    assert completed_issues[-1].id == 1050
     assert len(active_issues) == 525
     assert len(all_completed_issues) == 525
     assert len(all_issues) == 1050
+    assert [issue.id for issue in all_completed_issues[:2]] == [526, 527]
+    assert all_completed_issues[-1].id == 1050

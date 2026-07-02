@@ -29,12 +29,6 @@ REQUIRED_API_FIELDS = {
 
 
 class IssueStore(Protocol):
-    def read_active_issues(self) -> list[Issue]:
-        """Read active issues."""
-
-    def read_completed_issues(self) -> list[Issue]:
-        """Read completed issues."""
-
     def read_all_issues(self) -> tuple[list[Issue], list[Issue], list[Issue]]:
         """Read active, completed, and combined issues."""
 
@@ -66,12 +60,6 @@ class ApiStore:
             project=config.project,
             timeout=config.api_timeout,
         )
-
-    def read_active_issues(self) -> list[Issue]:
-        return self._list_issues()
-
-    def read_completed_issues(self) -> list[Issue]:
-        return self._list_issues(status="completed")
 
     def read_all_issues(self) -> tuple[list[Issue], list[Issue], list[Issue]]:
         all_issues = self._list_issues(include_completed=True)

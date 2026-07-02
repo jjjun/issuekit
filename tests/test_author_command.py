@@ -2,7 +2,6 @@ from pathlib import Path
 
 from issuekit import cli
 from issuekit import store as store_module
-from issuekit.commands.author import _slugify
 from issuekit.testing import FakeIssuekitClient
 
 
@@ -81,7 +80,3 @@ def test_author_command_can_assign_explicit_implementer(
     capsys.readouterr()
     assert client.get_issue(1)["author"] == "claude"
     assert client.get_issue(1)["assignee"] == "kimi"
-
-
-def test_slugify_preserves_title_length_for_authored_issues() -> None:
-    assert _slugify("Feature: " + ("A" * 80)) == "feature_" + ("a" * 80)

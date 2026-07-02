@@ -8,13 +8,11 @@ from issuekit.refs import (
     add_workspace_ref,
     find_workspace_file,
     list_effective_refs,
-    list_refs,
     load_workspace_refs,
-    resolve_ref,
 )
 
 
-def test_add_list_and_resolve_ref(tmp_path: Path) -> None:
+def test_add_ref_updates_effective_refs(tmp_path: Path) -> None:
     source = tmp_path / "source"
     target = tmp_path / "target"
     source.mkdir()
@@ -27,12 +25,10 @@ def test_add_list_and_resolve_ref(tmp_path: Path) -> None:
 
     add_ref("target", target, source)
 
-    refs = list_refs(source)
-    resolved = resolve_ref("target", source)
+    refs = list_effective_refs(source)
 
-    assert refs == {"target": target.resolve().as_posix()}
-    assert resolved.repo_path == target.resolve()
-    assert resolved.issues_dir == target.resolve() / "tracker"
+    assert refs["target"].path == target.resolve()
+    assert refs["target"].source == "local"
 
 
 def test_workspace_file_is_discovered_from_parent(tmp_path: Path, monkeypatch) -> None:
@@ -72,11 +68,7 @@ def test_workspace_refs_resolve_relative_to_workspace_file(
         newline="\n",
     )
 
-    refs = load_workspace_refs(nested)
-    resolved = resolve_ref("target", nested)
-
-    assert refs == {"target": target.resolve().as_posix()}
-    assert resolved.repo_path == target.resolve()
+    assert load_workspace_refs(nested) == {"target": target.resolve().as_posix()}
 
 
 def test_effective_refs_merge_workspace_and_local_with_local_precedence(
@@ -160,8 +152,3 @@ def test_malformed_workspace_projects_table_fails(tmp_path: Path, monkeypatch) -
 def test_add_ref_rejects_missing_path(tmp_path: Path) -> None:
     with pytest.raises(RefError, match="does not exist"):
         add_ref("missing", tmp_path / "missing", tmp_path)
-
-
-def test_resolve_ref_rejects_unknown_name(tmp_path: Path) -> None:
-    with pytest.raises(RefError, match="Unknown ref"):
-        resolve_ref("missing", tmp_path)

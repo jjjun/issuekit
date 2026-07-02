@@ -304,20 +304,6 @@ def test_load_config_rejects_unknown_default_reviewer(tmp_path: Path) -> None:
         load_config(tmp_path)
 
 
-def test_load_config_reads_require_review_before_complete(tmp_path: Path) -> None:
-    (tmp_path / "issuekit.toml").write_text(
-        "require_review_before_complete = false\n",
-        encoding="utf-8",
-        newline="\n",
-    )
-
-    assert load_config(tmp_path).require_review_before_complete is False
-
-
-def test_load_config_defaults_require_review_before_complete_true(tmp_path: Path) -> None:
-    assert load_config(tmp_path).require_review_before_complete is True
-
-
 def test_load_config_reads_agent_guardrail_fields(tmp_path: Path) -> None:
     (tmp_path / "issuekit.toml").write_text(
         (
