@@ -337,6 +337,7 @@ def test_request_clarify_answer_round_cap_turns_second_clarify_into_reject(
     second = json.loads(capsys.readouterr().out)
     assert second["decision"] == "reject"
     assert "Clarification limit reached" in second["reason"]
+    assert len(_runner.calls) == 2
 
 
 def test_request_zero_clarify_round_cap_rejects_initial_clarify(
@@ -398,6 +399,237 @@ def test_request_status_maps_outgoing_status(monkeypatch, tmp_path, capsys) -> N
 
     assert status[0]["targets"][0]["status"] == "adopted"
     assert status[0]["targets"][0]["adopted_issue_ref"] == "api#42"
+
+
+def test_request_inbox_lists_matched_and_unmatched_replies(
+    monkeypatch,
+    tmp_path,
+    capsys,
+) -> None:
+    clients, _runner = _setup(
+        monkeypatch,
+        tmp_path,
+        [
+            _route_block(
+                {
+                    "decision": "route",
+                    "targets": [
+                        {"project": "api", "title": "Add endpoint", "body": "Add API."}
+                    ],
+                }
+            )
+        ],
+    )
+    assert cli.main(["request", "Add API", "--json"]) == 0
+    capsys.readouterr()
+    clients["pm"].create_proposal(
+        origin="api#1@abc",
+        title="Re: api#1: Add endpoint",
+        body="Which endpoint path?",
+    )
+    clients["pm"].create_proposal(
+        origin="api#99@abc",
+        title="Re: api#99: Unknown",
+        body="Who owns this?",
+    )
+    clients["pm"].create_proposal(origin="api#2@abc", title="Not a reply", body="Ignore.")
+
+    assert cli.main(["request", "--inbox", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["matched"] == [
+        {
+            "reply_proposal_id": 1,
+            "proposal_ref": "api#1",
+            "target_project": "api",
+            "title": "Re: api#1: Add endpoint",
+            "original_title": "Add endpoint",
+            "question": "Which endpoint path?",
+            "request_id": 1,
+            "target_index": 0,
+        }
+    ]
+    assert payload["unmatched"][0]["proposal_ref"] == "api#99"
+    assert payload["unmatched"][0]["question"] == "Who owns this?"
+
+
+def test_request_answer_resends_amended_proposal_and_discards_reply(
+    monkeypatch,
+    tmp_path,
+    capsys,
+) -> None:
+    clients, runner = _setup(
+        monkeypatch,
+        tmp_path,
+        [
+            _route_block(
+                {
+                    "decision": "route",
+                    "targets": [
+                        {
+                            "project": "api",
+                            "title": "Add endpoint",
+                            "body": "Original body.",
+                            "blocking": True,
+                        }
+                    ],
+                }
+            )
+        ],
+    )
+    assert cli.main(["request", "Add API", "--json"]) == 0
+    capsys.readouterr()
+    reply = clients["pm"].create_proposal(
+        origin="api#1@abc",
+        title="Re: api#1: Add endpoint",
+        body="Which endpoint path?",
+    )
+
+    assert cli.main(["request", "--answer", "1", "Use /exports.csv.", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    state = json.loads((tmp_path / ".agent-runs" / "pm-requests.json").read_text(encoding="utf-8"))
+    amended = clients["api"].get_proposal(2)
+
+    assert payload["decision"] == "answer"
+    assert payload["proposal_ref"] == "api#2"
+    assert payload["supersedes"] == "api#1"
+    assert amended["title"] == "Add endpoint"
+    assert amended["blocking"] is True
+    assert amended["body"].startswith("Original body.\n\n## Clarifications")
+    assert "Question:\n\nWhich endpoint path?" in amended["body"]
+    assert "Answer:\n\nUse /exports.csv." in amended["body"]
+    assert amended["body"].endswith("Supersedes: api#1")
+    assert state["1"]["targets"][0]["proposal_ref"] == "api#2"
+    assert state["1"]["targets"][0]["clarifications"] == [
+        {"question": "Which endpoint path?", "answer": "Use /exports.csv."}
+    ]
+    assert clients["pm"].get_proposal(reply["id"])["status"] == "discarded"
+    assert len(runner.calls) == 1
+
+
+def test_request_answer_send_failure_keeps_old_state_and_reply_pending(
+    monkeypatch,
+    tmp_path,
+    capsys,
+) -> None:
+    clients, _runner = _setup(
+        monkeypatch,
+        tmp_path,
+        [
+            _route_block(
+                {
+                    "decision": "route",
+                    "targets": [
+                        {"project": "api", "title": "Add endpoint", "body": "Original body."}
+                    ],
+                }
+            )
+        ],
+    )
+    assert cli.main(["request", "Add API", "--json"]) == 0
+    capsys.readouterr()
+    reply = clients["pm"].create_proposal(
+        origin="api#1@abc",
+        title="Re: api#1: Add endpoint",
+        body="Which endpoint path?",
+    )
+    original_send = proposals_api.send_proposal
+
+    def fail_amended(config, proposal):
+        if proposal.to == "api" and "Supersedes:" in proposal.body:
+            raise ProposalError("api unavailable")
+        return original_send(config, proposal)
+
+    monkeypatch.setattr(proposals_api, "send_proposal", fail_amended)
+
+    assert cli.main(["request", "--answer", "1", "Use /exports.csv.", "--json"]) == 1
+    assert "api unavailable" in capsys.readouterr().err
+    state = json.loads((tmp_path / ".agent-runs" / "pm-requests.json").read_text(encoding="utf-8"))
+
+    assert state["1"]["targets"][0]["proposal_ref"] == "api#1"
+    assert "clarifications" not in state["1"]["targets"][0]
+    assert clients["pm"].get_proposal(reply["id"])["status"] == "pending"
+
+
+def test_request_answer_requires_target_when_multiple_replies_are_pending(
+    monkeypatch,
+    tmp_path,
+    capsys,
+) -> None:
+    clients, _runner = _setup(
+        monkeypatch,
+        tmp_path,
+        [
+            _route_block(
+                {
+                    "decision": "route",
+                    "targets": [
+                        {"project": "api", "title": "Add endpoint", "body": "Add API."},
+                        {"project": "ui", "title": "Use endpoint", "body": "Use API."},
+                    ],
+                }
+            )
+        ],
+    )
+    assert cli.main(["request", "Add export UI", "--json"]) == 0
+    capsys.readouterr()
+    clients["pm"].create_proposal(origin="api#1@abc", title="Re: api#1: Add endpoint", body="API?")
+    clients["pm"].create_proposal(origin="ui#1@abc", title="Re: ui#1: Use endpoint", body="UI?")
+
+    assert cli.main(["request", "--answer", "1", "Use v1.", "--json"]) == 1
+    err = capsys.readouterr().err
+    assert "--target" in err
+    assert "api: API?" in err
+    assert "ui: UI?" in err
+
+    assert cli.main(["request", "--answer", "1", "Use table view.", "--target", "ui", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["target_project"] == "ui"
+    assert payload["proposal_ref"] == "ui#2"
+    assert clients["pm"].get_proposal(1)["status"] == "pending"
+    assert clients["pm"].get_proposal(2)["status"] == "discarded"
+
+
+def test_request_answer_accumulates_multiple_clarification_rounds(
+    monkeypatch,
+    tmp_path,
+    capsys,
+) -> None:
+    clients, _runner = _setup(
+        monkeypatch,
+        tmp_path,
+        [
+            _route_block(
+                {
+                    "decision": "route",
+                    "targets": [
+                        {"project": "api", "title": "Add endpoint", "body": "Original body."}
+                    ],
+                }
+            )
+        ],
+    )
+    assert cli.main(["request", "Add API", "--json"]) == 0
+    capsys.readouterr()
+    clients["pm"].create_proposal(origin="api#1@abc", title="Re: api#1: Add endpoint", body="Q1?")
+    assert cli.main(["request", "--answer", "1", "A1.", "--json"]) == 0
+    capsys.readouterr()
+    clients["pm"].create_proposal(origin="api#2@abc", title="Re: api#2: Add endpoint", body="Q2?")
+
+    assert cli.main(["request", "--answer", "1", "A2.", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    amended = clients["api"].get_proposal(3)
+
+    assert payload["proposal_ref"] == "api#3"
+    assert amended["body"].count("## Clarifications") == 1
+    assert "### Round 1" in amended["body"]
+    assert "Q1?" in amended["body"]
+    assert "A1." in amended["body"]
+    assert "### Round 2" in amended["body"]
+    assert "Q2?" in amended["body"]
+    assert "A2." in amended["body"]
+    assert "Supersedes: api#1" not in amended["body"]
+    assert amended["body"].endswith("Supersedes: api#2")
 
 
 def test_request_requires_router_agent(monkeypatch, tmp_path, capsys) -> None:

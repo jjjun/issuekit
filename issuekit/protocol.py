@@ -167,14 +167,19 @@ claims, implements, reviews, approves, or completes work.
 2. Route a new request with `issuekit request "<text>"`. The router reads
    project capability profiles, excludes stale profiles and the PM project,
    and sends one or more dependency-first proposals to target projects.
-3. If the router asks for clarification, answer in the same PM checkout with
+3. If the router asks for clarification before routing, answer in the same PM checkout with
    `issuekit request --answer <request-id> "<answer>"`. Clarifications are
    synchronous and stay in the request state; do not turn them into proposals.
-4. Track what happened with `issuekit request --status <request-id>` or list
+4. If a target project replies for clarification, list PM inbox questions with
+   `issuekit request --inbox`, then answer with
+   `issuekit request --answer <request-id> "<answer>" --target <project>` when
+   more than one target has a pending question. The PM resends an amended
+   proposal with a `Supersedes:` line and discards the answered PM inbox reply.
+5. Track what happened with `issuekit request --status <request-id>` or list
    all routed requests with `issuekit request --status --json`. Status reads
    outgoing proposal state so the requester can see pending, adopted, or
    discarded target proposals and adopted issue refs.
-5. If the router rejects the request, report the reason and stop. If the
+6. If the router rejects the request, report the reason and stop. If the
    request exceeds the configured target cap, ask one concrete clarification
    question or reject it.
 
@@ -184,6 +189,8 @@ Copyable CLI examples:
 - Route request: `issuekit request "Add dashboard export support"`
 - Dry run routing: `issuekit request "Add dashboard export support" --dry-run --json`
 - Answer clarification: `issuekit request --answer 7 "CSV export is enough for v1."`
+- List target questions: `issuekit request --inbox`
+- Answer target question: `issuekit request --answer 7 "CSV export is enough for v1." --target api`
 - Check one request: `issuekit request --status 7`
 - Check all requests: `issuekit request --status --json`
 

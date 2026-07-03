@@ -106,6 +106,9 @@ def test_render_protocol_returns_pm_role() -> None:
     assert "Handoff protocol (pm)" in pm
     assert 'issuekit request "Add dashboard export support"' in pm
     assert "issuekit request --answer 7" in pm
+    assert "issuekit request --inbox" in pm
+    assert '--target api' in pm
+    assert "Supersedes:" in pm
     assert "issuekit request --status --json" in pm
     assert "Do not run `issuekit claim`" in pm
     assert "Target projects" in pm
