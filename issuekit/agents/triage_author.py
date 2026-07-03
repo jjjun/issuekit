@@ -15,10 +15,8 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from pathlib import Path
 import hashlib
-import json
 import re
 import sys
 import threading
@@ -29,6 +27,13 @@ from issuekit.agents.proposal_eval import (
     run_readonly_proposal_evaluation,
 )
 from issuekit.agents.runner import AgentRunner, resolve_adapter
+from issuekit.agents.triage_state import (
+    STATE_FILENAME,
+    _load_state,
+    _now,
+    _save_state,
+    _state_path,
+)
 from issuekit.config import IssuekitConfig
 from issuekit.core import has_non_ascii
 from issuekit.proposals import origin_destination
@@ -50,7 +55,6 @@ _DECISION_FIELD = {
     "reply": "question",
     "discard": "reason",
 }
-STATE_FILENAME = "triage-author-state.json"
 _SUPERSEDES_LINE_PATTERN = re.compile(
     r"^\s*Supersedes:\s*(?P<project>[A-Za-z0-9_.-]+)#(?P<id>[1-9][0-9]*)\s*$"
 )
@@ -488,39 +492,3 @@ def _skip_replied(
 
 def _body_sha(body: object) -> str:
     return hashlib.sha256(str(body).encode("utf-8")).hexdigest()
-
-
-def _now() -> str:
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
-
-
-def _state_path(cwd: Path) -> Path:
-    return cwd / ".agent-runs" / STATE_FILENAME
-
-
-def _load_state(cwd: Path) -> dict[str, dict[str, str]]:
-    path = _state_path(cwd)
-    try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-    if not isinstance(raw, dict):
-        return {}
-    state: dict[str, dict[str, str]] = {}
-    for key, value in raw.items():
-        if isinstance(value, dict) and isinstance(value.get("body_sha"), str):
-            state[str(key)] = {
-                "body_sha": value["body_sha"],
-                "replied_at": str(value.get("replied_at", "")),
-            }
-    return state
-
-
-def _save_state(cwd: Path, state: Mapping[str, Mapping[str, str]]) -> None:
-    path = _state_path(cwd)
-    path.parent.mkdir(exist_ok=True)
-    path.write_text(
-        json.dumps(dict(state), indent=2, sort_keys=True),
-        encoding="utf-8",
-        newline="\n",
-    )
