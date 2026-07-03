@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import replace
-from datetime import datetime, timezone
 import json
 from pathlib import Path
 import re
@@ -19,6 +18,14 @@ from issuekit.agents.router import (
     run_router,
 )
 from issuekit.commands._common import run_command
+from issuekit.commands.request_output import _print_payload, _print_status_record
+from issuekit.commands.request_state import (
+    STATE_FILENAME,
+    _load_state,
+    _now,
+    _save_state,
+    _state_path,
+)
 from issuekit.config import IssuekitConfig, load_config
 from issuekit.gitutil import git_short_head
 from issuekit import proposals_api
@@ -26,7 +33,6 @@ from issuekit.proposals import ProposalError
 from issuekit.workflow import WorkflowError
 
 
-STATE_FILENAME = "pm-requests.json"
 _PROPOSAL_REF_PATTERN = re.compile(
     r"^(?P<project>[A-Za-z0-9_.-]+)#(?P<id>[1-9][0-9]*)$"
 )
@@ -852,80 +858,6 @@ def _state_targets(record: dict[str, Any]) -> list[dict[str, Any]]:
     return [dict(item) for item in raw if isinstance(item, dict)]
 
 
-def _print_payload(payload: dict[str, Any], *, json_output: bool) -> None:
-    if json_output:
-        print(json.dumps(payload, indent=2))
-        return
-    request_id = payload["request_id"]
-    decision = payload["decision"]
-    if decision == "clarify":
-        print(f"Request {request_id} needs clarification: {payload['question']}")
-        print(f"Answer with: issuekit request --answer {request_id} \"<answer>\"")
-    elif decision == "reject":
-        print(f"Request {request_id} rejected: {payload['reason']}")
-    elif decision == "answer":
-        print(
-            f"Request {request_id} answered target {payload['target_project']}: "
-            f"{payload.get('proposal_ref', '(dry-run)')} supersedes={payload['supersedes']}"
-        )
-    else:
-        print(f"Request {request_id} routed.")
-        for index, target in enumerate(payload.get("targets", [])):
-            print(
-                f"target[{index}] {target.get('project')} "
-                f"proposal={target.get('proposal_ref')} title={target.get('title')}"
-            )
-
-
-def _print_status_record(item: dict[str, Any]) -> None:
-    print(f"Request {item['request_id']}: {item.get('decision') or 'pending'}")
-    if item.get("pending_question"):
-        print(f"  clarification: {item['pending_question']}")
-    if item.get("reason"):
-        print(f"  reason: {item['reason']}")
-    for target in item.get("targets", []):
-        adopted = target.get("adopted_issue_ref") or "-"
-        print(
-            f"  {target.get('proposal_ref', '-')}\t"
-            f"{target.get('status', 'unsent')}\t"
-            f"{adopted}\t{target.get('title', '')}"
-        )
-
-
 def _require_router_config(config: IssuekitConfig) -> None:
     if not config.router.agent:
         raise WorkflowError("issuekit request requires [tool.issuekit.router] agent.")
-
-
-def _state_path(cwd: Path) -> Path:
-    return cwd / ".agent-runs" / STATE_FILENAME
-
-
-def _load_state(cwd: Path) -> dict[str, dict[str, Any]]:
-    path = _state_path(cwd)
-    try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-    if not isinstance(raw, dict):
-        return {}
-    state: dict[str, dict[str, Any]] = {}
-    for key, value in raw.items():
-        if not str(key).isdigit() or not isinstance(value, dict):
-            continue
-        state[str(int(key))] = dict(value)
-    return state
-
-
-def _save_state(cwd: Path, state: dict[str, dict[str, Any]]) -> None:
-    path = _state_path(cwd)
-    path.parent.mkdir(exist_ok=True)
-    path.write_text(
-        json.dumps(state, indent=2, sort_keys=True),
-        encoding="utf-8",
-        newline="\n",
-    )
-
-
-def _now() -> str:
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
