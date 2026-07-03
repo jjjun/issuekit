@@ -8,7 +8,10 @@ from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
-from issuekit.agents.proposal_check import run_proposal_check_cycle
+from issuekit.agents.proposal_check import (
+    list_worker_proposal_checks,
+    run_proposal_check_cycle,
+)
 from issuekit.agents.runner import AgentRunner
 from issuekit.author_guard import STOP_SENTINEL, create_author_guard, guard_dict
 from issuekit.commands.approve import approve_issue
@@ -328,6 +331,27 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
             runner_factory=AgentRunner,
         )
         return [decision.to_dict() for decision in decisions]
+
+    @server.tool(
+        description=(
+            "List proposal checks addressed to this registered checkout "
+            "(read-only; posts nothing and runs no agent)."
+        )
+    )
+    def list_proposal_checks(
+        status: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[dict[str, Any]]:
+        config = load_config(root)
+        if status not in (None, "pending", "answered"):
+            raise ValueError("status must be pending or answered.")
+        return list_worker_proposal_checks(
+            config,
+            status=status,
+            limit=limit,
+            offset=offset,
+        )
 
     return server
 

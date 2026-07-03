@@ -88,6 +88,7 @@ def test_server_registers_expected_tools(tmp_path: Path) -> None:
         "adopt_proposal",
         "discard_proposal",
         "run_proposal_checks",
+        "list_proposal_checks",
     }
 
 
@@ -140,6 +141,67 @@ def test_run_proposal_checks_tool_returns_decisions(
     assert seen["agent"] == "codex"
     assert seen["timeout"] == 12.0
     assert seen["limit"] == 3
+
+
+def test_list_proposal_checks_tool_returns_raw_checks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = FakeIssuekitClient(
+        proposals=[
+            {"id": 1, "origin": "source#1@abc", "title": "Check", "body": "Check body."}
+        ]
+    )
+    client.create_proposal_check(
+        1,
+        target_worker="machine/demo/worker",
+        project="demo",
+    )
+    client.post_proposal_check_result(
+        1,
+        project="demo",
+        verdict="revise",
+        comment="Needs details.",
+    )
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'demo'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    (tmp_path / "issuekit.local.toml").write_text(
+        (
+            "[worker]\n"
+            "machine_id = 'machine'\n"
+            "repo_id = 'demo'\n"
+            "worker_id = 'worker'\n"
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+    client.calls.clear()
+    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    server = create_server(tmp_path)
+
+    checks = _call(
+        server,
+        "list_proposal_checks",
+        {"status": "answered", "limit": 5, "offset": 0},
+    )
+
+    assert checks[0]["id"] == 1
+    assert checks[0]["status"] == "answered"
+    assert checks[0]["verdict"] == "revise"
+    assert client.calls == [
+        {
+            "method": "poll_proposal_checks",
+            "body": {
+                "target_worker": "machine/demo/worker",
+                "status": "answered",
+                "limit": 5,
+                "offset": 0,
+            },
+        }
+    ]
 
 
 def test_list_workers_returns_catalog(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

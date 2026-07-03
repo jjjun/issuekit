@@ -10,6 +10,7 @@ import sys
 from issuekit.agents.proposal_check import (
     ProposalCheckParseError,
     ProposalCheckDecision,
+    list_worker_proposal_checks,
     run_proposal_check_cycle,
 )
 from issuekit.agents.runner import AgentRunner
@@ -25,10 +26,21 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         help="Run one worker-side proposal-check polling cycle.",
     )
     parser.add_argument("--agent", help="Configured agent name to run.")
-    parser.add_argument(
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
+        "--list",
+        action="store_true",
+        help="List proposal checks addressed to this worker without running an agent.",
+    )
+    mode.add_argument(
         "--once",
         action="store_true",
         help="Run a single proposal-check cycle and exit (currently required).",
+    )
+    parser.add_argument(
+        "--status",
+        choices=("pending", "answered"),
+        help="Filter listed proposal checks by status.",
     )
     parser.add_argument(
         "--timeout-sec",
@@ -40,8 +52,9 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         "--limit",
         type=int,
         default=50,
-        help="Maximum pending checks to evaluate in this cycle.",
+        help="Maximum checks to list or evaluate.",
     )
+    parser.add_argument("--offset", type=int, default=0, help="Checks to skip when listing.")
     parser.add_argument("--json", action="store_true", help="Print JSON output.")
     parser.set_defaults(func=run)
 
@@ -53,9 +66,11 @@ def run(args) -> int:
     except ValueError as exc:
         print(str(exc), file=sys.stderr)
         return 1
+    if args.list:
+        return _run_list(args, config)
     if not args.once:
         print(
-            "proposal-checks currently supports only --once; pass --once to run one cycle.",
+            "proposal-checks requires either --once to run one cycle or --list to inspect checks.",
             file=sys.stderr,
         )
         return 1
@@ -98,12 +113,66 @@ def run(args) -> int:
     )
 
 
+def _run_list(args, config: IssuekitConfig) -> int:
+    def action() -> int:
+        checks = list_worker_proposal_checks(
+            config,
+            status=args.status,
+            limit=int(args.limit),
+            offset=int(args.offset),
+        )
+        if args.json:
+            print(json.dumps(checks, indent=2))
+        else:
+            _print_checks(checks)
+        return 0
+
+    return run_command(action, errors=(ValueError, WorkflowError, ProposalError))
+
+
 def _resolve_agent(agent: str | None, config: IssuekitConfig) -> str | None:
     if agent:
         return agent
     if len(config.assignees) == 1:
         return config.assignees[0]
     return None
+
+
+def _print_checks(checks: list[dict]) -> None:
+    if not checks:
+        print("No proposal checks for this worker.")
+        return
+    headers = (
+        "id",
+        "target_project",
+        "proposal_id",
+        "status",
+        "verdict",
+        "adopted_issue_ref",
+        "created_at",
+        "answered_at",
+    )
+    rows = [
+        tuple(_format_check_value(check.get(header)) for header in headers)
+        for check in checks
+    ]
+    widths = [
+        max(len(header), *(len(row[index]) for row in rows))
+        for index, header in enumerate(headers)
+    ]
+    print(_format_row(headers, widths))
+    for row in rows:
+        print(_format_row(row, widths))
+
+
+def _format_check_value(value: object) -> str:
+    if value is None or value == "":
+        return "-"
+    return str(value)
+
+
+def _format_row(values: tuple[str, ...], widths: list[int]) -> str:
+    return "  ".join(value.ljust(width) for value, width in zip(values, widths))
 
 
 def _print_decisions(decisions: list[ProposalCheckDecision]) -> None:

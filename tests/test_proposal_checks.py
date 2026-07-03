@@ -183,3 +183,103 @@ def test_cli_proposal_checks_prints_json(monkeypatch, tmp_path, capsys) -> None:
     assert payload[0]["verdict"] == "reject"
     assert payload[0]["check_id"] == 1
     assert client._proposal_checks[1]["status"] == "answered"
+
+
+def test_cli_proposal_checks_list_prints_table_without_agent(
+    monkeypatch,
+    tmp_path,
+    capsys,
+) -> None:
+    from issuekit import cli
+    from issuekit.commands import proposal_checks as proposal_checks_cmd
+
+    client, _runner, _config = _setup(
+        monkeypatch,
+        tmp_path,
+        output=_check_block(verdict="reject", comment="Not used."),
+    )
+    monkeypatch.setattr(
+        proposal_checks_cmd,
+        "AgentRunner",
+        lambda: pytest.fail("listing must not construct an agent runner"),
+    )
+
+    assert cli.main(["proposal-checks", "--list"]) == 0
+    output = capsys.readouterr().out
+
+    assert "id  target_project  proposal_id  status" in output
+    assert "1   target          1            pending" in output
+    assert client._proposal_checks[1]["status"] == "pending"
+    assert client.calls[-1] == {
+        "method": "list_proposal_checks",
+        "body": {
+            "target_worker": "machine/target/worker",
+            "status": None,
+            "page_size": 500,
+        },
+    }
+
+
+def test_cli_proposal_checks_list_status_json_uses_limit_offset(
+    monkeypatch,
+    tmp_path,
+    capsys,
+) -> None:
+    from issuekit import cli
+
+    client, _runner, _config = _setup(
+        monkeypatch,
+        tmp_path,
+        output=_check_block(verdict="reject", comment="Not used."),
+    )
+    client.create_proposal_check(
+        1,
+        target_worker="machine/target/worker",
+        project="target",
+    )
+    client.post_proposal_check_result(
+        1,
+        project="target",
+        verdict="reject",
+        comment="Out of scope.",
+    )
+    client.calls.clear()
+
+    assert (
+        cli.main(
+            [
+                "proposal-checks",
+                "--list",
+                "--status",
+                "answered",
+                "--limit",
+                "1",
+                "--offset",
+                "0",
+                "--json",
+            ]
+        )
+        == 0
+    )
+    payload = json.loads(capsys.readouterr().out)
+
+    assert len(payload) == 1
+    assert payload[0]["id"] == 1
+    assert payload[0]["status"] == "answered"
+    assert payload[0]["verdict"] == "reject"
+    assert client.calls[-1] == {
+        "method": "poll_proposal_checks",
+        "body": {
+            "target_worker": "machine/target/worker",
+            "status": "answered",
+            "limit": 1,
+            "offset": 0,
+        },
+    }
+
+
+def test_cli_proposal_checks_list_and_once_are_mutually_exclusive(capsys) -> None:
+    from issuekit import cli
+
+    assert cli.main(["proposal-checks", "--list", "--once"]) == 2
+    assert "not allowed with argument" in capsys.readouterr().err

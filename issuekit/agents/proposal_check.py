@@ -200,6 +200,37 @@ def run_proposal_check_cycle(
     return decisions
 
 
+def list_worker_proposal_checks(
+    config: IssuekitConfig,
+    *,
+    status: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> list[dict[str, Any]]:
+    """List proposal checks addressed to this registered checkout."""
+
+    worker_key = config.worker_key()
+    if not worker_key:
+        raise WorkflowError(
+            "proposal-checks require this checkout to be registered as a worker."
+        )
+    if limit < 1:
+        raise ValueError("limit must be greater than zero.")
+    if offset < 0:
+        raise ValueError("offset must be zero or greater.")
+
+    with api_client(config) as client:
+        if status is not None:
+            return client.poll_proposal_checks(
+                target_worker=worker_key,
+                status=status,
+                limit=min(limit, 500),
+                offset=offset,
+            )
+        checks = client.list_proposal_checks(target_worker=worker_key, status=None)
+    return checks[offset : offset + limit]
+
+
 def parse_proposal_check_output(stdout: str) -> dict[str, str]:
     raw = parse_newest_json_block(
         stdout,
