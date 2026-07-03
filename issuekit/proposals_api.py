@@ -13,6 +13,7 @@ from issuekit.config import IssuekitConfig, load_config
 from issuekit.core import Issue, parse_issue_id_arg
 from issuekit.gitutil import git_short_head
 from issuekit.proposals import Proposal, ProposalError, origin_destination
+from issuekit.refs import RefError, list_effective_refs
 from issuekit.store import get_store
 from issuekit.workflow import WorkflowError
 
@@ -27,7 +28,6 @@ STRUCTURED_DEPENDENCY_PATTERN = re.compile(
 DEPENDENCY_LINE_PATTERN = re.compile(
     r"(?i)\b(depends?\s+on|requires?|prerequisite|blocked\s+by|upstream)\b"
 )
-PROJECT_TOKEN_PATTERN = re.compile(r"\b[a-z][a-z0-9]+(?:-[a-z0-9]+)+\b")
 
 
 def adopt_outcome(proposal_id: str | int, project: str, issue: dict) -> dict:
@@ -336,6 +336,7 @@ def build_proposal(
         body=proposal_body,
         depends_on=dependency_refs,
         is_reply=bool(reply_to),
+        known_projects=_related_project_names(cwd),
     )
     return Proposal(
         origin=origin,
@@ -357,6 +358,7 @@ def proposal_preflight_warnings(
     body: str,
     depends_on: Sequence[str],
     is_reply: bool,
+    known_projects: Sequence[str] = (),
 ) -> tuple[str, ...]:
     warnings: list[str] = []
     if target_project == origin_project and not is_reply:
@@ -366,7 +368,7 @@ def proposal_preflight_warnings(
             "reply or cross-project handoff."
         )
     if not depends_on:
-        dependency_projects = _dependency_project_mentions(body)
+        dependency_projects = _dependency_project_mentions(body, known_projects=known_projects)
         upstream_projects = [
             project
             for project in dependency_projects
@@ -457,15 +459,30 @@ def _dedupe_refs(refs: Sequence[str]) -> tuple[str, ...]:
     return tuple(deduped)
 
 
-def _dependency_project_mentions(body: str) -> tuple[str, ...]:
+def _related_project_names(cwd: Path) -> tuple[str, ...]:
+    try:
+        return tuple(list_effective_refs(cwd))
+    except RefError:
+        return ()
+
+
+def _dependency_project_mentions(body: str, *, known_projects: Sequence[str]) -> tuple[str, ...]:
     projects: list[str] = []
+    candidates = sorted(set(known_projects))
     for line in body.splitlines():
         if not DEPENDENCY_LINE_PATTERN.search(line):
             continue
-        for project in PROJECT_TOKEN_PATTERN.findall(line):
+        for project in candidates:
+            if not _contains_project_name(line, project):
+                continue
             if project not in projects:
                 projects.append(project)
     return tuple(projects)
+
+
+def _contains_project_name(text: str, project: str) -> bool:
+    pattern = rf"(?<![A-Za-z0-9_-]){re.escape(project)}(?![A-Za-z0-9_-])"
+    return bool(re.search(pattern, text, flags=re.IGNORECASE))
 
 
 def _git_commit(cwd: Path) -> str:

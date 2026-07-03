@@ -13,6 +13,13 @@ from issuekit.testing import FakeIssuekitClient
 from tests.issue_helpers import api_issue
 
 
+def _write_workspace_refs(path: Path, *names: str) -> None:
+    lines = ["[projects]"]
+    for name in names:
+        lines.append(f'{name} = "{name}"')
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
+
+
 def test_origin_destination_uses_project_segment() -> None:
     assert origin_destination("source#42@abc123") == "source"
 
@@ -212,6 +219,7 @@ def test_api_cli_propose_warns_for_unreferenced_upstream_dependency(
         encoding="utf-8",
         newline="\n",
     )
+    _write_workspace_refs(tmp_path / "issuekit.workspace.toml", "mine-js-monorepo", "mine-py")
     monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
     monkeypatch.chdir(tmp_path)
 
@@ -256,6 +264,7 @@ def test_api_cli_propose_warns_instead_of_rejecting_freeform_dependency_line(
         encoding="utf-8",
         newline="\n",
     )
+    _write_workspace_refs(tmp_path / "issuekit.workspace.toml", "mine-js-monorepo", "mine-py")
     monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
     monkeypatch.chdir(tmp_path)
 
@@ -275,6 +284,42 @@ def test_api_cli_propose_warns_instead_of_rejecting_freeform_dependency_line(
     )
 
     assert "Dependency preflight" in capsys.readouterr().err
+    assert "depends_on" not in client.calls[0]["body"]
+
+
+def test_api_cli_propose_does_not_warn_for_target_owned_query_param_contract(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient()
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'mine-js-monorepo'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    _write_workspace_refs(tmp_path / "issuekit.workspace.toml", "mine-js-monorepo", "mine-py")
+    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.chdir(tmp_path)
+
+    assert (
+        cli.main(
+            [
+                "propose",
+                "--to",
+                "mine-py",
+                "--title",
+                "Define API contract",
+                "--body",
+                "This depends on the final endpoint path and query-param contract owned here.",
+                "--json",
+            ]
+        )
+        == 0
+    )
+    sent = json.loads(capsys.readouterr().out)
+
+    assert "warnings" not in sent
     assert "depends_on" not in client.calls[0]["body"]
 
 
