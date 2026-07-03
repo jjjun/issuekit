@@ -116,6 +116,41 @@ def test_load_config_reads_triage_policy(tmp_path: Path) -> None:
     )
 
 
+def test_load_config_reads_triage_author_agent(tmp_path: Path) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        (
+            "[triage]\n"
+            "author_agent = 'codex'\n"
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    config = load_config(tmp_path)
+
+    assert config.triage.author_agent == "codex"
+
+
+def test_load_config_defaults_triage_author_agent_to_empty(tmp_path: Path) -> None:
+    config = load_config(tmp_path)
+
+    assert config.triage.author_agent == ""
+
+
+def test_load_config_rejects_invalid_triage_author_agent(tmp_path: Path) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        (
+            "[triage]\n"
+            "author_agent = 'bad agent'\n"
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    with pytest.raises(ValueError, match="triage.author_agent"):
+        load_config(tmp_path)
+
+
 def test_load_config_reads_worker_role_and_description(tmp_path: Path) -> None:
     (tmp_path / "issuekit.toml").write_text(
         (

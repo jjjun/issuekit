@@ -29,6 +29,7 @@ from issuekit.commands import (
     runs,
     serve,
     setup,
+    triage,
     validate,
     workers,
 )
@@ -60,6 +61,7 @@ COMMAND_MODULES = (
     setup,
     dev_tool,
     propose,
+    triage,
 )
 
 

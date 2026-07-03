@@ -42,6 +42,7 @@ EXPECTED_COMMANDS = {
     "outgoing",
     "adopt",
     "discard",
+    "triage",
 }
 
 
@@ -154,6 +155,7 @@ def test_handlers_are_stubs(command: str) -> None:
         "outgoing",
         "adopt",
         "discard",
+        "triage",
     }:
         pytest.skip(f"{command} is implemented")
 

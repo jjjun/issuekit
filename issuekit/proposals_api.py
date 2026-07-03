@@ -185,7 +185,7 @@ def auto_adopt_incoming_proposals(config: IssuekitConfig) -> list[dict]:
         for proposal in client.list_proposals(status="pending"):
             if len(adopted) >= policy.max_adoptions_per_cycle:
                 break
-            if not _matches_triage_policy(proposal, config):
+            if not matches_triage_policy(proposal, config):
                 continue
             issue = client.adopt_proposal(
                 int(proposal["id"]),
@@ -252,7 +252,7 @@ def _is_own_origin(origin: object, project: str) -> bool:
     return isinstance(origin, str) and origin.startswith(f"{project}#")
 
 
-def _matches_triage_policy(proposal: Mapping[str, Any], config: IssuekitConfig) -> bool:
+def matches_triage_policy(proposal: Mapping[str, Any], config: IssuekitConfig) -> bool:
     origin = proposal.get("origin")
     if not isinstance(origin, str):
         return False

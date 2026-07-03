@@ -17,6 +17,7 @@ from typing import Iterator
 
 from issuekit.agents.run_claimed import review_feedback_prompt, run_and_submit
 from issuekit.agents.review import ReviewParseError, run_review_and_decide
+from issuekit.agents.triage_author import run_triage_author_cycle
 from issuekit.config import IssuekitConfig, load_config
 from issuekit.core import Issue
 from issuekit.proposals import ProposalError
@@ -240,7 +241,20 @@ def _serve_loop(
             attempt_count += 1
             if _triage_enabled(args, config):
                 try:
-                    adopted = auto_adopt_incoming_proposals(config)
+                    if config.triage.author_agent:
+                        _run_triage_author_cycle(
+                            args, config=config, cwd=cwd, log_path=log_path
+                        )
+                    else:
+                        for outcome in auto_adopt_incoming_proposals(config):
+                            _log(
+                                sys.stderr,
+                                log_path,
+                                "auto_adopted",
+                                proposal=outcome.get("proposal_id"),
+                                issue=outcome.get("issue_id"),
+                                priority=config.triage.default_priority,
+                            )
                 except (ProposalError, TimeoutError, WorkflowError, ValueError) as exc:
                     _log(
                         sys.stderr,
@@ -256,15 +270,6 @@ def _serve_loop(
                     controller.sleep(backoff.current)
                     backoff.step()
                     continue
-                for outcome in adopted:
-                    _log(
-                        sys.stderr,
-                        log_path,
-                        "auto_adopted",
-                        proposal=outcome.get("proposal_id"),
-                        issue=outcome.get("issue_id"),
-                        priority=config.triage.default_priority,
-                    )
             try:
                 issue = claim_next(
                     agent,
@@ -658,6 +663,22 @@ def _resolve_agent(agent: str | None, config: IssuekitConfig) -> str | None:
 
 def _triage_enabled(args, config: IssuekitConfig) -> bool:
     return bool(getattr(args, "triage", False) or config.triage.auto_adopt)
+
+
+def _run_triage_author_cycle(
+    args, *, config: IssuekitConfig, cwd: Path, log_path: Path
+) -> None:
+    def emit(event: str, **fields: object) -> None:
+        _log(sys.stderr, log_path, event, **fields)
+
+    run_triage_author_cycle(
+        config,
+        cwd,
+        timeout=float(args.timeout_sec),
+        log=emit,
+        out=sys.stderr,
+        err=sys.stderr,
+    )
 
 
 @contextmanager

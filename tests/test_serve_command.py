@@ -329,6 +329,52 @@ def test_serve_triage_auto_adopts_before_claiming(
     assert "event=submitted issue=1" in captured.err
 
 
+def test_serve_triage_uses_author_agent_when_configured(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    client = FakeIssuekitClient(
+        proposals=[
+            {
+                "id": 1,
+                "origin": "source#7@abc123",
+                "title": "Adopt me",
+                "body": "Body.",
+                "blocking": True,
+            }
+        ]
+    )
+    _configure_registered_api(
+        tmp_path,
+        monkeypatch,
+        client,
+        triage=(
+            "[triage]\n"
+            "author_agent = 'codex'\n"
+            "trusted_origins = ['source']\n"
+        ),
+    )
+    calls = {"author": 0, "mechanical": 0}
+
+    def fake_author_cycle(config, cwd, **kwargs):
+        calls["author"] += 1
+        assert kwargs.get("log") is not None
+        return []
+
+    def fake_mechanical(config):
+        calls["mechanical"] += 1
+        return []
+
+    monkeypatch.setattr(serve, "run_triage_author_cycle", fake_author_cycle)
+    monkeypatch.setattr(serve, "auto_adopt_incoming_proposals", fake_mechanical)
+
+    exit_code = cli.main(["serve", "--agent", "codex", "--once", "--triage"])
+
+    # No active issue to claim after triage, so the loop goes idle and exits 0.
+    assert exit_code == 0
+    assert calls == {"author": 1, "mechanical": 0}
+
+
 def test_serve_once_recovers_own_orphan_before_polling(
     tmp_path: Path,
     monkeypatch,

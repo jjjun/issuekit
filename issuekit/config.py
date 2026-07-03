@@ -61,6 +61,7 @@ class TriagePolicy:
     default_priority: str = "medium"
     require_blocking: bool = False
     max_adoptions_per_cycle: int = 5
+    author_agent: str = ""
 
 
 @dataclass(frozen=True)
@@ -363,6 +364,9 @@ def _load_triage_policy(raw: object) -> TriagePolicy:
     )
     if max_adoptions < 1:
         raise ValueError("triage.max_adoptions_per_cycle must be greater than zero.")
+    author_agent = str(raw.get("author_agent", TriagePolicy.author_agent)).strip()
+    if author_agent and not is_valid_workflow_token(author_agent):
+        raise ValueError(f"Invalid triage.author_agent token: {author_agent}")
     return TriagePolicy(
         auto_adopt=_bool_value(raw.get("auto_adopt", TriagePolicy.auto_adopt)),
         trusted_origins=trusted_origins,
@@ -371,6 +375,7 @@ def _load_triage_policy(raw: object) -> TriagePolicy:
             raw.get("require_blocking", TriagePolicy.require_blocking)
         ),
         max_adoptions_per_cycle=max_adoptions,
+        author_agent=author_agent,
     )
 
 
