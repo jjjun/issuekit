@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+import logging
 from pathlib import Path
 import threading
 
@@ -13,6 +14,7 @@ from issuekit.workflow import WorkflowError
 
 
 WORKER_HEARTBEAT_INTERVAL_SEC = 60.0
+LOGGER = logging.getLogger(__name__)
 
 
 class WorkerListingError(RuntimeError):
@@ -56,14 +58,24 @@ def _push_project_profile(
 ) -> None:
     """PUT the local project profile if one exists; never fail registration.
 
-    Tolerates a backend that predates mine-py#172 (404/405) and stale-source
-    rejections: such failures are logged through on_error and swallowed.
+    Tolerates a backend that predates project profiles (404/405) and stale
+    writes (HTTP 200 with stale:true): such failures are logged through
+    on_error and swallowed.
     """
     try:
         profile = load_project_profile(config, cwd)
         if profile is None:
             return
-        client.put_project_profile(**profile.to_payload())
+        response = client.put_project_profile(**profile.to_payload())
+        if bool(response.get("stale", False)):
+            exc = WorkflowError(
+                "Project profile push was stale; server kept the newer stored profile.",
+                code="stale_project_profile",
+            )
+            if on_error is not None:
+                on_error(exc)
+            else:
+                LOGGER.debug("%s", exc)
     except (WorkflowError, ValueError, OSError) as exc:
         if on_error is not None:
             on_error(exc)

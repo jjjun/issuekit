@@ -419,6 +419,34 @@ def test_add_cli_tolerates_profile_push_failure(
     assert "worker registry update failed" in capsys.readouterr().err
 
 
+def test_add_cli_logs_stale_project_profile_response(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from issuekit import worker_registry
+
+    client = StaleProfileRegistryClient()
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'demo'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    (tmp_path / "ISSUEKIT.md").write_text("# Demo\n", encoding="utf-8", newline="\n")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("ISSUEKIT_WORKER_REGISTRY", str(tmp_path / "workers.toml"))
+    monkeypatch.setattr("issuekit.worker.platform.node", lambda: "win-desktop")
+    monkeypatch.setattr(worker_registry, "IssuekitClient", lambda *args, **kwargs: client)
+
+    assert cli.main(["add", "--repo-id", "demo", "--worker-id", "checkout"]) == 0
+
+    assert len(client.calls) == 1
+    assert len(client.profile_calls) == 1
+    captured = capsys.readouterr()
+    assert "worker registry update failed" in captured.err
+    assert "stale" in captured.err
+
+
 class FakeRegistryClient:
     def __init__(self) -> None:
         self.calls: list[dict[str, str | None]] = []
@@ -464,6 +492,12 @@ class ProfileRejectingRegistryClient(FakeRegistryClient):
 
         self.profile_calls.append(kwargs)
         raise WorkflowError("profile endpoint not found", code="http_404")
+
+
+class StaleProfileRegistryClient(FakeRegistryClient):
+    def put_project_profile(self, **kwargs) -> dict[str, object]:
+        self.profile_calls.append(kwargs)
+        return {"project": "demo", **kwargs, "stale": True}
 
 
 class FailingRegistryClient:
