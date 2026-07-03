@@ -11,6 +11,7 @@ from issuekit import cli
 from issuekit import proposals_api
 from issuekit import store as store_module
 from issuekit import worker_registry
+from issuekit.agents.proposal_check import ProposalCheckDecision
 from issuekit.mcp.server import create_server
 from issuekit.testing import FakeIssuekitClient
 
@@ -86,7 +87,59 @@ def test_server_registers_expected_tools(tmp_path: Path) -> None:
         "list_outgoing",
         "adopt_proposal",
         "discard_proposal",
+        "run_proposal_checks",
     }
+
+
+def test_run_proposal_checks_tool_returns_decisions(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'demo'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    seen: dict[str, Any] = {}
+
+    def fake_cycle(config, root, **kwargs):
+        seen["project"] = config.project
+        seen["root"] = root
+        seen.update(kwargs)
+        return [
+            ProposalCheckDecision(
+                check_id=2,
+                target_project="demo",
+                proposal_id=5,
+                verdict="reject",
+                comment="Out of scope.",
+            )
+        ]
+
+    monkeypatch.setattr("issuekit.mcp.server.run_proposal_check_cycle", fake_cycle)
+    server = create_server(tmp_path)
+
+    decisions = _call(
+        server,
+        "run_proposal_checks",
+        {"agent": "codex", "timeout_sec": 12.0, "limit": 3},
+    )
+
+    assert decisions == [
+        {
+            "check_id": 2,
+            "target_project": "demo",
+            "proposal_id": 5,
+            "verdict": "reject",
+            "comment": "Out of scope.",
+            "status": "answered",
+        }
+    ]
+    assert seen["project"] == "demo"
+    assert seen["root"] == tmp_path
+    assert seen["agent"] == "codex"
+    assert seen["timeout"] == 12.0
+    assert seen["limit"] == 3
 
 
 def test_list_workers_returns_catalog(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

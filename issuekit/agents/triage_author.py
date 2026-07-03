@@ -24,10 +24,13 @@ import sys
 import threading
 from typing import Any, TextIO
 
-from issuekit.agents.runner import AgentResult, AgentRunner, resolve_adapter
+from issuekit.agents.proposal_eval import (
+    parse_newest_json_block,
+    run_readonly_proposal_evaluation,
+)
+from issuekit.agents.runner import AgentRunner, resolve_adapter
 from issuekit.config import IssuekitConfig
 from issuekit.core import has_non_ascii
-from issuekit.gitutil import git_status_short
 from issuekit.proposals import origin_destination
 from issuekit.proposals_api import (
     ProposalError,
@@ -41,10 +44,6 @@ from issuekit.workflow import WorkflowError
 
 
 TRIAGE_BLOCK_LANGUAGE = "triage"
-_TRIAGE_BLOCK_PATTERN = re.compile(
-    r"```triage[ \t]*\r?\n(?P<body>.*?)\r?\n```",
-    re.DOTALL,
-)
 _DECISIONS = {"adopt", "reply", "discard"}
 _DECISION_FIELD = {
     "adopt": "spec_markdown",
@@ -91,26 +90,13 @@ class TriageDecision:
 def parse_triage_output(stdout: str) -> dict[str, str]:
     """Parse the newest well-formed ```triage``` block from agent stdout."""
 
-    blocks = [match.group("body") for match in _TRIAGE_BLOCK_PATTERN.finditer(stdout)]
-    if not blocks:
-        raise TriageAuthorParseError("No ```triage``` block found in agent output.")
-
-    last_json_error: TriageAuthorParseError | None = None
-    for block in reversed(blocks):
-        try:
-            raw = json.loads(block.strip())
-        except json.JSONDecodeError as exc:
-            last_json_error = TriageAuthorParseError(
-                f"Triage block was not valid JSON: {exc.msg}."
-            )
-            continue
-        if not isinstance(raw, dict):
-            raise TriageAuthorParseError("Triage block JSON must be an object.")
-        return _decision_from_json(raw)
-
-    if last_json_error is not None:
-        raise last_json_error
-    raise TriageAuthorParseError("No well-formed ```triage``` block found.")
+    raw = parse_newest_json_block(
+        stdout,
+        language=TRIAGE_BLOCK_LANGUAGE,
+        block_label="Triage block",
+        error_factory=TriageAuthorParseError,
+    )
+    return _decision_from_json(raw)
 
 
 def _decision_from_json(raw: dict[str, object]) -> dict[str, str]:
@@ -242,40 +228,24 @@ def _evaluate_proposal(
     err: TextIO,
 ) -> dict[str, str]:
     proposal_id = int(proposal["id"])
-    run_dir = cwd / ".agent-runs"
-    run_dir.mkdir(exist_ok=True)
-    prompt_path = run_dir / f"triage-proposal-{proposal_id}.md"
-    prompt_path.write_text(
-        _render_triage_prompt(proposal),
-        encoding="utf-8",
-        newline="\n",
-    )
-    fingerprint_before = _worktree_fingerprint(cwd)
-
-    result = runner_factory().run(
-        adapter,
-        prompt_path,
-        cwd,
-        timeout=float(timeout),
-        agent_name=agent,
+    prompt_path = cwd / ".agent-runs" / f"triage-proposal-{proposal_id}.md"
+    stdout = run_readonly_proposal_evaluation(
+        proposal,
+        agent=agent,
+        adapter=adapter,
+        cwd=cwd,
+        timeout=timeout,
+        runner_factory=runner_factory,
+        err=err,
+        prompt_filename=prompt_path.name,
+        prompt_text=_render_triage_prompt(proposal),
         prompt_override=_prompt_pointer(prompt_path),
+        label="Triage",
+        mutation_log_message=(
+            "ERROR: triage-author run modified the worktree; ignoring its output."
+        ),
     )
-    if result.timed_out:
-        raise TimeoutError(f"Triage agent timed out for proposal #{proposal_id}.")
-    if result.exit_code != 0:
-        raise RuntimeError(
-            f"Triage agent exited {result.exit_code} for proposal #{proposal_id}."
-        )
-    fingerprint_after = _worktree_fingerprint(cwd)
-    if fingerprint_before != fingerprint_after:
-        print(
-            "ERROR: triage-author run modified the worktree; ignoring its output.",
-            file=err,
-        )
-        raise WorkflowError(
-            f"Triage agent modified the worktree for proposal #{proposal_id}."
-        )
-    return parse_triage_output(_stdout_text(result))
+    return parse_triage_output(stdout)
 
 
 def _apply_decision(
@@ -554,28 +524,3 @@ def _save_state(cwd: Path, state: Mapping[str, Mapping[str, str]]) -> None:
         encoding="utf-8",
         newline="\n",
     )
-
-
-def _worktree_fingerprint(cwd: Path) -> tuple[tuple[str, str], ...] | None:
-    status = git_status_short(cwd, strip=False, untracked_files="all")
-    if status is None:
-        return None
-    entries: list[tuple[str, str]] = []
-    for line in status.splitlines():
-        if len(line) < 4:
-            continue
-        raw_path = line[3:]
-        if " -> " in raw_path:
-            raw_path = raw_path.rsplit(" -> ", 1)[1]
-        raw_path = raw_path.strip('"')
-        path = Path(raw_path)
-        if path.parts and path.parts[0] == ".agent-runs":
-            continue
-        entries.append((line[:2], path.as_posix()))
-    return tuple(sorted(entries))
-
-
-def _stdout_text(result: AgentResult) -> str:
-    if result.parsed and "stdout" in result.parsed:
-        return result.parsed["stdout"]
-    return result.stdout_path.read_text(encoding="utf-8", errors="replace")

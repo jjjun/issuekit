@@ -8,6 +8,8 @@ from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
+from issuekit.agents.proposal_check import run_proposal_check_cycle
+from issuekit.agents.runner import AgentRunner
 from issuekit.author_guard import STOP_SENTINEL, create_author_guard, guard_dict
 from issuekit.commands.approve import approve_issue
 from issuekit.commands.edit import edit_issue
@@ -303,6 +305,29 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
         raw_id = proposal_id if proposal_id is not None else proposal_id_arg(proposal_file or "")
         with api_client(config) as client:
             return client.discard_proposal(int(raw_id))
+
+    @server.tool(
+        description=(
+            "Run one worker-side proposal-check cycle for this registered checkout: "
+            "poll checks addressed to this worker, evaluate with an agent, post results, "
+            "and adopt approved proposals."
+        )
+    )
+    def run_proposal_checks(
+        agent: str,
+        timeout_sec: float = 600.0,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        config = load_config(root)
+        decisions = run_proposal_check_cycle(
+            config,
+            root,
+            agent=agent,
+            timeout=timeout_sec,
+            limit=limit,
+            runner_factory=AgentRunner,
+        )
+        return [decision.to_dict() for decision in decisions]
 
     return server
 

@@ -26,10 +26,12 @@ class FakeIssuekitClient(FakeIssueSurface, FakeProposalSurface):
         self._workers: dict[str, JsonDict] = {}
         self._proposals: dict[int, JsonDict] = {}
         self._threads: dict[int, JsonDict] = {}
+        self._proposal_checks: dict[int, JsonDict] = {}
         self._profiles: dict[str, JsonDict] = {}
         self._next_id = 1
         self._next_proposal_id = 1
         self._next_thread_id = 1
+        self._next_proposal_check_id = 1
         self.calls: list[JsonDict] = []
         self.close_count = 0
         # Real IssuekitClient carries the target project; the fake defaults to the

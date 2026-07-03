@@ -1265,6 +1265,98 @@ def test_client_proposal_get_adopt_and_discard_paths() -> None:
     ]
 
 
+def test_client_proposal_check_paths_and_payloads() -> None:
+    seen: list[tuple[str, str, object, dict[str, list[str]]]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content) if request.content else None
+        seen.append((request.method, request.url.path, body, parse_qs(request.url.query.decode())))
+        if request.url.path == "/api/issues/proposal-checks":
+            return httpx.Response(
+                200,
+                json={
+                    "items": [
+                        {
+                            "id": 7,
+                            "target_project": "target",
+                            "proposal_id": 4,
+                            "target_worker": "m/r/w",
+                            "status": "pending",
+                        }
+                    ],
+                    "total": 1,
+                    "limit": 500,
+                    "offset": 0,
+                },
+            )
+        if request.url.path.endswith("/result"):
+            return httpx.Response(
+                200,
+                json={
+                    "id": 7,
+                    "target_project": "target",
+                    "proposal_id": 4,
+                    "status": "answered",
+                    "verdict": "approve",
+                    "comment": "Looks good.",
+                    "adopted_issue_ref": "target#9",
+                },
+            )
+        return httpx.Response(
+            201,
+            json={
+                "id": 7,
+                "target_project": "target",
+                "proposal_id": 4,
+                "target_worker": "m/r/w",
+                "status": "pending",
+            },
+        )
+
+    client = IssuekitClient(
+        "https://mine.example",
+        project="target",
+        token="static-token",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    assert client.create_proposal_check(4, target_worker="m/r/w")["id"] == 7
+    assert client.poll_proposal_checks(target_worker="m/r/w", status="pending")[0]["id"] == 7
+    result = client.post_proposal_check_result(
+        7,
+        project="target",
+        verdict="approve",
+        comment="Looks good.",
+        adopted_issue_ref="target#9",
+    )
+
+    assert result["status"] == "answered"
+    assert seen == [
+        (
+            "POST",
+            "/api/issues/target/proposals/4/checks",
+            {"target_worker": "m/r/w"},
+            {},
+        ),
+        (
+            "GET",
+            "/api/issues/proposal-checks",
+            None,
+            {"target_worker": ["m/r/w"], "status": ["pending"], "limit": ["50"], "offset": ["0"]},
+        ),
+        (
+            "POST",
+            "/api/issues/target/proposal-checks/7/result",
+            {
+                "verdict": "approve",
+                "comment": "Looks good.",
+                "adopted_issue_ref": "target#9",
+            },
+            {},
+        ),
+    ]
+
+
 def test_client_import_proposals_posts_wrapped_body() -> None:
     items = [
         {

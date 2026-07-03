@@ -500,6 +500,90 @@ class IssuekitClient:
         )
         return _ensure_dict(payload, "Proposal response")
 
+    def create_proposal_check(
+        self,
+        proposal_id: int,
+        *,
+        target_worker: str,
+        project: str | None = None,
+    ) -> JsonDict:
+        target_project = project or self.project
+        payload = self._authorized_request(
+            "POST",
+            f"/api/issues/{target_project}/proposals/{proposal_id}/checks",
+            json={"target_worker": target_worker},
+        )
+        return _ensure_dict(payload, "Proposal check response")
+
+    def list_proposal_checks(
+        self,
+        *,
+        target_worker: str,
+        status: str | None = None,
+        page_size: int = 500,
+    ) -> list[JsonDict]:
+        return list(
+            self._paginate(
+                "/api/issues/proposal-checks",
+                collection=None,
+                params={"target_worker": target_worker, "status": status},
+                page_label="Proposal check list response",
+                item_label="Proposal check response",
+                page_size=page_size,
+            )
+        )
+
+    def poll_proposal_checks(
+        self,
+        *,
+        target_worker: str,
+        status: str = "pending",
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[JsonDict]:
+        payload = self._authorized_request(
+            "GET",
+            "/api/issues/proposal-checks",
+            params=_drop_none(
+                {
+                    "target_worker": target_worker,
+                    "status": status,
+                    "limit": limit,
+                    "offset": offset,
+                }
+            ),
+        )
+        page = _ensure_dict(payload, "Proposal check list response")
+        items = page.get("items")
+        if not isinstance(items, list):
+            raise WorkflowError(
+                "Proposal check list response items was not a JSON array.",
+                code="invalid_response",
+            )
+        return [_ensure_dict(item, "Proposal check response") for item in items]
+
+    def post_proposal_check_result(
+        self,
+        check_id: int,
+        *,
+        project: str,
+        verdict: str,
+        comment: str | None = None,
+        adopted_issue_ref: str | None = None,
+    ) -> JsonDict:
+        payload = self._authorized_request(
+            "POST",
+            f"/api/issues/{project}/proposal-checks/{check_id}/result",
+            json=_drop_none(
+                {
+                    "verdict": verdict,
+                    "comment": comment,
+                    "adopted_issue_ref": adopted_issue_ref,
+                }
+            ),
+        )
+        return _ensure_dict(payload, "Proposal check response")
+
     def list_proposals(
         self,
         *,
