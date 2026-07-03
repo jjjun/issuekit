@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 from pathlib import Path
 
 import pytest
@@ -56,6 +57,23 @@ class FakeRunner:
 
 def _triage_block(**fields: str) -> str:
     return "```triage\n" + json.dumps(fields) + "\n```\n"
+
+
+def _write_skip_state(tmp_path: Path, proposal_id: int, body: str) -> None:
+    state_path = tmp_path / ".agent-runs" / "triage-author-state.json"
+    state_path.parent.mkdir(exist_ok=True)
+    state_path.write_text(
+        json.dumps(
+            {
+                str(proposal_id): {
+                    "body_sha": hashlib.sha256(body.encode("utf-8")).hexdigest(),
+                    "replied_at": "2026-01-01T00:00:00+00:00",
+                }
+            }
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
 
 
 def _setup(monkeypatch, tmp_path, *, proposals, outputs, author_agent="codex", extra=""):
@@ -132,6 +150,200 @@ def test_triage_author_adopt_appends_spec(monkeypatch, tmp_path) -> None:
     assert issue_id is not None
     assert client.get_issue(issue_id)["body"] == "Please.\n\n## Spec\n\nBuild it."
     assert ("triage_author_decision", {"proposal": 5, "decision": "adopt", "issue": issue_id}) in events
+
+
+def test_triage_author_adopt_discards_superseded_pending_proposal(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    old_body = "Needs clarification."
+    new_body = "Clear now.\n\nSupersedes: issuekit#10"
+    client, runner, config, events, log = _setup(
+        monkeypatch,
+        tmp_path,
+        proposals=[
+            {"id": 10, "origin": "mine-py#1@abc", "title": "Old", "body": old_body},
+            {"id": 11, "origin": "mine-py#1@def", "title": "New", "body": new_body},
+        ],
+        outputs=[_triage_block(decision="adopt", spec_markdown="## Spec\n\nBuild it.")],
+    )
+    _write_skip_state(tmp_path, 10, old_body)
+
+    decisions = run_triage_author_cycle(
+        config, tmp_path, runner_factory=lambda: runner, log=log
+    )
+
+    assert [d.proposal_id for d in decisions] == [11]
+    assert client.get_proposal(10)["status"] == "discarded"
+    assert client.get_proposal(11)["status"] == "adopted"
+    state = json.loads(
+        (tmp_path / ".agent-runs" / "triage-author-state.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert "10" not in state
+    assert (
+        "triage_author_superseded",
+        {"old_proposal": 10, "new_proposal": 11},
+    ) in events
+
+
+@pytest.mark.parametrize(
+    ("decision_block", "expected_new_status"),
+    [
+        (_triage_block(decision="reply", question="What endpoint?"), "pending"),
+        (_triage_block(decision="discard", reason="Belongs elsewhere."), "discarded"),
+    ],
+)
+def test_triage_author_non_adopt_decisions_do_not_touch_superseded_ref(
+    monkeypatch,
+    tmp_path,
+    decision_block,
+    expected_new_status,
+) -> None:
+    old_body = "Needs clarification."
+    new_body = "Clear now.\n\nSupersedes: issuekit#10"
+    client, runner, config, events, log = _setup(
+        monkeypatch,
+        tmp_path,
+        proposals=[
+            {"id": 10, "origin": "mine-py#1@abc", "title": "Old", "body": old_body},
+            {"id": 11, "origin": "mine-py#1@def", "title": "New", "body": new_body},
+        ],
+        outputs=[decision_block],
+    )
+    _write_skip_state(tmp_path, 10, old_body)
+
+    run_triage_author_cycle(config, tmp_path, runner_factory=lambda: runner, log=log)
+
+    assert client.get_proposal(10)["status"] == "pending"
+    assert client.get_proposal(11)["status"] == expected_new_status
+    state = json.loads(
+        (tmp_path / ".agent-runs" / "triage-author-state.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert "10" in state
+    assert not any(event == "triage_author_superseded" for event, _ in events)
+
+
+@pytest.mark.parametrize(
+    ("body", "reason"),
+    [
+        ("Clear now.\n\nSupersedes: issuekit#999", "missing"),
+        ("Clear now.\n\nSupersedes: not-a-ref", "malformed"),
+        ("Clear now.\n\nSupersedes: other#10", "foreign_project"),
+    ],
+)
+def test_triage_author_adopt_ignores_unusable_supersedes_refs(
+    monkeypatch,
+    tmp_path,
+    body,
+    reason,
+) -> None:
+    client, runner, config, events, log = _setup(
+        monkeypatch,
+        tmp_path,
+        proposals=[
+            {"id": 11, "origin": "mine-py#1@def", "title": "New", "body": body},
+        ],
+        outputs=[_triage_block(decision="adopt", spec_markdown="## Spec\n\nBuild it.")],
+    )
+
+    decisions = run_triage_author_cycle(
+        config, tmp_path, runner_factory=lambda: runner, log=log
+    )
+
+    assert [d.decision for d in decisions] == ["adopt"]
+    assert client.get_proposal(11)["status"] == "adopted"
+    assert any(
+        event == "triage_author_superseded_ignored"
+        and fields["reason"] == reason
+        for event, fields in events
+    )
+
+
+def test_triage_author_adopt_ignores_non_pending_superseded_ref(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    body = "Clear now.\n\nSupersedes: issuekit#10"
+    client, runner, config, events, log = _setup(
+        monkeypatch,
+        tmp_path,
+        proposals=[
+            {
+                "id": 10,
+                "origin": "mine-py#1@abc",
+                "title": "Old",
+                "body": "Old.",
+                "status": "discarded",
+            },
+            {"id": 11, "origin": "mine-py#1@def", "title": "New", "body": body},
+        ],
+        outputs=[_triage_block(decision="adopt", spec_markdown="## Spec\n\nBuild it.")],
+    )
+
+    run_triage_author_cycle(config, tmp_path, runner_factory=lambda: runner, log=log)
+
+    assert client.get_proposal(10)["status"] == "discarded"
+    assert client.get_proposal(11)["status"] == "adopted"
+    assert (
+        "triage_author_superseded_ignored",
+        {
+            "old_proposal": 10,
+            "new_proposal": 11,
+            "ref": "issuekit#10",
+            "reason": "not_pending",
+            "status": "discarded",
+        },
+    ) in events
+
+
+def test_triage_author_adopt_keeps_adoption_when_superseded_discard_fails(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    old_body = "Needs clarification."
+    new_body = "Clear now.\n\nSupersedes: issuekit#10"
+    client, runner, config, events, log = _setup(
+        monkeypatch,
+        tmp_path,
+        proposals=[
+            {"id": 10, "origin": "mine-py#1@abc", "title": "Old", "body": old_body},
+            {"id": 11, "origin": "mine-py#1@def", "title": "New", "body": new_body},
+        ],
+        outputs=[_triage_block(decision="adopt", spec_markdown="## Spec\n\nBuild it.")],
+    )
+    _write_skip_state(tmp_path, 10, old_body)
+    original_discard = client.discard_proposal
+
+    def fail_old_discard(proposal_id: int):
+        if proposal_id == 10:
+            raise proposals_api.ProposalError("discard unavailable")
+        return original_discard(proposal_id)
+
+    monkeypatch.setattr(client, "discard_proposal", fail_old_discard)
+
+    decisions = run_triage_author_cycle(
+        config, tmp_path, runner_factory=lambda: runner, log=log
+    )
+
+    assert [d.decision for d in decisions] == ["adopt"]
+    assert decisions[0].error is None
+    assert client.get_proposal(10)["status"] == "pending"
+    assert client.get_proposal(11)["status"] == "adopted"
+    state = json.loads(
+        (tmp_path / ".agent-runs" / "triage-author-state.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert "10" in state
+    assert any(
+        event == "triage_author_superseded_ignored"
+        and fields["reason"] == "discard_failed"
+        for event, fields in events
+    )
 
 
 def test_triage_author_discard(monkeypatch, tmp_path) -> None:

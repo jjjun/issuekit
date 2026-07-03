@@ -752,6 +752,49 @@ def test_auto_adopt_incoming_proposals_filters_policy_and_caps(monkeypatch) -> N
     assert client.get_proposal(4)["status"] == "pending"
 
 
+def test_auto_adopt_incoming_proposals_does_not_discard_superseded_refs(
+    monkeypatch,
+) -> None:
+    client = FakeIssuekitClient(
+        proposals=[
+            {
+                "id": 1,
+                "origin": "source#1@abc123",
+                "title": "Original",
+                "body": "Original body.",
+                "blocking": True,
+            },
+            {
+                "id": 2,
+                "origin": "source#2@def456",
+                "title": "Amended",
+                "body": "Amended body.\n\nSupersedes: target#1",
+                "blocking": True,
+            },
+        ]
+    )
+    config = IssuekitConfig(
+        api_url="https://mine.example",
+        project="target",
+        triage=TriagePolicy(
+            trusted_origins=("source",),
+            require_blocking=True,
+            max_adoptions_per_cycle=2,
+        ),
+    )
+    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+
+    adopted = proposals_api.auto_adopt_incoming_proposals(config)
+
+    assert [item["proposal_id"] for item in adopted] == ["1", "2"]
+    assert client.get_proposal(1)["status"] == "adopted"
+    assert client.get_proposal(2)["status"] == "adopted"
+    assert [call["method"] for call in client.calls] == [
+        "adopt_proposal",
+        "adopt_proposal",
+    ]
+
+
 def test_api_cli_adopt_requires_integer_id(tmp_path: Path, monkeypatch, capsys) -> None:
     (tmp_path / "issuekit.toml").write_text(
         "api_url = 'https://mine.example'\nproject = 'target'\n",

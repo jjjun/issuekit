@@ -52,6 +52,9 @@ _DECISION_FIELD = {
     "discard": "reason",
 }
 STATE_FILENAME = "triage-author-state.json"
+_SUPERSEDES_LINE_PATTERN = re.compile(
+    r"^\s*Supersedes:\s*(?P<project>[A-Za-z0-9_.-]+)#(?P<id>[1-9][0-9]*)\s*$"
+)
 
 LogFn = Callable[..., None]
 
@@ -298,6 +301,12 @@ def _apply_decision(
                 append_text=spec,
             )
             state.pop(str(proposal_id), None)
+            _discard_superseded_pending_proposal(
+                proposal,
+                config=config,
+                state=state,
+                emit=emit,
+            )
             return TriageDecision(
                 proposal_id=proposal_id,
                 origin=origin,
@@ -333,6 +342,87 @@ def _apply_decision(
             detail="",
             error=str(exc),
         )
+
+
+def _discard_superseded_pending_proposal(
+    proposal: Mapping[str, Any],
+    *,
+    config: IssuekitConfig,
+    state: dict[str, dict[str, str]],
+    emit: LogFn,
+) -> None:
+    proposal_id = int(proposal["id"])
+    superseded_id, ignored_reason, ref = _local_supersedes_ref(
+        str(proposal.get("body", "")),
+        project=config.project,
+    )
+    if superseded_id is None:
+        if ignored_reason is not None:
+            emit(
+                "triage_author_superseded_ignored",
+                new_proposal=proposal_id,
+                ref=ref,
+                reason=ignored_reason,
+            )
+        return
+
+    try:
+        with api_client(config) as client:
+            superseded = client.get_proposal(superseded_id)
+            if superseded.get("status") != "pending":
+                emit(
+                    "triage_author_superseded_ignored",
+                    old_proposal=superseded_id,
+                    new_proposal=proposal_id,
+                    ref=ref,
+                    reason="not_pending",
+                    status=superseded.get("status"),
+                )
+                return
+            client.discard_proposal(superseded_id)
+    except (ProposalError, WorkflowError, ValueError, TimeoutError) as exc:
+        reason = (
+            "missing"
+            if isinstance(exc, WorkflowError)
+            and exc.code in {"not_found", "http_404"}
+            else "discard_failed"
+        )
+        emit(
+            "triage_author_superseded_ignored",
+            old_proposal=superseded_id,
+            new_proposal=proposal_id,
+            ref=ref,
+            reason=reason,
+            error=str(exc),
+        )
+        return
+
+    state.pop(str(superseded_id), None)
+    emit(
+        "triage_author_superseded",
+        old_proposal=superseded_id,
+        new_proposal=proposal_id,
+    )
+
+
+def _local_supersedes_ref(
+    body: str,
+    *,
+    project: str,
+) -> tuple[int | None, str | None, str | None]:
+    for line in body.splitlines():
+        stripped = line.strip()
+        if not stripped.lower().startswith("supersedes:"):
+            continue
+        match = _SUPERSEDES_LINE_PATTERN.match(stripped)
+        if match is None:
+            return None, "malformed", stripped
+        ref_project = match.group("project")
+        ref = f"{ref_project}#{match.group('id')}"
+        if ref_project != project:
+            return None, "foreign_project", ref
+        return int(match.group("id")), None, ref
+    return None, None, None
 
 
 def _send_reply(
