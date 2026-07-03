@@ -42,6 +42,7 @@ EXPECTED_COMMANDS = {
     "outgoing",
     "adopt",
     "discard",
+    "request",
     "triage",
     "profile",
 }
@@ -156,6 +157,7 @@ def test_handlers_are_stubs(command: str) -> None:
         "outgoing",
         "adopt",
         "discard",
+        "request",
         "triage",
         "profile",
     }:

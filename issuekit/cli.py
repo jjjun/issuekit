@@ -26,6 +26,7 @@ from issuekit.commands import (
     propose,
     protocol,
     queue,
+    request,
     review,
     runs,
     serve,
@@ -63,6 +64,7 @@ COMMAND_MODULES = (
     dev_tool,
     profile,
     propose,
+    request,
     triage,
 )
 

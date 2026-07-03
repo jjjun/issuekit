@@ -72,6 +72,15 @@ class TriagePolicy:
 
 
 @dataclass(frozen=True)
+class RouterPolicy:
+    """PM router policy for request-to-proposal routing."""
+
+    agent: str = ""
+    max_targets: int = 3
+    max_clarify_rounds: int = 2
+
+
+@dataclass(frozen=True)
 class IssuekitConfig:
     api_url: str = ""
     project: str = "issuekit"
@@ -89,6 +98,7 @@ class IssuekitConfig:
     profile_summary: str = ""
     profile_tags: tuple[str, ...] = ()
     triage: TriagePolicy = field(default_factory=TriagePolicy)
+    router: RouterPolicy = field(default_factory=RouterPolicy)
     agents: tuple[tuple[str, AgentRunConfig], ...] = (
         (
             "kimi",
@@ -209,6 +219,7 @@ def load_config(cwd: Path | str = ".") -> IssuekitConfig:
     _validate_default_reviewer(default_reviewer, assignees)
     agents = _load_agents(raw_config.get("agents", {}))
     triage = _load_triage_policy(raw_config.get("triage", {}))
+    router = _load_router_policy(raw_config.get("router", {}))
     worker_role = _worker_metadata(
         raw_config.get("worker_role"), field="worker_role", max_len=WORKER_ROLE_MAX_LEN
     )
@@ -254,6 +265,7 @@ def load_config(cwd: Path | str = ".") -> IssuekitConfig:
         profile_summary=profile_summary,
         profile_tags=profile_tags,
         triage=triage,
+        router=router,
         agents=agents,
     )
 
@@ -410,6 +422,29 @@ def _load_triage_policy(raw: object) -> TriagePolicy:
         ),
         max_adoptions_per_cycle=max_adoptions,
         author_agent=author_agent,
+    )
+
+
+def _load_router_policy(raw: object) -> RouterPolicy:
+    if not raw:
+        return RouterPolicy()
+    if not isinstance(raw, dict):
+        raise ValueError("router config must be a table.")
+    agent = str(raw.get("agent", RouterPolicy.agent)).strip()
+    if agent and not is_valid_workflow_token(agent):
+        raise ValueError(f"Invalid router.agent token: {agent}")
+    max_targets = int(raw.get("max_targets", RouterPolicy.max_targets))
+    if max_targets < 1:
+        raise ValueError("router.max_targets must be greater than zero.")
+    max_clarify_rounds = int(
+        raw.get("max_clarify_rounds", RouterPolicy.max_clarify_rounds)
+    )
+    if max_clarify_rounds < 0:
+        raise ValueError("router.max_clarify_rounds must be zero or greater.")
+    return RouterPolicy(
+        agent=agent,
+        max_targets=max_targets,
+        max_clarify_rounds=max_clarify_rounds,
     )
 
 

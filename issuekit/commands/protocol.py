@@ -18,7 +18,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     )
     protocol_parser.add_argument(
         "--role",
-        choices=("author", "implementer", "reviewer", "triage"),
+        choices=("author", "implementer", "pm", "reviewer", "triage"),
         help="Print the protocol for a specific role instead of the agent default.",
     )
     protocol_parser.set_defaults(func=run)

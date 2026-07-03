@@ -57,6 +57,7 @@ def test_render_protocol_returns_each_agent_and_both() -> None:
     assert "work is incomplete" in claude
     assert "Handoff protocol (author)" in both
     assert "Handoff protocol (implementer)" in both
+    assert "Handoff protocol (pm)" in both
     assert "Handoff protocol (reviewer)" in both
     assert "Handoff protocol (triage)" in both
     assert "The implementer handles issuekit tasks" in both
@@ -97,6 +98,18 @@ def test_render_protocol_returns_triage_role() -> None:
     assert "issuekit serve --triage" in triage
     assert "issuekit propose --blocking" in triage
     triage.encode("ascii")
+
+
+def test_render_protocol_returns_pm_role() -> None:
+    pm = render_protocol(role="pm")
+    assert "Delegation cycle overview" in pm
+    assert "Handoff protocol (pm)" in pm
+    assert 'issuekit request "Add dashboard export support"' in pm
+    assert "issuekit request --answer 7" in pm
+    assert "issuekit request --status --json" in pm
+    assert "Do not run `issuekit claim`" in pm
+    assert "Target projects" in pm
+    pm.encode("ascii")
 
 
 def test_render_protocol_rejects_unknown_role() -> None:
@@ -144,6 +157,16 @@ def test_protocol_command_prints_author_role_text(capsys: pytest.CaptureFixture[
     captured.out.encode("ascii")
 
 
+def test_protocol_command_prints_pm_role_text(capsys: pytest.CaptureFixture[str]) -> None:
+    exit_code = cli.main(["protocol", "--role", "pm"])
+
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert captured.out == render_protocol(role="pm")
+    captured.out.encode("ascii")
+
+
 def test_protocol_command_prints_both_agents(capsys: pytest.CaptureFixture[str]) -> None:
     exit_code = cli.main(["protocol"])
 
@@ -154,6 +177,7 @@ def test_protocol_command_prints_both_agents(capsys: pytest.CaptureFixture[str])
     assert "Delegation cycle overview" in captured.out
     assert "Handoff protocol (author)" in captured.out
     assert "Handoff protocol (implementer)" in captured.out
+    assert "Handoff protocol (pm)" in captured.out
     assert "Handoff protocol (reviewer)" in captured.out
 
 
@@ -162,6 +186,7 @@ def test_render_server_instructions_includes_cycle_and_pointer() -> None:
     assert "Delegation cycle overview" in lean
     assert 'get_protocol(role="author")' in lean
     assert 'get_protocol(role="implementer")' in lean
+    assert 'get_protocol(role="pm")' in lean
     assert 'get_protocol(role="reviewer")' in lean
     assert 'get_protocol(role="triage")' in lean
     assert "author" in lean
@@ -177,7 +202,7 @@ def test_render_server_instructions_is_substantially_smaller_than_full() -> None
 
 
 def test_render_protocol_roles_remain_self_contained() -> None:
-    for role in ("author", "implementer", "reviewer", "triage"):
+    for role in ("author", "implementer", "pm", "reviewer", "triage"):
         rendered = render_protocol(role=role)
         assert "Delegation cycle overview" in rendered
         assert f"Handoff protocol ({role})" in rendered
@@ -187,7 +212,7 @@ def test_render_protocol_roles_remain_self_contained() -> None:
 def test_authoring_constraints_block_present_for_each_role() -> None:
     # The block lives in the shared cycle overview, so every role and the
     # server instructions surface it without per-role duplication.
-    for role in ("author", "implementer", "reviewer", "triage"):
+    for role in ("author", "implementer", "pm", "reviewer", "triage"):
         rendered = render_protocol(role=role)
         assert "Authoring constraints:" in rendered
         assert "must be ASCII-only" in rendered

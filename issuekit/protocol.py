@@ -156,6 +156,49 @@ hard cross-project dependencies when the target requires blocking proposals.
 """
 
 
+PM_PROTOCOL = """# Handoff protocol (pm)
+
+The PM role receives user development requests that may span projects, routes
+them to owning projects as thin proposals, and then stops. A PM checkout has
+its own registered worker identity and API project. It proposes only; it never
+claims, implements, reviews, approves, or completes work.
+
+1. Register the dedicated PM checkout with `issuekit add`.
+2. Route a new request with `issuekit request "<text>"`. The router reads
+   project capability profiles, excludes stale profiles and the PM project,
+   and sends one or more dependency-first proposals to target projects.
+3. If the router asks for clarification, answer in the same PM checkout with
+   `issuekit request --answer <request-id> "<answer>"`. Clarifications are
+   synchronous and stay in the request state; do not turn them into proposals.
+4. Track what happened with `issuekit request --status <request-id>` or list
+   all routed requests with `issuekit request --status --json`. Status reads
+   outgoing proposal state so the requester can see pending, adopted, or
+   discarded target proposals and adopted issue refs.
+5. If the router rejects the request, report the reason and stop. If the
+   request exceeds the configured target cap, ask one concrete clarification
+   question or reject it.
+
+Copyable CLI examples:
+
+- Register PM checkout: `issuekit add`
+- Route request: `issuekit request "Add dashboard export support"`
+- Dry run routing: `issuekit request "Add dashboard export support" --dry-run --json`
+- Answer clarification: `issuekit request --answer 7 "CSV export is enough for v1."`
+- Check one request: `issuekit request --status 7`
+- Check all requests: `issuekit request --status --json`
+
+PM invariants:
+
+- Do not run `issuekit claim`, `issuekit implement`, `issuekit submit-review`,
+  `issuekit request-changes`, `issuekit approve`, or `issuekit complete`.
+- Do not mutate target project issue lifecycle state directly. Target projects
+  own inbox triage and turn thin proposals into implementation-ready issues.
+- Work dependency-first: upstream API or contract owners receive proposals
+  before downstream consumers, and downstream proposals reference the upstream
+  proposal or issue with `--depends-on` semantics.
+"""
+
+
 IMPLEMENTER_PROTOCOL = """# Handoff protocol (implementer)
 
 The implementer handles issuekit tasks from the API-backed project queue. Any
@@ -333,6 +376,7 @@ same implementation and emit the same structured output.
 _ROLE_PROTOCOLS = {
     "author": AUTHOR_PROTOCOL,
     "implementer": IMPLEMENTER_PROTOCOL,
+    "pm": PM_PROTOCOL,
     "reviewer": REVIEWER_PROTOCOL,
     "triage": TRIAGE_PROTOCOL,
 }
@@ -349,6 +393,7 @@ To see the full protocol steps for your role, call:
 
 - `get_protocol(role="author")` for the author protocol
 - `get_protocol(role="implementer")` for the implementer protocol
+- `get_protocol(role="pm")` for the PM router protocol
 - `get_protocol(role="reviewer")` for the reviewer protocol
 - `get_protocol(role="triage")` for the proposal-inbox triage protocol
 """
@@ -362,6 +407,7 @@ def render_protocol(agent: str | None = None, role: str | None = None) -> str:
                 CYCLE_PROTOCOL.rstrip(),
                 AUTHOR_PROTOCOL.rstrip(),
                 IMPLEMENTER_PROTOCOL.rstrip(),
+                PM_PROTOCOL.rstrip(),
                 REVIEWER_PROTOCOL.rstrip(),
                 TRIAGE_PROTOCOL,
             )
