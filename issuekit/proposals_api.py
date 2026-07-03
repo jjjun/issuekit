@@ -10,7 +10,7 @@ from typing import Any
 
 from issuekit.client import IssuekitClient
 from issuekit.config import IssuekitConfig, load_config
-from issuekit.core import Issue, parse_issue_id_arg
+from issuekit.core import ASCII_ONLY_HINT, Issue, has_non_ascii, parse_issue_id_arg
 from issuekit.gitutil import git_short_head
 from issuekit.proposals import Proposal, ProposalError, origin_destination
 from issuekit.refs import RefError, list_effective_refs
@@ -326,6 +326,10 @@ def build_proposal(
         raise ProposalError("--title is required unless --from-issue or --reply provides one.")
 
     proposal_body = _proposal_body(body, body_file, source_issue)
+    if has_non_ascii(title) or has_non_ascii(proposal_body):
+        raise ProposalError(
+            f"--title/--body must be ASCII-only. {ASCII_ONLY_HINT}"
+        )
     dependency_refs = _proposal_dependency_refs(depends_on, proposal_body)
     origin_id = str(source_issue.id) if source_issue is not None and source_issue.id is not None else "0"
     origin_project = config.project

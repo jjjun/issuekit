@@ -69,6 +69,19 @@ Local issues vs. cross-project proposals:
   `issuekit complete <id> --force --summary "Superseded by proposal <ref>"`
   and an audit-style verification note.
 
+Authoring constraints:
+
+- All author-supplied workflow text must be ASCII-only: issue and proposal
+  title and body, review summary/verification/notes, and edit/append text.
+  Write bodies in English and check before submitting; non-ASCII input
+  (em dashes, curly quotes, non-English characters) is rejected at author,
+  propose, edit, submit-review, request-changes, approve, and complete.
+- Mentioning another configured project ref in a local issue body triggers the
+  cross-project preflight and blocks direct creation with `issuekit author`.
+  Decision rule: if the change belongs to the other project, send
+  `issuekit propose --to <project>`; if the issue is genuinely local and only
+  references the other project, rerun with `--direct-local-author`.
+
 Separation-of-duties invariants:
 
 - The author role and implementer role must be different sessions. If the same
@@ -85,6 +98,7 @@ Copyable CLI examples:
 
 - Register worker: `issuekit add`
 - Author: `issuekit author --title "Short title" --body-file issue.md --priority medium --agent codex`
+- Author a local issue that references another project: `issuekit author --title "Short title" --body-file issue.md --direct-local-author`
 - Claim next: `issuekit claim --assignee codex`
 - Claim specific issue: `issuekit claim --id 123 --assignee codex`
 - Submit review: `issuekit submit-review 123 --summary "Implemented." --branch main --commit abc123`

@@ -728,6 +728,31 @@ def test_mcp_propose_attaches_dependency_refs(tmp_path: Path, monkeypatch) -> No
     assert client.calls[0]["body"]["depends_on"] == ["mine-py#42"]
 
 
+def test_mcp_propose_rejects_non_ascii_body(tmp_path: Path, monkeypatch) -> None:
+    client = FakeIssuekitClient()
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'target'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    server = create_server(tmp_path)
+
+    with pytest.raises(Exception, match="must be ASCII-only"):
+        _call(
+            server,
+            "propose",
+            {
+                "to": "other_project",
+                "title": "Clean title",
+                "body": "Body with an em dash — here.",
+            },
+        )
+
+    # Fail fast: the rejected proposal must never reach the API client.
+    assert client.calls == []
+
+
 def test_mcp_list_outgoing_scopes_to_own_origin(tmp_path: Path, monkeypatch) -> None:
     client = FakeIssuekitClient(
         proposals=[

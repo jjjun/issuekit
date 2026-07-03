@@ -6,7 +6,7 @@ from collections.abc import Callable
 import sys
 from typing import TypeVar
 
-from issuekit.core import has_non_ascii
+from issuekit.core import ASCII_ONLY_HINT, has_non_ascii
 from issuekit.workflow import WorkflowError
 
 
@@ -47,7 +47,7 @@ def active_issue_not_found(issue_id: int) -> str:
 
 def require_ascii(*values: str, message: str) -> None:
     if any(has_non_ascii(value) for value in values):
-        raise ValueError(message)
+        raise ValueError(f"{message} {ASCII_ONLY_HINT}")
 
 
 def _error_message(message: ErrorMessage, exc: BaseException) -> str:

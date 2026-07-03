@@ -109,5 +109,10 @@ def has_non_ascii(text: str) -> bool:
     return bool(NON_ASCII_PATTERN.search(text))
 
 
+# Appended to ASCII-only rejection messages so agents can self-correct the
+# common culprits instead of guessing what tripped the check.
+ASCII_ONLY_HINT = "Replace em dashes, curly quotes, and non-English text."
+
+
 def is_valid_workflow_token(value: str) -> bool:
     return value == "" or bool(WORKFLOW_TOKEN_PATTERN.fullmatch(value))

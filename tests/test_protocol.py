@@ -182,3 +182,22 @@ def test_render_protocol_roles_remain_self_contained() -> None:
         assert "Delegation cycle overview" in rendered
         assert f"Handoff protocol ({role})" in rendered
         rendered.encode("ascii")
+
+
+def test_authoring_constraints_block_present_for_each_role() -> None:
+    # The block lives in the shared cycle overview, so every role and the
+    # server instructions surface it without per-role duplication.
+    for role in ("author", "implementer", "reviewer", "triage"):
+        rendered = render_protocol(role=role)
+        assert "Authoring constraints:" in rendered
+        assert "must be ASCII-only" in rendered
+        assert "--direct-local-author" in rendered
+    server = render_server_instructions()
+    assert "Authoring constraints:" in server
+    assert "--direct-local-author" in server
+
+
+def test_authoring_constraints_block_appears_once() -> None:
+    # Single source of truth: the block is not copy-pasted into each role text.
+    both = render_protocol(None)
+    assert both.count("Authoring constraints:") == 1

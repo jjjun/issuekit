@@ -5,6 +5,7 @@ from __future__ import annotations
 from issuekit.config import IssuekitConfig
 from issuekit.author_guard import enforce_no_author_guard
 from issuekit.core import (
+    ASCII_ONLY_HINT,
     Issue,
     VALID_ISSUE_PRIORITIES,
     has_non_ascii,
@@ -273,7 +274,7 @@ def _validate_stage(value: str, config: IssuekitConfig) -> None:
 
 def _validate_ascii_text(value: str, label: str) -> None:
     if has_non_ascii(value):
-        raise WorkflowError(f"{label} must be ASCII-only.")
+        raise WorkflowError(f"{label} must be ASCII-only. {ASCII_ONLY_HINT}")
 
 
 def _ensure_store(config: IssuekitConfig, store):

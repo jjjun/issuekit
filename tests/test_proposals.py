@@ -374,6 +374,70 @@ def test_api_cli_propose_rejects_invalid_dependency_ref(
     assert "Invalid dependency reference" in capsys.readouterr().err
 
 
+def test_api_cli_propose_rejects_non_ascii_body(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    # No client mock: the ASCII check must fail fast in build_proposal, before
+    # any API call, so a missing client would not matter.
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'source'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    assert (
+        cli.main(
+            [
+                "propose",
+                "--to",
+                "target",
+                "--title",
+                "Clean title",
+                "--body",
+                "Body with an em dash — here.",
+            ]
+        )
+        == 1
+    )
+
+    err = capsys.readouterr().err
+    assert "--title/--body must be ASCII-only." in err
+    assert "em dashes" in err
+
+
+def test_api_cli_propose_rejects_non_ascii_title(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'source'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    assert (
+        cli.main(
+            [
+                "propose",
+                "--to",
+                "target",
+                "--title",
+                "Cur“ly” quotes",
+                "--body",
+                "Clean body.",
+            ]
+        )
+        == 1
+    )
+
+    assert "--title/--body must be ASCII-only." in capsys.readouterr().err
+
+
 def test_api_cli_propose_from_issue_reads_api_store(
     tmp_path: Path,
     monkeypatch,
