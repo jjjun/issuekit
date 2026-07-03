@@ -43,7 +43,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
 def run_show(args) -> int:
     def action() -> int:
         guard = read_author_guard(Path.cwd())
-        if args.json:
+        if getattr(args, "json", False):
             print(json.dumps({"authorGuard": guard_dict(guard)}, indent=2))
             return 0
         if guard is None:

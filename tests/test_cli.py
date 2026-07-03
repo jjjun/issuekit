@@ -118,6 +118,22 @@ def test_complete_requires_id(capsys: pytest.CaptureFixture[str]) -> None:
     assert "id" in captured.err
 
 
+def test_author_guard_bare_command_shows_guard(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = cli.main(["author-guard"])
+
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "No author-session guard." in captured.out
+    assert captured.err == ""
+
+
 @pytest.mark.parametrize("command", sorted(EXPECTED_COMMANDS))
 def test_handlers_are_stubs(command: str) -> None:
     if command in {
