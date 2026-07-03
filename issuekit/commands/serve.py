@@ -271,6 +271,7 @@ def _serve_loop(
                     priority=args.priority,
                     config=config,
                     store=store,
+                    cwd=cwd,
                 )
             except (TimeoutError, WorkflowError, ValueError) as exc:
                 _log(sys.stderr, log_path, "claim_error", error=str(exc), backoff=backoff.current)

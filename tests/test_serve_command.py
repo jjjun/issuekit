@@ -655,6 +655,83 @@ def test_serve_loop_reuses_store_across_idle_polls(monkeypatch, tmp_path: Path) 
     assert stores[1].close_count == 1
 
 
+def test_serve_loop_claim_ignores_author_guard_outside_configured_cwd(
+    monkeypatch, tmp_path: Path
+) -> None:
+    # Regression for issuekit#152: the claim path must resolve the author-session
+    # guard against the loop's configured cwd, not the process working directory.
+    # A live guard in the process CWD must not block a serve loop given another cwd.
+    from issuekit.author_guard import create_author_guard
+
+    class Args:
+        priority = None
+        once = True
+        interval = 0
+        timeout_sec = 1
+        max_issues = None
+
+    class StopController:
+        requested = False
+
+        def __init__(self) -> None:
+            self.abort_event = serve.threading.Event()
+
+        def sleep(self, seconds: float) -> bool:
+            return True
+
+    class IdleStore:
+        def __init__(self) -> None:
+            self.claim_count = 0
+            self.close_count = 0
+
+        def claim_next(self, **kwargs):
+            self.claim_count += 1
+            return None
+
+        def close(self) -> None:
+            self.close_count += 1
+
+    process_cwd = tmp_path / "process"
+    loop_cwd = tmp_path / "loop"
+    process_cwd.mkdir()
+    loop_cwd.mkdir()
+
+    config = serve.IssuekitConfig(api_url="https://mine.example")
+    # Live author guard in the PROCESS cwd only; the loop's cwd has none.
+    create_author_guard(
+        process_cwd,
+        config=config,
+        kind="issue",
+        item_id=152,
+        ref="issuekit#152",
+        author_agent="claude",
+    )
+    monkeypatch.chdir(process_cwd)
+
+    stores: list[IdleStore] = []
+
+    def fake_get_store(config):
+        store = IdleStore()
+        stores.append(store)
+        return store
+
+    monkeypatch.setattr(serve, "get_store", fake_get_store)
+
+    exit_code = serve._serve_loop(
+        Args(),
+        agent="codex",
+        config=config,
+        cwd=loop_cwd,
+        issues_dir=loop_cwd / "docs" / "issues",
+        log_path=loop_cwd / "serve.log",
+        controller=StopController(),
+    )
+
+    # The guard in process_cwd must not be consulted: the claim reaches the store.
+    assert exit_code == 0
+    assert stores[0].claim_count == 1
+
+
 def test_serve_sigint_during_idle_releases_lock(
     tmp_path: Path,
     monkeypatch,
