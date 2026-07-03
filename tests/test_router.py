@@ -97,6 +97,12 @@ def _setup(monkeypatch, tmp_path, outputs, *, profiles=None, extra_router: str =
     return clients, fake_runner
 
 
+def _write_request_state(tmp_path: Path, state: dict) -> None:
+    state_path = tmp_path / ".agent-runs" / "pm-requests.json"
+    state_path.parent.mkdir()
+    state_path.write_text(json.dumps(state, indent=2), encoding="utf-8", newline="\n")
+
+
 def test_load_config_reads_router_policy(tmp_path: Path) -> None:
     _write_config(tmp_path, extra_router="max_targets = 2\nmax_clarify_rounds = 1\n")
 
@@ -287,6 +293,173 @@ def test_request_stops_on_send_failure_and_resume_skips_sent_target(
     assert [target["proposal_ref"] for target in payload["targets"]] == ["api#1", "ui#1"]
     assert len(clients["api"].calls) == 1
     assert clients["ui"].calls[0]["body"]["depends_on"] == ["api#1"]
+
+
+def test_request_link_records_existing_proposal_for_unsent_target(
+    monkeypatch,
+    tmp_path,
+    capsys,
+) -> None:
+    _write_config(tmp_path)
+    clients = _clients(monkeypatch, [])
+    ui_client = FakeIssuekitClient()
+    clients["ui"] = ui_client
+    ui_client.project = "ui"
+    ui_client.create_proposal(
+        origin="pm#manual@abc",
+        title="Use endpoint",
+        body="Call the manually filed proposal.",
+    )
+    _write_request_state(
+        tmp_path,
+        {
+            "1": {
+                "id": 1,
+                "original_text": "Add export UI",
+                "decision": "route",
+                "targets": [
+                    {
+                        "project": "api",
+                        "title": "Add endpoint",
+                        "body": "Add API.",
+                        "proposal_ref": "api#1",
+                    },
+                    {
+                        "project": "ui",
+                        "title": "Use endpoint",
+                        "body": "Call API.",
+                        "depends_on": ["target:0"],
+                    },
+                ],
+            }
+        },
+    )
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["request", "--link", "1", "--target", "ui", "ui#1", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    state = json.loads((tmp_path / ".agent-runs" / "pm-requests.json").read_text(encoding="utf-8"))
+
+    assert payload == {
+        "request_id": 1,
+        "decision": "link",
+        "target_project": "ui",
+        "proposal_ref": "ui#1",
+    }
+    assert state["1"]["targets"][1]["proposal_ref"] == "ui#1"
+    assert state["1"]["targets"][1]["proposal_id"] == 1
+    assert state["1"]["targets"][1]["status"] == "pending"
+
+    assert cli.main(["request", "--status", "1", "--json"]) == 0
+    status = json.loads(capsys.readouterr().out)
+    assert status[0]["targets"][1]["proposal_ref"] == "ui#1"
+    assert status[0]["targets"][1]["status"] == "pending"
+
+
+def test_request_link_rejects_unknown_request_id(monkeypatch, tmp_path, capsys) -> None:
+    _write_config(tmp_path)
+    _clients(monkeypatch, [])
+    _write_request_state(tmp_path, {})
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["request", "--link", "99", "--target", "api", "api#1"]) == 1
+
+    assert "PM request 99 was not found." in capsys.readouterr().err
+
+
+def test_request_link_requires_matching_unsent_target_project(
+    monkeypatch,
+    tmp_path,
+    capsys,
+) -> None:
+    _write_config(tmp_path)
+    _clients(monkeypatch, [])
+    _write_request_state(
+        tmp_path,
+        {
+            "1": {
+                "id": 1,
+                "decision": "route",
+                "targets": [{"project": "api", "title": "API", "body": "Body."}],
+            }
+        },
+    )
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["request", "--link", "1", "--target", "ui", "ui#1"]) == 1
+
+    assert "PM request 1 has no target for project ui." in capsys.readouterr().err
+
+
+def test_request_link_rejects_project_mismatch(monkeypatch, tmp_path, capsys) -> None:
+    _write_config(tmp_path)
+    _clients(monkeypatch, [])
+    _write_request_state(
+        tmp_path,
+        {
+            "1": {
+                "id": 1,
+                "decision": "route",
+                "targets": [{"project": "api", "title": "API", "body": "Body."}],
+            }
+        },
+    )
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["request", "--link", "1", "--target", "api", "ui#1"]) == 1
+
+    assert "Proposal ref ui#1 targets ui, not api." in capsys.readouterr().err
+
+
+def test_request_link_reports_missing_proposal(monkeypatch, tmp_path, capsys) -> None:
+    _write_config(tmp_path)
+    _clients(monkeypatch, [])
+    _write_request_state(
+        tmp_path,
+        {
+            "1": {
+                "id": 1,
+                "decision": "route",
+                "targets": [{"project": "api", "title": "API", "body": "Body."}],
+            }
+        },
+    )
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["request", "--link", "1", "--target", "api", "api#99"]) == 1
+
+    assert "Proposal api#99 was not found in api." in capsys.readouterr().err
+
+
+def test_request_link_rejects_already_sent_target(monkeypatch, tmp_path, capsys) -> None:
+    _write_config(tmp_path)
+    clients = _clients(monkeypatch, [])
+    api_client = FakeIssuekitClient()
+    clients["api"] = api_client
+    api_client.project = "api"
+    api_client.create_proposal(origin="pm#manual@abc", title="API", body="Body.")
+    _write_request_state(
+        tmp_path,
+        {
+            "1": {
+                "id": 1,
+                "decision": "route",
+                "targets": [
+                    {
+                        "project": "api",
+                        "title": "API",
+                        "body": "Body.",
+                        "proposal_ref": "api#1",
+                    }
+                ],
+            }
+        },
+    )
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["request", "--link", "1", "--target", "api", "api#1"]) == 1
+
+    assert "PM request 1 target api is already sent or linked." in capsys.readouterr().err
 
 
 def test_request_filters_stale_and_own_project_profiles_from_prompt(

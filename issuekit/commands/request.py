@@ -70,6 +70,12 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         "--target",
         help="Target project whose pending clarification reply is being answered.",
     )
+    request_parser.add_argument(
+        "--link",
+        type=int,
+        metavar="REQUEST_ID",
+        help="Link an existing proposal ref to an unsent routed request target.",
+    )
     request_parser.add_argument("--json", action="store_true", help="Print JSON output.")
     request_parser.add_argument(
         "--dry-run",
@@ -91,13 +97,40 @@ def run(args) -> int:
 
     def action() -> int:
         if args.inbox:
-            if args.status is not None or args.answer is not None or args.text is not None or args.dry_run:
+            if (
+                args.status is not None
+                or args.answer is not None
+                or args.link is not None
+                or args.text is not None
+                or args.dry_run
+            ):
                 raise ValueError("--inbox cannot be combined with request text, --answer, --status, or --dry-run.")
             return _run_inbox(cwd, config, json_output=args.json)
         if args.status is not None:
-            if args.answer is not None or args.text is not None or args.dry_run or args.target:
-                raise ValueError("--status cannot be combined with request text, --answer, --target, or --dry-run.")
+            if (
+                args.answer is not None
+                or args.link is not None
+                or args.text is not None
+                or args.dry_run
+                or args.target
+            ):
+                raise ValueError("--status cannot be combined with request text, --answer, --link, --target, or --dry-run.")
             return _run_status(cwd, config, request_id_arg=args.status, json_output=args.json)
+        if args.link is not None:
+            if args.answer is not None or args.inbox or args.dry_run:
+                raise ValueError("--link cannot be combined with --answer, --inbox, or --dry-run.")
+            if not args.target:
+                raise ValueError("request --link requires --target.")
+            if not args.text:
+                raise ValueError("request --link requires a proposal ref.")
+            return _run_link(
+                cwd,
+                config,
+                request_id=int(args.link),
+                target_project=str(args.target),
+                proposal_ref=str(args.text),
+                json_output=args.json,
+            )
         if args.answer is not None:
             if not args.text:
                 raise ValueError("request --answer requires answer text.")
@@ -112,9 +145,9 @@ def run(args) -> int:
                 timeout=float(args.timeout_sec),
             )
         if args.target:
-            raise ValueError("--target can only be used with --answer.")
+            raise ValueError("--target can only be used with --answer or --link.")
         if not args.text:
-            raise ValueError("issuekit request requires request text, --answer, --inbox, or --status.")
+            raise ValueError("issuekit request requires request text, --answer, --inbox, --link, or --status.")
         return _run_new_request(
             cwd,
             config,
@@ -136,6 +169,88 @@ def run(args) -> int:
             RouterParseError,
         ),
     )
+
+
+def _run_link(
+    cwd: Path,
+    config: IssuekitConfig,
+    *,
+    request_id: int,
+    target_project: str,
+    proposal_ref: str,
+    json_output: bool,
+) -> int:
+    state = _load_state(cwd)
+    record = state.get(str(request_id))
+    if not isinstance(record, dict):
+        raise ValueError(f"PM request {request_id} was not found.")
+
+    ref = proposal_ref.strip()
+    match = _PROPOSAL_REF_PATTERN.match(ref)
+    if match is None:
+        raise ValueError(f"Invalid proposal ref: {proposal_ref}. Expected project#id.")
+    if match.group("project") != target_project:
+        raise ValueError(
+            f"Proposal ref {ref} targets {match.group('project')}, not {target_project}."
+        )
+    proposal_id = int(match.group("id"))
+
+    targets = _state_targets(record)
+    matching_targets = [
+        (index, target)
+        for index, target in enumerate(targets)
+        if str(target.get("project") or "") == target_project
+    ]
+    if not matching_targets:
+        raise ValueError(
+            f"PM request {request_id} has no target for project {target_project}."
+        )
+    unsent_targets = [
+        (index, target)
+        for index, target in matching_targets
+        if not str(target.get("proposal_ref") or "").strip()
+    ]
+    if not unsent_targets:
+        raise ValueError(
+            f"PM request {request_id} target {target_project} is already sent or linked."
+        )
+    if len(unsent_targets) > 1:
+        raise ValueError(
+            f"PM request {request_id} has multiple unsent targets for project {target_project}."
+        )
+
+    try:
+        with proposals_api.api_client(config, project=target_project) as client:
+            proposal = client.get_proposal(proposal_id)
+    except WorkflowError as exc:
+        if exc.code in {"not_found", "http_404"}:
+            raise ValueError(f"Proposal {ref} was not found in {target_project}.") from exc
+        raise
+
+    target_index, target = unsent_targets[0]
+    updated = dict(target)
+    updated.update(
+        {
+            "proposal_ref": ref,
+            "proposal_id": proposal_id,
+            "linked_at": _now(),
+            "status": str(proposal.get("status") or "linked"),
+        }
+    )
+    targets[target_index] = updated
+    record["targets"] = targets
+    record["updated_at"] = _now()
+    state[str(request_id)] = record
+    _save_state(cwd, state)
+
+    payload = {
+        "request_id": request_id,
+        "decision": "link",
+        "target_project": target_project,
+        "proposal_ref": ref,
+    }
+    _print_payload(payload, json_output=json_output)
+    return 0
 
 
 def _run_new_request(

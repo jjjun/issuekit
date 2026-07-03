@@ -22,6 +22,11 @@ def _print_payload(payload: dict[str, Any], *, json_output: bool) -> None:
             f"Request {request_id} answered target {payload['target_project']}: "
             f"{payload.get('proposal_ref', '(dry-run)')} supersedes={payload['supersedes']}"
         )
+    elif decision == "link":
+        print(
+            f"Request {request_id} linked target {payload['target_project']}: "
+            f"{payload['proposal_ref']}"
+        )
     else:
         print(f"Request {request_id} routed.")
         for index, target in enumerate(payload.get("targets", [])):
