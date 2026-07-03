@@ -23,6 +23,13 @@ _SENTINEL = object()
 WORKER_ROLE_MAX_LEN = 80
 WORKER_DESCRIPTION_MAX_LEN = 500
 
+# Project-level capability profile limits (mine-py#172). The long-form profile
+# lives in a committed markdown file; summary/tags are short optional metadata.
+DEFAULT_PROFILE_FILE = "ISSUEKIT.md"
+PROFILE_SUMMARY_MAX_LEN = 500
+PROFILE_TAG_MAX_LEN = 40
+PROFILE_TAGS_MAX = 20
+
 
 @dataclass(frozen=True)
 class AgentRunConfig:
@@ -78,6 +85,9 @@ class IssuekitConfig:
     worker: WorkerIdentity | None = None
     worker_role: str = ""
     worker_description: str = ""
+    profile_file: str = DEFAULT_PROFILE_FILE
+    profile_summary: str = ""
+    profile_tags: tuple[str, ...] = ()
     triage: TriagePolicy = field(default_factory=TriagePolicy)
     agents: tuple[tuple[str, AgentRunConfig], ...] = (
         (
@@ -207,6 +217,15 @@ def load_config(cwd: Path | str = ".") -> IssuekitConfig:
         field="worker_description",
         max_len=WORKER_DESCRIPTION_MAX_LEN,
     )
+    profile_file = str(
+        raw_config.get("profile_file", IssuekitConfig.profile_file)
+    ).strip() or IssuekitConfig.profile_file
+    profile_summary = _worker_metadata(
+        raw_config.get("profile_summary"),
+        field="profile_summary",
+        max_len=PROFILE_SUMMARY_MAX_LEN,
+    )
+    profile_tags = _load_profile_tags(raw_config.get("profile_tags"))
     return IssuekitConfig(
         api_url=api_url,
         project=project,
@@ -231,6 +250,9 @@ def load_config(cwd: Path | str = ".") -> IssuekitConfig:
         worker=worker,
         worker_role=worker_role,
         worker_description=worker_description,
+        profile_file=profile_file,
+        profile_summary=profile_summary,
+        profile_tags=profile_tags,
         triage=triage,
         agents=agents,
     )
@@ -336,6 +358,18 @@ def _worker_metadata(value: object, *, field: str, max_len: int) -> str:
     if len(text) > max_len:
         raise ValueError(f"{field} must be at most {max_len} characters.")
     return text
+
+
+def _load_profile_tags(value: object) -> tuple[str, ...]:
+    if value is None:
+        return ()
+    tags = _string_tuple(value)
+    if len(tags) > PROFILE_TAGS_MAX:
+        raise ValueError(f"profile_tags must have at most {PROFILE_TAGS_MAX} tags.")
+    for tag in tags:
+        if not tag or len(tag) > PROFILE_TAG_MAX_LEN or not is_valid_workflow_token(tag):
+            raise ValueError(f"Invalid profile_tags token: {tag}")
+    return tags
 
 
 def _load_triage_policy(raw: object) -> TriagePolicy:

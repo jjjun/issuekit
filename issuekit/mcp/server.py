@@ -207,6 +207,17 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
 
     @server.tool(
         description=(
+            "List stored project capability profiles across projects (the PM "
+            "router's input). Requires a backend that supports project profiles."
+        )
+    )
+    def list_project_profiles() -> list[dict[str, Any]]:
+        config = load_config(root)
+        with api_client(config) as client:
+            return client.list_project_profiles()
+
+    @server.tool(
+        description=(
             "Send a cross-repository proposal from the origin project to the target "
             "project inbox; use this instead of authoring directly in the target repo. "
             "Pass depends_on as project#issue-or-proposal for upstream dependencies."

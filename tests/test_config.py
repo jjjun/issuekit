@@ -151,6 +151,66 @@ def test_load_config_rejects_invalid_triage_author_agent(tmp_path: Path) -> None
         load_config(tmp_path)
 
 
+def test_load_config_reads_project_profile_metadata(tmp_path: Path) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        (
+            "profile_file = 'PROFILE.md'\n"
+            "profile_summary = 'Workflow CLI over the mine-py API.'\n"
+            "profile_tags = ['python', 'cli', 'workflow']\n"
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    config = load_config(tmp_path)
+
+    assert config.profile_file == "PROFILE.md"
+    assert config.profile_summary == "Workflow CLI over the mine-py API."
+    assert config.profile_tags == ("python", "cli", "workflow")
+
+
+def test_load_config_defaults_project_profile_metadata(tmp_path: Path) -> None:
+    config = load_config(tmp_path)
+
+    assert config.profile_file == "ISSUEKIT.md"
+    assert config.profile_summary == ""
+    assert config.profile_tags == ()
+
+
+def test_load_config_rejects_overlong_profile_summary(tmp_path: Path) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        f"profile_summary = '{'x' * 501}'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    with pytest.raises(ValueError, match="profile_summary"):
+        load_config(tmp_path)
+
+
+def test_load_config_rejects_too_many_profile_tags(tmp_path: Path) -> None:
+    tags = ", ".join(f"'tag{i}'" for i in range(21))
+    (tmp_path / "issuekit.toml").write_text(
+        f"profile_tags = [{tags}]\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    with pytest.raises(ValueError, match="profile_tags"):
+        load_config(tmp_path)
+
+
+def test_load_config_rejects_invalid_profile_tag_token(tmp_path: Path) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "profile_tags = ['Bad Tag']\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    with pytest.raises(ValueError, match="profile_tags"):
+        load_config(tmp_path)
+
+
 def test_load_config_reads_worker_role_and_description(tmp_path: Path) -> None:
     (tmp_path / "issuekit.toml").write_text(
         (

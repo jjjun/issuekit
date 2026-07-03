@@ -8,6 +8,8 @@ import threading
 
 from issuekit.client import IssuekitClient, JsonDict
 from issuekit.config import IssuekitConfig
+from issuekit.project_profile import load_project_profile
+from issuekit.workflow import WorkflowError
 
 
 WORKER_HEARTBEAT_INTERVAL_SEC = 60.0
@@ -17,7 +19,12 @@ class WorkerListingError(RuntimeError):
     """Raised when the worker catalog cannot be listed."""
 
 
-def post_worker_registration(config: IssuekitConfig, cwd: Path | str) -> bool:
+def post_worker_registration(
+    config: IssuekitConfig,
+    cwd: Path | str,
+    *,
+    on_error: Callable[[Exception], None] | None = None,
+) -> bool:
     if not config.api_url or config.worker is None:
         return False
 
@@ -36,7 +43,30 @@ def post_worker_registration(config: IssuekitConfig, cwd: Path | str) -> bool:
             role=config.worker_role or None,
             description=config.worker_description or None,
         )
+        _push_project_profile(config, cwd, client, on_error=on_error)
     return True
+
+
+def _push_project_profile(
+    config: IssuekitConfig,
+    cwd: Path | str,
+    client: IssuekitClient,
+    *,
+    on_error: Callable[[Exception], None] | None,
+) -> None:
+    """PUT the local project profile if one exists; never fail registration.
+
+    Tolerates a backend that predates mine-py#172 (404/405) and stale-source
+    rejections: such failures are logged through on_error and swallowed.
+    """
+    try:
+        profile = load_project_profile(config, cwd)
+        if profile is None:
+            return
+        client.put_project_profile(**profile.to_payload())
+    except (WorkflowError, ValueError, OSError) as exc:
+        if on_error is not None:
+            on_error(exc)
 
 
 def list_api_workers(
@@ -65,7 +95,7 @@ def try_post_worker_registration(
     on_error: Callable[[Exception], None] | None = None,
 ) -> bool:
     try:
-        return post_worker_registration(config, cwd)
+        return post_worker_registration(config, cwd, on_error=on_error)
     except Exception as exc:
         if on_error is not None:
             on_error(exc)

@@ -22,6 +22,7 @@ from issuekit.commands import (
     init,
     migrate_to_api,
     negotiate,
+    profile,
     propose,
     protocol,
     queue,
@@ -60,6 +61,7 @@ COMMAND_MODULES = (
     init,
     setup,
     dev_tool,
+    profile,
     propose,
     triage,
 )

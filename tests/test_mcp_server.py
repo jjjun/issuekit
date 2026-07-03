@@ -80,6 +80,7 @@ def test_server_registers_expected_tools(tmp_path: Path) -> None:
         "update_issue",
         "list_queue",
         "list_workers",
+        "list_project_profiles",
         "propose",
         "list_incoming",
         "list_outgoing",
@@ -109,6 +110,23 @@ def test_list_workers_returns_catalog(tmp_path: Path, monkeypatch: pytest.Monkey
         "method": "list_workers",
         "body": {"repo_id": "mine-py", "project": None},
     }
+
+
+def test_list_project_profiles_returns_stored_profiles(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client = FakeIssuekitClient()
+    client.project = "issuekit"
+    client.put_project_profile(summary="Workflow CLI.", profile_md="# issuekit\n")
+    client.project = "mine-py"
+    client.put_project_profile(summary="Issue API.", profile_md="# mine-py\n")
+    _configure_api(tmp_path, monkeypatch, client)
+    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    server = create_server(tmp_path)
+
+    profiles = _call(server, "list_project_profiles", {})
+
+    assert {row["project"] for row in profiles} == {"issuekit", "mine-py"}
 
 
 def test_submit_for_review_schema_omits_assignee(tmp_path: Path) -> None:

@@ -426,6 +426,43 @@ class IssuekitClient:
         )
         return _worker_rows(payload)
 
+    def put_project_profile(
+        self,
+        *,
+        summary: str | None = None,
+        profile_md: str | None = None,
+        tags: Sequence[str] | None = None,
+        source_commit: str | None = None,
+        source_committed_at: str | None = None,
+    ) -> JsonDict:
+        body = _drop_none(
+            {
+                "summary": summary,
+                "profile_md": profile_md,
+                "tags": list(tags) if tags is not None else None,
+                "source_commit": source_commit,
+                "source_committed_at": source_committed_at,
+            }
+        )
+        payload = self._authorized_request(
+            "PUT",
+            f"/api/projects/{self.project}/profile",
+            json=body,
+        )
+        return _ensure_dict(payload, "Project profile response")
+
+    def get_project_profile(self, project: str | None = None) -> JsonDict:
+        target = project or self.project
+        payload = self._authorized_request(
+            "GET",
+            f"/api/projects/{target}/profile",
+        )
+        return _ensure_dict(payload, "Project profile response")
+
+    def list_project_profiles(self) -> list[JsonDict]:
+        payload = self._authorized_request("GET", "/api/projects/profiles")
+        return _profile_rows(payload)
+
     def create_proposal(
         self,
         *,
@@ -732,6 +769,21 @@ def _ensure_dict(payload: Any, label: str) -> JsonDict:
     if not isinstance(payload, dict):
         raise WorkflowError(f"{label} was not a JSON object.", code="invalid_response")
     return payload
+
+
+def _profile_rows(payload: Any) -> list[JsonDict]:
+    # Accept a bare JSON array or a paginated {"items": [...]} envelope so the
+    # client tolerates either backend list shape.
+    if isinstance(payload, list):
+        return [_ensure_dict(item, "Project profile response") for item in payload]
+    page = _ensure_dict(payload, "Project profile list response")
+    items = page.get("items")
+    if not isinstance(items, list):
+        raise WorkflowError(
+            "Project profile list response items was not a JSON array.",
+            code="invalid_response",
+        )
+    return [_ensure_dict(item, "Project profile response") for item in items]
 
 
 def _worker_rows(payload: Any) -> list[JsonDict]:

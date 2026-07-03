@@ -334,9 +334,95 @@ def test_add_cli_posts_configured_role_and_description(
     ]
 
 
+def test_add_cli_pushes_project_profile_when_present(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from issuekit import worker_registry
+
+    client = FakeRegistryClient()
+    (tmp_path / "issuekit.toml").write_text(
+        (
+            "api_url = 'https://mine.example'\n"
+            "project = 'demo'\n"
+            "profile_summary = 'Demo project.'\n"
+            "profile_tags = ['python']\n"
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+    (tmp_path / "ISSUEKIT.md").write_text(
+        "# Demo\n\nResponsibilities.\n", encoding="utf-8", newline="\n"
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("ISSUEKIT_WORKER_REGISTRY", str(tmp_path / "workers.toml"))
+    monkeypatch.setattr("issuekit.worker.platform.node", lambda: "win-desktop")
+    monkeypatch.setattr(worker_registry, "IssuekitClient", lambda *args, **kwargs: client)
+
+    assert cli.main(["add", "--repo-id", "demo", "--worker-id", "checkout"]) == 0
+
+    assert len(client.profile_calls) == 1
+    pushed = client.profile_calls[0]
+    assert pushed["summary"] == "Demo project."
+    assert pushed["profile_md"] == "# Demo\n\nResponsibilities.\n"
+    assert pushed["tags"] == ["python"]
+
+
+def test_add_cli_skips_profile_push_when_absent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from issuekit import worker_registry
+
+    client = FakeRegistryClient()
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'demo'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("ISSUEKIT_WORKER_REGISTRY", str(tmp_path / "workers.toml"))
+    monkeypatch.setattr("issuekit.worker.platform.node", lambda: "win-desktop")
+    monkeypatch.setattr(worker_registry, "IssuekitClient", lambda *args, **kwargs: client)
+
+    assert cli.main(["add", "--repo-id", "demo", "--worker-id", "checkout"]) == 0
+
+    # No ISSUEKIT.md: worker still registered, no profile push attempted.
+    assert len(client.calls) == 1
+    assert client.profile_calls == []
+
+
+def test_add_cli_tolerates_profile_push_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from issuekit import worker_registry
+
+    client = ProfileRejectingRegistryClient()
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'demo'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    (tmp_path / "ISSUEKIT.md").write_text("# Demo\n", encoding="utf-8", newline="\n")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("ISSUEKIT_WORKER_REGISTRY", str(tmp_path / "workers.toml"))
+    monkeypatch.setattr("issuekit.worker.platform.node", lambda: "win-desktop")
+    monkeypatch.setattr(worker_registry, "IssuekitClient", lambda *args, **kwargs: client)
+
+    # A backend without mine-py#172 (404) must not fail worker registration.
+    assert cli.main(["add", "--repo-id", "demo", "--worker-id", "checkout"]) == 0
+
+    assert len(client.calls) == 1
+    assert len(client.profile_calls) == 1
+    assert "worker registry update failed" in capsys.readouterr().err
+
+
 class FakeRegistryClient:
     def __init__(self) -> None:
         self.calls: list[dict[str, str | None]] = []
+        self.profile_calls: list[dict[str, object]] = []
 
     def __enter__(self):
         return self
@@ -366,6 +452,18 @@ class FakeRegistryClient:
             call["description"] = description
         self.calls.append(call)
         return {"id": f"{machine_id}/{repo_id}/{worker_id}", **call}
+
+    def put_project_profile(self, **kwargs) -> dict[str, object]:
+        self.profile_calls.append(kwargs)
+        return {"project": "demo", **kwargs}
+
+
+class ProfileRejectingRegistryClient(FakeRegistryClient):
+    def put_project_profile(self, **kwargs):
+        from issuekit.workflow import WorkflowError
+
+        self.profile_calls.append(kwargs)
+        raise WorkflowError("profile endpoint not found", code="http_404")
 
 
 class FailingRegistryClient:
