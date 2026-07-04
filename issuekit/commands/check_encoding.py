@@ -61,18 +61,48 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         action="store_true",
         help="Strip leading UTF-8 BOM bytes from tracked source files.",
     )
+    check_encoding_parser.add_argument(
+        "--changed",
+        action="store_true",
+        help=(
+            "Scan only files changed in the working tree (or relative to --base) "
+            "instead of every tracked file. Cuts the fixed per-run cost on "
+            "no-change or small-change runs; use a full scan (the default) in CI."
+        ),
+    )
+    check_encoding_parser.add_argument(
+        "--base",
+        help=(
+            "With --changed, scan files that differ from this git ref (e.g. "
+            "origin/main) instead of only uncommitted working-tree changes."
+        ),
+    )
     check_encoding_parser.set_defaults(func=run)
 
 
 def run(args) -> int:
-    tracked_files = list_tracked_files(Path.cwd())
-    source_files = [
-        file for file in tracked_files if _has_source_extension(file) and not _is_issue_file(file)
-    ]
+    cwd = Path.cwd()
+    changed = getattr(args, "changed", False)
+    if changed:
+        changed_files = list_changed_files(cwd, getattr(args, "base", None))
+        source_files = [
+            file
+            for file in changed_files
+            if _has_source_extension(file) and not _is_issue_file(file)
+        ]
+        crlf_paths: list[str] | None = changed_files
+    else:
+        source_files = [
+            file
+            for file in list_tracked_files(cwd)
+            if _has_source_extension(file) and not _is_issue_file(file)
+        ]
+        crlf_paths = None
+
     bom_files: list[str] = []
     mojibake_files: list[str] = []
     fixed_files: list[str] = []
-    crlf_files = [] if args.no_crlf else list_crlf_files(Path.cwd())
+    crlf_files = [] if args.no_crlf else list_crlf_files(cwd, paths=crlf_paths)
 
     for file in source_files:
         path = Path(file)
@@ -151,8 +181,36 @@ def list_tracked_files(cwd: Path) -> list[str]:
     return [item for item in output.split("\0") if item]
 
 
-def list_crlf_files(cwd: Path) -> list[str]:
-    output = _git_stdout(["ls-files", "--eol", "-z"], cwd)
+def list_changed_files(cwd: Path, base: str | None = None) -> list[str]:
+    """Return source-tree paths that changed, for incremental scanning.
+
+    With ``base`` set, this is everything differing from that ref (committed,
+    staged, and unstaged). Otherwise it is uncommitted working-tree changes
+    only. Untracked, non-ignored files are always included so newly added files
+    are still scanned.
+    """
+    changed: set[str] = set()
+    if base:
+        changed |= _git_name_only(["diff", "--name-only", "-z", base], cwd)
+    else:
+        changed |= _git_name_only(["diff", "--name-only", "-z"], cwd)
+        changed |= _git_name_only(["diff", "--name-only", "-z", "--cached"], cwd)
+    changed |= _git_name_only(["ls-files", "--others", "--exclude-standard", "-z"], cwd)
+    return sorted(changed)
+
+
+def _git_name_only(args: list[str], cwd: Path) -> set[str]:
+    output = _git_stdout(args, cwd)
+    return {item for item in output.split("\0") if item}
+
+
+def list_crlf_files(cwd: Path, paths: list[str] | None = None) -> list[str]:
+    if paths is not None and not paths:
+        return []
+    ls_files_args = ["ls-files", "--eol", "-z"]
+    if paths is not None:
+        ls_files_args += ["--", *paths]
+    output = _git_stdout(ls_files_args, cwd)
     crlf_files: list[str] = []
     for record in output.split("\0"):
         if not record:

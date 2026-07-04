@@ -19,6 +19,24 @@ def add_tracked(path: Path, name: str, content: bytes) -> None:
     subprocess.run(["git", "add", name], cwd=path, check=True)
 
 
+def commit_all(path: Path, message: str = "commit") -> str:
+    subprocess.run(["git", "add", "-A"], cwd=path, check=True)
+    subprocess.run(
+        ["git", "commit", "-m", message],
+        cwd=path,
+        check=True,
+        stdout=subprocess.DEVNULL,
+    )
+    result = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=path,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return result.stdout.strip()
+
+
 def test_check_encoding_clean_tree_passes(tmp_path: Path, monkeypatch, capsys) -> None:
     init_git_repo(tmp_path)
     add_tracked(tmp_path, "clean.py", b"print('ok')\n")
@@ -218,6 +236,72 @@ def test_check_encoding_fix_json_reports_fixed_files(tmp_path: Path, monkeypatch
     assert exit_code == 0
     assert payload == {"bom_files": [], "mojibake_files": [], "crlf_files": [], "fixed": ["bom.py"]}
     assert (tmp_path / "bom.py").read_bytes() == b"print('ok')\n"
+
+
+def test_check_encoding_changed_skips_unchanged_files(tmp_path: Path, monkeypatch) -> None:
+    # #164: with a clean working tree, --changed scans nothing and stays fast,
+    # even though a committed file has a BOM that a full scan would flag.
+    init_git_repo(tmp_path)
+    add_tracked(tmp_path, "bom.py", b"\xef\xbb\xbfprint('bad')\n")
+    commit_all(tmp_path)
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["check-encoding"]) == 1
+    assert cli.main(["check-encoding", "--changed"]) == 0
+
+
+def test_check_encoding_changed_flags_new_untracked_file(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    init_git_repo(tmp_path)
+    add_tracked(tmp_path, "clean.py", b"print('ok')\n")
+    commit_all(tmp_path)
+    (tmp_path / "new.py").write_bytes(b"\xef\xbb\xbfprint('bad')\n")
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = cli.main(["check-encoding", "--changed"])
+
+    assert exit_code == 1
+    assert "new.py" in capsys.readouterr().err
+
+
+def test_check_encoding_changed_flags_crlf_in_changed_file(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    init_git_repo(tmp_path)
+    add_tracked(tmp_path, "clean.txt", b"one\ntwo\n")
+    commit_all(tmp_path)
+    add_tracked(tmp_path, "clean.txt", b"one\r\ntwo\r\n")
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = cli.main(["check-encoding", "--changed"])
+
+    assert exit_code == 1
+    assert "clean.txt" in capsys.readouterr().err
+
+
+def test_check_encoding_changed_base_diffs_against_ref(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    init_git_repo(tmp_path)
+    add_tracked(tmp_path, "clean.py", b"print('ok')\n")
+    base = commit_all(tmp_path)
+    add_tracked(tmp_path, "bad.md", "\u7e67\n".encode("utf-8"))
+    commit_all(tmp_path)
+    monkeypatch.chdir(tmp_path)
+
+    # A clean working tree means the default --changed run finds nothing.
+    assert cli.main(["check-encoding", "--changed"]) == 0
+    # Diffing against the base still catches the committed bad file.
+    exit_code = cli.main(["check-encoding", "--changed", "--base", base])
+    assert exit_code == 1
+    assert "bad.md" in capsys.readouterr().err
 
 
 def test_check_encoding_fix_exits_nonzero_when_mojibake_remains(
