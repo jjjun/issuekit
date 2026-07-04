@@ -134,7 +134,7 @@ def enforce_no_author_guard(
         return
     if guard.project != config.project:
         return
-    if issue_id is not None and guard.kind == "issue" and guard.id and guard.id != str(issue_id):
+    if not _guard_blocks_issue_lifecycle(guard, config=config, issue_id=issue_id):
         return
     from issuekit.workflow import WorkflowError
 
@@ -142,6 +142,22 @@ def enforce_no_author_guard(
         f"Author-session guard blocks {action}: {stop_message(guard)}",
         code="author_session_guard",
     )
+
+
+def _guard_blocks_issue_lifecycle(
+    guard: AuthorGuard,
+    *,
+    config: IssuekitConfig,
+    issue_id: int | None,
+) -> bool:
+    if guard.kind != "issue":
+        return False
+    if issue_id is None:
+        return True
+    target_id = str(issue_id)
+    if guard.id:
+        return guard.id == target_id
+    return guard.ref == f"{config.project}#{target_id}"
 
 
 def _guard_from_mapping(raw: Mapping[str, object] | None) -> AuthorGuard | None:

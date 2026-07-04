@@ -151,6 +151,89 @@ def test_author_guard_blocks_claim_in_same_checkout(tmp_path, monkeypatch) -> No
     assert issue.id == 1
 
 
+def test_issue_author_guard_blocks_claim_next_in_same_checkout(tmp_path, monkeypatch) -> None:
+    client = FakeIssuekitClient([api_issue(2, "Ready", author="claude")])
+    config = _config(client, monkeypatch)
+    create_author_guard(
+        tmp_path,
+        config=config,
+        kind="issue",
+        item_id=1,
+        ref="demo#1",
+        author_agent="codex",
+    )
+
+    with pytest.raises(WorkflowError, match="Author-session guard blocks claim-next"):
+        claim_next("codex", config=config, cwd=tmp_path)
+
+    assert client.calls == []
+
+
+def test_issue_author_guard_allows_claim_for_unrelated_issue(tmp_path, monkeypatch) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(1, "Authored", author="codex"),
+            api_issue(2, "Ready", author="claude"),
+        ]
+    )
+    config = _config(client, monkeypatch)
+    create_author_guard(
+        tmp_path,
+        config=config,
+        kind="issue",
+        item_id=1,
+        ref="demo#1",
+        author_agent="codex",
+    )
+
+    issue = claim_issue(2, "codex", config=config, cwd=tmp_path)
+
+    assert issue.id == 2
+    assert client.calls == [
+        {"method": "claim", "number": 2, "body": {"assignee": "codex"}}
+    ]
+
+
+def test_proposal_author_guard_does_not_block_claim_next(tmp_path, monkeypatch) -> None:
+    client = FakeIssuekitClient([api_issue(1, "Ready", author="claude")])
+    config = _config(client, monkeypatch)
+    create_author_guard(
+        tmp_path,
+        config=config,
+        kind="proposal",
+        item_id=208,
+        ref="mine-py#208",
+        target_project="mine-py",
+        author_agent="codex",
+    )
+
+    issue = claim_next("codex", config=config, cwd=tmp_path)
+
+    assert issue is not None
+    assert issue.id == 1
+    assert read_author_guard(tmp_path) is not None
+    assert client.calls == [{"method": "claim_next", "body": {"assignee": "codex"}}]
+
+
+def test_proposal_author_guard_does_not_block_claim_issue(tmp_path, monkeypatch) -> None:
+    client = FakeIssuekitClient([api_issue(1, "Ready", author="claude")])
+    config = _config(client, monkeypatch)
+    create_author_guard(
+        tmp_path,
+        config=config,
+        kind="proposal",
+        item_id=208,
+        ref="mine-py#208",
+        target_project="mine-py",
+        author_agent="codex",
+    )
+
+    issue = claim_issue(1, "codex", config=config, cwd=tmp_path)
+
+    assert issue.id == 1
+    assert read_author_guard(tmp_path) is not None
+
+
 def test_work_branch_guard_blocks_claim_before_api_call(tmp_path, monkeypatch) -> None:
     client = FakeIssuekitClient([api_issue(1, "Ready", author="claude")])
     config = _config(client, monkeypatch)
@@ -341,6 +424,36 @@ def test_author_guard_blocks_submit_for_review_for_authored_issue(tmp_path, monk
 
     with pytest.raises(WorkflowError, match="Author-session guard blocks submit"):
         submit_for_review(1, summary="Implemented.", config=config, cwd=tmp_path)
+
+
+def test_proposal_author_guard_does_not_block_submit_for_review(tmp_path, monkeypatch) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                1,
+                "First",
+                status="in_progress",
+                assignee="codex",
+                stage="implementing",
+                implementer="codex",
+            )
+        ]
+    )
+    config = _config(client, monkeypatch)
+    create_author_guard(
+        tmp_path,
+        config=config,
+        kind="proposal",
+        item_id=208,
+        ref="mine-py#208",
+        target_project="mine-py",
+        author_agent="codex",
+    )
+
+    issue = submit_for_review(1, summary="Implemented.", config=config, cwd=tmp_path)
+
+    assert issue.stage == "review"
+    assert read_author_guard(tmp_path) is not None
 
 
 def test_submit_for_review_passes_structured_fields(monkeypatch) -> None:

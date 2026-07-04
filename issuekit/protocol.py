@@ -90,8 +90,9 @@ Separation-of-duties invariants:
   agent name appears through the open implement pool, it represents a distinct
   operator/session; explicit author self-assignment is rejected.
 - After `issuekit author` or `issuekit propose` succeeds, issuekit writes a
-  machine-local author-session guard and emits `STOP_NOW`. The author session
-  must stop instead of claiming, implementing, or submitting review work.
+  machine-local author-session guard and emits `STOP_NOW`. Issue guards block
+  implementing that authored issue in the same checkout; proposal guards record
+  the handoff but do not block unrelated local issue lifecycle work.
 - The implementer and reviewer must be different sessions; explicit implementer
   self-review is rejected.
 - The author may also be the reviewer when a different implementer did the work.
@@ -329,14 +330,17 @@ When asked to write or plan an issue:
 2. Create local issues with `issuekit author`; the API allocates the issue id.
 3. Leave the issue unstarted with no assignee unless a specific implementer is
    required.
-4. STOP_NOW. The command writes a local author-session guard. Do not call `claim_next_task`,
-   `issuekit claim`, `issuekit implement`, or `submit_for_review` in the same
-   session. An implementer claims it later via `claim_next_task`.
+4. STOP_NOW. The command writes a local author-session guard for that issue.
+   Do not call `claim_next_task`, `issuekit claim`, `issuekit implement`, or
+   `submit_for_review` for the authored issue in the same session. An
+   implementer claims it later via `claim_next_task`.
 
 After `issuekit propose` succeeds, treat the `STOP_NOW` sentinel the same way:
-stop the author session and let the target project triage the proposal. For
-recovery from an accidental guard after handoff, run `issuekit author-guard clear`.
-Human emergency lifecycle commands can pass `--allow-author-session`.
+stop the author session and let the target project triage the proposal. Proposal
+guards are retained as handoff records but do not block unrelated local issue
+lifecycle commands. For recovery from an accidental guard after handoff, run
+`issuekit author-guard clear`. Human emergency lifecycle commands can pass
+`--allow-author-session`.
 """
 
 
