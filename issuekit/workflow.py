@@ -23,6 +23,15 @@ class WorkflowError(RuntimeError):
         super().__init__(message)
         self.code = code
 
+    def __str__(self) -> str:
+        message = super().__str__()
+        from issuekit.separation_duties import separation_guard_note
+
+        note = separation_guard_note(message, code=self.code)
+        if note is None or note in message:
+            return message
+        return f"{message}\n{note}"
+
 
 def claim_next(
     assignee: str,
@@ -249,7 +258,14 @@ def _resolve_auto_reviewer(config: IssuekitConfig, *, issue: Issue | None) -> st
         for assignee in config.assignees:
             if assignee != implementer:
                 return assignee
-        raise WorkflowError("No reviewer is distinct from the issue implementer.")
+        raise WorkflowError(
+            "Distinct-reviewer guard (require_distinct_reviewer) blocks auto reviewer "
+            "resolution: no configured reviewer is distinct from the issue implementer. "
+            "Recovery: configure an assignee distinct from issue.implementer. In "
+            "non-API mode only, set require_distinct_reviewer = false if local policy "
+            "permits.",
+            code="distinct_reviewer_guard",
+        )
 
     if issue is not None and issue.assignee:
         return issue.assignee

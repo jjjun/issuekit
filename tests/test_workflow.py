@@ -5,6 +5,7 @@ from issuekit.author_guard import create_author_guard
 from issuekit.commands.approve import approve_issue
 from issuekit.commands.complete import complete_issue
 from issuekit.config import IssuekitConfig, WorkerIdentity
+from issuekit.core import Issue
 from issuekit.testing import FakeIssuekitClient
 from issuekit.workflow import (
     WorkflowError,
@@ -12,6 +13,7 @@ from issuekit.workflow import (
     claim_next,
     find_for,
     request_changes,
+    resolve_reviewer,
     submit_for_review,
 )
 
@@ -111,8 +113,13 @@ def test_claim_issue_sends_registered_worker(monkeypatch) -> None:
 def test_claim_issue_surfaces_api_transition_error(monkeypatch) -> None:
     client = FakeIssuekitClient([api_issue(1, "First", assignee="codex", author="codex")])
 
-    with pytest.raises(WorkflowError, match="self-implementation is not allowed"):
+    with pytest.raises(WorkflowError, match="self-implementation is not allowed") as excinfo:
         claim_issue(1, "codex", config=_config(client, monkeypatch))
+
+    message = str(excinfo.value)
+    assert "Guard: server author-implementer guard (mine-py)." in message
+    assert "`--allow-author-session` does not bypass it" in message
+    assert "issuekit#162 and issuekit#163" in message
 
 
 def test_author_guard_blocks_claim_in_same_checkout(tmp_path, monkeypatch) -> None:
@@ -315,6 +322,38 @@ def test_approve_rejects_same_agent_same_worker_review(monkeypatch) -> None:
         )
 
     assert client.get_issue(1)["status"] == "in_progress"
+
+
+def test_distinct_reviewer_guard_names_recovery() -> None:
+    config = IssuekitConfig(
+        assignees=("codex",),
+        default_reviewer="auto",
+        require_distinct_reviewer=True,
+    )
+    issue = Issue(
+        id=1,
+        ref="demo#1",
+        title="First",
+        issue_status="in_progress",
+        created="2026-01-01",
+        completed="",
+        priority="medium",
+        assignee="",
+        stage="review",
+        implementer="codex",
+        author="claude",
+        body="",
+        metadata={},
+    )
+
+    with pytest.raises(WorkflowError) as excinfo:
+        resolve_reviewer(None, config, issue=issue)
+
+    message = str(excinfo.value)
+    assert "Distinct-reviewer guard (require_distinct_reviewer)" in message
+    assert "no configured reviewer is distinct from the issue implementer" in message
+    assert "configure an assignee distinct from issue.implementer" in message
+    assert "compares against `issue.implementer`, not the author" in message
 
 
 def test_approve_allows_same_agent_different_worker_open_review(

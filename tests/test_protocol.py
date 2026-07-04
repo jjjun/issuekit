@@ -17,6 +17,11 @@ def test_render_protocol_returns_each_agent_and_both() -> None:
         assert "author role and implementer role must be different sessions" in rendered
         assert "implementer and reviewer must be different sessions" in rendered
         assert "author may also be the reviewer" in rendered
+        assert "Separation-of-duties guard reference" in rendered
+        assert "README.md#separation-of-duties-guards" in rendered
+        assert "Server author-implementer guard" in rendered
+        assert "Distinct-reviewer guard" in rendered
+        assert "issuekit#162 and issuekit#163" in rendered
         assert "belongs to another project" in rendered
         assert "issuekit propose --to <project>" in rendered
         assert "owns triage" in rendered

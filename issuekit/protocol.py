@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from issuekit.separation_duties import SEPARATION_GUARD_REFERENCE
 
-CYCLE_PROTOCOL = """# Delegation cycle overview
+
+CYCLE_PROTOCOL = f"""# Delegation cycle overview
 
 The canonical delegation cycle is:
 
@@ -93,6 +95,11 @@ Separation-of-duties invariants:
 - The implementer and reviewer must be different sessions; explicit implementer
   self-review is rejected.
 - The author may also be the reviewer when a different implementer did the work.
+
+Canonical guard diagnostics: see README.md#separation-of-duties-guards or run
+`issuekit author-guard --help` to diagnose which guard blocked a command.
+
+{SEPARATION_GUARD_REFERENCE}
 
 Copyable CLI examples:
 

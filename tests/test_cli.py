@@ -135,6 +135,19 @@ def test_author_guard_bare_command_shows_guard(
     assert captured.err == ""
 
 
+def test_author_guard_help_lists_separation_guards(capsys: pytest.CaptureFixture[str]) -> None:
+    exit_code = cli.main(["author-guard", "--help"])
+
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "Separation-of-duties guard reference" in captured.out
+    assert "Author-session STOP guard" in captured.out
+    assert "Server author-implementer guard" in captured.out
+    assert "Distinct-reviewer guard" in captured.out
+    assert "issuekit#162 and issuekit#163" in captured.out
+
+
 @pytest.mark.parametrize("command", sorted(EXPECTED_COMMANDS))
 def test_handlers_are_stubs(command: str) -> None:
     if command in {

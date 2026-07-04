@@ -9,6 +9,7 @@ import sys
 
 from issuekit.author_guard import clear_author_guard, guard_dict, read_author_guard, stop_message
 from issuekit.commands._common import run_command
+from issuekit.separation_duties import AUTHOR_GUARD_HELP
 from issuekit.workflow import WorkflowError
 
 
@@ -16,6 +17,9 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     parser = subparsers.add_parser(
         "author-guard",
         help="Inspect or clear the local author-session STOP guard.",
+        description="Inspect, check, or clear the local author-session STOP guard.",
+        epilog=AUTHOR_GUARD_HELP,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     actions = parser.add_subparsers(dest="author_guard_action", metavar="<action>")
 

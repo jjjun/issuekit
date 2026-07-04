@@ -379,6 +379,19 @@ otherwise uses a stable configured assignee. When `require_distinct_reviewer` is
 true, `auto` chooses an assignee that differs from the issue implementer and
 same-name review is rejected.
 
+## Separation-of-Duties Guards
+
+issuekit has three separation-of-duties guards. Use this table to identify
+which guard blocked a command before choosing a recovery path. The same
+canonical reference appears in `issuekit protocol` output and
+`issuekit author-guard --help`.
+
+| Guard | Separates | Enforced by | Error string | Recovery |
+| --- | --- | --- | --- | --- |
+| Author-session STOP guard | The checkout/session that ran `author` or `propose` -> the same checkout/session claiming, implementing, or submitting review work. | Client-side `issuekit.local.toml` `[author_guard]`, enforced by `enforce_no_author_guard`. | `Author-session guard blocks <action>: STOP_NOW: this checkout authored <kind> <ref>...` | Stop and hand off. After handoff, run `issuekit author-guard clear`; lifecycle commands can pass `--allow-author-session` only for human emergency recovery. |
+| Server author-implementer guard | Issue author identity -> issue implementer identity. | mine-py API server; issuekit does not configure or bypass it. | `Issue #<id> was authored by <agent>; self-implementation is not allowed.` | Use a different implementer. `--allow-author-session` does not bypass this guard. See issuekit#162 and issuekit#163 for the in-flight author-identity work. |
+| Distinct-reviewer guard | Issue implementer -> auto-selected reviewer. Author == reviewer is allowed by design. | Client-side `require_distinct_reviewer` in `resolve_reviewer`; API-backed mode forces this local decision to true. | `Distinct-reviewer guard (require_distinct_reviewer) blocks auto reviewer resolution: no configured reviewer is distinct from the issue implementer.` | Configure an assignee distinct from `issue.implementer`. In non-API mode only, set `require_distinct_reviewer = false` if local policy permits. |
+
 ## Development
 
 This repo dogfoods issuekit. Implementation tasks and cross-project proposals
