@@ -201,6 +201,10 @@ def _cross_project_author_warning(
 ) -> str | None:
     related_refs = _related_ref_names(cwd)
     current_project = config.project
+    # "Current project" is the configured API project key, not the git-derived
+    # worker repo_id. The worker repo_id is a worker identity that may legitimately
+    # differ from the project key, so it must not be treated as a cross-project
+    # signal (that produced false positives on every local author).
     local_names = {current_project, _safe_current_ref(cwd)}
     explicit_origin = _origin_project_context(origin_project)
     if explicit_origin and explicit_origin not in local_names:
@@ -209,14 +213,6 @@ def _cross_project_author_warning(
             origin_project=explicit_origin,
             title=title,
             reason=f"--origin-project points at {explicit_origin}",
-        )
-
-    if config.worker is not None and config.worker.repo_id not in local_names:
-        return _author_proposal_warning(
-            target_project=current_project,
-            origin_project=config.worker.repo_id,
-            title=title,
-            reason=f"worker repo_id is {config.worker.repo_id}",
         )
 
     candidate_refs = sorted(name for name in related_refs if name not in local_names)

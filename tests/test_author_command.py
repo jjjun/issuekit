@@ -180,6 +180,44 @@ def test_author_command_direct_local_author_overrides_cross_project_preflight(
     assert client.get_issue(1)["title"] == "Fix source handoff"
 
 
+def test_author_command_allows_local_when_worker_repo_id_differs_from_project(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    # Regression for #163: a checkout whose worker repo_id ("py-mine") differs
+    # from its configured project key ("mine-py") must still author a local issue
+    # without tripping the cross-project preflight. repo_id is a worker identity,
+    # not the current project.
+    client = FakeIssuekitClient()
+    _configure_api_project(tmp_path, monkeypatch, client, project="mine-py")
+    (tmp_path / "issuekit.local.toml").write_text(
+        "[worker]\n"
+        'machine_id = "machine"\n'
+        'repo_id = "py-mine"\n'
+        'worker_id = "checkout"\n',
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    exit_code = cli.main(
+        [
+            "author",
+            "--title",
+            "Local fix",
+            "--body",
+            "## Problem\n\nA purely local change with no other project references.\n",
+            "--agent",
+            "codex",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "Authored issue: mine-py#1" in captured.out
+    assert client.get_issue(1)["title"] == "Local fix"
+
+
 def test_author_command_origin_project_context_requires_proposal(
     tmp_path: Path,
     monkeypatch,
