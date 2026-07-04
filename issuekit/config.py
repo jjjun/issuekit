@@ -485,7 +485,7 @@ def _model_prompts(value: object) -> tuple[tuple[str, str], ...]:
     return tuple((str(model), str(prompt)) for model, prompt in value.items())
 
 
-def _bool_value(value: object) -> bool:
+def parse_bool_value(value: object) -> bool:
     if isinstance(value, bool):
         return value
     if isinstance(value, int):
@@ -497,3 +497,7 @@ def _bool_value(value: object) -> bool:
         if normalized in {"0", "false", "no", "off"}:
             return False
     raise ValueError(f"Invalid boolean config value: {value}")
+
+
+def _bool_value(value: object) -> bool:
+    return parse_bool_value(value)

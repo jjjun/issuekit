@@ -2,17 +2,19 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-from issuekit.config import IssuekitConfig
+from issuekit.config import IssuekitConfig, parse_bool_value
 from issuekit.localconfig import LocalConfigError, read_local_config, write_local_config
 
 
 STOP_SENTINEL = "STOP_NOW"
 REQUIRED_NEXT_ACTION = "STOP"
+ENFORCE_AUTHOR_HANDOFF_ENV = "ISSUEKIT_ENFORCE_AUTHOR_HANDOFF"
 
 
 @dataclass(frozen=True)
@@ -125,6 +127,8 @@ def enforce_no_author_guard(
 ) -> None:
     if allow_override:
         return
+    if not _enforce_author_handoff():
+        return
     guard = read_author_guard(cwd)
     if guard is None:
         return
@@ -162,3 +166,15 @@ def _guard_from_mapping(raw: Mapping[str, object] | None) -> AuthorGuard | None:
 
 def _string(value: object) -> str:
     return "" if value is None else str(value).strip()
+
+
+def _enforce_author_handoff() -> bool:
+    raw = os.getenv(ENFORCE_AUTHOR_HANDOFF_ENV)
+    if raw is None or not raw.strip():
+        return True
+    try:
+        return parse_bool_value(raw)
+    except ValueError:
+        # Fail safe: an unrecognized value keeps the guard enforced rather than
+        # crashing every guarded lifecycle command. Only 0/false/no/off disable.
+        return True

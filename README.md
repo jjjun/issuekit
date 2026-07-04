@@ -336,7 +336,10 @@ root and loads values such as `ISSUEKIT_API_URL`, `ISSUEKIT_API_USER`,
 `ISSUEKIT_API_PASSWORD`, `ISSUEKIT_API_TOKEN`, `ISSUEKIT_TOKEN_CACHE`, and
 `ISSUEKIT_PROJECT`. Existing process environment variables are not overwritten.
 Overall precedence is process environment, then `.env`, then `[tool.issuekit]`
-or `issuekit.toml`, then built-in defaults.
+or `issuekit.toml`, then built-in defaults. Set
+`ISSUEKIT_ENFORCE_AUTHOR_HANDOFF=0` to skip only the local author-session STOP
+guard enforcement across checkouts; unset or truthy values keep the default
+enforcement behavior.
 
 When `ISSUEKIT_API_URL` uses plain `http://` for a non-loopback host, issuekit
 prints a stderr warning because credentials and bearer tokens are sent without
@@ -388,7 +391,7 @@ canonical reference appears in `issuekit protocol` output and
 
 | Guard | Separates | Enforced by | Error string | Recovery |
 | --- | --- | --- | --- | --- |
-| Author-session STOP guard | The checkout/session that ran `author` or `propose` -> the same checkout/session claiming, implementing, or submitting review work. | Client-side `issuekit.local.toml` `[author_guard]`, enforced by `enforce_no_author_guard`. | `Author-session guard blocks <action>: STOP_NOW: this checkout authored <kind> <ref>...` | Stop and hand off. After handoff, run `issuekit author-guard clear`; lifecycle commands can pass `--allow-author-session` only for human emergency recovery. |
+| Author-session STOP guard | The checkout/session that ran `author` or `propose` -> the same checkout/session claiming, implementing, or submitting review work. | Client-side `issuekit.local.toml` `[author_guard]`, enforced by `enforce_no_author_guard`. Set `ISSUEKIT_ENFORCE_AUTHOR_HANDOFF=0` to skip only this local enforcement while keeping the guard record visible. | `Author-session guard blocks <action>: STOP_NOW: this checkout authored <kind> <ref>...` | Stop and hand off. After handoff, run `issuekit author-guard clear`; lifecycle commands can pass `--allow-author-session` only for human emergency recovery. |
 | Server author-implementer guard | Issue author identity -> issue implementer identity. | mine-py API server; issuekit does not configure or bypass it. | `Issue #<id> was authored by <agent>; self-implementation is not allowed.` | Use a different implementer. `--allow-author-session` does not bypass this guard. See issuekit#162 and issuekit#163 for the in-flight author-identity work. |
 | Distinct-reviewer guard | Issue implementer -> auto-selected reviewer. Author == reviewer is allowed by design. | Client-side `require_distinct_reviewer` in `resolve_reviewer`; API-backed mode forces this local decision to true. | `Distinct-reviewer guard (require_distinct_reviewer) blocks auto reviewer resolution: no configured reviewer is distinct from the issue implementer.` | Configure an assignee distinct from `issue.implementer`. In non-API mode only, set `require_distinct_reviewer = false` if local policy permits. |
 

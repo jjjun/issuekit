@@ -1,7 +1,11 @@
 import pytest
 
 from issuekit import store as store_module
-from issuekit.author_guard import create_author_guard
+from issuekit.author_guard import (
+    ENFORCE_AUTHOR_HANDOFF_ENV,
+    create_author_guard,
+    read_author_guard,
+)
 from issuekit.commands.approve import approve_issue
 from issuekit.commands.complete import complete_issue
 from issuekit.config import IssuekitConfig, WorkerIdentity
@@ -145,6 +149,67 @@ def test_author_guard_blocks_claim_in_same_checkout(tmp_path, monkeypatch) -> No
         allow_author_guard_override=True,
     )
     assert issue.id == 1
+
+
+@pytest.mark.parametrize(
+    ("env_value", "guard_present", "should_block"),
+    [
+        (None, False, False),
+        (None, True, True),
+        ("1", False, False),
+        ("1", True, True),
+        ("true", False, False),
+        ("true", True, True),
+        ("yes", False, False),
+        ("yes", True, True),
+        ("on", False, False),
+        ("on", True, True),
+        ("0", False, False),
+        ("0", True, False),
+        ("false", False, False),
+        ("false", True, False),
+        ("no", False, False),
+        ("no", True, False),
+        ("off", False, False),
+        ("off", True, False),
+        ("", True, True),
+        ("   ", True, True),
+        ("maybe", True, True),
+    ],
+)
+def test_author_guard_enforcement_env_matrix(
+    tmp_path,
+    monkeypatch,
+    env_value: str | None,
+    guard_present: bool,
+    should_block: bool,
+) -> None:
+    client = FakeIssuekitClient([api_issue(1, "Ready", author="claude")])
+    config = _config(client, monkeypatch)
+    if env_value is None:
+        monkeypatch.delenv(ENFORCE_AUTHOR_HANDOFF_ENV, raising=False)
+    else:
+        monkeypatch.setenv(ENFORCE_AUTHOR_HANDOFF_ENV, env_value)
+    if guard_present:
+        create_author_guard(
+            tmp_path,
+            config=config,
+            kind="issue",
+            item_id=1,
+            ref="demo#1",
+            author_agent="codex",
+        )
+
+    if should_block:
+        with pytest.raises(WorkflowError, match="STOP_NOW"):
+            claim_issue(1, "codex", config=config, cwd=tmp_path)
+        return
+
+    issue = claim_issue(1, "codex", config=config, cwd=tmp_path)
+
+    assert issue.id == 1
+    if guard_present:
+        assert read_author_guard(tmp_path) is not None
 
 
 def test_author_guard_does_not_block_different_checkout(tmp_path, monkeypatch) -> None:
