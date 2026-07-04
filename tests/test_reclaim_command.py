@@ -84,7 +84,7 @@ def test_reclaim_force_proceeds_for_healthy_claim(
         {
             "method": "reclaim",
             "number": 5,
-            "body": {"expected_worker": "machine/issuekit/live"},
+            "body": {"expected_worker": "machine/issuekit/live", "actor": "issuekit"},
         }
     ]
 
@@ -120,9 +120,45 @@ def test_reclaim_proceeds_for_stale_claim_with_expected_worker(
         {
             "method": "reclaim",
             "number": 6,
-            "body": {"expected_worker": "machine/issuekit/dead"},
+            "body": {"expected_worker": "machine/issuekit/dead", "actor": "issuekit"},
         },
     ]
+
+
+def test_reclaim_forwards_reason(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = FakeIssuekitClient([_implementing(6, "machine/issuekit/dead")])
+    _configure_api(tmp_path, monkeypatch, client)
+
+    assert cli.main(["reclaim", "6", "--force", "--reason", "stale checkout"]) == 0
+
+    assert client.calls == [
+        {
+            "method": "reclaim",
+            "number": 6,
+            "body": {
+                "expected_worker": "machine/issuekit/dead",
+                "actor": "issuekit",
+                "reason": "stale checkout",
+            },
+        }
+    ]
+
+
+def test_reclaim_rejects_non_ascii_reason(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    client = FakeIssuekitClient([_implementing(6, "machine/issuekit/dead")])
+    _configure_api(tmp_path, monkeypatch, client)
+
+    assert cli.main(["reclaim", "6", "--force", "--reason", "stale \u2603"]) == 1
+
+    assert "--reason must be ASCII-only" in capsys.readouterr().err
+    assert client.calls == []
 
 
 def test_reclaim_rejects_non_implementing_target_even_with_force(

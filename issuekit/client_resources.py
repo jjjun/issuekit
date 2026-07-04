@@ -203,11 +203,19 @@ class _IssueResourceMixin:
         number: int,
         *,
         expected_worker: str | None = None,
+        actor: str | None = None,
+        reason: str | None = None,
     ) -> JsonDict:
         payload = self._request(
             "POST",
             f"/{number}/reclaim",
-            json=_drop_none({"expected_worker": expected_worker}),
+            json=_drop_none(
+                {
+                    "expected_worker": expected_worker,
+                    "actor": actor,
+                    "reason": reason,
+                }
+            ),
         )
         return _ensure_dict(payload, "Reclaim response")
 

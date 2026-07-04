@@ -117,7 +117,7 @@ def test_api_store_update_issue_sends_editable_fields() -> None:
     ]
 
 
-def test_api_store_reclaim_issue_threads_expected_worker() -> None:
+def test_api_store_reclaim_issue_threads_audit_fields() -> None:
     client = FakeIssuekitClient(
         [
             api_issue(
@@ -133,7 +133,12 @@ def test_api_store_reclaim_issue_threads_expected_worker() -> None:
     )
     store = ApiStore(IssuekitConfig(api_url="https://mine.example", project="demo"), client=client)
 
-    issue = store.reclaim_issue(7, expected_worker="machine/demo/dead")
+    issue = store.reclaim_issue(
+        7,
+        expected_worker="machine/demo/dead",
+        actor="machine/demo/operator",
+        reason="stale checkout",
+    )
 
     assert issue.issue_status == "active"
     assert issue.stage == "todo"
@@ -144,7 +149,11 @@ def test_api_store_reclaim_issue_threads_expected_worker() -> None:
         {
             "method": "reclaim",
             "number": 7,
-            "body": {"expected_worker": "machine/demo/dead"},
+            "body": {
+                "expected_worker": "machine/demo/dead",
+                "actor": "machine/demo/operator",
+                "reason": "stale checkout",
+            },
         }
     ]
 

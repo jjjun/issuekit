@@ -159,7 +159,7 @@ copying the steps.
 | `issuekit request-changes <id> --notes "..." [--assignee codex] [--reviewer claude]` | Return a reviewed issue to implementation. |
 | `issuekit queue --assignee claude [--stage review]` | List active issues for an assignee. |
 | `issuekit orphans [--stale-after-sec <n>] [--json]` | List implementing issues whose claiming worker is gone or has stopped heartbeating. |
-| `issuekit reclaim <id> [--force] [--json]` | Return an orphaned or stale implementing claim to the implement pool. |
+| `issuekit reclaim <id> [--force] [--reason "..."] [--json]` | Return an orphaned or stale implementing claim to the implement pool. |
 | `issuekit check-encoding [--json]` | Check tracked source files for leading BOM bytes and likely mojibake. |
 | `issuekit protocol [--agent codex\|claude]` | Print the canonical handoff protocol. |
 | `issuekit init [--with-mcp]` | Install tracker templates, encoding hooks, and optional MCP handoff scaffolding. |
@@ -427,7 +427,12 @@ Use `issuekit reclaim <id>` to return a listed stale claim to the implement
 pool. The command re-checks `orphans` before calling the API and passes the
 detected worker as a race guard, so a resumed holder is not overwritten. Use
 `--force` only for human emergency recovery when the staleness check should be
-skipped.
+skipped. `--force` still sends the worker that held the issue when issuekit read
+it, so it skips only the staleness check. If that worker resumes or another
+worker takes the claim between the read and the reclaim request, the API returns
+`race_lost` instead of overwriting the current holder. This keeps the emergency
+path optimistic-concurrency safe; there is intentionally no unconditional
+override flag that sends `expected_worker=None`.
 
 ## Separation-of-Duties Guards
 

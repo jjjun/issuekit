@@ -277,15 +277,32 @@ def test_reclaim_issue_tool_returns_stale_claim_to_pool(
     monkeypatch.setattr(worker_registry, "IssuekitClient", lambda *args, **kwargs: client)
     server = create_server(tmp_path)
 
-    reclaimed = _call(server, "reclaim_issue", {"id": 5})
+    reclaimed = _call(server, "reclaim_issue", {"id": 5, "reason": "stale checkout"})
 
     assert reclaimed["id"] == 5
     assert reclaimed["previous"]["assignee"] == "claude"
     assert reclaimed["expected_worker"] == "machine/issuekit/dead"
+    assert reclaimed["actor"] == "issuekit"
+    assert reclaimed["audit_reason"] == "stale checkout"
     assert reclaimed["issue"]["status"] == "active"
     assert reclaimed["issue"]["stage"] == "todo"
     assert reclaimed["issue"]["worker"] == ""
     assert client.get_issue(5)["worker"] == ""
+    assert client.calls == [
+        {
+            "method": "list_workers",
+            "body": {"repo_id": None, "project": None},
+        },
+        {
+            "method": "reclaim",
+            "number": 5,
+            "body": {
+                "expected_worker": "machine/issuekit/dead",
+                "actor": "issuekit",
+                "reason": "stale checkout",
+            },
+        },
+    ]
 
 
 def test_list_project_profiles_returns_stored_profiles(

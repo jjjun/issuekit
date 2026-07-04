@@ -26,6 +26,8 @@ class ReclaimResult:
     issue: Issue
     reason: str | None
     expected_worker: str | None
+    actor: str
+    audit_reason: str | None
 
 
 class WorkflowError(RuntimeError):
@@ -133,11 +135,14 @@ def reclaim_issue(
     *,
     force: bool = False,
     stale_after_sec: float | None = None,
+    reason: str | None = None,
     config: IssuekitConfig | None = None,
     store=None,
 ) -> ReclaimResult:
     config = config or IssuekitConfig()
     _validate_stage("implementing", config)
+    if reason is not None:
+        _validate_ascii_text(reason, "--reason")
 
     owned_store = _ensure_store(config, store)
     try:
@@ -171,15 +176,20 @@ def reclaim_issue(
                 )
 
         expected_worker = claim.worker if claim is not None else previous.worker or None
+        actor = _reclaim_actor(config)
         issue = owned_store.reclaim_issue(  # type: ignore[attr-defined]
             issue_id,
             expected_worker=expected_worker,
+            actor=actor,
+            reason=reason,
         )
         return ReclaimResult(
             previous=previous,
             issue=issue,
             reason=claim.reason if claim is not None else None,
             expected_worker=expected_worker,
+            actor=actor,
+            audit_reason=reason,
         )
     finally:
         if store is None:
@@ -394,6 +404,10 @@ def _validate_stage(value: str, config: IssuekitConfig) -> None:
 def _validate_ascii_text(value: str, label: str) -> None:
     if has_non_ascii(value):
         raise WorkflowError(f"{label} must be ASCII-only. {ASCII_ONLY_HINT}")
+
+
+def _reclaim_actor(config: IssuekitConfig) -> str:
+    return config.worker_key() or "issuekit"
 
 
 def _ensure_store(config: IssuekitConfig, store):

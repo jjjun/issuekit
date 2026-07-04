@@ -1544,11 +1544,13 @@ def test_client_submit_sends_exact_server_body() -> None:
     ) == {"id": 7, "stage": "review"}
 
 
-def test_client_reclaim_sends_expected_worker_guard() -> None:
+def test_client_reclaim_sends_audit_body() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/api/issues/issuekit/issues/7/reclaim"
         assert json.loads(request.content) == {
             "expected_worker": "machine/repo/dead",
+            "actor": "machine/repo/reclaimer",
+            "reason": "stale checkout",
         }
         return httpx.Response(200, json={"id": 7, "stage": "todo"})
 
@@ -1558,7 +1560,12 @@ def test_client_reclaim_sends_expected_worker_guard() -> None:
         http_client=httpx.Client(transport=httpx.MockTransport(handler)),
     )
 
-    assert client.reclaim(7, expected_worker="machine/repo/dead") == {
+    assert client.reclaim(
+        7,
+        expected_worker="machine/repo/dead",
+        actor="machine/repo/reclaimer",
+        reason="stale checkout",
+    ) == {
         "id": 7,
         "stage": "todo",
     }

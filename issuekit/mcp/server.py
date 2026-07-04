@@ -242,12 +242,14 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
         id: int,
         force: bool = False,
         stale_after_sec: float = DEFAULT_STALE_AFTER_SEC,
+        reason: str | None = None,
     ) -> dict[str, Any]:
         config = load_config(root)
         result = workflow_reclaim_issue(
             id,
             force=force,
             stale_after_sec=stale_after_sec,
+            reason=reason,
             config=config,
         )
         return reclaim_result_dict(result)

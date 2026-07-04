@@ -34,6 +34,10 @@ def register(subparsers: argparse._SubParsersAction) -> None:
             f"before reclaiming (default: {int(DEFAULT_STALE_AFTER_SEC)})."
         ),
     )
+    reclaim_parser.add_argument(
+        "--reason",
+        help="Optional ASCII audit reason recorded with the reclaim event.",
+    )
     reclaim_parser.add_argument("--json", action="store_true", help="Print JSON output.")
     reclaim_parser.set_defaults(func=run)
 
@@ -46,6 +50,7 @@ def run(args) -> int:
             issue_id,
             force=args.force,
             stale_after_sec=args.stale_after_sec,
+            reason=args.reason,
             config=config,
         )
         if args.json:
@@ -73,7 +78,9 @@ def reclaim_result_dict(result: ReclaimResult) -> dict[str, object]:
             "stage": result.previous.stage,
         },
         "expected_worker": result.expected_worker,
+        "actor": result.actor,
         "reason": result.reason,
+        "audit_reason": result.audit_reason,
         "issue": issue,
     }
 

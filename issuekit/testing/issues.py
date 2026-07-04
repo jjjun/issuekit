@@ -175,12 +175,20 @@ class FakeIssueSurface:
         number: int,
         *,
         expected_worker: str | None = None,
+        actor: str | None = None,
+        reason: str | None = None,
     ) -> JsonDict:
         with self._lock:
             self._record(
                 "reclaim",
                 number=number,
-                body=_drop_none({"expected_worker": expected_worker}),
+                body=_drop_none(
+                    {
+                        "expected_worker": expected_worker,
+                        "actor": actor,
+                        "reason": reason,
+                    }
+                ),
             )
             issue = self._find(number)
             if issue.get("stage", "") == "todo" and not issue.get("assignee") and not issue.get("worker"):

@@ -286,11 +286,15 @@ class ApiStore:
         issue_id: int,
         *,
         expected_worker: str | None = None,
+        actor: str | None = None,
+        reason: str | None = None,
     ) -> Issue:
         return self._issue_from_response(
             self.client.reclaim(
                 issue_id,
                 expected_worker=expected_worker,
+                actor=actor,
+                reason=reason,
             )
         )
 

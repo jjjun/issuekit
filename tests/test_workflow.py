@@ -16,6 +16,7 @@ from issuekit.workflow import (
     claim_issue,
     claim_next,
     find_for,
+    reclaim_issue,
     request_changes,
     resolve_reviewer,
     submit_for_review,
@@ -112,6 +113,63 @@ def test_claim_issue_sends_registered_worker(monkeypatch) -> None:
             "body": {"assignee": "codex", "worker": "machine/repo/checkout"},
         }
     ]
+
+
+def test_reclaim_issue_sends_registered_worker_as_actor(monkeypatch) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                1,
+                "Stuck",
+                status="in_progress",
+                stage="implementing",
+                assignee="claude",
+                implementer="claude",
+                worker="machine/repo/dead",
+            )
+        ]
+    )
+    config = _config(
+        client,
+        monkeypatch,
+        worker=WorkerIdentity("machine", "repo", "operator"),
+    )
+
+    result = reclaim_issue(1, force=True, reason="stale checkout", config=config)
+
+    assert result.actor == "machine/repo/operator"
+    assert result.audit_reason == "stale checkout"
+    assert result.issue.stage == "todo"
+    assert client.calls == [
+        {
+            "method": "reclaim",
+            "number": 1,
+            "body": {
+                "expected_worker": "machine/repo/dead",
+                "actor": "machine/repo/operator",
+                "reason": "stale checkout",
+            },
+        }
+    ]
+
+
+def test_reclaim_issue_rejects_non_ascii_reason(monkeypatch) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                1,
+                "Stuck",
+                status="in_progress",
+                stage="implementing",
+                worker="machine/repo/dead",
+            )
+        ]
+    )
+
+    with pytest.raises(WorkflowError, match="--reason must be ASCII-only"):
+        reclaim_issue(1, force=True, reason="stale \u2603", config=_config(client, monkeypatch))
+
+    assert client.calls == []
 
 
 def test_claim_issue_surfaces_api_transition_error(monkeypatch) -> None:
