@@ -8,6 +8,7 @@ from pathlib import Path
 
 from issuekit.core import (
     VALID_ISSUE_PRIORITIES,
+    has_non_ascii,
     is_valid_workflow_token,
     optional_int,
     optional_str,
@@ -91,6 +92,7 @@ class IssuekitConfig:
     stages: tuple[str, ...] = ("todo", "implementing", "review", "changes_requested", "done")
     default_reviewer: str = "claude"
     require_distinct_reviewer: bool = False
+    work_branch: str = ""
     worker: WorkerIdentity | None = None
     worker_role: str = ""
     worker_description: str = ""
@@ -217,6 +219,8 @@ def load_config(cwd: Path | str = ".") -> IssuekitConfig:
         else str(raw_config.get("default_reviewer", IssuekitConfig.default_reviewer)).strip()
     )
     _validate_default_reviewer(default_reviewer, assignees)
+    work_branch = str(raw_config.get("work_branch", IssuekitConfig.work_branch)).strip()
+    _validate_work_branch(work_branch)
     agents = _load_agents(raw_config.get("agents", {}))
     triage = _load_triage_policy(raw_config.get("triage", {}))
     router = _load_router_policy(raw_config.get("router", {}))
@@ -258,6 +262,7 @@ def load_config(cwd: Path | str = ".") -> IssuekitConfig:
                 IssuekitConfig.require_distinct_reviewer,
             )
         ),
+        work_branch=work_branch,
         worker=worker,
         worker_role=worker_role,
         worker_description=worker_description,
@@ -327,6 +332,13 @@ def _validate_default_reviewer(default_reviewer: str, assignees: tuple[str, ...]
 def _validate_project(project: str) -> None:
     if not project or not is_valid_workflow_token(project):
         raise ValueError(f"Invalid project token: {project}")
+
+
+def _validate_work_branch(work_branch: str) -> None:
+    if not work_branch:
+        return
+    if has_non_ascii(work_branch) or any(char.isspace() for char in work_branch):
+        raise ValueError(f"Invalid work_branch token: {work_branch}")
 
 
 def _load_agents(raw: dict[str, object]) -> tuple[tuple[str, AgentRunConfig], ...]:

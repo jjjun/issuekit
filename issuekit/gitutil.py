@@ -76,6 +76,17 @@ def git_short_head(cwd: Path | str, *, timeout: float = 5) -> str | None:
     return result.stdout.strip() or None
 
 
+def git_current_branch(cwd: Path | str, *, timeout: float = 5) -> str | None:
+    """Return the current branch name, or None outside a branch checkout."""
+    result = run_git(["rev-parse", "--abbrev-ref", "HEAD"], cwd, timeout=timeout)
+    if result is None or result.returncode != 0:
+        return None
+    branch = result.stdout.strip()
+    if not branch or branch == "HEAD":
+        return None
+    return branch
+
+
 def git_origin_url(cwd: Path | str, *, timeout: float = 5) -> str | None:
     """Return remote.origin.url, or None when it is unavailable."""
     result = run_git(["config", "--get", "remote.origin.url"], cwd, timeout=timeout)

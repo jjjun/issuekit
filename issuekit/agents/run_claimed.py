@@ -44,6 +44,7 @@ def run_and_submit(
     prompt_suffix: str | None = None,
     allow_no_changes: bool = False,
     allow_author_guard_override: bool = False,
+    allow_any_branch: bool = False,
     abort_event: threading.Event | None = None,
     reporter: RunReporter | None = None,
     runner_factory: RunnerFactory | None = None,
@@ -153,6 +154,7 @@ def run_and_submit(
             store=store,
             cwd=cwd,
             allow_author_guard_override=allow_author_guard_override,
+            allow_any_branch=allow_any_branch,
         )
         return RunOutcome(
             issue=issue,

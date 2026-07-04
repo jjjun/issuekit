@@ -78,6 +78,11 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         default=1800.0,
         help="Hard timeout for each agent run in seconds.",
     )
+    serve_parser.add_argument(
+        "--allow-any-branch",
+        action="store_true",
+        help="Override the configured work_branch guard for human recovery.",
+    )
     serve_parser.set_defaults(func=run)
 
 
@@ -277,6 +282,7 @@ def _serve_loop(
                     config=config,
                     store=store,
                     cwd=cwd,
+                    allow_any_branch=getattr(args, "allow_any_branch", False),
                 )
             except (TimeoutError, WorkflowError, ValueError) as exc:
                 _log(sys.stderr, log_path, "claim_error", error=str(exc), backoff=backoff.current)
@@ -508,6 +514,7 @@ def _run_claimed_issue(
             store=store,
             out=sys.stderr,
             err=sys.stderr,
+            allow_any_branch=getattr(args, "allow_any_branch", False),
         )
     except (
         FileNotFoundError,

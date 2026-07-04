@@ -145,6 +145,7 @@ def test_author_guard_help_lists_separation_guards(capsys: pytest.CaptureFixture
     assert "Author-session STOP guard" in captured.out
     assert "Server author-implementer guard" in captured.out
     assert "Distinct-reviewer guard" in captured.out
+    assert "Work-branch guard" in captured.out
     assert "issuekit#162 and issuekit#163" in captured.out
 
 

@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from issuekit.config import IssuekitConfig
 from issuekit.author_guard import author_handoff_enforced, enforce_no_author_guard
+from issuekit.branch_guard import enforce_work_branch
+from issuekit.config import IssuekitConfig
 from issuekit.core import (
     ASCII_ONLY_HINT,
     Issue,
@@ -11,6 +12,7 @@ from issuekit.core import (
     has_non_ascii,
     is_valid_workflow_token,
 )
+from issuekit.gitutil import git_current_branch
 
 
 AUTO_REVIEWER = "auto"
@@ -41,6 +43,7 @@ def claim_next(
     store=None,
     cwd: str = ".",
     allow_author_guard_override: bool = False,
+    allow_any_branch: bool = False,
 ) -> Issue | None:
     config = config or IssuekitConfig()
     _validate_assignee(assignee, config)
@@ -52,6 +55,12 @@ def claim_next(
         config=config,
         action="claim-next",
         allow_override=allow_author_guard_override,
+    )
+    enforce_work_branch(
+        cwd,
+        config=config,
+        action="claim-next",
+        allow_any_branch=allow_any_branch,
     )
 
     owned_store = _ensure_store(config, store)
@@ -76,6 +85,7 @@ def claim_issue(
     store=None,
     cwd: str = ".",
     allow_author_guard_override: bool = False,
+    allow_any_branch: bool = False,
 ) -> Issue:
     config = config or IssuekitConfig()
     _validate_assignee(assignee, config)
@@ -86,6 +96,12 @@ def claim_issue(
         action=f"claim issue #{issue_id}",
         issue_id=issue_id,
         allow_override=allow_author_guard_override,
+    )
+    enforce_work_branch(
+        cwd,
+        config=config,
+        action=f"claim issue #{issue_id}",
+        allow_any_branch=allow_any_branch,
     )
 
     owned_store = _ensure_store(config, store)
@@ -113,9 +129,12 @@ def submit_for_review(
     store=None,
     cwd: str = ".",
     allow_author_guard_override: bool = False,
+    allow_any_branch: bool = False,
 ) -> Issue:
     config = config or IssuekitConfig()
     _validate_stage("review", config)
+    if branch is None:
+        branch = git_current_branch(cwd)
     _validate_ascii_text(summary, "--summary")
     _validate_ascii_text(branch or "", "--branch")
     _validate_ascii_text(commit or "", "--commit")
@@ -125,6 +144,12 @@ def submit_for_review(
         action=f"submit issue #{issue_id} for review",
         issue_id=issue_id,
         allow_override=allow_author_guard_override,
+    )
+    enforce_work_branch(
+        cwd,
+        config=config,
+        action=f"submit issue #{issue_id} for review",
+        allow_any_branch=allow_any_branch,
     )
     owned_store = _ensure_store(config, store)
     try:

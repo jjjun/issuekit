@@ -92,6 +92,34 @@ def test_load_config_reads_api_fields_from_pyproject(tmp_path: Path) -> None:
     assert config.require_distinct_reviewer is True
 
 
+def test_load_config_reads_work_branch(tmp_path: Path) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "work_branch = 'main'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    config = load_config(tmp_path)
+
+    assert config.work_branch == "main"
+
+
+def test_load_config_defaults_work_branch_to_empty(tmp_path: Path) -> None:
+    assert load_config(tmp_path).work_branch == ""
+
+
+@pytest.mark.parametrize("value", ["feature branch", "main\u3042"])
+def test_load_config_rejects_invalid_work_branch(tmp_path: Path, value: str) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        f"work_branch = '{value}'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    with pytest.raises(ValueError, match="Invalid work_branch token"):
+        load_config(tmp_path)
+
+
 def test_load_config_reads_triage_policy(tmp_path: Path) -> None:
     (tmp_path / "issuekit.toml").write_text(
         (

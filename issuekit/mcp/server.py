@@ -56,6 +56,7 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
         assignee: str = "codex",
         priority: str | None = None,
         allow_author_session: bool = False,
+        allow_any_branch: bool = False,
     ) -> dict[str, Any]:
         config = load_config(root)
         with get_store(config) as store:
@@ -66,6 +67,7 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
                 store=store,
                 cwd=root,
                 allow_author_guard_override=allow_author_session,
+                allow_any_branch=allow_any_branch,
             )
         if issue is None:
             return {"status": "none", "assignee": assignee}
@@ -84,6 +86,7 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
         commit: str | None = None,
         reviewer: str | None = None,
         allow_author_session: bool = False,
+        allow_any_branch: bool = False,
     ) -> dict[str, Any]:
         config = load_config(root)
         with get_store(config) as store:
@@ -97,6 +100,7 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
                 store=store,
                 cwd=root,
                 allow_author_guard_override=allow_author_session,
+                allow_any_branch=allow_any_branch,
             )
         return issue_dict(issue)
 

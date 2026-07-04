@@ -301,6 +301,7 @@ assignees = ["codex", "claude"]
 stages = ["todo", "implementing", "review", "changes_requested", "done"]
 default_reviewer = "auto"
 require_distinct_reviewer = true
+work_branch = "main"
 ```
 
 Non-Python repositories can use a standalone `issuekit.toml` at the repo root
@@ -313,6 +314,7 @@ assignees = ["codex", "claude"]
 stages = ["todo", "implementing", "review", "changes_requested", "done"]
 default_reviewer = "auto"
 require_distinct_reviewer = true
+work_branch = "main"
 ```
 
 The mine-py server owns issue ids and reviewer policy. When `api_url` is set,
@@ -330,6 +332,14 @@ require_distinct_reviewer = true
 
 Legacy `docs/issues/` files are read only by the migration commands. Runtime
 issue lifecycle commands use the API store.
+
+Set `work_branch` to pin handoff lifecycle work to one branch. When set,
+`claim`, `implement`, `serve`, and `submit-review` fail before mutating issue
+state if the checkout is on another branch or the branch cannot be determined.
+The guard never switches branches. Omit `work_branch` or set it to an empty
+string to disable the guard, which is the default. The config shape is intended
+to grow later to an allowed branch list or glob such as
+`allowed_branches = ["main", "release/*"]`; today it is a single branch string.
 
 At startup, issuekit also reads a repo-local `.env` file from the current repo
 root and loads values such as `ISSUEKIT_API_URL`, `ISSUEKIT_API_USER`,
@@ -384,7 +394,7 @@ same-name review is rejected.
 
 ## Separation-of-Duties Guards
 
-issuekit has three separation-of-duties guards. Use this table to identify
+issuekit has four separation-of-duties guards. Use this table to identify
 which guard blocked a command before choosing a recovery path. The same
 canonical reference appears in `issuekit protocol` output and
 `issuekit author-guard --help`.
@@ -394,6 +404,7 @@ canonical reference appears in `issuekit protocol` output and
 | Author-session STOP guard | The checkout/session that ran `author` or `propose` -> the same checkout/session claiming, implementing, or submitting review work. | Client-side `issuekit.local.toml` `[author_guard]`, enforced by `enforce_no_author_guard`. Set `ISSUEKIT_ENFORCE_AUTHOR_HANDOFF=0` to skip only this local enforcement while keeping the guard record visible. | `Author-session guard blocks <action>: STOP_NOW: this checkout authored <kind> <ref>...` | Stop and hand off. After handoff, run `issuekit author-guard clear`; lifecycle commands can pass `--allow-author-session` only for human emergency recovery. |
 | Server author-implementer guard | Issue author identity -> issue implementer identity. | mine-py API server; issuekit does not configure or bypass it. | `Issue #<id> was authored by <agent>; self-implementation is not allowed.` | Use a different implementer. `--allow-author-session` does not bypass this guard. See issuekit#162 and issuekit#163 for the in-flight author-identity work. |
 | Distinct-reviewer guard | Issue implementer -> auto-selected reviewer. Author == reviewer is allowed by design. | Client-side `require_distinct_reviewer` in `resolve_reviewer`; API-backed mode forces this local decision to true. | `Distinct-reviewer guard (require_distinct_reviewer) blocks auto reviewer resolution: no configured reviewer is distinct from the issue implementer.` | Configure an assignee distinct from `issue.implementer`. In non-API mode only, set `require_distinct_reviewer = false` if local policy permits. |
+| Work-branch guard | Shared checkout handoff work -> the configured branch for that repo. | Client-side `[tool.issuekit] work_branch` or top-level `issuekit.toml` `work_branch`, enforced by `enforce_work_branch` before claim and submit lifecycle mutations. | `Work-branch guard blocks <action>: checkout is on branch '<cur>' but work_branch is '<want>'.` | Switch to the configured branch or update config. Lifecycle commands can pass `--allow-any-branch` only for human emergency recovery. |
 
 ## Development
 

@@ -26,6 +26,11 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         action="store_true",
         help="Override a local author-session STOP guard for human recovery.",
     )
+    submit_review_parser.add_argument(
+        "--allow-any-branch",
+        action="store_true",
+        help="Override the configured work_branch guard for human recovery.",
+    )
     submit_review_parser.set_defaults(func=run_submit_review)
 
     request_changes_parser = subparsers.add_parser(
@@ -52,6 +57,7 @@ def run_submit_review(args) -> int:
             config=config,
             cwd=Path.cwd(),
             allow_author_guard_override=args.allow_author_session,
+            allow_any_branch=args.allow_any_branch,
         )
 
         print(

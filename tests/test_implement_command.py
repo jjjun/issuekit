@@ -49,9 +49,20 @@ class FakeRunner:
         return FakeResult(parsed={"resume_session_id": "abc123"})
 
 
-def _configure_api(tmp_path: Path, monkeypatch, client: FakeIssuekitClient) -> None:
+def _configure_api(
+    tmp_path: Path,
+    monkeypatch,
+    client: FakeIssuekitClient,
+    *,
+    extra_config: str = "",
+) -> None:
     (tmp_path / "issuekit.toml").write_text(
-        "api_url = 'https://mine.example'\nproject = 'demo'\ndefault_reviewer = 'auto'\n",
+        (
+            "api_url = 'https://mine.example'\n"
+            "project = 'demo'\n"
+            "default_reviewer = 'auto'\n"
+            f"{extra_config}"
+        ),
         encoding="utf-8",
         newline="\n",
     )
@@ -100,6 +111,25 @@ def test_implement_command_materializes_api_issue_and_submits_review(
     assert "submitted_review id=1 ref=demo#1 assignee= stage=review" in captured.out
     assert client.calls[0] == {"method": "claim", "number": 1, "body": {"assignee": "kimi"}}
     assert client.calls[-1]["method"] == "submit"
+
+
+def test_implement_command_blocks_wrong_work_branch_before_agent(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
+    FakeRunner.calls.clear()
+    _configure_api(tmp_path, monkeypatch, client, extra_config="work_branch = 'main'\n")
+    monkeypatch.setattr("issuekit.branch_guard.git_current_branch", lambda cwd: "feature")
+    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", FakeRunner)
+
+    exit_code = cli.main(["implement", "1", "--agent", "codex"])
+
+    assert exit_code == 1
+    assert "Work-branch guard blocks claim issue #1" in capsys.readouterr().err
+    assert FakeRunner.calls == []
+    assert client.calls == []
 
 
 def test_implement_command_does_not_commit_or_push(

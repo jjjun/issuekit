@@ -151,6 +151,42 @@ def test_author_guard_blocks_claim_in_same_checkout(tmp_path, monkeypatch) -> No
     assert issue.id == 1
 
 
+def test_work_branch_guard_blocks_claim_before_api_call(tmp_path, monkeypatch) -> None:
+    client = FakeIssuekitClient([api_issue(1, "Ready", author="claude")])
+    config = _config(client, monkeypatch)
+    config = IssuekitConfig(
+        api_url=config.api_url,
+        project=config.project,
+        work_branch="main",
+    )
+    monkeypatch.setattr("issuekit.branch_guard.git_current_branch", lambda cwd: "feature")
+
+    with pytest.raises(WorkflowError, match="Work-branch guard blocks claim issue #1"):
+        claim_issue(1, "codex", config=config, cwd=tmp_path)
+
+    assert client.calls == []
+
+
+def test_work_branch_guard_allows_claim_with_bypass(tmp_path, monkeypatch) -> None:
+    client = FakeIssuekitClient([api_issue(1, "Ready", author="claude")])
+    config = IssuekitConfig(api_url="https://mine.example", project="demo", work_branch="main")
+    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.setattr("issuekit.branch_guard.git_current_branch", lambda cwd: "feature")
+
+    issue = claim_issue(
+        1,
+        "codex",
+        config=config,
+        cwd=tmp_path,
+        allow_any_branch=True,
+    )
+
+    assert issue.id == 1
+    assert client.calls == [
+        {"method": "claim", "number": 1, "body": {"assignee": "codex"}}
+    ]
+
+
 @pytest.mark.parametrize(
     ("env_value", "guard_present", "should_block"),
     [
@@ -342,6 +378,90 @@ def test_submit_for_review_passes_structured_fields(monkeypatch) -> None:
             },
         }
     ]
+
+
+def test_submit_for_review_defaults_branch_to_current_checkout(monkeypatch) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                1,
+                "First",
+                status="in_progress",
+                assignee="codex",
+                stage="implementing",
+                implementer="codex",
+            )
+        ]
+    )
+    monkeypatch.setattr("issuekit.workflow.git_current_branch", lambda cwd: "feature")
+
+    issue = submit_for_review(
+        1,
+        summary="Implemented workflow.",
+        config=_config(client, monkeypatch),
+    )
+
+    assert issue.stage == "review"
+    assert client.calls == [
+        {
+            "method": "submit",
+            "number": 1,
+            "body": {"summary": "Implemented workflow.", "branch": "feature"},
+        }
+    ]
+
+
+def test_submit_for_review_omits_branch_when_checkout_branch_unknown(monkeypatch) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                1,
+                "First",
+                status="in_progress",
+                assignee="codex",
+                stage="implementing",
+                implementer="codex",
+            )
+        ]
+    )
+    monkeypatch.setattr("issuekit.workflow.git_current_branch", lambda cwd: None)
+
+    submit_for_review(
+        1,
+        summary="Implemented workflow.",
+        config=_config(client, monkeypatch),
+    )
+
+    assert client.calls == [
+        {
+            "method": "submit",
+            "number": 1,
+            "body": {"summary": "Implemented workflow."},
+        }
+    ]
+
+
+def test_work_branch_guard_blocks_submit_before_api_call(tmp_path, monkeypatch) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                1,
+                "First",
+                status="in_progress",
+                assignee="codex",
+                stage="implementing",
+                implementer="codex",
+            )
+        ]
+    )
+    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.setattr("issuekit.branch_guard.git_current_branch", lambda cwd: "feature")
+    config = IssuekitConfig(api_url="https://mine.example", project="demo", work_branch="main")
+
+    with pytest.raises(WorkflowError, match="Work-branch guard blocks submit issue #1"):
+        submit_for_review(1, summary="Implemented.", config=config, cwd=tmp_path)
+
+    assert client.calls == []
 
 
 def test_request_changes_returns_issue_to_implementer(monkeypatch) -> None:

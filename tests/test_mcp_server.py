@@ -248,6 +248,7 @@ def test_submit_for_review_schema_omits_assignee(tmp_path: Path) -> None:
     schema = _tool_schema(create_server(tmp_path), "submit_for_review")
 
     assert "assignee" not in schema["properties"]
+    assert "allow_any_branch" in schema["properties"]
 
 
 def test_get_protocol_matches_canonical_text(tmp_path: Path) -> None:
@@ -313,6 +314,38 @@ def test_review_round_trip_and_approve(tmp_path: Path, monkeypatch: pytest.Monke
     assert approved["status"] == "completed"
     assert approved["stage"] == "done"
     assert client.get_issue(1)["stage"] == "done"
+
+
+def test_submit_for_review_tool_defaults_branch_to_current_checkout(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                1,
+                "First",
+                status="in_progress",
+                assignee="codex",
+                stage="implementing",
+                implementer="codex",
+            )
+        ]
+    )
+    _configure_api(tmp_path, monkeypatch, client)
+    monkeypatch.setattr("issuekit.workflow.git_current_branch", lambda cwd: "feature")
+    server = create_server(tmp_path)
+
+    submitted = _call(server, "submit_for_review", {"id": 1, "summary": "Implemented."})
+
+    assert submitted["stage"] == "review"
+    assert client.calls == [
+        {
+            "method": "submit",
+            "number": 1,
+            "body": {"summary": "Implemented.", "branch": "feature"},
+        }
+    ]
 
 
 def test_review_can_be_routed_to_codex(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

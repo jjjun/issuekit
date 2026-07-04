@@ -25,6 +25,11 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         action="store_true",
         help="Override a local author-session STOP guard for human recovery.",
     )
+    claim_parser.add_argument(
+        "--allow-any-branch",
+        action="store_true",
+        help="Override the configured work_branch guard for human recovery.",
+    )
     claim_parser.set_defaults(func=run)
 
 
@@ -43,6 +48,7 @@ def run(args) -> int:
                 config=config,
                 cwd=Path.cwd(),
                 allow_author_guard_override=args.allow_author_session,
+                allow_any_branch=args.allow_any_branch,
             )
         else:
             issue = claim_issue(
@@ -51,6 +57,7 @@ def run(args) -> int:
                 config=config,
                 cwd=Path.cwd(),
                 allow_author_guard_override=args.allow_author_session,
+                allow_any_branch=args.allow_any_branch,
             )
 
         if issue is None:

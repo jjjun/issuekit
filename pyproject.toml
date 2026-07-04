@@ -44,3 +44,4 @@ packages = ["issuekit"]
 # project = "issuekit"
 assignees = ["codex", "claude", "kimi"]
 default_reviewer = "auto"
+work_branch = "main"

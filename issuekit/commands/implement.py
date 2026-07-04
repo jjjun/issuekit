@@ -52,6 +52,11 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         action="store_true",
         help="Override a local author-session STOP guard for human recovery.",
     )
+    implement_parser.add_argument(
+        "--allow-any-branch",
+        action="store_true",
+        help="Override the configured work_branch guard for human recovery.",
+    )
     implement_parser.set_defaults(func=run)
 
 
@@ -78,6 +83,7 @@ def run(args) -> int:
             config=config,
             cwd=cwd,
             allow_author_guard_override=args.allow_author_session,
+            allow_any_branch=args.allow_any_branch,
         )
         outcome = run_and_submit(
             claimed_issue,
@@ -91,6 +97,7 @@ def run(args) -> int:
             prompt_suffix=reviewer_prompt,
             allow_no_changes=getattr(args, "allow_no_changes", False),
             allow_author_guard_override=args.allow_author_session,
+            allow_any_branch=args.allow_any_branch,
             reporter=lambda issue, result: _print_run_report(issue, result, args.agent),
             runner_factory=AgentRunner,
         )

@@ -1,8 +1,11 @@
 import subprocess
 from pathlib import Path
 
+import pytest
+
 from issuekit.gitutil import (
     changed_file_count,
+    git_current_branch,
     git_origin_url,
     git_root,
     git_short_head,
@@ -58,6 +61,9 @@ def test_git_wrappers_normalize_success_and_failure(
         ("--no-pager", "status", "--short"): subprocess.CompletedProcess(
             ["git"], 0, stdout=" M a.py\n?? b.py\n", stderr=""
         ),
+        ("rev-parse", "--abbrev-ref", "HEAD"): subprocess.CompletedProcess(
+            ["git"], 0, stdout="main\n", stderr=""
+        ),
         ("rev-parse", "--short", "HEAD"): subprocess.CompletedProcess(
             ["git"], 0, stdout="abc123\n", stderr=""
         ),
@@ -77,6 +83,52 @@ def test_git_wrappers_normalize_success_and_failure(
     assert git_status_short(tmp_path) == "M a.py\n?? b.py"
     assert git_status_short(tmp_path, strip=False) == " M a.py\n?? b.py\n"
     assert changed_file_count(tmp_path) == 2
+    assert git_current_branch(tmp_path) == "main"
     assert git_root(tmp_path) == tmp_path.resolve()
     assert git_short_head(tmp_path) == "abc123"
     assert git_origin_url(tmp_path) is None
+
+
+def _require_git() -> None:
+    if run_git(["--version"], ".") is None:
+        pytest.skip("git is not available")
+
+
+def _git(repo: Path, *args: str) -> None:
+    result = subprocess.run(
+        ["git", *args],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def _commit_file(repo: Path) -> None:
+    (repo / "file.txt").write_text("hello\n", encoding="utf-8", newline="\n")
+    _git(repo, "add", "file.txt")
+    _git(repo, "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "init")
+
+
+def test_git_current_branch_returns_branch_name(tmp_path: Path) -> None:
+    _require_git()
+    _git(tmp_path, "init", "-b", "main")
+    _commit_file(tmp_path)
+
+    assert git_current_branch(tmp_path) == "main"
+
+
+def test_git_current_branch_returns_none_for_detached_head(tmp_path: Path) -> None:
+    _require_git()
+    _git(tmp_path, "init", "-b", "main")
+    _commit_file(tmp_path)
+    _git(tmp_path, "checkout", "--detach", "HEAD")
+
+    assert git_current_branch(tmp_path) is None
+
+
+def test_git_current_branch_returns_none_outside_repo(tmp_path: Path) -> None:
+    _require_git()
+
+    assert git_current_branch(tmp_path) is None
