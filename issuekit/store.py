@@ -174,8 +174,22 @@ class ApiStore:
             )
         )
 
-    def claim_issue(self, issue_id: int, *, assignee: str, worker: str | None = None) -> Issue:
-        return self._issue_from_response(self.client.claim(issue_id, assignee=assignee, worker=worker))
+    def claim_issue(
+        self,
+        issue_id: int,
+        *,
+        assignee: str,
+        worker: str | None = None,
+        allow_self_implement: bool = False,
+    ) -> Issue:
+        return self._issue_from_response(
+            self.client.claim(
+                issue_id,
+                assignee=assignee,
+                worker=worker,
+                allow_self_implement=allow_self_implement,
+            )
+        )
 
     def claim_next(
         self,
@@ -183,8 +197,14 @@ class ApiStore:
         assignee: str,
         priority: str | None = None,
         worker: str | None = None,
+        allow_self_implement: bool = False,
     ) -> Issue | None:
-        raw = self.client.claim_next(assignee=assignee, priority=priority, worker=worker)
+        raw = self.client.claim_next(
+            assignee=assignee,
+            priority=priority,
+            worker=worker,
+            allow_self_implement=allow_self_implement,
+        )
         return None if raw is None else self._issue_from_response(raw)
 
     def submit_for_review(

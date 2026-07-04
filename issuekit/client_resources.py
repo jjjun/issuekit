@@ -160,11 +160,21 @@ class _IssueResourceMixin:
         payload = self._request("PATCH", f"/{number}", json=update)
         return _ensure_dict(payload, "Update response")
 
-    def claim(self, number: int, *, assignee: str, worker: str | None = None) -> JsonDict:
+    def claim(
+        self,
+        number: int,
+        *,
+        assignee: str,
+        worker: str | None = None,
+        allow_self_implement: bool = False,
+    ) -> JsonDict:
+        body = _drop_none({"assignee": assignee, "worker": worker})
+        if allow_self_implement:
+            body["allow_self_implement"] = True
         payload = self._request(
             "POST",
             f"/{number}/claim",
-            json=_drop_none({"assignee": assignee, "worker": worker}),
+            json=body,
         )
         return _ensure_dict(payload, "Claim response")
 
@@ -174,11 +184,15 @@ class _IssueResourceMixin:
         assignee: str,
         priority: str | None = None,
         worker: str | None = None,
+        allow_self_implement: bool = False,
     ) -> JsonDict | None:
+        body = _drop_none({"assignee": assignee, "priority": priority, "worker": worker})
+        if allow_self_implement:
+            body["allow_self_implement"] = True
         payload = self._request(
             "POST",
             "/claim-next",
-            json=_drop_none({"assignee": assignee, "priority": priority, "worker": worker}),
+            json=body,
         )
         if payload is None:
             return None

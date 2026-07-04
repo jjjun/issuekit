@@ -212,6 +212,53 @@ def test_author_guard_enforcement_env_matrix(
         assert read_author_guard(tmp_path) is not None
 
 
+def test_claim_sends_allow_self_implement_when_enforcement_off(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv(ENFORCE_AUTHOR_HANDOFF_ENV, "0")
+    client = FakeIssuekitClient([api_issue(1, "Ready", author="codex")])
+    config = _config(client, monkeypatch)
+
+    issue = claim_issue(1, "codex", config=config, cwd=tmp_path)
+
+    assert issue.id == 1
+    assert client.calls == [
+        {
+            "method": "claim",
+            "number": 1,
+            "body": {"assignee": "codex", "allow_self_implement": True},
+        }
+    ]
+
+
+def test_claim_next_sends_allow_self_implement_when_enforcement_off(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv(ENFORCE_AUTHOR_HANDOFF_ENV, "0")
+    client = FakeIssuekitClient([api_issue(1, "Ready", author="codex")])
+    config = _config(client, monkeypatch)
+
+    issue = claim_next("codex", config=config, cwd=tmp_path)
+
+    assert issue is not None
+    assert issue.id == 1
+    assert client.calls == [
+        {
+            "method": "claim_next",
+            "body": {"assignee": "codex", "allow_self_implement": True},
+        }
+    ]
+
+
+def test_claim_omits_allow_self_implement_when_enforcement_on(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv(ENFORCE_AUTHOR_HANDOFF_ENV, "1")
+    client = FakeIssuekitClient([api_issue(1, "Ready", author="claude")])
+    config = _config(client, monkeypatch)
+
+    issue = claim_issue(1, "codex", config=config, cwd=tmp_path)
+
+    assert issue.id == 1
+    assert client.calls == [
+        {"method": "claim", "number": 1, "body": {"assignee": "codex"}}
+    ]
+
+
 def test_author_guard_does_not_block_different_checkout(tmp_path, monkeypatch) -> None:
     client = FakeIssuekitClient([api_issue(1, "Ready", author="claude")])
     config = _config(client, monkeypatch)

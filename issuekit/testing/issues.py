@@ -103,15 +103,27 @@ class FakeIssueSurface:
             stored.update(deepcopy(issue))
             return deepcopy(stored)
 
-    def claim(self, number: int, *, assignee: str, worker: str | None = None) -> JsonDict:
+    def claim(
+        self,
+        number: int,
+        *,
+        assignee: str,
+        worker: str | None = None,
+        allow_self_implement: bool = False,
+    ) -> JsonDict:
         with self._lock:
+            body = _drop_none({"assignee": assignee, "worker": worker})
+            if allow_self_implement:
+                body["allow_self_implement"] = True
             self._record(
                 "claim",
                 number=number,
-                body=_drop_none({"assignee": assignee, "worker": worker}),
+                body=body,
             )
             issue = self._find(number)
-            self._claim_issue(issue, assignee, worker=worker)
+            self._claim_issue(
+                issue, assignee, worker=worker, allow_self_implement=allow_self_implement
+            )
             return deepcopy(issue)
 
     def claim_next(
@@ -120,17 +132,21 @@ class FakeIssueSurface:
         assignee: str,
         priority: str | None = None,
         worker: str | None = None,
+        allow_self_implement: bool = False,
     ) -> JsonDict | None:
         with self._lock:
+            body = _drop_none(
+                {
+                    "assignee": assignee,
+                    "priority": priority,
+                    "worker": worker,
+                }
+            )
+            if allow_self_implement:
+                body["allow_self_implement"] = True
             self._record(
                 "claim_next",
-                body=_drop_none(
-                    {
-                        "assignee": assignee,
-                        "priority": priority,
-                        "worker": worker,
-                    }
-                ),
+                body=body,
             )
             candidates = [
                 issue
@@ -149,7 +165,9 @@ class FakeIssueSurface:
                     int(item["id"]),
                 ),
             )[0]
-            self._claim_issue(issue, assignee, worker=worker)
+            self._claim_issue(
+                issue, assignee, worker=worker, allow_self_implement=allow_self_implement
+            )
             return deepcopy(issue)
 
     def submit(
@@ -359,7 +377,14 @@ class FakeIssueSurface:
         self._issues[issue_id] = stored
         return stored
 
-    def _claim_issue(self, issue: JsonDict, assignee: str, *, worker: str | None = None) -> None:
+    def _claim_issue(
+        self,
+        issue: JsonDict,
+        assignee: str,
+        *,
+        worker: str | None = None,
+        allow_self_implement: bool = False,
+    ) -> None:
         issue_id = issue["id"]
         if issue.get("status") not in CLAIMABLE_STATUSES:
             raise WorkflowError(
@@ -377,7 +402,7 @@ class FakeIssueSurface:
                 f"Issue #{issue_id} is assigned to {issue.get('assignee')}, not {assignee}.",
                 code="invalid_transition",
             )
-        if issue.get("author") == assignee:
+        if not allow_self_implement and issue.get("author") == assignee:
             raise WorkflowError(
                 f"Issue #{issue_id} was authored by {assignee}; self-implementation is not allowed.",
                 code="invalid_transition",

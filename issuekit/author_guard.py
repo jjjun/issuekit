@@ -168,6 +168,15 @@ def _string(value: object) -> str:
     return "" if value is None else str(value).strip()
 
 
+def author_handoff_enforced() -> bool:
+    """Public accessor for the author-handoff enforcement decision.
+
+    Reused by the claim path so the local author-session guard and the
+    server-side author==claimer guard relax together and cannot diverge.
+    """
+    return _enforce_author_handoff()
+
+
 def _enforce_author_handoff() -> bool:
     raw = os.getenv(ENFORCE_AUTHOR_HANDOFF_ENV)
     if raw is None or not raw.strip():

@@ -814,6 +814,68 @@ def test_client_claim_omits_worker_when_not_provided() -> None:
     assert client.claim(7, assignee="codex") == {"id": 7, "stage": "implementing"}
 
 
+def test_client_claim_sends_allow_self_implement_when_set() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "POST"
+        assert request.url.path == "/api/issues/issuekit/issues/7/claim"
+        assert json.loads(request.content) == {
+            "assignee": "codex",
+            "allow_self_implement": True,
+        }
+        return httpx.Response(200, json={"id": 7, "stage": "implementing"})
+
+    client = IssuekitClient(
+        "https://mine.example",
+        token="static-token",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    assert client.claim(7, assignee="codex", allow_self_implement=True) == {
+        "id": 7,
+        "stage": "implementing",
+    }
+
+
+def test_client_claim_omits_allow_self_implement_when_false() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "POST"
+        assert json.loads(request.content) == {"assignee": "codex"}
+        return httpx.Response(200, json={"id": 7, "stage": "implementing"})
+
+    client = IssuekitClient(
+        "https://mine.example",
+        token="static-token",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    assert client.claim(7, assignee="codex", allow_self_implement=False) == {
+        "id": 7,
+        "stage": "implementing",
+    }
+
+
+def test_client_claim_next_sends_allow_self_implement_when_set() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "POST"
+        assert request.url.path == "/api/issues/issuekit/issues/claim-next"
+        assert json.loads(request.content) == {
+            "assignee": "codex",
+            "allow_self_implement": True,
+        }
+        return httpx.Response(200, json={"id": 7, "stage": "implementing"})
+
+    client = IssuekitClient(
+        "https://mine.example",
+        token="static-token",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    assert client.claim_next(assignee="codex", allow_self_implement=True) == {
+        "id": 7,
+        "stage": "implementing",
+    }
+
+
 def test_client_claim_next_sends_worker_when_provided() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.method == "POST"

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from issuekit.config import IssuekitConfig
-from issuekit.author_guard import enforce_no_author_guard
+from issuekit.author_guard import author_handoff_enforced, enforce_no_author_guard
 from issuekit.core import (
     ASCII_ONLY_HINT,
     Issue,
@@ -57,7 +57,12 @@ def claim_next(
     owned_store = _ensure_store(config, store)
     try:
         worker = config.worker_key()
-        return owned_store.claim_next(assignee=assignee, priority=priority, worker=worker)  # type: ignore[attr-defined]
+        return owned_store.claim_next(  # type: ignore[attr-defined]
+            assignee=assignee,
+            priority=priority,
+            worker=worker,
+            allow_self_implement=not author_handoff_enforced(),
+        )
     finally:
         if store is None:
             owned_store.close()
@@ -86,7 +91,12 @@ def claim_issue(
     owned_store = _ensure_store(config, store)
     try:
         worker = config.worker_key()
-        return owned_store.claim_issue(issue_id, assignee=assignee, worker=worker)  # type: ignore[attr-defined]
+        return owned_store.claim_issue(  # type: ignore[attr-defined]
+            issue_id,
+            assignee=assignee,
+            worker=worker,
+            allow_self_implement=not author_handoff_enforced(),
+        )
     finally:
         if store is None:
             owned_store.close()
