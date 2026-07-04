@@ -159,6 +159,7 @@ copying the steps.
 | `issuekit request-changes <id> --notes "..." [--assignee codex] [--reviewer claude]` | Return a reviewed issue to implementation. |
 | `issuekit queue --assignee claude [--stage review]` | List active issues for an assignee. |
 | `issuekit orphans [--stale-after-sec <n>] [--json]` | List implementing issues whose claiming worker is gone or has stopped heartbeating. |
+| `issuekit reclaim <id> [--force] [--json]` | Return an orphaned or stale implementing claim to the implement pool. |
 | `issuekit check-encoding [--json]` | Check tracked source files for leading BOM bytes and likely mojibake. |
 | `issuekit protocol [--agent codex\|claude]` | Print the canonical handoff protocol. |
 | `issuekit init [--with-mcp]` | Install tracker templates, encoding hooks, and optional MCP handoff scaffolding. |
@@ -420,10 +421,13 @@ The `last_seen` heartbeat is refreshed by the `issuekit serve` worker loop (and
 on `issuekit add`), not by a one-shot `issuekit claim`/`issuekit implement`.
 A long-running implementer run through `serve` heartbeats every 60s and is not
 flagged; a manual one-shot implementer that holds a claim without running
-`serve` may show as `expired_heartbeat`. The command is read-only: it only
-reports, and does not return or reassign a claim. Recovery via a documented
-`reclaim` command needs a server-side un-claim endpoint and is tracked
-separately under issuekit#168.
+`serve` may show as `expired_heartbeat`.
+
+Use `issuekit reclaim <id>` to return a listed stale claim to the implement
+pool. The command re-checks `orphans` before calling the API and passes the
+detected worker as a race guard, so a resumed holder is not overwritten. Use
+`--force` only for human emergency recovery when the staleness check should be
+skipped.
 
 ## Separation-of-Duties Guards
 

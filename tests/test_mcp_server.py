@@ -82,6 +82,7 @@ def test_server_registers_expected_tools(tmp_path: Path) -> None:
         "list_queue",
         "list_workers",
         "list_orphans",
+        "reclaim_issue",
         "list_project_profiles",
         "propose",
         "list_incoming",
@@ -254,6 +255,37 @@ def test_list_orphans_flags_dead_worker_claim(
     assert orphans[0]["id"] == 5
     assert orphans[0]["reason"] == "no_worker"
     assert orphans[0]["worker"] == "machine/issuekit/dead"
+
+
+def test_reclaim_issue_tool_returns_stale_claim_to_pool(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                5,
+                "Stuck",
+                status="in_progress",
+                stage="implementing",
+                assignee="claude",
+                implementer="claude",
+                worker="machine/issuekit/dead",
+            )
+        ]
+    )
+    _configure_api(tmp_path, monkeypatch, client)
+    monkeypatch.setattr(worker_registry, "IssuekitClient", lambda *args, **kwargs: client)
+    server = create_server(tmp_path)
+
+    reclaimed = _call(server, "reclaim_issue", {"id": 5})
+
+    assert reclaimed["id"] == 5
+    assert reclaimed["previous"]["assignee"] == "claude"
+    assert reclaimed["expected_worker"] == "machine/issuekit/dead"
+    assert reclaimed["issue"]["status"] == "active"
+    assert reclaimed["issue"]["stage"] == "todo"
+    assert reclaimed["issue"]["worker"] == ""
+    assert client.get_issue(5)["worker"] == ""
 
 
 def test_list_project_profiles_returns_stored_profiles(

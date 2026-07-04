@@ -170,6 +170,38 @@ class FakeIssueSurface:
             )
             return deepcopy(issue)
 
+    def reclaim(
+        self,
+        number: int,
+        *,
+        expected_worker: str | None = None,
+    ) -> JsonDict:
+        with self._lock:
+            self._record(
+                "reclaim",
+                number=number,
+                body=_drop_none({"expected_worker": expected_worker}),
+            )
+            issue = self._find(number)
+            if issue.get("stage", "") == "todo" and not issue.get("assignee") and not issue.get("worker"):
+                return deepcopy(issue)
+            if issue.get("stage", "") != "implementing":
+                raise WorkflowError(
+                    f"Issue #{number} is at stage {issue.get('stage') or 'todo'}, not implementing.",
+                    code="invalid_transition",
+                )
+            if expected_worker is not None and issue.get("worker") != expected_worker:
+                raise WorkflowError(
+                    f"Issue #{number} is held by worker {issue.get('worker') or '-'}, not {expected_worker}.",
+                    code="race_lost",
+                )
+            issue["status"] = "active"
+            issue["stage"] = "todo"
+            issue["assignee"] = ""
+            issue["implementer"] = ""
+            issue["worker"] = ""
+            return deepcopy(issue)
+
     def submit(
         self,
         number: int,

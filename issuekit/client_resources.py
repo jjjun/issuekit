@@ -198,6 +198,19 @@ class _IssueResourceMixin:
             return None
         return _ensure_dict(payload, "Claim-next response")
 
+    def reclaim(
+        self,
+        number: int,
+        *,
+        expected_worker: str | None = None,
+    ) -> JsonDict:
+        payload = self._request(
+            "POST",
+            f"/{number}/reclaim",
+            json=_drop_none({"expected_worker": expected_worker}),
+        )
+        return _ensure_dict(payload, "Reclaim response")
+
     def submit(
         self,
         number: int,

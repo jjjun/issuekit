@@ -117,6 +117,38 @@ def test_api_store_update_issue_sends_editable_fields() -> None:
     ]
 
 
+def test_api_store_reclaim_issue_threads_expected_worker() -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                7,
+                "Stuck",
+                status="in_progress",
+                stage="implementing",
+                assignee="claude",
+                implementer="claude",
+                worker="machine/demo/dead",
+            )
+        ]
+    )
+    store = ApiStore(IssuekitConfig(api_url="https://mine.example", project="demo"), client=client)
+
+    issue = store.reclaim_issue(7, expected_worker="machine/demo/dead")
+
+    assert issue.issue_status == "active"
+    assert issue.stage == "todo"
+    assert issue.assignee == ""
+    assert issue.implementer == ""
+    assert issue.worker == ""
+    assert client.calls == [
+        {
+            "method": "reclaim",
+            "number": 7,
+            "body": {"expected_worker": "machine/demo/dead"},
+        }
+    ]
+
+
 def test_api_store_worker_field_is_optional() -> None:
     class MissingWorkerClient(FakeIssuekitClient):
         def get_issue(self, number: int) -> dict[str, object]:

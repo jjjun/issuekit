@@ -16,6 +16,7 @@ from issuekit.agents.runner import AgentRunner
 from issuekit.author_guard import STOP_SENTINEL, create_author_guard, guard_dict
 from issuekit.commands.approve import approve_issue
 from issuekit.commands.edit import edit_issue
+from issuekit.commands.reclaim import reclaim_result_dict
 from issuekit.config import load_config
 from issuekit.core import issue_dict
 from issuekit.orphans import DEFAULT_STALE_AFTER_SEC, list_stale_claims, stale_claim_dict
@@ -34,6 +35,7 @@ from issuekit.workflow import (
     claim_next,
     find_for,
     next_review as workflow_next_review,
+    reclaim_issue as workflow_reclaim_issue,
     request_changes as workflow_request_changes,
     submit_for_review as workflow_submit_for_review,
 )
@@ -228,6 +230,27 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
         config = load_config(root)
         claims = list_stale_claims(config, stale_after_sec=stale_after_sec)
         return [stale_claim_dict(claim) for claim in claims]
+
+    @server.tool(
+        description=(
+            "Return an orphaned or stale implementing claim to the implement pool. "
+            "By default this refuses claims not listed by list_orphans; pass force "
+            "only for human emergency recovery."
+        )
+    )
+    def reclaim_issue(
+        id: int,
+        force: bool = False,
+        stale_after_sec: float = DEFAULT_STALE_AFTER_SEC,
+    ) -> dict[str, Any]:
+        config = load_config(root)
+        result = workflow_reclaim_issue(
+            id,
+            force=force,
+            stale_after_sec=stale_after_sec,
+            config=config,
+        )
+        return reclaim_result_dict(result)
 
     @server.tool(
         description=(

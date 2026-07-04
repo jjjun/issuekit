@@ -281,6 +281,19 @@ class ApiStore:
             )
         )
 
+    def reclaim_issue(
+        self,
+        issue_id: int,
+        *,
+        expected_worker: str | None = None,
+    ) -> Issue:
+        return self._issue_from_response(
+            self.client.reclaim(
+                issue_id,
+                expected_worker=expected_worker,
+            )
+        )
+
     def _list_issues(
         self,
         *,

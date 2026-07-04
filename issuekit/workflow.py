@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from issuekit.author_guard import author_handoff_enforced, enforce_no_author_guard
 from issuekit.branch_guard import enforce_work_branch
 from issuekit.config import IssuekitConfig
@@ -16,6 +18,14 @@ from issuekit.gitutil import git_current_branch
 
 
 AUTO_REVIEWER = "auto"
+
+
+@dataclass(frozen=True)
+class ReclaimResult:
+    previous: Issue
+    issue: Issue
+    reason: str | None
+    expected_worker: str | None
 
 
 class WorkflowError(RuntimeError):
@@ -112,6 +122,64 @@ def claim_issue(
             assignee=assignee,
             worker=worker,
             allow_self_implement=not author_handoff_enforced(),
+        )
+    finally:
+        if store is None:
+            owned_store.close()
+
+
+def reclaim_issue(
+    issue_id: int,
+    *,
+    force: bool = False,
+    stale_after_sec: float | None = None,
+    config: IssuekitConfig | None = None,
+    store=None,
+) -> ReclaimResult:
+    config = config or IssuekitConfig()
+    _validate_stage("implementing", config)
+
+    owned_store = _ensure_store(config, store)
+    try:
+        previous = owned_store.get_issue(issue_id)
+        if previous is None:
+            raise WorkflowError(f"Issue #{issue_id} was not found.", code="not_found")
+        if previous.stage != "implementing":
+            raise WorkflowError(
+                f"Issue #{issue_id} is at stage {previous.stage or 'todo'}, not implementing.",
+                code="invalid_transition",
+            )
+
+        claim = None
+        if not force:
+            from issuekit.orphans import DEFAULT_STALE_AFTER_SEC, list_stale_claims
+
+            claims = list_stale_claims(
+                config,
+                stale_after_sec=(
+                    DEFAULT_STALE_AFTER_SEC
+                    if stale_after_sec is None
+                    else stale_after_sec
+                ),
+            )
+            claim = next((item for item in claims if item.issue.id == issue_id), None)
+            if claim is None:
+                raise WorkflowError(
+                    f"Issue #{issue_id} is not currently flagged as an orphaned or stale claim; "
+                    "use --force for human emergency recovery.",
+                    code="not_stale",
+                )
+
+        expected_worker = claim.worker if claim is not None else previous.worker or None
+        issue = owned_store.reclaim_issue(  # type: ignore[attr-defined]
+            issue_id,
+            expected_worker=expected_worker,
+        )
+        return ReclaimResult(
+            previous=previous,
+            issue=issue,
+            reason=claim.reason if claim is not None else None,
+            expected_worker=expected_worker,
         )
     finally:
         if store is None:

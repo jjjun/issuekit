@@ -1544,6 +1544,26 @@ def test_client_submit_sends_exact_server_body() -> None:
     ) == {"id": 7, "stage": "review"}
 
 
+def test_client_reclaim_sends_expected_worker_guard() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/issues/issuekit/issues/7/reclaim"
+        assert json.loads(request.content) == {
+            "expected_worker": "machine/repo/dead",
+        }
+        return httpx.Response(200, json={"id": 7, "stage": "todo"})
+
+    client = IssuekitClient(
+        "https://mine.example",
+        token="static-token",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    assert client.reclaim(7, expected_worker="machine/repo/dead") == {
+        "id": 7,
+        "stage": "todo",
+    }
+
+
 def test_client_request_changes_sends_worker_when_provided() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/api/issues/issuekit/issues/7/request-changes"
