@@ -158,6 +158,7 @@ copying the steps.
 | `issuekit submit-review <id> --summary "..." [--assignee codex] [--reviewer claude]` | Submit implemented work to a reviewer. |
 | `issuekit request-changes <id> --notes "..." [--assignee codex] [--reviewer claude]` | Return a reviewed issue to implementation. |
 | `issuekit queue --assignee claude [--stage review]` | List active issues for an assignee. |
+| `issuekit orphans [--stale-after-sec <n>] [--json]` | List implementing issues whose claiming worker is gone or has stopped heartbeating. |
 | `issuekit check-encoding [--json]` | Check tracked source files for leading BOM bytes and likely mojibake. |
 | `issuekit protocol [--agent codex\|claude]` | Print the canonical handoff protocol. |
 | `issuekit init [--with-mcp]` | Install tracker templates, encoding hooks, and optional MCP handoff scaffolding. |
@@ -391,6 +392,38 @@ With `auto`, issuekit keeps the current review assignee when possible and
 otherwise uses a stable configured assignee. When `require_distinct_reviewer` is
 true, `auto` chooses an assignee that differs from the issue implementer and
 same-name review is rejected.
+
+## Orphaned Claim Detection
+
+When an implementer session dies mid-turn it can leave an issue stuck at
+`stage=implementing` with an `assignee` still set. Because the assignee is
+populated, the pull-based pool never re-offers it, so no idle agent picks it
+up and the issue silently stalls.
+
+`issuekit orphans` surfaces these without out-of-band forensics. An implementer
+claim records which physical checkout (`machine/repo/worker`) holds the issue,
+and the worker registry tracks each live checkout's `last_seen` heartbeat. The
+command cross-references the two and flags an implementing issue when either:
+
+- `no_worker`: no registered worker matches the claim's `machine/repo/worker`
+  key, so the holder is gone; or
+- `expired_heartbeat`: a matching worker exists but has not sent a heartbeat
+  for at least `--stale-after-sec` seconds (default 300).
+
+```console
+$ issuekit orphans
+Orphaned or stale implementing claims: 1
+- #168: ... [assignee=claude worker=main1/issuekit/issuekit] (stale: no heartbeat since 2026-07-03T01:32:30Z)
+```
+
+The `last_seen` heartbeat is refreshed by the `issuekit serve` worker loop (and
+on `issuekit add`), not by a one-shot `issuekit claim`/`issuekit implement`.
+A long-running implementer run through `serve` heartbeats every 60s and is not
+flagged; a manual one-shot implementer that holds a claim without running
+`serve` may show as `expired_heartbeat`. The command is read-only: it only
+reports, and does not return or reassign a claim. Recovery via a documented
+`reclaim` command needs a server-side un-claim endpoint and is tracked
+separately under issuekit#168.
 
 ## Separation-of-Duties Guards
 

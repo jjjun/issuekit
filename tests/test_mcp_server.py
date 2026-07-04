@@ -81,6 +81,7 @@ def test_server_registers_expected_tools(tmp_path: Path) -> None:
         "update_issue",
         "list_queue",
         "list_workers",
+        "list_orphans",
         "list_project_profiles",
         "propose",
         "list_incoming",
@@ -225,6 +226,34 @@ def test_list_workers_returns_catalog(tmp_path: Path, monkeypatch: pytest.Monkey
         "method": "list_workers",
         "body": {"repo_id": "mine-py", "project": None},
     }
+
+
+def test_list_orphans_flags_dead_worker_claim(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                5,
+                "Stuck",
+                status="in_progress",
+                stage="implementing",
+                assignee="claude",
+                implementer="claude",
+                worker="machine/issuekit/dead",
+            )
+        ]
+    )
+    _configure_api(tmp_path, monkeypatch, client)
+    monkeypatch.setattr(worker_registry, "IssuekitClient", lambda *args, **kwargs: client)
+    server = create_server(tmp_path)
+
+    orphans = _call(server, "list_orphans", {})
+
+    assert len(orphans) == 1
+    assert orphans[0]["id"] == 5
+    assert orphans[0]["reason"] == "no_worker"
+    assert orphans[0]["worker"] == "machine/issuekit/dead"
 
 
 def test_list_project_profiles_returns_stored_profiles(

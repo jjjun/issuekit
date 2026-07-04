@@ -18,6 +18,7 @@ from issuekit.commands.approve import approve_issue
 from issuekit.commands.edit import edit_issue
 from issuekit.config import load_config
 from issuekit.core import issue_dict
+from issuekit.orphans import DEFAULT_STALE_AFTER_SEC, list_stale_claims, stale_claim_dict
 from issuekit.protocol import render_protocol, render_server_instructions
 from issuekit.proposals_api import (
     adopt_proposal_with_append,
@@ -213,6 +214,20 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
     ) -> list[dict[str, Any]]:
         config = load_config(root)
         return list_api_workers(config, repo_id=repo_id, project=project)
+
+    @server.tool(
+        description=(
+            "List implementing issues whose claiming worker is gone or has "
+            "stopped heartbeating (orphaned or stale claims that the pull pool "
+            "will not re-offer)."
+        )
+    )
+    def list_orphans(
+        stale_after_sec: float = DEFAULT_STALE_AFTER_SEC,
+    ) -> list[dict[str, Any]]:
+        config = load_config(root)
+        claims = list_stale_claims(config, stale_after_sec=stale_after_sec)
+        return [stale_claim_dict(claim) for claim in claims]
 
     @server.tool(
         description=(
