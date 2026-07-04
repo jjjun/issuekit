@@ -91,6 +91,13 @@ def test_runner_prompt_describes_api_lifecycle_without_file_tracker(
     AgentRunner().run(adapter, plan, repo, timeout=10.0)
 
     assert "Do NOT run git commit or git push" in adapter.prompt
+    assert "Write maintainable, idiomatic code" in adapter.prompt
+    assert "use normal imports and real identifiers" in adapter.prompt
+    assert (
+        "Do not split or obfuscate string literals, import paths, or identifiers"
+        in adapter.prompt
+    )
+    assert "unless dynamic loading is truly required" in adapter.prompt
     assert "Issuekit owns the API-backed issue lifecycle" in adapter.prompt
     assert (
         "do not run issuekit claim, submit-review, request-changes, approve, or complete"

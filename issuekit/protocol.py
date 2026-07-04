@@ -237,6 +237,14 @@ project's API inbox; the target project owns triage, so do not mutate its state
 directly. Add `--blocking` for hard cross-project dependencies so trusted
 targets can restrict auto-adoption to blocking proposals.
 
+Write maintainable, idiomatic code. Match the surrounding file's import style,
+naming, and comment density. Use normal imports and real identifiers when they
+work; use `importlib`, `getattr`, `setattr`, or `globals()` attribute injection
+only when dynamic loading is actually required. Do not split, concatenate, or
+otherwise obfuscate string literals, import paths, or identifiers to avoid plain
+source text. Passing tests is not enough if the implementation is needlessly
+hard to read or maintain.
+
 For multi-project changes, work dependency-first. Identify the project that
 owns the first required contract or API change, create or propose that upstream
 work before downstream consumer work, and include
@@ -358,6 +366,11 @@ after that upstream issue or proposal exists, and reference it with
    assigned at stage=review.
 2. Review the referenced branch and commit diff against the issue body. For an
    automated one-shot review, run `issuekit review <id> --agent <reviewer>`.
+   Treat readability and maintainability as review criteria alongside
+   correctness. Request changes for gratuitous obfuscation, string-concatenated
+   identifiers or import paths, avoidable `importlib`/`getattr` indirection,
+   `globals()`/`setattr` attribute injection where a plain definition works, or
+   unexplained style deviations, even when tests pass.
 3. If the implementation is acceptable, approve it through the reviewer flow:
    call `approve(id, verification, reviewer=None)` with ASCII verification, or
    use the CLI `issuekit approve <id> --verification <text>` command. The CLI

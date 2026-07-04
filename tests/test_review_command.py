@@ -4,6 +4,8 @@ import subprocess
 
 from issuekit import cli
 from issuekit import store as store_module
+from issuekit.agents import review as review_agent
+from issuekit.core import Issue
 from issuekit.testing import FakeIssuekitClient
 
 from tests.issue_helpers import api_issue
@@ -110,6 +112,25 @@ def _create_reviewable_diff(path: Path) -> None:
     (path / "code.py").write_text("value = 2\n", encoding="utf-8", newline="\n")
 
 
+def _issue() -> Issue:
+    return Issue(
+        id=1,
+        ref="demo#1",
+        title="Review me",
+        issue_status="in_progress",
+        created="2026-01-01",
+        completed="",
+        priority="medium",
+        assignee="",
+        stage="review",
+        implementer="codex",
+        author="claude",
+        body="# Issue #1: Review me\n",
+        metadata={},
+        worker="machine/demo/implementer",
+    )
+
+
 def test_review_command_approves_with_distinct_worker_identity(
     tmp_path: Path,
     monkeypatch,
@@ -141,7 +162,10 @@ def test_review_command_approves_with_distinct_worker_identity(
     assert len(ApprovingRunner.calls) == 1
     plan_path, repo, timeout, agent_name, issue_id, prompt_override = ApprovingRunner.calls[0]
     assert plan_path == tmp_path / ".agent-runs" / "review-issue-1.md"
-    assert "Review issue demo#1" in plan_path.read_text(encoding="utf-8")
+    prompt_text = plan_path.read_text(encoding="utf-8")
+    assert "Review issue demo#1" in prompt_text
+    assert "Review correctness, tests, readability, maintainability" in prompt_text
+    assert "Request changes for gratuitous obfuscation" in prompt_text
     assert repo == tmp_path
     assert timeout == 9
     assert agent_name == "codex"
@@ -264,6 +288,34 @@ def test_review_command_rejects_empty_implementation_diff_before_agent(
     assert not (tmp_path / ".agent-runs" / "review-issue-1.md").exists()
     assert "No implementation diff is available" in capsys.readouterr().err
     assert [call["method"] for call in client.calls] == []
+
+
+def test_review_prompt_surfaces_obfuscation_hints() -> None:
+    diff_context = review_agent.ReviewDiffContext(
+        text=(
+            "diff --git a/code.py b/code.py\n"
+            "+_module = importlib.import_module(\"basekit.\" + \"doc\" + \"ker_manager\")\n"
+            "+_klass = getattr(_module, \"Doc\" + \"kerComposeGenerator\")\n"
+            "+globals()[\"generate_\" + \"doc\" + \"ker_compose\"] = _generate\n"
+        ),
+        has_changed_files=True,
+        suspicious_warnings=review_agent._suspicious_readability_warnings(
+            "importlib.import_module(\"basekit.\" + \"doc\")\n"
+            "getattr(_module, \"Doc\" + \"kerComposeGenerator\")\n"
+            "globals()[\"generate_\" + \"doc\"] = value\n"
+        ),
+    )
+
+    prompt = review_agent._render_review_prompt(
+        _issue(),
+        cwd=Path("."),
+        diff_context=diff_context,
+    )
+
+    assert "Automated readability hints:" in prompt
+    assert "string-concatenated import_module path" in prompt
+    assert "string-concatenated getattr name" in prompt
+    assert "globals() attribute injection" in prompt
 
 
 def test_review_command_blocks_verdict_when_agent_mutates_worktree(

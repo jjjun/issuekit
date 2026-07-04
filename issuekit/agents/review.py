@@ -28,6 +28,26 @@ _REVIEW_BLOCK_PATTERN = re.compile(
 )
 _REVIEW_VERDICTS = {"approve", "request-changes"}
 _MAX_DIFF_CHARS = 60000
+_SUSPICIOUS_READABILITY_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (
+        re.compile(
+            r"\bimportlib\.import_module\([^)\n]*(?:['\"][^'\"]*['\"]\s*\+)"
+        ),
+        "string-concatenated import_module path",
+    ),
+    (
+        re.compile(r"\bgetattr\([^,\n]+,\s*['\"][A-Za-z_][A-Za-z0-9_]*['\"]\s*\+"),
+        "string-concatenated getattr name",
+    ),
+    (
+        re.compile(r"\bsetattr\([^,\n]+,\s*['\"][A-Za-z_][A-Za-z0-9_]*['\"]\s*\+"),
+        "string-concatenated setattr name",
+    ),
+    (
+        re.compile(r"\bglobals\(\)\s*\[[^\]\n]+\]\s*="),
+        "globals() attribute injection",
+    ),
+)
 
 
 class ReviewParseError(RuntimeError):
@@ -54,6 +74,7 @@ class ReviewOutcome:
 class ReviewDiffContext:
     text: str
     has_changed_files: bool
+    suspicious_warnings: tuple[str, ...] = ()
 
 
 def run_review_and_decide(
@@ -95,7 +116,7 @@ def run_review_and_decide(
     run_dir.mkdir(exist_ok=True)
     review_path = run_dir / f"review-issue-{issue_id}.md"
     review_path.write_text(
-        _render_review_prompt(issue, cwd=cwd, diff_context=diff_context.text),
+        _render_review_prompt(issue, cwd=cwd, diff_context=diff_context),
         encoding="utf-8",
         newline="\n",
     )
@@ -243,14 +264,33 @@ def _ensure_registered_distinct_worker(
         )
 
 
-def _render_review_prompt(issue: Issue, *, cwd: Path, diff_context: str | None = None) -> str:
-    diff = diff_context if diff_context is not None else _git_diff_context(cwd)
+def _render_review_prompt(
+    issue: Issue,
+    *,
+    cwd: Path,
+    diff_context: str | ReviewDiffContext | None = None,
+) -> str:
+    if diff_context is None:
+        review_context = _collect_git_diff_context(cwd)
+    elif isinstance(diff_context, ReviewDiffContext):
+        review_context = diff_context
+    else:
+        review_context = ReviewDiffContext(
+            text=diff_context,
+            has_changed_files=bool(diff_context.strip()),
+            suspicious_warnings=_suspicious_readability_warnings(diff_context),
+        )
+    diff = review_context.text
     return "\n".join(
         [
             f"# Review issue {issue.ref}",
             "",
             "You are the reviewer. Review the implementation diff against the issue.",
             "Do not edit files, commit, push, claim, submit, approve, request changes, or mutate tracker state.",
+            "Review correctness, tests, readability, maintainability, and fit with surrounding style.",
+            "Request changes for gratuitous obfuscation or unexplained style deviations even when tests pass.",
+            "Examples include string-concatenated identifiers or import paths, avoidable importlib/getattr indirection,",
+            "and globals()/setattr attribute injection where a plain definition works.",
             "",
             "Issue body:",
             "",
@@ -259,6 +299,8 @@ def _render_review_prompt(issue: Issue, *, cwd: Path, diff_context: str | None =
             "Implementation context:",
             "",
             diff,
+            "",
+            _readability_hint_section(review_context),
             "",
             "Output contract:",
             "Emit exactly one fenced block and no other response text.",
@@ -304,7 +346,31 @@ def _collect_git_diff_context(cwd: Path) -> ReviewDiffContext:
     return ReviewDiffContext(
         text=text,
         has_changed_files=_has_reviewable_changed_files(status),
+        suspicious_warnings=_suspicious_readability_warnings(diff),
     )
+
+
+def _readability_hint_section(context: str | ReviewDiffContext) -> str:
+    if isinstance(context, ReviewDiffContext):
+        warnings = context.suspicious_warnings
+    else:
+        warnings = _suspicious_readability_warnings(context)
+    if not warnings:
+        return "Automated readability hints: none."
+    return "\n".join(
+        (
+            "Automated readability hints:",
+            *[f"- {warning}" for warning in warnings],
+        )
+    )
+
+
+def _suspicious_readability_warnings(diff: str) -> tuple[str, ...]:
+    warnings: list[str] = []
+    for pattern, label in _SUSPICIOUS_READABILITY_PATTERNS:
+        if pattern.search(diff):
+            warnings.append(label)
+    return tuple(warnings)
 
 
 def _has_reviewable_changed_files(status: str | None) -> bool:

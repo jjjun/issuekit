@@ -52,6 +52,9 @@ def test_render_protocol_returns_each_agent_and_both() -> None:
     assert 'submit_for_review(id, summary, branch, commit, reviewer=None)' in codex
     assert 'submit_for_review(id, summary, branch, commit, assignee="<agent>"' not in codex
     assert "ASCII summary" in codex
+    assert "Write maintainable, idiomatic code" in codex
+    assert "otherwise obfuscate string literals" in codex
+    assert "`importlib`, `getattr`, `setattr`, or `globals()`" in codex
     assert "next_review" in claude
     assert "request_changes" in claude
     assert "ASCII verification" in claude
@@ -60,6 +63,9 @@ def test_render_protocol_returns_each_agent_and_both() -> None:
     assert "issuekit complete <id>" in claude
     assert "once it is available" not in claude
     assert "work is incomplete" in claude
+    assert "readability and maintainability as review criteria" in claude
+    assert "gratuitous obfuscation" in claude
+    assert "unexplained style deviations" in claude
     assert "Handoff protocol (author)" in both
     assert "Handoff protocol (implementer)" in both
     assert "Handoff protocol (pm)" in both
