@@ -37,6 +37,15 @@ class ReclaimResult:
     audit_reason: str | None
 
 
+@dataclass(frozen=True)
+class ReaddressResult:
+    previous: Issue
+    issue: Issue
+    expected_target_worker: str
+    actor: str
+    audit_reason: str | None
+
+
 class WorkflowError(RuntimeError):
     """Raised when a workflow transition cannot be completed."""
 
@@ -211,6 +220,47 @@ def reclaim_issue(
             issue=issue,
             reason=claim.reason if claim is not None else None,
             expected_worker=expected_worker,
+            actor=actor,
+            audit_reason=reason,
+        )
+    finally:
+        if store is None:
+            owned_store.close()
+
+
+def readdress_issue(
+    issue_id: int,
+    *,
+    reason: str | None = None,
+    config: IssuekitConfig | None = None,
+    store=None,
+) -> ReaddressResult:
+    config = config or IssuekitConfig()
+    if reason is not None:
+        _validate_ascii_text(reason, "--reason")
+
+    owned_store = _ensure_store(config, store)
+    try:
+        previous = owned_store.get_issue(issue_id)
+        if previous is None:
+            raise WorkflowError(f"Issue #{issue_id} was not found.", code="not_found")
+        target_worker = previous.target_worker
+        if not target_worker:
+            raise WorkflowError(
+                f"Issue #{issue_id} is not directed to a worker.",
+                code="invalid_transition",
+            )
+        actor = _reclaim_actor(config)
+        issue = owned_store.readdress_issue(  # type: ignore[attr-defined]
+            issue_id,
+            expected_target_worker=target_worker,
+            actor=actor,
+            reason=reason,
+        )
+        return ReaddressResult(
+            previous=previous,
+            issue=issue,
+            expected_target_worker=target_worker,
             actor=actor,
             audit_reason=reason,
         )

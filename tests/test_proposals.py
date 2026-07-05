@@ -84,6 +84,87 @@ def test_api_cli_propose_posts_expected_body_and_dedupes(
     assert not (tmp_path / "docs" / "issues" / "incoming").exists()
 
 
+def test_api_cli_propose_accepts_worker_repo_target(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient()
+    created_projects: list[str] = []
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'source'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    def fake_client(*args, **kwargs):
+        created_projects.append(kwargs["project"])
+        return client
+
+    monkeypatch.setattr(proposals_api, "IssuekitClient", fake_client)
+    monkeypatch.chdir(tmp_path)
+    client.register_catalog_project("target")
+
+    assert (
+        cli.main(
+            [
+                "propose",
+                "--to",
+                "checkout.target",
+                "--title",
+                "Directed",
+                "--body",
+                "Body.",
+                "--json",
+            ]
+        )
+        == 0
+    )
+
+    sent = json.loads(capsys.readouterr().out)
+    assert sent["target_worker"] == "checkout"
+    assert client.calls[0] == {
+        "method": "create_proposal",
+        "body": {
+            "origin": "source#0@unknown",
+            "title": "Directed",
+            "body": "Body.",
+            "target_worker": "checkout",
+        },
+    }
+    assert created_projects == ["source", "target"]
+
+
+def test_api_cli_propose_rejects_invalid_worker_repo_target(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'source'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    assert (
+        cli.main(
+            [
+                "propose",
+                "--to",
+                "bad.worker.target",
+                "--title",
+                "Bad",
+                "--body",
+                "Body.",
+            ]
+        )
+        == 1
+    )
+
+    assert "Expected repo or worker.repo" in capsys.readouterr().err
+
+
 def test_api_cli_propose_rejects_unknown_target_when_profile_catalog_exists(
     tmp_path: Path,
     monkeypatch,

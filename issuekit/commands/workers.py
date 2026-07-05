@@ -62,6 +62,9 @@ def _print_worker(worker: dict) -> None:
     last_seen = worker.get("last_seen")
     if last_seen:
         details.append(f"last_seen={last_seen}")
+    target_worker = worker.get("target_worker")
+    if target_worker:
+        details.append(f"target_worker={target_worker}")
     if details:
         print(f"  {'  '.join(details)}")
     description = worker.get("description")

@@ -102,6 +102,7 @@ class IssuekitConfig:
     worker: WorkerIdentity | None = None
     worker_role: str = ""
     worker_description: str = ""
+    worker_accept_directed: bool = False
     repo_description: str = ""
     repo_metadata: dict[str, str] = field(default_factory=dict)
     worker_metadata: dict[str, str] = field(default_factory=dict)
@@ -294,6 +295,12 @@ def load_config(cwd: Path | str = ".") -> IssuekitConfig:
         worker=worker,
         worker_role=worker_role,
         worker_description=worker_description,
+        worker_accept_directed=_bool_value(
+            raw_config.get(
+                "worker_accept_directed",
+                IssuekitConfig.worker_accept_directed,
+            )
+        ),
         repo_description=repo_description,
         repo_metadata=repo_metadata,
         worker_metadata=worker_metadata,

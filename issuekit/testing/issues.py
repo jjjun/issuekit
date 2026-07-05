@@ -166,6 +166,7 @@ class FakeIssueSurface:
                 and issue.get("stage", "") in READY_STAGES
                 and issue.get("assignee", "") in {"", assignee}
                 and (priority is None or issue.get("priority") == priority)
+                and _matches_target_worker(issue, worker)
             ]
             if not candidates:
                 return None
@@ -223,6 +224,41 @@ class FakeIssueSurface:
             issue["assignee"] = ""
             issue["implementer"] = ""
             issue["worker"] = ""
+            return deepcopy(issue)
+
+    def readdress(
+        self,
+        number: int,
+        *,
+        expected_target_worker: str | None = None,
+        actor: str | None = None,
+        reason: str | None = None,
+    ) -> JsonDict:
+        with self._lock:
+            self._record(
+                "readdress",
+                number=number,
+                body=_drop_none(
+                    {
+                        "expected_target_worker": expected_target_worker,
+                        "actor": actor,
+                        "reason": reason,
+                    }
+                ),
+            )
+            issue = self._find(number)
+            target_worker = str(issue.get("target_worker") or "")
+            if not target_worker:
+                raise WorkflowError(
+                    f"Issue #{number} is not directed to a worker.",
+                    code="invalid_transition",
+                )
+            if expected_target_worker is not None and target_worker != expected_target_worker:
+                raise WorkflowError(
+                    f"Issue #{number} is directed to {target_worker}, not {expected_target_worker}.",
+                    code="race_lost",
+                )
+            issue["target_worker"] = ""
             return deepcopy(issue)
 
     def submit(
@@ -376,6 +412,7 @@ class FakeIssueSurface:
         repo_description: str | None = None,
         repo_metadata: dict[str, str] | None = None,
         worker_metadata: dict[str, str] | None = None,
+        accept_directed: bool | None = None,
     ) -> JsonDict:
         resolved_worker_name = worker_name or worker_id
         if not resolved_worker_name:
@@ -400,6 +437,8 @@ class FakeIssueSurface:
             body["repo_metadata"] = deepcopy(repo_metadata)
         if worker_metadata is not None:
             body["worker_metadata"] = deepcopy(worker_metadata)
+        if accept_directed is not None:
+            body["accept_directed"] = accept_directed
         with self._lock:
             self._record("upsert_worker", body=body)
             record = {
@@ -415,6 +454,7 @@ class FakeIssueSurface:
                 "repo_description": repo_description,
                 "repo_metadata": deepcopy(repo_metadata or {}),
                 "worker_metadata": deepcopy(worker_metadata or {}),
+                "accept_directed": bool(accept_directed),
                 "status": "idle",
                 "current_issue": None,
                 "last_seen": "2026-01-01T00:00:00Z",
@@ -470,6 +510,7 @@ class FakeIssueSurface:
         stored.setdefault("implementer", "")
         stored.setdefault("author", "")
         stored.setdefault("worker", "")
+        stored.setdefault("target_worker", "")
         stored.setdefault("author_session", stored.pop("session", ""))
         stored.setdefault("implementer_session", "")
         stored.setdefault("reviewer_session", "")
@@ -503,6 +544,12 @@ class FakeIssueSurface:
                 f"Issue #{issue_id} is assigned to {issue.get('assignee')}, not {assignee}.",
                 code="invalid_transition",
             )
+        target_worker = str(issue.get("target_worker") or "")
+        if target_worker and target_worker != (worker or ""):
+            raise WorkflowError(
+                f"Issue #{issue_id} is directed to worker {target_worker}, not {worker or '-'}.",
+                code="invalid_transition",
+            )
         if not allow_self_implement and issue.get("author") == assignee:
             if issue.get("author_session") and session and issue.get("author_session") != session:
                 pass
@@ -528,3 +575,8 @@ def _is_self_review(issue: JsonDict, reviewer: str, reviewer_worker: str | None)
     if implementer_worker and reviewer_worker:
         return worker_keys_match(implementer_worker, reviewer_worker)
     return True
+
+
+def _matches_target_worker(issue: JsonDict, worker: str | None) -> bool:
+    target_worker = str(issue.get("target_worker") or "")
+    return not target_worker or target_worker == (worker or "")

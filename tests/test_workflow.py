@@ -18,6 +18,7 @@ from issuekit.workflow import (
     claim_next,
     find_for,
     reclaim_issue,
+    readdress_issue,
     request_changes,
     resolve_reviewer,
     submit_for_review,
@@ -116,6 +117,59 @@ def test_claim_issue_sends_registered_worker(monkeypatch) -> None:
     ]
 
 
+def test_claim_next_filters_directed_issues_to_target_worker(monkeypatch) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(1, "Directed", author="claude", target_worker="checkout.repo"),
+            api_issue(2, "Pool", author="claude"),
+        ]
+    )
+    other_config = _config(
+        client,
+        monkeypatch,
+        worker=WorkerIdentity("machine", "repo", "other"),
+    )
+
+    wrong_worker_issue = claim_next("codex", config=other_config)
+
+    assert wrong_worker_issue is not None
+    assert wrong_worker_issue.id == 2
+    target_config = _config(
+        client,
+        monkeypatch,
+        worker=WorkerIdentity("machine", "repo", "checkout"),
+    )
+
+    directed_issue = claim_next("codex", config=target_config)
+
+    assert directed_issue is not None
+    assert directed_issue.id == 1
+    assert client.calls == [
+        {
+            "method": "claim_next",
+            "body": {"assignee": "codex", "worker": "other.repo"},
+        },
+        {
+            "method": "claim_next",
+            "body": {"assignee": "codex", "worker": "checkout.repo"},
+        },
+    ]
+
+
+def test_claim_issue_rejects_wrong_directed_worker(monkeypatch) -> None:
+    client = FakeIssuekitClient(
+        [api_issue(1, "Directed", author="claude", target_worker="checkout.repo")]
+    )
+    config = _config(
+        client,
+        monkeypatch,
+        worker=WorkerIdentity("machine", "repo", "other"),
+    )
+
+    with pytest.raises(WorkflowError, match="directed to worker checkout.repo"):
+        claim_issue(1, "codex", config=config)
+
+
 def test_workflow_claim_submit_review_actions_send_configured_session(
     monkeypatch,
 ) -> None:
@@ -197,6 +251,35 @@ def test_reclaim_issue_sends_registered_worker_as_actor(monkeypatch) -> None:
                 "expected_worker": "machine/repo/dead",
                 "actor": "operator.repo",
                 "reason": "stale checkout",
+            },
+        }
+    ]
+
+
+def test_readdress_issue_returns_directed_issue_to_pool(monkeypatch) -> None:
+    client = FakeIssuekitClient(
+        [api_issue(1, "Directed", author="claude", target_worker="checkout.repo")]
+    )
+    config = _config(
+        client,
+        monkeypatch,
+        worker=WorkerIdentity("machine", "repo", "operator"),
+    )
+
+    result = readdress_issue(1, reason="stale directed checkout", config=config)
+
+    assert result.previous.target_worker == "checkout.repo"
+    assert result.issue.target_worker == ""
+    assert result.actor == "operator.repo"
+    assert client.get_issue(1)["target_worker"] == ""
+    assert client.calls == [
+        {
+            "method": "readdress",
+            "number": 1,
+            "body": {
+                "expected_target_worker": "checkout.repo",
+                "actor": "operator.repo",
+                "reason": "stale directed checkout",
             },
         }
     ]

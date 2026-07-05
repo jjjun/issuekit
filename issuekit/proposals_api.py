@@ -11,7 +11,13 @@ from typing import Any
 
 from issuekit.client import IssuekitClient
 from issuekit.config import IssuekitConfig, load_config
-from issuekit.core import ASCII_ONLY_HINT, Issue, has_non_ascii, parse_issue_id_arg
+from issuekit.core import (
+    ASCII_ONLY_HINT,
+    Issue,
+    has_non_ascii,
+    parse_issue_id_arg,
+    parse_target_address,
+)
 from issuekit.gitutil import git_short_head
 from issuekit.proposals import Proposal, ProposalError, origin_destination
 from issuekit.refs import RefError, list_effective_refs
@@ -113,6 +119,7 @@ def send_proposal(config: IssuekitConfig, proposal: Proposal) -> dict:
             reply_to=proposal.reply_to or None,
             blocking=True if proposal.blocking else None,
             depends_on=list(proposal.depends_on) or None,
+            target_worker=proposal.target_worker or None,
         )
     result = dict(created)
     if proposal.depends_on and "depends_on" not in result:
@@ -188,6 +195,8 @@ def proposal_payload_mismatch(proposal: Proposal, created: Mapping[str, Any]) ->
         mismatched.append("blocking")
     if "depends_on" in created and _dependency_tuple(created.get("depends_on")) != proposal.depends_on:
         mismatched.append("depends_on")
+    if _proposal_text(created.get("target_worker")) != proposal.target_worker:
+        mismatched.append("target_worker")
     return mismatched
 
 
@@ -235,6 +244,7 @@ def list_outgoing_proposals(
     status: str | None = None,
 ) -> list[dict]:
     """List proposals this project sent to another project's inbox (read-only)."""
+    to = _target_repo(to, label="--to")
     validate_target_project(config, to)
     if status is not None and status not in OUTGOING_PROPOSAL_STATUSES:
         raise ProposalError(
@@ -256,6 +266,7 @@ def list_outgoing_proposals(
 
 def get_outgoing_proposal(config: IssuekitConfig, *, to: str, proposal_id: int) -> dict:
     """Read one proposal this project sent to another project's inbox."""
+    to = _target_repo(to, label="--to")
     validate_target_project(config, to)
     with api_client(config, project=to) as client:
         proposal = client.get_proposal(int(proposal_id))
@@ -287,6 +298,7 @@ def matches_triage_policy(proposal: Mapping[str, Any], config: IssuekitConfig) -
 
 def validate_target_project(config: IssuekitConfig, target_project: str) -> tuple[str, ...]:
     """Validate proposal targets against the API's project catalog when available."""
+    target_project = _target_repo(target_project, label="target project")
     catalog = fetch_project_catalog(config)
     if catalog.supported:
         if target_project in catalog.projects:
@@ -365,6 +377,13 @@ def _unknown_target_project_message(target_project: str, known_projects: Sequenc
     )
 
 
+def _target_repo(value: str, *, label: str) -> str:
+    try:
+        return parse_target_address(value, label=label).repo
+    except ValueError as exc:
+        raise ProposalError(str(exc)) from exc
+
+
 def _proposal_text(value: object) -> str:
     return str(value or "").strip()
 
@@ -418,6 +437,11 @@ def build_proposal(
 
     if not to:
         raise ProposalError("--to is required unless --reply is used.")
+    try:
+        target = parse_target_address(to, label="--to")
+    except ValueError as exc:
+        raise ProposalError(str(exc)) from exc
+    to = target.repo
 
     title = title or (source_issue.title if source_issue is not None else "")
     if not title:
@@ -443,6 +467,7 @@ def build_proposal(
     return Proposal(
         origin=origin,
         to=to,
+        target_worker=target.worker,
         reply_to=reply_to,
         created=date.today().isoformat(),
         title=title,

@@ -1055,6 +1055,33 @@ def test_client_upsert_worker_includes_role_and_description_when_set() -> None:
     )
 
 
+def test_client_upsert_worker_sends_accept_directed_when_enabled() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/workers"
+        assert json.loads(request.content) == {
+            "machine_id": "machine",
+            "repo_id": "repo",
+            "worker_name": "checkout",
+            "path": "/repo",
+            "accept_directed": True,
+        }
+        return httpx.Response(201, json={"id": "checkout.repo"})
+
+    client = IssuekitClient(
+        "https://mine.example",
+        token="static-token",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    client.upsert_worker(
+        machine_id="machine",
+        repo_id="repo",
+        worker_id="checkout",
+        path="/repo",
+        accept_directed=True,
+    )
+
+
 def test_client_list_workers_parses_array_and_sends_filters() -> None:
     rows = [
         {
@@ -1245,6 +1272,41 @@ def test_client_create_proposal_sends_blocking_flag() -> None:
         )
         == response
     )
+
+
+def test_client_create_proposal_sends_target_worker_when_set() -> None:
+    response = {
+        "id": 3,
+        "origin": "source#0@abc123",
+        "title": "Proposal",
+        "body": "Body",
+        "target_worker": "checkout",
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "POST"
+        assert request.url.path == "/api/issues/target/proposals"
+        assert json.loads(request.content) == {
+            "origin": "source#0@abc123",
+            "title": "Proposal",
+            "body": "Body",
+            "target_worker": "checkout",
+        }
+        return httpx.Response(200, json=response)
+
+    client = IssuekitClient(
+        "https://mine.example",
+        project="target",
+        token="static-token",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    assert client.create_proposal(
+        origin="source#0@abc123",
+        title="Proposal",
+        body="Body",
+        target_worker="checkout",
+    ) == response
 
 
 def test_client_create_proposal_sends_dependency_refs() -> None:
@@ -1659,6 +1721,30 @@ def test_client_reclaim_sends_audit_body() -> None:
         "id": 7,
         "stage": "todo",
     }
+
+
+def test_client_readdress_sends_audit_body() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/issues/issuekit/issues/7/readdress"
+        assert json.loads(request.content) == {
+            "expected_target_worker": "checkout.repo",
+            "actor": "operator.repo",
+            "reason": "stale directed checkout",
+        }
+        return httpx.Response(200, json={"id": 7, "target_worker": ""})
+
+    client = IssuekitClient(
+        "https://mine.example",
+        token="static-token",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    assert client.readdress(
+        7,
+        expected_target_worker="checkout.repo",
+        actor="operator.repo",
+        reason="stale directed checkout",
+    ) == {"id": 7, "target_worker": ""}
 
 
 def test_client_request_changes_sends_worker_when_provided() -> None:

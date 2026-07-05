@@ -62,6 +62,7 @@ def post_worker_registration(
                 repo_description=config.repo_description or None,
                 repo_metadata=config.repo_metadata or None,
                 worker_metadata=worker_metadata or None,
+                accept_directed=True if config.worker_accept_directed else None,
             )
         except WorkflowError as exc:
             raise _registration_error(exc, config) from exc

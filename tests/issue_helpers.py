@@ -55,6 +55,7 @@ def api_issue(
     implementer: str = "",
     author: str = "",
     worker: str = "",
+    target_worker: str = "",
     origin: str = "",
     body: str | None = None,
 ) -> dict[str, object]:
@@ -70,6 +71,7 @@ def api_issue(
         "implementer": implementer,
         "author": author,
         "worker": worker,
+        "target_worker": target_worker,
         "origin": origin,
         "body": body if body is not None else f"# Issue #{issue_id}: {title}\n",
     }

@@ -29,6 +29,7 @@ class FakeProposalSurface:
         side: str | None = None,
         verdict: str | None = None,
         contract: str | None = None,
+        target_worker: str | None = None,
     ) -> JsonDict:
         self._validate_contract(contract)
         request = _drop_none(
@@ -44,6 +45,7 @@ class FakeProposalSurface:
                 "side": side,
                 "verdict": verdict,
                 "contract": contract,
+                "target_worker": target_worker,
             }
         )
         with self._lock:
@@ -487,6 +489,7 @@ class FakeProposalSurface:
         stored.setdefault("priority", None)
         stored.setdefault("blocking", False)
         stored.setdefault("depends_on", None)
+        stored.setdefault("target_worker", "")
         stored.setdefault("status", "pending")
         stored.setdefault("created", date.today().isoformat())
         stored.setdefault("created_at", stored["created"])

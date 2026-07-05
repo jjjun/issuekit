@@ -181,6 +181,7 @@ copying the steps.
 | `issuekit queue --assignee claude [--stage review]` | List active issues for an assignee. |
 | `issuekit orphans [--stale-after-sec <n>] [--json]` | List implementing issues whose claiming worker is gone or has stopped heartbeating. |
 | `issuekit reclaim <id> [--force] [--reason "..."] [--json]` | Return an orphaned or stale implementing claim to the implement pool. |
+| `issuekit readdress <id> [--reason "..."] [--json]` | Return a directed issue to the repo pool. |
 | `issuekit check-encoding [--json]` | Check tracked source files for leading BOM bytes and likely mojibake. |
 | `issuekit protocol [--agent codex\|claude]` | Print the canonical handoff protocol. |
 | `issuekit init [--with-mcp]` | Install tracker templates, encoding hooks, and optional MCP handoff scaffolding. |
@@ -430,6 +431,36 @@ domain = "api"
 queue = "default"
 ```
 
+Set `worker_accept_directed = true` only for production checkouts that are
+intended to receive work addressed specifically to `worker.repo`. The default
+is false, so a checkout participates only in the repo pool unless the backend
+already trusts it for directed work. Combine this with target-owned intake
+policy such as `[triage].trusted_origins` when only selected origin projects
+should be auto-adopted into directed or blocking work.
+
+## Directed Addressing
+
+Issuekit keeps three axes separate:
+
+- `repo` / `project`: the API issue or proposal namespace, such as `mine-py`.
+- `worker`: a registered checkout inside that repo, displayed as
+  `worker.repo`, such as `prod.mine-py`.
+- `agent` / `assignee`: the model or human role that implements or reviews
+  work, such as `codex` or `claude`.
+
+Most work should target the repo pool. For example, `issuekit propose --to
+mine-py ...` lets any eligible worker registered for `mine-py` claim the
+resulting work. When a target repo has opted a checkout into directed work, use
+`worker.repo` to address that one checkout:
+
+```console
+$ issuekit propose --to prod.mine-py --title "Patch production profile" --body "..."
+```
+
+The dotted form is client-side sugar. Issuekit validates both tokens, sends the
+repo/project separately from the worker name, and claim requests include the
+local `worker.repo` key so the API can hide work directed to other workers.
+
 Built-in agent configs can be patched by name. A table such as
 `[tool.issuekit.agents.codex]` overlays only the keys it specifies and leaves
 other built-in agents unchanged. For standalone `issuekit.toml`, use the same
@@ -466,6 +497,11 @@ command cross-references the two and flags an implementing issue when either:
 - `expired_heartbeat`: a matching worker exists but has not sent a heartbeat
   for at least `--stale-after-sec` seconds (default 300).
 
+Directed but unclaimed work is also reported when its `target_worker` is gone
+or stale, using `directed_no_worker` or `directed_expired_heartbeat`. These
+issues are not implementing claims, but they will not return to the repo pool
+until the directed target is cleared.
+
 ```console
 $ issuekit orphans
 Orphaned or stale implementing claims: 1
@@ -488,6 +524,11 @@ worker takes the claim between the read and the reclaim request, the API returns
 `race_lost` instead of overwriting the current holder. This keeps the emergency
 path optimistic-concurrency safe; there is intentionally no unconditional
 override flag that sends `expected_worker=None`.
+
+Use `issuekit readdress <id>` to clear a directed `target_worker` and return
+that issue to the repo pool. The command sends the target worker it observed as
+a race guard, so if the API sees a different target by the time it handles the
+request it rejects the update instead of clearing newer directed work.
 
 ## Separation-of-Duties Guards
 

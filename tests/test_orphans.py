@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 from issuekit.core import Issue
 from issuekit.orphans import (
     DEFAULT_STALE_AFTER_SEC,
+    DIRECTED_NO_WORKER,
     EXPIRED_HEARTBEAT,
     NO_WORKER,
     detect_stale_claims,
@@ -18,6 +19,7 @@ def _issue(
     *,
     stage: str = "implementing",
     worker: str = "machine/issuekit/checkout",
+    target_worker: str = "",
     assignee: str = "claude",
     title: str = "Task",
 ) -> Issue:
@@ -36,6 +38,7 @@ def _issue(
         body="",
         metadata={},
         worker=worker,
+        target_worker=target_worker,
     )
 
 
@@ -109,6 +112,17 @@ def test_non_implementing_stage_is_skipped() -> None:
     claims = detect_stale_claims([issue], [], now=NOW)
 
     assert claims == []
+
+
+def test_ready_directed_issue_without_live_target_worker_is_orphaned() -> None:
+    issue = _issue(1, stage="todo", worker="", target_worker="checkout.issuekit")
+
+    claims = detect_stale_claims([issue], [], now=NOW)
+
+    assert len(claims) == 1
+    assert claims[0].reason == DIRECTED_NO_WORKER
+    assert claims[0].worker == "checkout.issuekit"
+    assert claims[0].target_worker == "checkout.issuekit"
 
 
 def test_unparseable_last_seen_is_treated_as_live() -> None:

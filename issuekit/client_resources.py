@@ -238,6 +238,27 @@ class _IssueResourceMixin:
         )
         return _ensure_dict(payload, "Reclaim response")
 
+    def readdress(
+        self,
+        number: int,
+        *,
+        expected_target_worker: str | None = None,
+        actor: str | None = None,
+        reason: str | None = None,
+    ) -> JsonDict:
+        payload = self._request(
+            "POST",
+            f"/{number}/readdress",
+            json=_drop_none(
+                {
+                    "expected_target_worker": expected_target_worker,
+                    "actor": actor,
+                    "reason": reason,
+                }
+            ),
+        )
+        return _ensure_dict(payload, "Readdress response")
+
     def submit(
         self,
         number: int,
@@ -349,6 +370,7 @@ class _WorkerResourceMixin:
         repo_description: str | None = None,
         repo_metadata: Mapping[str, str] | None = None,
         worker_metadata: Mapping[str, str] | None = None,
+        accept_directed: bool | None = None,
     ) -> JsonDict:
         resolved_worker_name = worker_name or worker_id
         if not resolved_worker_name:
@@ -371,6 +393,7 @@ class _WorkerResourceMixin:
                     "repo_description": repo_description,
                     "repo_metadata": dict(repo_metadata) if repo_metadata else None,
                     "worker_metadata": dict(worker_metadata) if worker_metadata else None,
+                    "accept_directed": accept_directed,
                 }
             )
         )
@@ -535,6 +558,7 @@ class _ProposalResourceMixin:
         side: str | None = None,
         verdict: str | None = None,
         contract: str | None = None,
+        target_worker: str | None = None,
     ) -> JsonDict:
         payload = self._request(
             "POST",
@@ -553,6 +577,7 @@ class _ProposalResourceMixin:
                     "side": side,
                     "verdict": verdict,
                     "contract": contract,
+                    "target_worker": target_worker,
                 }
             ),
         )

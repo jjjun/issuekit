@@ -10,6 +10,8 @@ from issuekit.commands._common import run_command
 from issuekit.config import load_config
 from issuekit.orphans import (
     DEFAULT_STALE_AFTER_SEC,
+    DIRECTED_EXPIRED_HEARTBEAT,
+    DIRECTED_NO_WORKER,
     EXPIRED_HEARTBEAT,
     StaleClaim,
     list_stale_claims,
@@ -59,12 +61,17 @@ def run(args) -> int:
 
 
 def _print_claim(claim: StaleClaim) -> None:
-    if claim.reason == EXPIRED_HEARTBEAT:
+    if claim.reason in {EXPIRED_HEARTBEAT, DIRECTED_EXPIRED_HEARTBEAT}:
         detail = f"stale: no heartbeat since {claim.last_seen}"
     else:
         detail = "stale: no live registered worker"
+    holder = (
+        f"target_worker={claim.target_worker}"
+        if claim.reason in {DIRECTED_NO_WORKER, DIRECTED_EXPIRED_HEARTBEAT}
+        else f"worker={claim.worker}"
+    )
     print(
         f"- #{claim.issue.id}: {claim.issue.title} "
-        f"[assignee={claim.issue.assignee or '-'} worker={claim.worker}] "
+        f"[assignee={claim.issue.assignee or '-'} {holder}] "
         f"({detail})"
     )

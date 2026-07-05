@@ -30,10 +30,15 @@ def run(args) -> int:
         )
 
         for issue in issues:
-            print(
-                f"id={issue.id} ref={issue.ref} "
-                f"assignee={issue.assignee or '-'} stage={issue.stage or '-'}"
-            )
+            parts = [
+                f"id={issue.id}",
+                f"ref={issue.ref}",
+                f"assignee={issue.assignee or '-'}",
+                f"stage={issue.stage or '-'}",
+            ]
+            if issue.target_worker:
+                parts.append(f"target_worker={issue.target_worker}")
+            print(" ".join(parts))
         return 0
 
     return run_command(action, errors=(WorkflowError, ValueError))

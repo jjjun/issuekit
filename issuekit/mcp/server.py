@@ -19,6 +19,7 @@ from issuekit.agents.runner import AgentRunner
 from issuekit.author_guard import STOP_SENTINEL, create_author_guard, guard_dict
 from issuekit.commands.approve import approve_issue
 from issuekit.commands.edit import edit_issue
+from issuekit.commands.readdress import readdress_result_dict
 from issuekit.commands.reclaim import reclaim_result_dict
 from issuekit.config import IssuekitConfig, load_config
 from issuekit.core import issue_dict
@@ -43,6 +44,7 @@ from issuekit.workflow import (
     find_for,
     next_review as workflow_next_review,
     reclaim_issue as workflow_reclaim_issue,
+    readdress_issue as workflow_readdress_issue,
     request_changes as workflow_request_changes,
     submit_for_review as workflow_submit_for_review,
     WorkflowError,
@@ -296,6 +298,25 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
             config=config,
         )
         return reclaim_result_dict(result)
+
+    @server.tool(
+        description=(
+            "Return a directed issue from a specific worker target back to the "
+            "repo pool."
+        )
+    )
+    async def readdress_issue(
+        id: int,
+        reason: str | None = None,
+        ctx: Context | None = None,
+    ) -> dict[str, Any]:
+        config, _config_root = await _load_api_config(root, ctx)
+        result = workflow_readdress_issue(
+            id,
+            reason=reason,
+            config=config,
+        )
+        return readdress_result_dict(result)
 
     @server.tool(
         description=(

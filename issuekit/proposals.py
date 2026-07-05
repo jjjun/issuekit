@@ -14,6 +14,7 @@ class ProposalError(RuntimeError):
 class Proposal:
     origin: str
     to: str
+    target_worker: str
     reply_to: str
     created: str
     title: str

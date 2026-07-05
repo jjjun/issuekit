@@ -33,6 +33,13 @@ class Issue:
     body: str
     metadata: dict[str, str]
     worker: str = ""
+    target_worker: str = ""
+
+
+@dataclass(frozen=True)
+class TargetAddress:
+    repo: str
+    worker: str = ""
 
 
 def issue_dict(issue: "Issue", *, include_body: bool = False) -> dict[str, object]:
@@ -52,6 +59,8 @@ def issue_dict(issue: "Issue", *, include_body: bool = False) -> dict[str, objec
     }
     if include_body:
         data["body"] = issue.body
+    if issue.target_worker:
+        data["target_worker"] = issue.target_worker
     for key in ("author_session", "implementer_session", "reviewer_session"):
         value = issue.metadata.get(key)
         if value:
@@ -120,3 +129,24 @@ ASCII_ONLY_HINT = "Replace em dashes, curly quotes, and non-English text."
 
 def is_valid_workflow_token(value: str) -> bool:
     return value == "" or bool(WORKFLOW_TOKEN_PATTERN.fullmatch(value))
+
+
+def parse_target_address(value: str, *, label: str = "target") -> TargetAddress:
+    text = value.strip()
+    if not text:
+        raise ValueError(f"{label} is required.")
+    if "." not in text:
+        if not is_valid_workflow_token(text):
+            raise ValueError(f"Invalid {label} token: {value}")
+        return TargetAddress(repo=text)
+
+    worker, repo = text.split(".", 1)
+    if not worker or not repo or "." in repo:
+        raise ValueError(
+            f"Invalid {label} address: {value}. Expected repo or worker.repo."
+        )
+    if not is_valid_workflow_token(worker):
+        raise ValueError(f"Invalid {label} worker token: {worker}")
+    if not is_valid_workflow_token(repo):
+        raise ValueError(f"Invalid {label} repo token: {repo}")
+    return TargetAddress(repo=repo, worker=worker)

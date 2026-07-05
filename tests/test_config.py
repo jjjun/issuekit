@@ -261,6 +261,19 @@ def test_load_config_defaults_worker_metadata_to_empty(tmp_path: Path) -> None:
 
     assert config.worker_role == ""
     assert config.worker_description == ""
+    assert config.worker_accept_directed is False
+
+
+def test_load_config_reads_worker_accept_directed(tmp_path: Path) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "worker_accept_directed = true\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    config = load_config(tmp_path)
+
+    assert config.worker_accept_directed is True
 
 
 def test_load_config_rejects_overlong_worker_role(tmp_path: Path) -> None:

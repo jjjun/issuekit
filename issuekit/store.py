@@ -78,6 +78,16 @@ class IssueStore(Protocol):
     def find_implementing_for_worker(self, worker: str) -> list[Issue]:
         """Find in-progress implementation issues held by a worker."""
 
+    def readdress_issue(
+        self,
+        issue_id: int,
+        *,
+        expected_target_worker: str | None = None,
+        actor: str | None = None,
+        reason: str | None = None,
+    ) -> Issue:
+        """Return a directed issue to the repo pool."""
+
 
 class ApiStore:
     def __init__(self, config: IssuekitConfig, client: IssuekitClient | None = None) -> None:
@@ -328,6 +338,23 @@ class ApiStore:
             )
         )
 
+    def readdress_issue(
+        self,
+        issue_id: int,
+        *,
+        expected_target_worker: str | None = None,
+        actor: str | None = None,
+        reason: str | None = None,
+    ) -> Issue:
+        return self._issue_from_response(
+            self.client.readdress(
+                issue_id,
+                expected_target_worker=expected_target_worker,
+                actor=actor,
+                reason=reason,
+            )
+        )
+
     def _list_issues(
         self,
         *,
@@ -372,6 +399,7 @@ class ApiStore:
             "implementer": _string(raw.get("implementer")),
             "author": _string(raw.get("author")),
             "worker": _string(raw.get("worker")),
+            "target_worker": _string(raw.get("target_worker")),
             "author_session": _string(raw.get("author_session")),
             "implementer_session": _string(raw.get("implementer_session")),
             "reviewer_session": _string(raw.get("reviewer_session")),
@@ -398,6 +426,7 @@ class ApiStore:
             body=body,
             metadata=metadata,
             worker=metadata["worker"],
+            target_worker=metadata["target_worker"],
         )
 
 

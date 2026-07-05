@@ -82,6 +82,34 @@ def test_orphans_json_shape(
     ]
 
 
+def test_orphans_json_includes_stale_directed_issue(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    client = FakeIssuekitClient(
+        [api_issue(8, "Directed", stage="todo", target_worker="checkout.issuekit")]
+    )
+    _configure_api(tmp_path, monkeypatch, client)
+
+    assert cli.main(["orphans", "--json"]) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload == [
+        {
+            "id": 8,
+            "ref": "issuekit#8",
+            "title": "Directed",
+            "assignee": "",
+            "worker": "checkout.issuekit",
+            "reason": "directed_no_worker",
+            "last_seen": None,
+            "stale_seconds": None,
+            "target_worker": "checkout.issuekit",
+        }
+    ]
+
+
 def test_orphans_flags_expired_heartbeat(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

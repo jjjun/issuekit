@@ -419,6 +419,33 @@ def test_add_cli_posts_repo_and_worker_metadata(
     assert client.calls[0]["worker_metadata"] == {"gpu": "false", "queue": "fast"}
 
 
+def test_add_cli_forwards_worker_accept_directed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from issuekit import worker_registry
+
+    client = FakeRegistryClient()
+    _init_git(tmp_path)
+    (tmp_path / "issuekit.toml").write_text(
+        (
+            "api_url = 'https://mine.example'\n"
+            "project = 'demo'\n"
+            "worker_accept_directed = true\n"
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("ISSUEKIT_WORKER_REGISTRY", str(tmp_path / "workers.toml"))
+    monkeypatch.setattr("issuekit.worker.platform.node", lambda: "win-desktop")
+    monkeypatch.setattr(worker_registry, "IssuekitClient", lambda *args, **kwargs: client)
+
+    assert cli.main(["add", "--repo-id", "demo", "--worker-id", "checkout"]) == 0
+
+    assert client.calls[0]["accept_directed"] is True
+
+
 def test_add_cli_reports_repo_key_conflict(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -679,6 +706,7 @@ class FakeRegistryClient:
         repo_description: str | None = None,
         repo_metadata: dict[str, str] | None = None,
         worker_metadata: dict[str, str] | None = None,
+        accept_directed: bool | None = None,
     ) -> dict[str, str | None]:
         resolved_worker_name = worker_name or worker_id
         assert resolved_worker_name is not None
@@ -702,6 +730,8 @@ class FakeRegistryClient:
             call["repo_metadata"] = repo_metadata
         if worker_metadata is not None:
             call["worker_metadata"] = worker_metadata
+        if accept_directed is not None:
+            call["accept_directed"] = accept_directed
         self.calls.append(call)
         return {"id": f"{resolved_worker_name}.{repo_id}", **call}
 

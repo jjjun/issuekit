@@ -87,6 +87,7 @@ def test_server_registers_expected_tools(tmp_path: Path) -> None:
         "list_workers",
         "list_orphans",
         "reclaim_issue",
+        "readdress_issue",
         "list_project_profiles",
         "propose",
         "list_incoming",
@@ -317,6 +318,27 @@ def test_list_workers_returns_catalog(tmp_path: Path, monkeypatch: pytest.Monkey
     }
 
 
+def test_list_workers_preserves_target_worker_when_set(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = FakeIssuekitClient()
+    client.upsert_worker(
+        machine_id="machine",
+        repo_id="mine-py",
+        worker_id="checkout",
+        path="/repo",
+    )
+    client._workers["checkout.mine-py"]["target_worker"] = "checkout.mine-py"
+    _configure_api(tmp_path, monkeypatch, client)
+    monkeypatch.setattr(worker_registry, "IssuekitClient", lambda *args, **kwargs: client)
+    server = create_server(tmp_path)
+
+    workers = _call(server, "list_workers", {"repo_id": "mine-py"})
+
+    assert workers[0]["target_worker"] == "checkout.mine-py"
+
+
 def test_list_orphans_flags_dead_worker_claim(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -391,6 +413,39 @@ def test_reclaim_issue_tool_returns_stale_claim_to_pool(
             },
         },
     ]
+
+
+def test_readdress_issue_tool_returns_directed_issue_to_pool(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client = FakeIssuekitClient(
+        [api_issue(6, "Directed", target_worker="checkout.demo")]
+    )
+    _configure_api(
+        tmp_path,
+        monkeypatch,
+        client,
+        extra_config=(
+            "[worker]\n"
+            "machine_id = 'machine'\n"
+            "repo_id = 'demo'\n"
+            "worker_id = 'operator'\n"
+        ),
+    )
+    server = create_server(tmp_path)
+
+    result = _call(
+        server,
+        "readdress_issue",
+        {"id": 6, "reason": "stale directed checkout"},
+    )
+
+    assert result["id"] == 6
+    assert result["expected_target_worker"] == "checkout.demo"
+    assert result["actor"] == "operator.demo"
+    assert result["issue"]["stage"] == ""
+    assert "target_worker" not in result["issue"]
+    assert client.get_issue(6)["target_worker"] == ""
 
 
 def test_list_project_profiles_returns_stored_profiles(
@@ -725,6 +780,30 @@ def test_request_changes_returns_issue_to_codex(
     assert [item["id"] for item in queue] == [1]
     assert issue["id"] == 1
     assert "body" in issue
+
+
+def test_list_queue_includes_target_worker(tmp_path: Path, monkeypatch) -> None:
+    client = FakeIssuekitClient(
+        [api_issue(1, "Directed", assignee="codex", target_worker="checkout.demo")]
+    )
+    _configure_api(tmp_path, monkeypatch, client)
+    server = create_server(tmp_path)
+
+    queue = _call(server, "list_queue", {"assignee": "codex"})
+
+    assert queue == [
+        {
+            "id": 1,
+            "title": "Directed",
+            "status": "active",
+            "assignee": "codex",
+            "stage": "",
+            "implementer": "",
+            "author": "",
+            "ref": "demo#1",
+            "target_worker": "checkout.demo",
+        }
+    ]
 
 
 def test_request_changes_defaults_to_recorded_implementer(
@@ -1094,6 +1173,34 @@ def test_api_proposal_tools_send_list_adopt_and_discard(
     assert adopted["priority"] == "low"
     assert adopted["body"] == "Adopt body.\n\nImplementation plan."
     assert discarded["status"] == "discarded"
+
+
+def test_mcp_propose_accepts_worker_repo_target(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    client = FakeIssuekitClient()
+    client.register_catalog_project("other_project")
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'target'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    server = create_server(tmp_path)
+
+    sent = _call(
+        server,
+        "propose",
+        {
+            "to": "checkout.other_project",
+            "title": "MCP directed proposal",
+            "body": "Body.",
+        },
+    )
+
+    assert sent["target_worker"] == "checkout"
+    assert client.calls[0]["body"]["target_worker"] == "checkout"
 
 
 def test_mcp_propose_flags_same_origin_payload_mismatch(
