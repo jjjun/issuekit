@@ -917,6 +917,7 @@ def test_client_upsert_worker_posts_top_level_workers_endpoint() -> None:
             "repo_id": "repo",
             "worker_id": "checkout",
             "path": "/repo",
+            "project": "demo",
         }
         return httpx.Response(201, json=response)
 
@@ -932,6 +933,7 @@ def test_client_upsert_worker_posts_top_level_workers_endpoint() -> None:
         repo_id="repo",
         worker_id="checkout",
         path="/repo",
+        project="demo",
     ) == response
 
 
@@ -943,6 +945,7 @@ def test_client_upsert_worker_includes_role_and_description_when_set() -> None:
             "repo_id": "repo",
             "worker_id": "checkout",
             "path": "/repo",
+            "project": "demo",
             "role": "api-server",
             "description": "Hosts the API.",
         }
@@ -960,6 +963,7 @@ def test_client_upsert_worker_includes_role_and_description_when_set() -> None:
         repo_id="repo",
         worker_id="checkout",
         path="/repo",
+        project="demo",
         role="api-server",
         description="Hosts the API.",
     )

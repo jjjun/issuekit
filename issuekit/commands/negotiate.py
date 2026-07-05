@@ -32,6 +32,8 @@ from issuekit.negotiation.engine import (
     run_negotiation,
 )
 from issuekit.negotiation_prompts import NegotiationParseError
+from issuekit.proposals import ProposalError
+from issuekit.proposals_api import validate_target_project
 from issuekit.store import get_store
 from issuekit.workflow import WorkflowError
 
@@ -113,6 +115,8 @@ def run(args) -> int:
         config = load_config(cwd)
         if args.finalize:
             _require_finalize_args(args)
+            if not args.mock:
+                _warn_target_validation(config, args.to)
             store = get_negotiation_store(config, use_mock=bool(args.mock))
             creator: IssueCreator = MockIssueCreator() if args.mock else ApiIssueCreator(config)
             result = finalize_negotiation(
@@ -135,6 +139,8 @@ def run(args) -> int:
         max_rounds = int(args.max_rounds)
         if max_rounds < 1:
             raise ValueError("--max-rounds must be at least 1.")
+        if not args.mock:
+            _warn_target_validation(config, args.to)
 
         issue = get_store(config).get_issue(issue_id)
         if issue is None:
@@ -168,10 +174,16 @@ def run(args) -> int:
             RuntimeError,
             ValueError,
             TimeoutError,
+            ProposalError,
             WorkflowError,
             NegotiationParseError,
         ),
     )
+
+
+def _warn_target_validation(config: IssuekitConfig, target_project: str) -> None:
+    for warning in validate_target_project(config, target_project):
+        print(warning, file=sys.stderr)
 
 
 def run_threads(args) -> int:

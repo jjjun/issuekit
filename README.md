@@ -168,7 +168,7 @@ copying the steps.
 | `issuekit dev-tool install-editable [--repo <path>] [--no-stop] [--json]` | Windows developer command to install this checkout as the global editable tool with the MCP extra. |
 | `issuekit dev-tool reinstall [--repo <path>] [--no-stop] [--json]` | Windows developer recovery command to reinstall the global tool from an absolute checkout path. |
 | `issuekit dev-tool reload-mcp [--json]` | Stop only running `issuekit-mcp.exe` processes so MCP clients can restart them. |
-| `issuekit add` / `issuekit register` | Register this checkout as a worker (auto-derives machine/repo/worker ids). |
+| `issuekit add` / `issuekit register` | Register this git checkout as a worker (auto-derives machine/repo/worker ids and publishes the configured API project). |
 | `issuekit workers [--repo-id <id>] [--project <name>] [--json]` | List registered workers and their repo-level roles across projects. |
 | `issuekit add-ref <name> --path <repo> [--scope local\|workspace]` | Register an optional local project alias. |
 | `issuekit list-refs` | List effective local project aliases and their source. |
@@ -210,11 +210,19 @@ the mistaken direct issue in the target project as superseded:
 issuekit complete <direct-issue-id> --force --summary "Superseded by proposal <proposal-ref>" --verification "Recovery bookkeeping only."
 ```
 
-`--to` takes the target API project key. The old workspace ref registry is kept
-only as an optional local alias map for operators who want to remember sibling
-project names; proposal delivery no longer resolves a target repo path or writes
-files. For a set of sibling repos, place one `issuekit.workspace.toml` above
-them:
+`--to` takes a registered target API project key, not an arbitrary alias. A
+project becomes visible to other repos after that project runs `issuekit add` or
+`issuekit register` against the API, or otherwise pushes a project profile.
+If the API exposes its project catalog, issuekit rejects unknown targets before
+creating a proposal. If the connected API predates project catalog support,
+proposal writes continue and issuekit reports that the target could not be
+validated.
+
+The old workspace ref registry is kept only as an optional local alias map for
+operators who want to remember sibling project names. Workspace/local refs can
+remain convenient aliases, but proposal delivery resolves to registered API
+project keys and no longer resolves a target repo path or writes files. For a
+set of sibling repos, place one `issuekit.workspace.toml` above them:
 
 ```toml
 [projects]
@@ -238,6 +246,12 @@ repos.
 Each repo can still use gitignored `issuekit.local.toml` with a `[refs]` table
 for private refs or overrides. Effective refs are loaded as workspace projects,
 then local refs; local entries win on name conflicts.
+
+Do not assume a repo remote name is a valid proposal destination. For example,
+if a local alias such as `mine-dashboard` points at an old service name but the
+target project is registered as `dashboard`, `issuekit propose --to mine-dashboard ...`
+is rejected on catalog-aware APIs instead of creating a
+proposal in an unwatched inbox.
 
 Manage refs with:
 
@@ -362,6 +376,14 @@ suppress that warning.
 When both files exist, `[tool.issuekit]` in `pyproject.toml` takes precedence.
 If `pyproject.toml` exists without `[tool.issuekit]`, issuekit falls back to
 `issuekit.toml`.
+
+Run `issuekit add` / `issuekit register` from a git-managed checkout. The
+command derives the physical `repo_id` from `remote.origin.url`; in a git
+checkout with no origin, pass `--repo-id <repository-id>` explicitly. It refuses
+non-git directories. `repo_id` identifies the worker checkout for claim
+ownership and orphan detection. `project` remains the API issue/proposal
+namespace, so an explicitly configured `project` is not overwritten by a remote
+name or `--repo-id`.
 
 A repo can advertise its role so agents in other projects recognize peers when
 choosing proposal or negotiation targets. Set `worker_role` (max 80 chars) and

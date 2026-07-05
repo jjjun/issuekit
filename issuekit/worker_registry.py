@@ -42,6 +42,7 @@ def post_worker_registration(
             repo_id=worker.repo_id,
             worker_id=worker.worker_id,
             path=repo_path.as_posix(),
+            project=config.project,
             role=config.worker_role or None,
             description=config.worker_description or None,
         )

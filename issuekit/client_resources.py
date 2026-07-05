@@ -311,6 +311,7 @@ class _WorkerResourceMixin:
         repo_id: str,
         worker_id: str,
         path: str | None,
+        project: str | None = None,
         role: str | None = None,
         description: str | None = None,
     ) -> JsonDict:
@@ -322,7 +323,7 @@ class _WorkerResourceMixin:
         }
         # role/description are optional, backward-compatible fields: only send
         # them when set so older backends keep accepting the payload.
-        body.update(_drop_none({"role": role, "description": description}))
+        body.update(_drop_none({"project": project, "role": role, "description": description}))
         payload = self._authorized_request("POST", "/api/workers", json=body)
         return _ensure_dict(payload, "Worker response")
 

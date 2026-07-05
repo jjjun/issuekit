@@ -947,6 +947,27 @@ def test_mcp_propose_flags_same_origin_payload_mismatch(
     assert "from-issue" in sent["warning"]
 
 
+def test_mcp_propose_rejects_unknown_target_when_profile_catalog_exists(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    client = FakeIssuekitClient()
+    client.project = "registered"
+    client.put_project_profile(summary="Registered project.", profile_md="# Registered\n")
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'target'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    server = create_server(tmp_path)
+
+    with pytest.raises(Exception, match="Unknown target project 'missing'"):
+        _call(server, "propose", {"to": "missing", "title": "New title", "body": "New body."})
+
+    assert not any(call["method"] == "create_proposal" for call in client.calls)
+
+
 def test_mcp_propose_attaches_dependency_refs(tmp_path: Path, monkeypatch) -> None:
     client = FakeIssuekitClient()
     (tmp_path / "issuekit.toml").write_text(

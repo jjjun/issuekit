@@ -13,6 +13,7 @@ from urllib.parse import urlparse
 from issuekit.config import WorkerIdentity
 from issuekit.core import is_valid_workflow_token
 from issuekit.gitutil import git_origin_url as _git_origin_url
+from issuekit.gitutil import git_root
 from issuekit.localconfig import (
     LOCAL_CONFIG_NAME,
     LocalConfigError,
@@ -48,8 +49,24 @@ def register_worker(
     registry_path: Path | str | None = None,
 ) -> WorkerRegistration:
     repo_path = Path(cwd).resolve()
+    git_repo = git_root(repo_path)
+    if git_repo is None:
+        raise WorkerRegistrationError(
+            "issuekit add requires a git-managed checkout. Run it from inside "
+            "a git repository, or initialize git first."
+        )
+    repo_path = git_repo.resolve()
     existing = load_local_worker(repo_path)
     defaults = _default_identity(repo_path)
+    if (
+        defaults.sources["repo_id"] == "working-directory basename"
+        and repo_id is None
+        and existing is None
+    ):
+        raise WorkerRegistrationError(
+            "This git checkout has no remote origin. Add remote origin or pass "
+            "--repo-id <repository-id> explicitly."
+        )
 
     resolved_machine_id, machine_source = _resolve_id(
         "machine_id",

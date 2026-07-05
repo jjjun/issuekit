@@ -79,8 +79,139 @@ def test_api_cli_propose_posts_expected_body_and_dedupes(
             "body": "## Suggested Change\n\nDo this.",
         },
     }
-    assert created_projects == ["target", "target"]
+    assert created_projects == ["source", "target", "source", "target"]
     assert not (tmp_path / "docs" / "issues" / "incoming").exists()
+
+
+def test_api_cli_propose_rejects_unknown_target_when_profile_catalog_exists(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient()
+    client.project = "registered"
+    client.put_project_profile(summary="Registered project.", profile_md="# Registered\n")
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'source'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.chdir(tmp_path)
+
+    assert (
+        cli.main(
+            [
+                "propose",
+                "--to",
+                "stale-alias",
+                "--title",
+                "Bad target",
+                "--body",
+                "Body.",
+            ]
+        )
+        == 1
+    )
+
+    assert "Unknown target project 'stale-alias'" in capsys.readouterr().err
+    assert not any(call["method"] == "create_proposal" for call in client.calls)
+
+
+def test_api_cli_propose_allows_registered_target_with_repo_id_mismatch(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient()
+    client.project = "registered-target"
+    client.put_project_profile(summary="Target project.", profile_md="# Target\n")
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'source-project'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    (tmp_path / "issuekit.local.toml").write_text(
+        (
+            "[worker]\n"
+            "machine_id = \"machine\"\n"
+            "repo_id = \"physical-repo\"\n"
+            "worker_id = \"checkout\"\n"
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.chdir(tmp_path)
+
+    assert (
+        cli.main(
+            [
+                "propose",
+                "--to",
+                "registered-target",
+                "--title",
+                "Registered target",
+                "--body",
+                "Body.",
+                "--json",
+            ]
+        )
+        == 0
+    )
+
+    sent = json.loads(capsys.readouterr().out)
+    assert sent["origin"] == "source-project#0@unknown"
+    assert sent["payload_mismatch"] is False
+
+
+def test_api_cli_propose_accepts_worker_project_catalog(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    from issuekit.workflow import WorkflowError
+
+    class WorkerCatalogClient(FakeIssuekitClient):
+        def list_project_profiles(self):
+            raise WorkflowError("profile endpoint not found", code="http_404")
+
+        def list_workers(self, *, repo_id=None, project=None):
+            return [
+                {
+                    "machine_id": "machine",
+                    "repo_id": "physical-repo",
+                    "worker_id": "checkout",
+                    "project": "registered-target",
+                }
+            ]
+
+    client = WorkerCatalogClient()
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'source'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.chdir(tmp_path)
+
+    assert (
+        cli.main(
+            [
+                "propose",
+                "--to",
+                "registered-target",
+                "--title",
+                "Worker catalog target",
+                "--body",
+                "Body.",
+                "--json",
+            ]
+        )
+        == 0
+    )
+
+    assert json.loads(capsys.readouterr().out)["title"] == "Worker catalog target"
 
 
 def test_api_cli_propose_can_mark_blocking(
@@ -552,7 +683,7 @@ def test_api_cli_outgoing_lists_own_proposals(
     assert cli.main(["outgoing", "--to", "target", "--json"]) == 0
     outgoing = json.loads(capsys.readouterr().out)
     assert [proposal["id"] for proposal in outgoing] == [1, 3]
-    assert set(created_projects) == {"target"}
+    assert set(created_projects) == {"source", "target"}
 
     assert cli.main(["outgoing", "--to", "target", "--status", "adopted", "--json"]) == 0
     adopted = json.loads(capsys.readouterr().out)

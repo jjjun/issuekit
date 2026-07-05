@@ -62,7 +62,7 @@ def test_register_worker_uses_remote_repo_and_basename_worker(
     )
 
 
-def test_register_worker_falls_back_to_directory_for_repo_without_remote(
+def test_register_worker_requires_repo_id_for_repo_without_remote(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -71,10 +71,28 @@ def test_register_worker_falls_back_to_directory_for_repo_without_remote(
     _init_git(repo)
     monkeypatch.setattr("issuekit.worker.platform.node", lambda: "win-desktop")
 
-    result = register_worker(repo, registry_path=tmp_path / "workers.toml")
+    with pytest.raises(WorkerRegistrationError, match="no remote origin"):
+        register_worker(repo, registry_path=tmp_path / "workers.toml")
 
+    result = register_worker(
+        repo,
+        repo_id="local-only",
+        registry_path=tmp_path / "workers.toml",
+    )
     assert result.identity.repo_id == "local-only"
-    assert result.sources["repo_id"] == "working-directory basename"
+    assert result.sources["repo_id"] == "flag"
+
+
+def test_register_worker_requires_git_checkout(tmp_path: Path) -> None:
+    repo = tmp_path / "not-git"
+    repo.mkdir()
+
+    with pytest.raises(WorkerRegistrationError, match="git-managed checkout"):
+        register_worker(
+            repo,
+            repo_id="project",
+            registry_path=tmp_path / "workers.toml",
+        )
 
 
 def test_register_worker_pins_worker_id_across_directory_rename(
@@ -100,6 +118,7 @@ def test_register_worker_pins_worker_id_across_directory_rename(
 def test_register_worker_worker_id_override_requires_force(tmp_path: Path) -> None:
     repo = tmp_path / "checkout"
     repo.mkdir()
+    _init_git(repo, "https://github.com/owner/project.git")
     register_worker(
         repo,
         machine_id="machine",
@@ -134,6 +153,8 @@ def test_register_worker_refuses_local_collision(tmp_path: Path) -> None:
     second = tmp_path / "second"
     first.mkdir()
     second.mkdir()
+    _init_git(first, "https://github.com/owner/project.git")
+    _init_git(second, "https://github.com/owner/project.git")
     registry = tmp_path / "workers.toml"
     kwargs = {
         "machine_id": "machine",
@@ -208,6 +229,7 @@ def test_worker_and_refs_share_local_config_without_clobbering(tmp_path: Path) -
     target = tmp_path / "target"
     repo.mkdir()
     target.mkdir()
+    _init_git(repo, "https://github.com/owner/project.git")
 
     register_worker(
         repo,
@@ -230,6 +252,7 @@ def test_add_cli_writes_worker_and_gitignore(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    _init_git(tmp_path)
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("ISSUEKIT_WORKER_REGISTRY", str(tmp_path / "workers.toml"))
     monkeypatch.setattr("issuekit.worker.platform.node", lambda: "win-desktop")
@@ -245,6 +268,35 @@ def test_add_cli_writes_worker_and_gitignore(
     )
 
 
+def test_add_cli_fails_in_non_git_directory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["add", "--repo-id", "project"]) == 1
+
+    assert "git-managed checkout" in capsys.readouterr().err
+
+
+def test_add_cli_fails_in_git_checkout_without_origin_unless_repo_id_is_supplied(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _init_git(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("ISSUEKIT_WORKER_REGISTRY", str(tmp_path / "workers.toml"))
+    monkeypatch.setattr("issuekit.worker.platform.node", lambda: "win-desktop")
+
+    assert cli.main(["add"]) == 1
+    assert "no remote origin" in capsys.readouterr().err
+
+    assert cli.main(["add", "--repo-id", "project"]) == 0
+    assert "repo_id    = project" in capsys.readouterr().out
+
+
 def test_add_cli_best_effort_posts_worker_registry(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -252,6 +304,7 @@ def test_add_cli_best_effort_posts_worker_registry(
     from issuekit import worker_registry
 
     client = FakeRegistryClient()
+    _init_git(tmp_path)
     (tmp_path / "issuekit.toml").write_text(
         "api_url = 'https://mine.example'\nproject = 'demo'\n",
         encoding="utf-8",
@@ -270,6 +323,7 @@ def test_add_cli_best_effort_posts_worker_registry(
             "repo_id": "demo",
             "worker_id": "checkout",
             "path": tmp_path.resolve().as_posix(),
+            "project": "demo",
         }
     ]
 
@@ -286,6 +340,7 @@ def test_add_cli_ignores_worker_registry_failure(
         encoding="utf-8",
         newline="\n",
     )
+    _init_git(tmp_path)
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("ISSUEKIT_WORKER_REGISTRY", str(tmp_path / "workers.toml"))
     monkeypatch.setattr("issuekit.worker.platform.node", lambda: "win-desktop")
@@ -305,6 +360,7 @@ def test_add_cli_posts_configured_role_and_description(
     from issuekit import worker_registry
 
     client = FakeRegistryClient()
+    _init_git(tmp_path)
     (tmp_path / "issuekit.toml").write_text(
         (
             "api_url = 'https://mine.example'\n"
@@ -328,6 +384,7 @@ def test_add_cli_posts_configured_role_and_description(
             "repo_id": "demo",
             "worker_id": "checkout",
             "path": tmp_path.resolve().as_posix(),
+            "project": "demo",
             "role": "api-server",
             "description": "Hosts the mine-py issue API.",
         }
@@ -341,6 +398,7 @@ def test_add_cli_pushes_project_profile_when_present(
     from issuekit import worker_registry
 
     client = FakeRegistryClient()
+    _init_git(tmp_path)
     (tmp_path / "issuekit.toml").write_text(
         (
             "api_url = 'https://mine.example'\n"
@@ -375,6 +433,7 @@ def test_add_cli_skips_profile_push_when_absent(
     from issuekit import worker_registry
 
     client = FakeRegistryClient()
+    _init_git(tmp_path)
     (tmp_path / "issuekit.toml").write_text(
         "api_url = 'https://mine.example'\nproject = 'demo'\n",
         encoding="utf-8",
@@ -400,6 +459,7 @@ def test_add_cli_tolerates_profile_push_failure(
     from issuekit import worker_registry
 
     client = ProfileRejectingRegistryClient()
+    _init_git(tmp_path)
     (tmp_path / "issuekit.toml").write_text(
         "api_url = 'https://mine.example'\nproject = 'demo'\n",
         encoding="utf-8",
@@ -427,6 +487,7 @@ def test_add_cli_logs_stale_project_profile_response(
     from issuekit import worker_registry
 
     client = StaleProfileRegistryClient()
+    _init_git(tmp_path)
     (tmp_path / "issuekit.toml").write_text(
         "api_url = 'https://mine.example'\nproject = 'demo'\n",
         encoding="utf-8",
@@ -465,6 +526,7 @@ class FakeRegistryClient:
         repo_id: str,
         worker_id: str,
         path: str | None,
+        project: str | None = None,
         role: str | None = None,
         description: str | None = None,
     ) -> dict[str, str | None]:
@@ -474,6 +536,8 @@ class FakeRegistryClient:
             "worker_id": worker_id,
             "path": path,
         }
+        if project is not None:
+            call["project"] = project
         if role is not None:
             call["role"] = role
         if description is not None:

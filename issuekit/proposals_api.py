@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 import re
@@ -28,6 +29,19 @@ STRUCTURED_DEPENDENCY_PATTERN = re.compile(
 DEPENDENCY_LINE_PATTERN = re.compile(
     r"(?i)\b(depends?\s+on|requires?|prerequisite|blocked\s+by|upstream)\b"
 )
+PROJECT_CATALOG_UNSUPPORTED_CODES = {
+    "http_404",
+    "http_405",
+    "not_found",
+    "method_not_allowed",
+}
+
+
+@dataclass(frozen=True)
+class ProjectCatalog:
+    projects: tuple[str, ...]
+    source: str | None
+    supported: bool
 
 
 def adopt_outcome(proposal_id: str | int, project: str, issue: dict) -> dict:
@@ -90,6 +104,7 @@ def api_client(config: IssuekitConfig, *, project: str | None = None) -> Issueki
 
 def send_proposal(config: IssuekitConfig, proposal: Proposal) -> dict:
     """Create a proposal and annotate idempotent payload conflicts."""
+    target_warnings = validate_target_project(config, proposal.to)
     with api_client(config, project=proposal.to) as client:
         created = client.create_proposal(
             origin=proposal.origin,
@@ -102,8 +117,9 @@ def send_proposal(config: IssuekitConfig, proposal: Proposal) -> dict:
     result = dict(created)
     if proposal.depends_on and "depends_on" not in result:
         result["depends_on"] = list(proposal.depends_on)
-    if proposal.warnings:
-        result["warnings"] = list(proposal.warnings)
+    warnings = [*target_warnings, *proposal.warnings]
+    if warnings:
+        result["warnings"] = warnings
     mismatched = proposal_payload_mismatch(proposal, created)
     result["payload_mismatch"] = bool(mismatched)
     if mismatched:
@@ -219,6 +235,7 @@ def list_outgoing_proposals(
     status: str | None = None,
 ) -> list[dict]:
     """List proposals this project sent to another project's inbox (read-only)."""
+    validate_target_project(config, to)
     if status is not None and status not in OUTGOING_PROPOSAL_STATUSES:
         raise ProposalError(
             f"Invalid proposal status: {status}. "
@@ -239,6 +256,7 @@ def list_outgoing_proposals(
 
 def get_outgoing_proposal(config: IssuekitConfig, *, to: str, proposal_id: int) -> dict:
     """Read one proposal this project sent to another project's inbox."""
+    validate_target_project(config, to)
     with api_client(config, project=to) as client:
         proposal = client.get_proposal(int(proposal_id))
     if not _is_own_origin(proposal.get("origin"), config.project):
@@ -265,6 +283,73 @@ def matches_triage_policy(proposal: Mapping[str, Any], config: IssuekitConfig) -
     if config.triage.require_blocking and not bool(proposal.get("blocking", False)):
         return False
     return True
+
+
+def validate_target_project(config: IssuekitConfig, target_project: str) -> tuple[str, ...]:
+    """Validate proposal targets against the API's project catalog when available."""
+    catalog = fetch_project_catalog(config)
+    if catalog.supported:
+        if target_project in catalog.projects:
+            return ()
+        raise ProposalError(_unknown_target_project_message(target_project, catalog.projects))
+    if catalog.source is not None:
+        return ()
+    return (
+        "Target project preflight: API server did not expose a project catalog; "
+        f"cannot validate target project {target_project}.",
+    )
+
+
+def fetch_project_catalog(config: IssuekitConfig) -> ProjectCatalog:
+    if not config.api_url:
+        raise ProposalError(
+            "Proposal commands require api_url in issuekit.toml/[tool.issuekit] or ISSUEKIT_API_URL."
+        )
+    with api_client(config) as client:
+        try:
+            profile_projects = _project_names_from_rows(client.list_project_profiles())
+        except WorkflowError as exc:
+            if exc.code not in PROJECT_CATALOG_UNSUPPORTED_CODES:
+                raise
+        else:
+            if profile_projects:
+                return ProjectCatalog(profile_projects, "project profiles", True)
+            return ProjectCatalog((), "project profiles", False)
+
+        try:
+            worker_projects = _project_names_from_rows(client.list_workers())
+        except WorkflowError as exc:
+            if exc.code not in PROJECT_CATALOG_UNSUPPORTED_CODES:
+                raise
+        else:
+            if worker_projects:
+                return ProjectCatalog(worker_projects, "worker registry", True)
+    return ProjectCatalog((), None, False)
+
+
+def _project_names_from_rows(rows: Sequence[Mapping[str, Any]]) -> tuple[str, ...]:
+    projects: list[str] = []
+    for row in rows:
+        project = str(row.get("project") or "").strip()
+        if project and project not in projects:
+            projects.append(project)
+    return tuple(sorted(projects))
+
+
+def _unknown_target_project_message(target_project: str, known_projects: Sequence[str]) -> str:
+    if not known_projects:
+        return f"Unknown target project '{target_project}'. No registered API projects were returned."
+    preview = ", ".join(known_projects[:8])
+    if len(known_projects) > 8:
+        return (
+            f"Unknown target project '{target_project}'. "
+            f"{len(known_projects)} registered API projects are available; "
+            f"first projects: {preview}."
+        )
+    return (
+        f"Unknown target project '{target_project}'. "
+        f"Registered API projects: {preview}."
+    )
 
 
 def _proposal_text(value: object) -> str:

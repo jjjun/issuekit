@@ -176,6 +176,7 @@ def test_serve_once_empty_queue_exits_without_agent(
                 "repo_id": "demo",
                 "worker_id": "checkout",
                 "path": tmp_path.resolve().as_posix(),
+                "project": "demo",
             },
         },
         {

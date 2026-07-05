@@ -336,6 +336,7 @@ class FakeIssueSurface:
         repo_id: str,
         worker_id: str,
         path: str | None,
+        project: str | None = None,
         role: str | None = None,
         description: str | None = None,
     ) -> JsonDict:
@@ -345,6 +346,8 @@ class FakeIssueSurface:
             "worker_id": worker_id,
             "path": path,
         }
+        if project is not None:
+            body["project"] = project
         if role is not None:
             body["role"] = role
         if description is not None:
@@ -357,6 +360,7 @@ class FakeIssueSurface:
                 "repo_id": repo_id,
                 "worker_id": worker_id,
                 "path": path,
+                "project": project,
                 "role": role,
                 "description": description,
                 "status": "idle",
@@ -383,6 +387,7 @@ class FakeIssueSurface:
                 deepcopy(worker)
                 for worker in self._workers.values()
                 if repo_id is None or worker.get("repo_id") == repo_id
+                if project is None or worker.get("project") == project
             ]
             return rows
 
