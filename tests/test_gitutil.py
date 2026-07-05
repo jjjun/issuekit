@@ -37,8 +37,29 @@ def test_run_git_redirects_stdin_and_normalizes_result(
     assert captured["cwd"] == str(tmp_path)
     assert captured["capture_output"] is True
     assert captured["text"] is True
+    assert captured["encoding"] == "utf-8"
+    assert captured["errors"] == "surrogateescape"
     assert captured["timeout"] == 7
     assert captured["stdin"] == subprocess.DEVNULL
+
+
+def test_run_git_decodes_utf8_output_independent_of_locale(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    def fake_run(*args, **kwargs):
+        stdout = b"\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e.md\0".decode(
+            kwargs["encoding"],
+            errors=kwargs["errors"],
+        )
+        return subprocess.CompletedProcess(args[0], 0, stdout=stdout, stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    result = run_git(["ls-files", "-z"], tmp_path)
+
+    assert result is not None
+    assert result.stdout == "日本語.md\0"
 
 
 def test_run_git_returns_none_on_subprocess_failure(
