@@ -129,6 +129,7 @@ def _local_config_text(
             "ref",
             "target_project",
             "author_agent",
+            "author_session",
             "worker",
             "created",
             "required_next_action",

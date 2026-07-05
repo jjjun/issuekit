@@ -12,9 +12,11 @@ from issuekit.agents.run_claimed import (
     run_and_submit,
 )
 from issuekit.agents.runner import AgentResult, AgentRunner
+from issuekit.author_guard import AuthorOrchestrationContext, read_author_guard
 from issuekit.commands._common import run_command
 from issuekit.config import load_config
 from issuekit.core import Issue, parse_issue_id_arg
+from issuekit.session import new_session_token
 from issuekit.store import get_store
 from issuekit.workflow import WorkflowError, claim_issue
 
@@ -77,6 +79,11 @@ def run(args) -> int:
             if issue.stage == "changes_requested"
             else None
         )
+        run_session = new_session_token("run")
+        orchestration = AuthorOrchestrationContext(
+            implementer_agent=args.agent,
+            run_session=run_session,
+        )
         claimed_issue = claim_issue(
             issue.id or issue_id,
             args.agent,
@@ -84,6 +91,8 @@ def run(args) -> int:
             cwd=cwd,
             allow_author_guard_override=args.allow_author_session,
             allow_any_branch=args.allow_any_branch,
+            session=run_session,
+            orchestration=orchestration,
         )
         outcome = run_and_submit(
             claimed_issue,
@@ -98,6 +107,9 @@ def run(args) -> int:
             allow_no_changes=getattr(args, "allow_no_changes", False),
             allow_author_guard_override=args.allow_author_session,
             allow_any_branch=args.allow_any_branch,
+            session=run_session,
+            orchestration=orchestration,
+            submit_summary=_submit_summary(args.agent, cwd, config, issue.id or issue_id),
             reporter=lambda issue, result: _print_run_report(issue, result, args.agent),
             runner_factory=AgentRunner,
         )
@@ -148,3 +160,28 @@ def _print_submit_report(outcome: RunOutcome) -> None:
         f"submitted_review id={reviewed_issue.id} ref={reviewed_issue.ref} "
         f"assignee={reviewed_issue.assignee} stage={reviewed_issue.stage}"
     )
+
+
+def _submit_summary(agent: str, cwd: Path, config, issue_id: int) -> str:
+    orchestrator = _orchestrator_identity(cwd, config, issue_id)
+    return f"Implemented by {agent} via issuekit implement (orchestrated by {orchestrator})."
+
+
+def _orchestrator_identity(cwd: Path, config, issue_id: int) -> str:
+    guard = read_author_guard(cwd)
+    if (
+        guard is not None
+        and guard.project == config.project
+        and _guard_targets_issue(guard, config, issue_id)
+    ):
+        return f"{guard.author_agent}@{guard.worker or 'unregistered-worker'}"
+    worker = config.worker_key()
+    return f"issuekit@{worker or 'unregistered-worker'}"
+
+
+def _guard_targets_issue(guard, config, issue_id: int) -> bool:
+    if guard.kind != "issue":
+        return False
+    if guard.id:
+        return guard.id == str(issue_id)
+    return guard.ref == f"{config.project}#{issue_id}"

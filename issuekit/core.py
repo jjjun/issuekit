@@ -52,6 +52,10 @@ def issue_dict(issue: "Issue", *, include_body: bool = False) -> dict[str, objec
     }
     if include_body:
         data["body"] = issue.body
+    for key in ("author_session", "implementer_session", "reviewer_session"):
+        value = issue.metadata.get(key)
+        if value:
+            data[key] = value
     return data
 
 

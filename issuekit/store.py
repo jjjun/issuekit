@@ -141,6 +141,7 @@ class ApiStore:
         priority: str,
         author: str,
         assignee: str | None = None,
+        session: str | None = None,
     ) -> Issue:
         return self._issue_from_response(
             self.client.create_issue(
@@ -152,7 +153,8 @@ class ApiStore:
                         "author": author,
                         "assignee": assignee,
                     }
-                )
+                ),
+                session=session,
             )
         )
 
@@ -181,6 +183,7 @@ class ApiStore:
         assignee: str,
         worker: str | None = None,
         allow_self_implement: bool = False,
+        session: str | None = None,
     ) -> Issue:
         return self._issue_from_response(
             self.client.claim(
@@ -188,6 +191,7 @@ class ApiStore:
                 assignee=assignee,
                 worker=worker,
                 allow_self_implement=allow_self_implement,
+                session=session,
             )
         )
 
@@ -198,12 +202,14 @@ class ApiStore:
         priority: str | None = None,
         worker: str | None = None,
         allow_self_implement: bool = False,
+        session: str | None = None,
     ) -> Issue | None:
         raw = self.client.claim_next(
             assignee=assignee,
             priority=priority,
             worker=worker,
             allow_self_implement=allow_self_implement,
+            session=session,
         )
         return None if raw is None else self._issue_from_response(raw)
 
@@ -215,6 +221,7 @@ class ApiStore:
         branch: str | None = None,
         commit: str | None = None,
         reviewer: str | None = None,
+        session: str | None = None,
     ) -> Issue:
         return self._issue_from_response(
             self.client.submit(
@@ -223,6 +230,7 @@ class ApiStore:
                 branch=branch,
                 commit=commit,
                 reviewer=reviewer,
+                session=session,
             )
         )
 
@@ -234,6 +242,7 @@ class ApiStore:
         reviewer: str | None = None,
         assignee: str | None = None,
         worker: str | None = None,
+        session: str | None = None,
     ) -> Issue:
         return self._issue_from_response(
             self.client.request_changes(
@@ -242,6 +251,7 @@ class ApiStore:
                 reviewer=reviewer,
                 assignee=assignee,
                 worker=worker,
+                session=session,
             )
         )
 
@@ -253,6 +263,7 @@ class ApiStore:
         verification: str,
         reviewer: str,
         worker: str | None = None,
+        session: str | None = None,
     ) -> Issue:
         return self._issue_from_response(
             self.client.approve(
@@ -261,6 +272,7 @@ class ApiStore:
                 verification=verification,
                 reviewer=reviewer,
                 worker=worker,
+                session=session,
             )
         )
 
@@ -342,6 +354,9 @@ class ApiStore:
             "implementer": _string(raw.get("implementer")),
             "author": _string(raw.get("author")),
             "worker": _string(raw.get("worker")),
+            "author_session": _string(raw.get("author_session")),
+            "implementer_session": _string(raw.get("implementer_session")),
+            "reviewer_session": _string(raw.get("reviewer_session")),
             "origin": _string(raw.get("origin")),
             "title": _title(raw, body, issue_id),
         }

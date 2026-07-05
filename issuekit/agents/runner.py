@@ -271,6 +271,7 @@ class AgentRunner:
         prompt_override: str | None = None,
         abort_event: threading.Event | None = None,
         session_id: str | None = None,
+        issuekit_session: str | None = None,
     ) -> AgentResult:
         plan_path = plan_path.resolve()
         repo = repo.resolve()
@@ -346,6 +347,10 @@ class AgentRunner:
                 "stderr": log_f,
                 "cwd": str(repo),
             }
+            if issuekit_session is not None:
+                env = os.environ.copy()
+                env["ISSUEKIT_SESSION"] = issuekit_session
+                kwargs["env"] = env
             if os.name == "nt":
                 kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
             else:

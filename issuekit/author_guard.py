@@ -25,6 +25,7 @@ class AuthorGuard:
     ref: str
     target_project: str
     author_agent: str
+    author_session: str
     worker: str
     created: str
     required_next_action: str = REQUIRED_NEXT_ACTION
@@ -36,6 +37,7 @@ class AuthorGuard:
             "id": self.id,
             "ref": self.ref,
             "author_agent": self.author_agent,
+            "author_session": self.author_session,
             "created": self.created,
             "required_next_action": self.required_next_action,
         }
@@ -59,6 +61,7 @@ def create_author_guard(
     item_id: int | str | None,
     ref: str,
     author_agent: str | None,
+    author_session: str | None = None,
     target_project: str | None = None,
 ) -> AuthorGuard:
     guard = AuthorGuard(
@@ -68,6 +71,7 @@ def create_author_guard(
         ref=ref,
         target_project=target_project or "",
         author_agent=(author_agent or "unknown").strip() or "unknown",
+        author_session=(author_session or "").strip(),
         worker=config.worker_key() or "",
         created=datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
     )
@@ -124,6 +128,7 @@ def enforce_no_author_guard(
     action: str,
     issue_id: int | None = None,
     allow_override: bool = False,
+    orchestration: AuthorOrchestrationContext | None = None,
 ) -> None:
     if allow_override:
         return
@@ -136,10 +141,14 @@ def enforce_no_author_guard(
         return
     if not _guard_blocks_issue_lifecycle(guard, config=config, issue_id=issue_id):
         return
+    if _orchestration_allows_issue_lifecycle(guard, orchestration):
+        return
     from issuekit.workflow import WorkflowError
 
+    detail = _orchestration_rejection_detail(guard, orchestration)
+    suffix = f" {detail}" if detail else ""
     raise WorkflowError(
-        f"Author-session guard blocks {action}: {stop_message(guard)}",
+        f"Author-session guard blocks {action}: {stop_message(guard)}{suffix}",
         code="author_session_guard",
     )
 
@@ -160,6 +169,48 @@ def _guard_blocks_issue_lifecycle(
     return guard.ref == f"{config.project}#{target_id}"
 
 
+@dataclass(frozen=True)
+class AuthorOrchestrationContext:
+    implementer_agent: str
+    run_session: str
+
+
+def _orchestration_allows_issue_lifecycle(
+    guard: AuthorGuard,
+    orchestration: AuthorOrchestrationContext | None,
+) -> bool:
+    if orchestration is None:
+        return False
+    if guard.author_agent == "unknown":
+        return False
+    if orchestration.implementer_agent != guard.author_agent:
+        return True
+    return bool(guard.author_session and orchestration.run_session != guard.author_session)
+
+
+def _orchestration_rejection_detail(
+    guard: AuthorGuard,
+    orchestration: AuthorOrchestrationContext | None,
+) -> str:
+    if orchestration is None:
+        return ""
+    if guard.author_agent == "unknown":
+        return (
+            "Orchestrated implement is not allowed because the author agent is "
+            "unknown; clear the guard only after handing the issue to a distinct "
+            "session."
+        )
+    if not guard.author_session:
+        return (
+            "Orchestrated same-agent implement requires the issue to have been "
+            "authored with ISSUEKIT_SESSION recorded."
+        )
+    return (
+        "Orchestrated same-agent implement requires a run session distinct from "
+        "the recorded author session."
+    )
+
+
 def _guard_from_mapping(raw: Mapping[str, object] | None) -> AuthorGuard | None:
     if raw is None:
         return None
@@ -174,6 +225,7 @@ def _guard_from_mapping(raw: Mapping[str, object] | None) -> AuthorGuard | None:
         ref=_string(raw.get("ref")),
         target_project=_string(raw.get("target_project")),
         author_agent=_string(raw.get("author_agent")) or "unknown",
+        author_session=_string(raw.get("author_session")),
         worker=_string(raw.get("worker")),
         created=_string(raw.get("created")),
         required_next_action=_string(raw.get("required_next_action")) or REQUIRED_NEXT_ACTION,

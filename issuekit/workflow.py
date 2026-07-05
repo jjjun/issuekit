@@ -4,7 +4,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from issuekit.author_guard import author_handoff_enforced, enforce_no_author_guard
+from issuekit.author_guard import (
+    AuthorOrchestrationContext,
+    author_handoff_enforced,
+    enforce_no_author_guard,
+)
 from issuekit.branch_guard import enforce_work_branch
 from issuekit.config import IssuekitConfig
 from issuekit.core import (
@@ -15,6 +19,7 @@ from issuekit.core import (
     is_valid_workflow_token,
 )
 from issuekit.gitutil import git_current_branch
+from issuekit.session import current_session_token, validate_session_token
 
 
 AUTO_REVIEWER = "auto"
@@ -56,6 +61,7 @@ def claim_next(
     cwd: str = ".",
     allow_author_guard_override: bool = False,
     allow_any_branch: bool = False,
+    session: str | None = None,
 ) -> Issue | None:
     config = config or IssuekitConfig()
     _validate_assignee(assignee, config)
@@ -78,11 +84,13 @@ def claim_next(
     owned_store = _ensure_store(config, store)
     try:
         worker = config.worker_key()
+        resolved_session = _resolve_session(session)
         return owned_store.claim_next(  # type: ignore[attr-defined]
             assignee=assignee,
             priority=priority,
             worker=worker,
             allow_self_implement=not author_handoff_enforced(),
+            session=resolved_session,
         )
     finally:
         if store is None:
@@ -98,6 +106,8 @@ def claim_issue(
     cwd: str = ".",
     allow_author_guard_override: bool = False,
     allow_any_branch: bool = False,
+    session: str | None = None,
+    orchestration: AuthorOrchestrationContext | None = None,
 ) -> Issue:
     config = config or IssuekitConfig()
     _validate_assignee(assignee, config)
@@ -108,6 +118,7 @@ def claim_issue(
         action=f"claim issue #{issue_id}",
         issue_id=issue_id,
         allow_override=allow_author_guard_override,
+        orchestration=orchestration,
     )
     enforce_work_branch(
         cwd,
@@ -119,11 +130,14 @@ def claim_issue(
     owned_store = _ensure_store(config, store)
     try:
         worker = config.worker_key()
+        resolved_session = _resolve_session(session)
+        _ensure_orchestration_session(orchestration, resolved_session)
         return owned_store.claim_issue(  # type: ignore[attr-defined]
             issue_id,
             assignee=assignee,
             worker=worker,
-            allow_self_implement=not author_handoff_enforced(),
+            allow_self_implement=not author_handoff_enforced() and orchestration is None,
+            session=resolved_session,
         )
     finally:
         if store is None:
@@ -208,6 +222,8 @@ def submit_for_review(
     cwd: str = ".",
     allow_author_guard_override: bool = False,
     allow_any_branch: bool = False,
+    session: str | None = None,
+    orchestration: AuthorOrchestrationContext | None = None,
 ) -> Issue:
     config = config or IssuekitConfig()
     _validate_stage("review", config)
@@ -222,6 +238,7 @@ def submit_for_review(
         action=f"submit issue #{issue_id} for review",
         issue_id=issue_id,
         allow_override=allow_author_guard_override,
+        orchestration=orchestration,
     )
     enforce_work_branch(
         cwd,
@@ -231,12 +248,15 @@ def submit_for_review(
     )
     owned_store = _ensure_store(config, store)
     try:
+        resolved_session = _resolve_session(session)
+        _ensure_orchestration_session(orchestration, resolved_session)
         return owned_store.submit_for_review(  # type: ignore[attr-defined]
             issue_id,
             summary=summary,
             branch=branch,
             commit=commit,
             reviewer=reviewer,
+            session=resolved_session,
         )
     finally:
         if store is None:
@@ -251,6 +271,7 @@ def request_changes(
     assignee: str | None = None,
     config: IssuekitConfig | None = None,
     store=None,
+    session: str | None = None,
 ) -> Issue:
     config = config or IssuekitConfig()
     if assignee is not None:
@@ -260,12 +281,14 @@ def request_changes(
     owned_store = _ensure_store(config, store)
     try:
         worker = config.worker_key()
+        resolved_session = _resolve_session(session)
         return owned_store.request_changes(  # type: ignore[attr-defined]
             issue_id,
             notes=notes,
             reviewer=reviewer,
             assignee=assignee,
             worker=worker,
+            session=resolved_session,
         )
     finally:
         if store is None:
@@ -416,3 +439,26 @@ def _ensure_store(config: IssuekitConfig, store):
     from issuekit.store import get_store
 
     return get_store(config)
+
+
+def _resolve_session(explicit: str | None) -> str | None:
+    try:
+        if explicit is not None:
+            return validate_session_token(explicit)
+        return current_session_token()
+    except ValueError as exc:
+        raise WorkflowError(str(exc), code="invalid_session") from exc
+
+
+def _ensure_orchestration_session(
+    orchestration: AuthorOrchestrationContext | None,
+    session: str | None,
+) -> None:
+    if orchestration is None:
+        return
+    if session == orchestration.run_session:
+        return
+    raise WorkflowError(
+        "Orchestrated lifecycle calls must use the launched run session.",
+        code="invalid_session",
+    )

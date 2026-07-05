@@ -106,6 +106,36 @@ def test_author_command_can_assign_explicit_implementer(
     assert client.get_issue(1)["assignee"] == "kimi"
 
 
+def test_author_command_records_configured_session(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient()
+    monkeypatch.setenv("ISSUEKIT_SESSION", "author-123")
+    _configure_api(tmp_path, monkeypatch, client)
+
+    exit_code = cli.main(
+        [
+            "author",
+            "--title",
+            "Session Handoff",
+            "--body",
+            "## Problem\n\nRecord the author session.\n",
+            "--agent",
+            "codex",
+        ]
+    )
+
+    assert exit_code == 0
+    capsys.readouterr()
+    guard = read_author_guard(tmp_path)
+    assert guard is not None
+    assert guard.author_session == "author-123"
+    assert client.calls[0]["body"]["session"] == "author-123"
+    assert client.get_issue(1)["author_session"] == "author-123"
+
+
 def test_author_command_blocks_likely_cross_project_direct_authoring(
     tmp_path: Path,
     monkeypatch,

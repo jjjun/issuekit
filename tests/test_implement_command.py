@@ -23,6 +23,7 @@ class FakeResult:
 
 class FakeRunner:
     calls: list[tuple[object, Path, Path, float, str | None, int | None, str | None]] = []
+    issuekit_sessions: list[str | None] = []
 
     def run(
         self,
@@ -46,6 +47,7 @@ class FakeRunner:
                 kwargs.get("prompt_suffix"),
             )
         )
+        self.issuekit_sessions.append(kwargs.get("issuekit_session"))
         return FakeResult(parsed={"resume_session_id": "abc123"})
 
 
@@ -91,6 +93,7 @@ def test_implement_command_materializes_api_issue_and_submits_review(
 ) -> None:
     client = FakeIssuekitClient([api_issue(1, "First", author="claude", body="# Issue #1: First\n")])
     FakeRunner.calls.clear()
+    FakeRunner.issuekit_sessions.clear()
     _configure_api(tmp_path, monkeypatch, client)
     monkeypatch.setattr("issuekit.commands.implement.AgentRunner", FakeRunner)
 
@@ -107,10 +110,22 @@ def test_implement_command_materializes_api_issue_and_submits_review(
     assert agent_name == "kimi"
     assert issue_id == 1
     assert prompt_suffix is None
+    assert FakeRunner.issuekit_sessions[0] is not None
+    assert FakeRunner.issuekit_sessions[0].startswith("run-")
     assert "issue=1 ref=demo#1 agent=kimi" in captured.out
     assert "submitted_review id=1 ref=demo#1 assignee= stage=review" in captured.out
-    assert client.calls[0] == {"method": "claim", "number": 1, "body": {"assignee": "kimi"}}
+    run_session = FakeRunner.issuekit_sessions[0]
+    assert client.calls[0] == {
+        "method": "claim",
+        "number": 1,
+        "body": {"assignee": "kimi", "session": run_session},
+    }
     assert client.calls[-1]["method"] == "submit"
+    assert client.calls[-1]["body"]["session"] == run_session
+    assert client.calls[-1]["body"]["summary"] == (
+        "Implemented by kimi via issuekit implement "
+        "(orchestrated by issuekit@unregistered-worker)."
+    )
 
 
 def test_implement_command_blocks_wrong_work_branch_before_agent(

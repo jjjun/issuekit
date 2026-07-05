@@ -44,7 +44,12 @@ When an orchestrator or author needs to drive a configured external
 implementer instead of waiting for the pull model, use
 `issuekit implement <id> --agent <agent> --timeout-sec <n>`. That command
 claims or operates on the assigned issue, launches the configured agent, and
-submits the completed work for review.
+submits the completed work for review. This is a sanctioned orchestration path:
+the parent session launches a distinct implementer run session and records the
+orchestrator in the submit summary. It is different from
+`--allow-author-session`, which is only a human emergency bypass for a local
+STOP guard. Prefer a clean worktree before orchestrating so existing author
+edits are not attributed to the implementer run.
 
 When a reviewer daemon is needed, run it from a separate registered checkout:
 `issuekit serve --agent <reviewer> --review`. For a one-shot agent review of a
@@ -334,12 +339,21 @@ When asked to write or plan an issue:
 1. First decide whether this is local work. If it originates in another project,
    use `issuekit propose --to <project>` from the origin project instead.
 2. Create local issues with `issuekit author`; the API allocates the issue id.
+   When `ISSUEKIT_SESSION` is set, issuekit records that authoring session so a
+   later same-name delegated implementer can be distinguished by session.
 3. Leave the issue unstarted with no assignee unless a specific implementer is
    required.
 4. STOP_NOW. The command writes a local author-session guard for that issue.
-   Do not call `claim_next_task`, `issuekit claim`, `issuekit implement`, or
-   `submit_for_review` for the authored issue in the same session. An
-   implementer claims it later via `claim_next_task`.
+   Do not call `claim_next_task`, `issuekit claim`, or `submit_for_review` for
+   the authored issue in the same session. An implementer claims it later via
+   `claim_next_task`.
+5. If the author is coordinating the handoff, the author may run
+   `issuekit implement <id> --agent <agent>` for the authored issue. This does
+   not make the author the implementer: issuekit creates a separate run session,
+   exports it to the child agent as `ISSUEKIT_SESSION`, and uses that same token
+   for the claim and submit mutations. Use a different configured agent when
+   possible; same-name delegation is accepted only when the recorded author
+   session and launched run session are both present and differ.
 
 After `issuekit propose` succeeds, treat the `STOP_NOW` sentinel the same way:
 stop the author session and let the target project triage the proposal. Proposal

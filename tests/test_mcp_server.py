@@ -460,13 +460,47 @@ def test_submit_for_review_tool_defaults_branch_to_current_checkout(
     submitted = _call(server, "submit_for_review", {"id": 1, "summary": "Implemented."})
 
     assert submitted["stage"] == "review"
+    assert client.calls[0]["body"]["session"].startswith("mcp-")
     assert client.calls == [
         {
             "method": "submit",
             "number": 1,
-            "body": {"summary": "Implemented.", "branch": "feature"},
+            "body": {
+                "summary": "Implemented.",
+                "branch": "feature",
+                "session": client.calls[0]["body"]["session"],
+            },
         }
     ]
+
+
+def test_mcp_lifecycle_tools_reuse_one_process_session(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(1, "First", author="claude"),
+            api_issue(
+                2,
+                "Second",
+                status="in_progress",
+                assignee="codex",
+                stage="implementing",
+                implementer="codex",
+                author="claude",
+            ),
+        ]
+    )
+    _configure_api(tmp_path, monkeypatch, client)
+    server = create_server(tmp_path)
+
+    _call(server, "claim_next_task", {"assignee": "codex"})
+    _call(server, "submit_for_review", {"id": 2, "summary": "Implemented."})
+
+    sessions = [call["body"]["session"] for call in client.calls]
+    assert sessions[0].startswith("mcp-")
+    assert sessions == [sessions[0], sessions[0]]
 
 
 def test_review_can_be_routed_to_codex(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

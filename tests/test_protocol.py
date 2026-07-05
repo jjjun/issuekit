@@ -30,6 +30,8 @@ def test_render_protocol_returns_each_agent_and_both() -> None:
         assert "issuekit implement <id> --agent <agent> --timeout-sec <n>" in rendered
         assert "launches the configured agent" in rendered
         assert "submits the completed work for review" in rendered
+        assert "sanctioned orchestration path" in rendered
+        assert "Prefer a clean worktree before orchestrating" in rendered
         assert "Transport closed" in rendered
         assert "issuekit info --json" in rendered
         assert "Copyable CLI examples" in rendered
@@ -92,7 +94,11 @@ def test_render_protocol_returns_author_role() -> None:
     assert "Delegation cycle overview" in author
     assert "issuekit author" in author
     assert "API allocates the issue id" in author
+    assert "records that authoring session" in author
     assert "Do not call `claim_next_task`" in author
+    assert "the author may run" in author
+    assert "that same token" in author
+    assert "for the claim and submit mutations" in author
     assert "implementation-ready issues" in author
     author.encode("ascii")
 

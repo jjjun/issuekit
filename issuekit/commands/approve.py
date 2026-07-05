@@ -12,6 +12,7 @@ from issuekit.core import (
     is_valid_workflow_token,
     parse_issue_id_arg,
 )
+from issuekit.session import current_session_token, validate_session_token
 from issuekit.workflow import (
     WorkflowError,
     ensure_assigned_reviewer,
@@ -60,6 +61,7 @@ def approve_issue(
     reviewer: str | None = None,
     config: IssuekitConfig | None = None,
     store=None,
+    session: str | None = None,
 ) -> Issue:
     require_ascii(
         summary or "",
@@ -77,12 +79,14 @@ def approve_issue(
     try:
         resolved_reviewer = _resolve_api_approval_reviewer(store, issue_id, reviewer, config)
         worker = config.worker_key()
+        resolved_session = _resolve_session(session)
         return store.approve_issue(  # type: ignore[attr-defined]
             issue_id,
             summary=summary if summary is not None else "Approved.",
             verification=verification,
             reviewer=resolved_reviewer,
             worker=worker,
+            session=resolved_session,
         )
     finally:
         if owned_store is not None:
@@ -122,3 +126,10 @@ def _validate_api_approval_reviewer(reviewer: str, config: IssuekitConfig) -> No
         raise WorkflowError(f"Invalid assignee token: {reviewer}")
     if reviewer not in config.assignees:
         raise WorkflowError(f"Unknown assignee: {reviewer}")
+
+
+def _resolve_session(explicit: str | None) -> str | None:
+    try:
+        return validate_session_token(explicit) if explicit is not None else current_session_token()
+    except ValueError as exc:
+        raise WorkflowError(str(exc), code="invalid_session") from exc

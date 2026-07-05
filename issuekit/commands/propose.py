@@ -27,6 +27,7 @@ from issuekit.refs import (
     add_workspace_ref,
     list_effective_refs,
 )
+from issuekit.session import current_session_token
 from issuekit.workflow import WorkflowError
 
 
@@ -192,15 +193,20 @@ def run_propose(args) -> int:
         return 1
     for preflight_warning in created.get("warnings", []):
         print(preflight_warning, file=sys.stderr)
-    guard = create_author_guard(
-        Path.cwd(),
-        config=config,
-        kind="proposal",
-        item_id=created.get("id"),
-        ref=f"{proposal.to}#{created.get('id')}",
-        target_project=proposal.to,
-        author_agent=args.agent,
-    )
+    try:
+        guard = create_author_guard(
+            Path.cwd(),
+            config=config,
+            kind="proposal",
+            item_id=created.get("id"),
+            ref=f"{proposal.to}#{created.get('id')}",
+            target_project=proposal.to,
+            author_agent=args.agent,
+            author_session=current_session_token(),
+        )
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
     if args.json:
         output["authorGuard"] = guard_dict(guard)
         output["stop"] = STOP_SENTINEL

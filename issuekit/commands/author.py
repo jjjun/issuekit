@@ -16,6 +16,7 @@ from issuekit.core import (
     is_valid_workflow_token,
 )
 from issuekit.refs import RefError, current_repo_ref, list_effective_refs
+from issuekit.session import current_session_token
 from issuekit.workflow import WorkflowError
 
 
@@ -76,6 +77,7 @@ def run(args) -> int:
             item_id=authored.id,
             ref=authored.ref,
             author_agent=args.agent,
+            author_session=current_session_token(),
         )
 
         print(f"Authored issue: {_authored_ref(authored)}")
@@ -123,12 +125,17 @@ def author_issue(
     from issuekit.store import get_store
 
     store = get_store(config)
+    try:
+        session = current_session_token()
+    except ValueError as exc:
+        raise WorkflowError(str(exc), code="invalid_session") from exc
     return store.create_issue(  # type: ignore[attr-defined]
         title=title.strip(),
         body=issue_body.strip(),
         priority=priority,
         author=agent,
         assignee=assign,
+        session=session,
     )
 
 

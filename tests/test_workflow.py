@@ -3,6 +3,7 @@ import pytest
 from issuekit import store as store_module
 from issuekit.author_guard import (
     ENFORCE_AUTHOR_HANDOFF_ENV,
+    AuthorOrchestrationContext,
     create_author_guard,
     read_author_guard,
 )
@@ -115,6 +116,54 @@ def test_claim_issue_sends_registered_worker(monkeypatch) -> None:
     ]
 
 
+def test_workflow_claim_submit_review_actions_send_configured_session(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("ISSUEKIT_SESSION", "sess-1")
+    client = FakeIssuekitClient(
+        [
+            api_issue(1, "Ready", author="claude"),
+            api_issue(
+                2,
+                "Review",
+                status="in_progress",
+                assignee="codex",
+                stage="implementing",
+                implementer="codex",
+            ),
+            api_issue(
+                3,
+                "Changes",
+                status="in_progress",
+                assignee="claude",
+                stage="review",
+                implementer="codex",
+            ),
+            api_issue(
+                4,
+                "Approve",
+                status="in_progress",
+                assignee="claude",
+                stage="review",
+                implementer="codex",
+            ),
+        ]
+    )
+    config = _config(client, monkeypatch)
+
+    claim_issue(1, "codex", config=config)
+    submit_for_review(2, summary="Implemented.", config=config)
+    request_changes(3, notes="Add tests.", reviewer="claude", config=config)
+    approve_issue(4, verification="uv run pytest", reviewer="claude", config=config)
+
+    assert [call["body"]["session"] for call in client.calls] == [
+        "sess-1",
+        "sess-1",
+        "sess-1",
+        "sess-1",
+    ]
+
+
 def test_reclaim_issue_sends_registered_worker_as_actor(monkeypatch) -> None:
     client = FakeIssuekitClient(
         [
@@ -207,6 +256,134 @@ def test_author_guard_blocks_claim_in_same_checkout(tmp_path, monkeypatch) -> No
         allow_author_guard_override=True,
     )
     assert issue.id == 1
+
+
+def test_author_guard_allows_orchestrated_claim_for_distinct_agent(
+    tmp_path, monkeypatch
+) -> None:
+    client = FakeIssuekitClient([api_issue(1, "Ready", author="codex")])
+    config = _config(client, monkeypatch)
+    create_author_guard(
+        tmp_path,
+        config=config,
+        kind="issue",
+        item_id=1,
+        ref="demo#1",
+        author_agent="codex",
+    )
+
+    issue = claim_issue(
+        1,
+        "claude",
+        config=config,
+        cwd=tmp_path,
+        session="run-123",
+        orchestration=AuthorOrchestrationContext(
+            implementer_agent="claude",
+            run_session="run-123",
+        ),
+    )
+
+    assert issue.id == 1
+    assert client.calls == [
+        {
+            "method": "claim",
+            "number": 1,
+            "body": {"assignee": "claude", "session": "run-123"},
+        }
+    ]
+
+
+def test_author_guard_allows_orchestrated_same_agent_with_distinct_session(
+    tmp_path, monkeypatch
+) -> None:
+    client = FakeIssuekitClient(
+        [api_issue(1, "Ready", author="codex") | {"author_session": "author-123"}]
+    )
+    config = _config(client, monkeypatch)
+    create_author_guard(
+        tmp_path,
+        config=config,
+        kind="issue",
+        item_id=1,
+        ref="demo#1",
+        author_agent="codex",
+        author_session="author-123",
+    )
+
+    issue = claim_issue(
+        1,
+        "codex",
+        config=config,
+        cwd=tmp_path,
+        session="run-456",
+        orchestration=AuthorOrchestrationContext(
+            implementer_agent="codex",
+            run_session="run-456",
+        ),
+    )
+
+    assert issue.id == 1
+    assert issue.implementer == "codex"
+    assert client.calls[0]["body"] == {"assignee": "codex", "session": "run-456"}
+
+
+def test_author_guard_blocks_orchestrated_same_agent_without_author_session(
+    tmp_path, monkeypatch
+) -> None:
+    client = FakeIssuekitClient([api_issue(1, "Ready", author="codex")])
+    config = _config(client, monkeypatch)
+    create_author_guard(
+        tmp_path,
+        config=config,
+        kind="issue",
+        item_id=1,
+        ref="demo#1",
+        author_agent="codex",
+    )
+
+    with pytest.raises(WorkflowError, match="authored with ISSUEKIT_SESSION"):
+        claim_issue(
+            1,
+            "codex",
+            config=config,
+            cwd=tmp_path,
+            session="run-456",
+            orchestration=AuthorOrchestrationContext(
+                implementer_agent="codex",
+                run_session="run-456",
+            ),
+        )
+
+    assert client.calls == []
+
+
+def test_author_guard_blocks_orchestrated_unknown_author(tmp_path, monkeypatch) -> None:
+    client = FakeIssuekitClient([api_issue(1, "Ready", author="codex")])
+    config = _config(client, monkeypatch)
+    create_author_guard(
+        tmp_path,
+        config=config,
+        kind="issue",
+        item_id=1,
+        ref="demo#1",
+        author_agent=None,
+    )
+
+    with pytest.raises(WorkflowError, match="author agent is unknown"):
+        claim_issue(
+            1,
+            "claude",
+            config=config,
+            cwd=tmp_path,
+            session="run-456",
+            orchestration=AuthorOrchestrationContext(
+                implementer_agent="claude",
+                run_session="run-456",
+            ),
+        )
+
+    assert client.calls == []
 
 
 def test_issue_author_guard_blocks_claim_next_in_same_checkout(tmp_path, monkeypatch) -> None:
@@ -482,6 +659,54 @@ def test_author_guard_blocks_submit_for_review_for_authored_issue(tmp_path, monk
 
     with pytest.raises(WorkflowError, match="Author-session guard blocks submit"):
         submit_for_review(1, summary="Implemented.", config=config, cwd=tmp_path)
+
+
+def test_author_guard_allows_orchestrated_submit_for_distinct_agent(
+    tmp_path, monkeypatch
+) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                1,
+                "First",
+                status="in_progress",
+                assignee="claude",
+                stage="implementing",
+                implementer="claude",
+                author="codex",
+            )
+        ]
+    )
+    config = _config(client, monkeypatch)
+    create_author_guard(
+        tmp_path,
+        config=config,
+        kind="issue",
+        item_id=1,
+        ref="demo#1",
+        author_agent="codex",
+    )
+
+    issue = submit_for_review(
+        1,
+        summary="Implemented.",
+        config=config,
+        cwd=tmp_path,
+        session="run-123",
+        orchestration=AuthorOrchestrationContext(
+            implementer_agent="claude",
+            run_session="run-123",
+        ),
+    )
+
+    assert issue.stage == "review"
+    assert client.calls == [
+        {
+            "method": "submit",
+            "number": 1,
+            "body": {"summary": "Implemented.", "session": "run-123"},
+        }
+    ]
 
 
 def test_proposal_author_guard_does_not_block_submit_for_review(tmp_path, monkeypatch) -> None:

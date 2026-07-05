@@ -91,10 +91,13 @@ class FakeIssueSurface:
         with self._lock:
             return deepcopy(self._find(number))
 
-    def create_issue(self, issue: JsonDict) -> JsonDict:
+    def create_issue(self, issue: JsonDict, *, session: str | None = None) -> JsonDict:
         with self._lock:
-            self._record("create_issue", body=deepcopy(issue))
-            return deepcopy(self._store_issue(issue, allocate=True))
+            body = deepcopy(issue)
+            if session is not None:
+                body["session"] = session
+            self._record("create_issue", body=deepcopy(body))
+            return deepcopy(self._store_issue(body, allocate=True))
 
     def update_issue(self, number: int, issue: JsonDict) -> JsonDict:
         with self._lock:
@@ -110,9 +113,10 @@ class FakeIssueSurface:
         assignee: str,
         worker: str | None = None,
         allow_self_implement: bool = False,
+        session: str | None = None,
     ) -> JsonDict:
         with self._lock:
-            body = _drop_none({"assignee": assignee, "worker": worker})
+            body = _drop_none({"assignee": assignee, "worker": worker, "session": session})
             if allow_self_implement:
                 body["allow_self_implement"] = True
             self._record(
@@ -122,7 +126,11 @@ class FakeIssueSurface:
             )
             issue = self._find(number)
             self._claim_issue(
-                issue, assignee, worker=worker, allow_self_implement=allow_self_implement
+                issue,
+                assignee,
+                worker=worker,
+                allow_self_implement=allow_self_implement,
+                session=session,
             )
             return deepcopy(issue)
 
@@ -133,6 +141,7 @@ class FakeIssueSurface:
         priority: str | None = None,
         worker: str | None = None,
         allow_self_implement: bool = False,
+        session: str | None = None,
     ) -> JsonDict | None:
         with self._lock:
             body = _drop_none(
@@ -140,6 +149,7 @@ class FakeIssueSurface:
                     "assignee": assignee,
                     "priority": priority,
                     "worker": worker,
+                    "session": session,
                 }
             )
             if allow_self_implement:
@@ -166,7 +176,11 @@ class FakeIssueSurface:
                 ),
             )[0]
             self._claim_issue(
-                issue, assignee, worker=worker, allow_self_implement=allow_self_implement
+                issue,
+                assignee,
+                worker=worker,
+                allow_self_implement=allow_self_implement,
+                session=session,
             )
             return deepcopy(issue)
 
@@ -218,6 +232,7 @@ class FakeIssueSurface:
         branch: str | None = None,
         commit: str | None = None,
         reviewer: str | None = None,
+        session: str | None = None,
     ) -> JsonDict:
         with self._lock:
             self._record(
@@ -229,6 +244,7 @@ class FakeIssueSurface:
                         "branch": branch,
                         "commit": commit,
                         "reviewer": reviewer,
+                        "session": session,
                     }
                 ),
             )
@@ -238,6 +254,8 @@ class FakeIssueSurface:
                     f"Issue #{number} was implemented by {reviewer}; self-review is not allowed.",
                     code="invalid_transition",
                 )
+            if session is not None:
+                issue["implementer_session"] = session
             issue["stage"] = "review"
             issue["assignee"] = reviewer or ""
             return deepcopy(issue)
@@ -250,6 +268,7 @@ class FakeIssueSurface:
         reviewer: str | None = None,
         assignee: str | None = None,
         worker: str | None = None,
+        session: str | None = None,
     ) -> JsonDict:
         with self._lock:
             self._record(
@@ -261,10 +280,13 @@ class FakeIssueSurface:
                         "reviewer": reviewer,
                         "assignee": assignee,
                         "worker": worker,
+                        "session": session,
                     }
                 ),
             )
             issue = self._find(number)
+            if session is not None:
+                issue["reviewer_session"] = session
             issue["stage"] = "changes_requested"
             issue["assignee"] = assignee or issue.get("implementer") or "codex"
             return deepcopy(issue)
@@ -277,6 +299,7 @@ class FakeIssueSurface:
         verification: str,
         reviewer: str,
         worker: str | None = None,
+        session: str | None = None,
     ) -> JsonDict:
         with self._lock:
             self._record(
@@ -288,6 +311,7 @@ class FakeIssueSurface:
                         "verification": verification,
                         "reviewer": reviewer,
                         "worker": worker,
+                        "session": session,
                     }
                 ),
             )
@@ -302,6 +326,8 @@ class FakeIssueSurface:
                     f"Issue #{number} was implemented by {reviewer}; self-review is not allowed.",
                     code="invalid_transition",
                 )
+            if session is not None:
+                issue["reviewer_session"] = session
             issue["status"] = "completed"
             issue["stage"] = "done"
             issue["assignee"] = ""
@@ -418,6 +444,9 @@ class FakeIssueSurface:
         stored.setdefault("implementer", "")
         stored.setdefault("author", "")
         stored.setdefault("worker", "")
+        stored.setdefault("author_session", stored.pop("session", ""))
+        stored.setdefault("implementer_session", "")
+        stored.setdefault("reviewer_session", "")
         stored.setdefault("body", "")
         self._issues[issue_id] = stored
         return stored
@@ -429,6 +458,7 @@ class FakeIssueSurface:
         *,
         worker: str | None = None,
         allow_self_implement: bool = False,
+        session: str | None = None,
     ) -> None:
         issue_id = issue["id"]
         if issue.get("status") not in CLAIMABLE_STATUSES:
@@ -448,14 +478,19 @@ class FakeIssueSurface:
                 code="invalid_transition",
             )
         if not allow_self_implement and issue.get("author") == assignee:
-            raise WorkflowError(
-                f"Issue #{issue_id} was authored by {assignee}; self-implementation is not allowed.",
-                code="invalid_transition",
-            )
+            if issue.get("author_session") and session and issue.get("author_session") != session:
+                pass
+            else:
+                raise WorkflowError(
+                    f"Issue #{issue_id} was authored by {assignee}; self-implementation is not allowed.",
+                    code="invalid_transition",
+                )
         issue["status"] = "in_progress"
         issue["assignee"] = assignee
         issue["stage"] = "implementing"
         issue["implementer"] = assignee
+        if session is not None:
+            issue["implementer_session"] = session
         if worker is not None:
             issue["worker"] = worker
 

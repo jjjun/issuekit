@@ -1700,6 +1700,81 @@ def test_client_approve_sends_worker_when_provided() -> None:
     ) == {"id": 7, "stage": "done"}
 
 
+def test_client_lifecycle_methods_send_session_when_provided() -> None:
+    expected = [
+        ("POST", "/api/issues/issuekit/issues", {"title": "First", "session": "sess-1"}),
+        (
+            "POST",
+            "/api/issues/issuekit/issues/7/claim",
+            {"assignee": "codex", "session": "sess-1"},
+        ),
+        (
+            "POST",
+            "/api/issues/issuekit/issues/claim-next",
+            {"assignee": "codex", "session": "sess-1"},
+        ),
+        (
+            "POST",
+            "/api/issues/issuekit/issues/7/submit",
+            {"summary": "done", "session": "sess-1"},
+        ),
+        (
+            "POST",
+            "/api/issues/issuekit/issues/7/request-changes",
+            {"notes": "fix", "session": "sess-1"},
+        ),
+        (
+            "POST",
+            "/api/issues/issuekit/issues/7/approve",
+            {
+                "summary": "approved",
+                "verification": "pytest",
+                "reviewer": "claude",
+                "session": "sess-1",
+            },
+        ),
+    ]
+    seen: list[tuple[str, str, object]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append((request.method, request.url.path, json.loads(request.content)))
+        return httpx.Response(200, json={"id": 7})
+
+    client = IssuekitClient(
+        "https://mine.example",
+        token="static-token",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    client.create_issue({"title": "First"}, session="sess-1")
+    client.claim(7, assignee="codex", session="sess-1")
+    client.claim_next(assignee="codex", session="sess-1")
+    client.submit(7, summary="done", session="sess-1")
+    client.request_changes(7, notes="fix", session="sess-1")
+    client.approve(
+        7,
+        summary="approved",
+        verification="pytest",
+        reviewer="claude",
+        session="sess-1",
+    )
+
+    assert seen == expected
+
+
+def test_client_rejects_invalid_session_token() -> None:
+    client = IssuekitClient(
+        "https://mine.example",
+        token="static-token",
+        http_client=httpx.Client(
+            transport=httpx.MockTransport(lambda request: httpx.Response(500))
+        ),
+    )
+
+    with pytest.raises(ValueError, match="Invalid session token"):
+        client.claim(7, assignee="codex", session="Bad.Session")
+
+
 def test_client_complete_sends_exact_server_body() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/api/issues/issuekit/issues/7/complete"

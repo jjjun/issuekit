@@ -31,6 +31,7 @@ from issuekit.proposals_api import (
     proposal_id_arg,
     send_proposal,
 )
+from issuekit.session import new_session_token
 from issuekit.store import get_store
 from issuekit.worker_registry import list_api_workers
 from issuekit.workflow import (
@@ -41,6 +42,9 @@ from issuekit.workflow import (
     request_changes as workflow_request_changes,
     submit_for_review as workflow_submit_for_review,
 )
+
+
+MCP_SESSION = new_session_token("mcp")
 
 
 def create_server(cwd: Path | str | None = None) -> FastMCP:
@@ -82,6 +86,7 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
                 cwd=root,
                 allow_author_guard_override=allow_author_session,
                 allow_any_branch=allow_any_branch,
+                session=MCP_SESSION,
             )
         if issue is None:
             return {"status": "none", "assignee": assignee}
@@ -115,6 +120,7 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
                 cwd=root,
                 allow_author_guard_override=allow_author_session,
                 allow_any_branch=allow_any_branch,
+                session=MCP_SESSION,
             )
         return issue_dict(issue)
 
@@ -154,6 +160,7 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
                 assignee=assignee,
                 config=config,
                 store=store,
+                session=MCP_SESSION,
             )
         return issue_dict(issue)
 
@@ -169,6 +176,7 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
                 reviewer=reviewer,
                 config=config,
                 store=store,
+                session=MCP_SESSION,
             )
         return issue_dict(issue)
 
@@ -316,6 +324,7 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
             ref=f"{proposal.to}#{sent.get('id')}",
             target_project=proposal.to,
             author_agent=agent,
+            author_session=MCP_SESSION,
         )
         sent = dict(sent)
         sent["authorGuard"] = guard_dict(guard)

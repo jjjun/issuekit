@@ -7,6 +7,7 @@ from typing import Any
 
 from issuekit.client_base import JsonDict, _ensure_dict, _profile_rows, _worker_rows
 from issuekit.core import _drop_none
+from issuekit.session import validate_session_token
 from issuekit.workflow import WorkflowError
 
 
@@ -143,8 +144,11 @@ class _IssueResourceMixin:
         payload = self._request("GET", f"/{number}")
         return _ensure_dict(payload, "Issue response")
 
-    def create_issue(self, issue: Mapping[str, Any]) -> JsonDict:
-        payload = self._request("POST", "/", json=dict(issue))
+    def create_issue(self, issue: Mapping[str, Any], *, session: str | None = None) -> JsonDict:
+        body = dict(issue)
+        if session is not None:
+            body["session"] = validate_session_token(session)
+        payload = self._request("POST", "/", json=body)
         return _ensure_dict(payload, "Create response")
 
     def update_issue(self, number: int, issue: Mapping[str, Any]) -> JsonDict:
@@ -167,8 +171,15 @@ class _IssueResourceMixin:
         assignee: str,
         worker: str | None = None,
         allow_self_implement: bool = False,
+        session: str | None = None,
     ) -> JsonDict:
-        body = _drop_none({"assignee": assignee, "worker": worker})
+        body = _drop_none(
+            {
+                "assignee": assignee,
+                "worker": worker,
+                "session": _validated_session(session),
+            }
+        )
         if allow_self_implement:
             body["allow_self_implement"] = True
         payload = self._request(
@@ -185,8 +196,16 @@ class _IssueResourceMixin:
         priority: str | None = None,
         worker: str | None = None,
         allow_self_implement: bool = False,
+        session: str | None = None,
     ) -> JsonDict | None:
-        body = _drop_none({"assignee": assignee, "priority": priority, "worker": worker})
+        body = _drop_none(
+            {
+                "assignee": assignee,
+                "priority": priority,
+                "worker": worker,
+                "session": _validated_session(session),
+            }
+        )
         if allow_self_implement:
             body["allow_self_implement"] = True
         payload = self._request(
@@ -227,6 +246,7 @@ class _IssueResourceMixin:
         branch: str | None = None,
         commit: str | None = None,
         reviewer: str | None = None,
+        session: str | None = None,
     ) -> JsonDict:
         payload = self._request(
             "POST",
@@ -237,6 +257,7 @@ class _IssueResourceMixin:
                     "branch": branch,
                     "commit": commit,
                     "reviewer": reviewer,
+                    "session": _validated_session(session),
                 }
             ),
         )
@@ -250,12 +271,19 @@ class _IssueResourceMixin:
         reviewer: str | None = None,
         assignee: str | None = None,
         worker: str | None = None,
+        session: str | None = None,
     ) -> JsonDict:
         payload = self._request(
             "POST",
             f"/{number}/request-changes",
             json=_drop_none(
-                {"notes": notes, "reviewer": reviewer, "assignee": assignee, "worker": worker}
+                {
+                    "notes": notes,
+                    "reviewer": reviewer,
+                    "assignee": assignee,
+                    "worker": worker,
+                    "session": _validated_session(session),
+                }
             ),
         )
         return _ensure_dict(payload, "Request-changes response")
@@ -268,6 +296,7 @@ class _IssueResourceMixin:
         verification: str,
         reviewer: str,
         worker: str | None = None,
+        session: str | None = None,
     ) -> JsonDict:
         payload = self._request(
             "POST",
@@ -278,6 +307,7 @@ class _IssueResourceMixin:
                     "verification": verification,
                     "reviewer": reviewer,
                     "worker": worker,
+                    "session": _validated_session(session),
                 }
             ),
         )
@@ -624,3 +654,7 @@ class _ProposalResourceMixin:
         if not isinstance(payload, list):
             raise WorkflowError("Proposal import response was not a JSON array.", code="invalid_response")
         return [_ensure_dict(item, "Proposal import response item") for item in payload]
+
+
+def _validated_session(session: str | None) -> str | None:
+    return None if session is None else validate_session_token(session)

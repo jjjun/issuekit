@@ -10,6 +10,7 @@ import threading
 from typing import TextIO
 
 from issuekit.agents.runner import AgentResult, AgentRunner, resolve_adapter
+from issuekit.author_guard import AuthorOrchestrationContext
 from issuekit.config import IssuekitConfig
 from issuekit.core import Issue, has_mojibake
 from issuekit.gitutil import git_root, git_status_short, run_git
@@ -45,6 +46,9 @@ def run_and_submit(
     allow_no_changes: bool = False,
     allow_author_guard_override: bool = False,
     allow_any_branch: bool = False,
+    session: str | None = None,
+    orchestration: AuthorOrchestrationContext | None = None,
+    submit_summary: str | None = None,
     abort_event: threading.Event | None = None,
     reporter: RunReporter | None = None,
     runner_factory: RunnerFactory | None = None,
@@ -75,6 +79,7 @@ def run_and_submit(
         follow=follow,
         prompt_suffix=prompt_suffix,
         abort_event=abort_event,
+        issuekit_session=session,
     )
     if reporter is not None:
         reporter(issue, result)
@@ -149,12 +154,14 @@ def run_and_submit(
 
         reviewed_issue = submit_for_review(
             issue_id,
-            summary=f"Implemented by {agent} via issuekit implement.",
+            summary=submit_summary or f"Implemented by {agent} via issuekit implement.",
             config=config,
             store=store,
             cwd=cwd,
             allow_author_guard_override=allow_author_guard_override,
             allow_any_branch=allow_any_branch,
+            session=session,
+            orchestration=orchestration,
         )
         return RunOutcome(
             issue=issue,
