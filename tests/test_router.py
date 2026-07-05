@@ -71,6 +71,13 @@ def _clients(monkeypatch, profiles: list[dict]) -> dict[str, FakeIssuekitClient]
     return clients
 
 
+def _register_catalog_projects(
+    clients: dict[str, FakeIssuekitClient], *projects: str
+) -> None:
+    for project in projects:
+        clients["pm"].register_catalog_project(project)
+
+
 def _setup(monkeypatch, tmp_path, outputs, *, profiles=None, extra_router: str = ""):
     _write_config(tmp_path, extra_router=extra_router)
     profiles = profiles or [
@@ -302,6 +309,7 @@ def test_request_link_records_existing_proposal_for_unsent_target(
 ) -> None:
     _write_config(tmp_path)
     clients = _clients(monkeypatch, [])
+    _register_catalog_projects(clients, "api", "ui")
     ui_client = FakeIssuekitClient()
     clients["ui"] = ui_client
     ui_client.project = "ui"

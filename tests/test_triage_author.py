@@ -79,6 +79,7 @@ def _write_skip_state(tmp_path: Path, proposal_id: int, body: str) -> None:
 def _setup(monkeypatch, tmp_path, *, proposals, outputs, author_agent="codex", extra=""):
     _write_config(tmp_path, author_agent=author_agent, extra=extra)
     client = FakeIssuekitClient(proposals=proposals)
+    client.register_catalog_project("mine-py")
     monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *a, **k: client)
     monkeypatch.setattr(triage_author, "resolve_adapter", lambda *a, **k: object())
     runner = FakeRunner(outputs)
