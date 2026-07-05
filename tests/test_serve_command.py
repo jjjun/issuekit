@@ -170,10 +170,20 @@ def test_serve_once_empty_queue_exits_without_agent(
     assert exit_code == 0
     assert client.calls == [
         {
+            "method": "upsert_repo",
+            "body": {
+                "repo_key": "demo",
+                "canonical_url": None,
+                "description": None,
+                "meta": {},
+            },
+        },
+        {
             "method": "upsert_worker",
             "body": {
                 "machine_id": "machine",
                 "repo_id": "demo",
+                "repo_key": "demo",
                 "worker_name": "checkout",
                 "path": tmp_path.resolve().as_posix(),
                 "project": "demo",
@@ -210,8 +220,8 @@ def test_serve_once_claims_runs_and_submits(
     assert agent_name == "codex"
     assert issue_id == 1
     assert prompt_suffix is None
-    assert [call["method"] for call in client.calls] == ["upsert_worker", "claim_next", "submit"]
-    assert client.calls[1]["body"]["worker"] == "checkout.demo"
+    assert [call["method"] for call in client.calls] == ["upsert_repo", "upsert_worker", "claim_next", "submit"]
+    assert client.calls[2]["body"]["worker"] == "checkout.demo"
     assert "event=submitted issue=1" in capsys.readouterr().err
 
 
@@ -243,8 +253,8 @@ def test_serve_review_once_reviews_open_pool_issue(
 
     assert exit_code == 0
     assert ReviewApprovingRunner.calls == [1]
-    assert [call["method"] for call in client.calls] == ["upsert_worker", "approve"]
-    assert client.calls[1]["body"]["worker"] == "checkout.demo"
+    assert [call["method"] for call in client.calls] == ["upsert_repo", "upsert_worker", "approve"]
+    assert client.calls[2]["body"]["worker"] == "checkout.demo"
     captured = capsys.readouterr()
     assert "event=reviewing issue=1" in captured.err
     assert "event=reviewed issue=1" in captured.err
@@ -276,7 +286,7 @@ def test_serve_review_once_ignores_issue_assigned_to_other_reviewer(
 
     assert exit_code == 0
     assert ReviewApprovingRunner.calls == []
-    assert [call["method"] for call in client.calls] == ["upsert_worker"]
+    assert [call["method"] for call in client.calls] == ["upsert_repo", "upsert_worker"]
 
 
 def test_serve_triage_auto_adopts_before_claiming(
@@ -314,14 +324,15 @@ def test_serve_triage_auto_adopts_before_claiming(
 
     assert exit_code == 0
     assert [call["method"] for call in client.calls] == [
+        "upsert_repo",
         "upsert_worker",
         "adopt_proposal",
         "claim_next",
         "submit",
     ]
-    assert client.calls[1]["number"] == 1
-    assert client.calls[1]["body"] == {"priority": "high"}
-    assert client.calls[2]["body"]["worker"] == "checkout.demo"
+    assert client.calls[2]["number"] == 1
+    assert client.calls[2]["body"] == {"priority": "high"}
+    assert client.calls[3]["body"]["worker"] == "checkout.demo"
     assert client.get_proposal(1)["status"] == "adopted"
     assert client.get_issue(1)["origin_proposal_id"] == "1"
     assert [call[4] for call in FakeRunner.calls] == [1]
@@ -402,7 +413,7 @@ def test_serve_once_recovers_own_orphan_before_polling(
     exit_code = cli.main(["serve", "--agent", "codex", "--once"])
 
     assert exit_code == 0
-    assert [call["method"] for call in client.calls] == ["upsert_worker", "submit"]
+    assert [call["method"] for call in client.calls] == ["upsert_repo", "upsert_worker", "submit"]
     assert [call[4] for call in FakeRunner.calls] == [1]
     captured = capsys.readouterr()
     assert "event=recovered issue=1" in captured.err
@@ -433,7 +444,7 @@ def test_serve_ignores_orphan_for_other_worker(
     exit_code = cli.main(["serve", "--agent", "codex", "--once"])
 
     assert exit_code == 0
-    assert [call["method"] for call in client.calls] == ["upsert_worker", "claim_next"]
+    assert [call["method"] for call in client.calls] == ["upsert_repo", "upsert_worker", "claim_next"]
     assert client.get_issue(1)["stage"] == "implementing"
 
 
@@ -449,7 +460,7 @@ def test_serve_no_orphan_claims_normally(
     exit_code = cli.main(["serve", "--agent", "codex", "--once"])
 
     assert exit_code == 0
-    assert [call["method"] for call in client.calls] == ["upsert_worker", "claim_next", "submit"]
+    assert [call["method"] for call in client.calls] == ["upsert_repo", "upsert_worker", "claim_next", "submit"]
     assert [call[4] for call in FakeRunner.calls] == [1]
 
 
@@ -482,7 +493,7 @@ def test_serve_recovery_error_continues_to_poll(
 
     assert exit_code == 0
     assert RecoveryErrorThenRunner.calls == [1, 2]
-    assert [call["method"] for call in client.calls] == ["upsert_worker", "claim_next", "submit"]
+    assert [call["method"] for call in client.calls] == ["upsert_repo", "upsert_worker", "claim_next", "submit"]
     assert "event=run_error issue=1" in capsys.readouterr().err
 
 
@@ -512,7 +523,7 @@ def test_serve_recovered_issue_counts_toward_max_issues(
     exit_code = cli.main(["serve", "--agent", "codex", "--max-issues", "1", "--interval", "0"])
 
     assert exit_code == 0
-    assert [call["method"] for call in client.calls] == ["upsert_worker", "submit"]
+    assert [call["method"] for call in client.calls] == ["upsert_repo", "upsert_worker", "submit"]
     assert [call[4] for call in FakeRunner.calls] == [1]
 
 
@@ -535,6 +546,7 @@ def test_serve_max_issues_stops_after_successful_submissions(
 
     assert exit_code == 0
     assert [call["method"] for call in client.calls] == [
+        "upsert_repo",
         "upsert_worker",
         "claim_next",
         "submit",
@@ -571,7 +583,7 @@ def test_serve_uses_single_configured_assignee_when_agent_omitted(
     monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", ExplodingRunner)
 
     assert cli.main(["serve", "--once"]) == 0
-    assert client.calls[1]["body"]["assignee"] == "codex"
+    assert client.calls[2]["body"]["assignee"] == "codex"
 
 
 def test_serve_refuses_live_lock(

@@ -355,6 +355,25 @@ class _IssueResourceMixin:
 
 
 class _WorkerResourceMixin:
+    def upsert_repo(
+        self,
+        *,
+        repo_key: str,
+        canonical_url: str | None = None,
+        description: str | None = None,
+        meta: Mapping[str, str] | None = None,
+    ) -> JsonDict:
+        body = _drop_none(
+            {
+                "repo_key": repo_key,
+                "canonical_url": canonical_url,
+                "description": description,
+                "meta": dict(meta) if meta is not None else None,
+            }
+        )
+        payload = self._authorized_request("POST", "/api/repos", json=body)
+        return _ensure_dict(payload, "Repo response")
+
     def upsert_worker(
         self,
         *,
@@ -370,14 +389,17 @@ class _WorkerResourceMixin:
         repo_description: str | None = None,
         repo_metadata: Mapping[str, str] | None = None,
         worker_metadata: Mapping[str, str] | None = None,
+        meta: Mapping[str, str] | None = None,
         accept_directed: bool | None = None,
     ) -> JsonDict:
         resolved_worker_name = worker_name or worker_id
         if not resolved_worker_name:
             raise ValueError("upsert_worker requires worker_name or worker_id.")
+        resolved_meta = meta if meta is not None else worker_metadata
         body = {
             "machine_id": machine_id,
             "repo_id": repo_id,
+            "repo_key": repo_id,
             "worker_name": resolved_worker_name,
             "path": path,
         }
@@ -386,13 +408,10 @@ class _WorkerResourceMixin:
         body.update(
             _drop_none(
                 {
-                    "canonical_url": canonical_url,
                     "project": project,
                     "role": role,
                     "description": description,
-                    "repo_description": repo_description,
-                    "repo_metadata": dict(repo_metadata) if repo_metadata else None,
-                    "worker_metadata": dict(worker_metadata) if worker_metadata else None,
+                    "meta": dict(resolved_meta) if resolved_meta is not None else None,
                     "accept_directed": accept_directed,
                 }
             )

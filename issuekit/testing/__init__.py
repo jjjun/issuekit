@@ -23,6 +23,7 @@ class FakeIssuekitClient(FakeIssueSurface, FakeProposalSurface):
     ) -> None:
         self._lock = Lock()
         self._issues: dict[int, JsonDict] = {}
+        self._repos: dict[str, JsonDict] = {}
         self._workers: dict[str, JsonDict] = {}
         self._proposals: dict[int, JsonDict] = {}
         self._threads: dict[int, JsonDict] = {}

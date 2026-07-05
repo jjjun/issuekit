@@ -397,6 +397,33 @@ class FakeIssueSurface:
             imported = [self._store_issue(issue) for issue in raw_issues]
             return deepcopy(imported)
 
+    def upsert_repo(
+        self,
+        *,
+        repo_key: str,
+        canonical_url: str | None = None,
+        description: str | None = None,
+        meta: dict[str, str] | None = None,
+    ) -> JsonDict:
+        body = {
+            "repo_key": repo_key,
+            "canonical_url": canonical_url,
+            "description": description,
+            "meta": deepcopy(meta or {}),
+        }
+        with self._lock:
+            self._record("upsert_repo", body=body)
+            record = {
+                "repo_key": repo_key,
+                "canonical_url": canonical_url,
+                "description": description,
+                "meta": deepcopy(meta or {}),
+                "created_at": "2026-01-01T00:00:00Z",
+                "updated_at": "2026-01-01T00:00:00Z",
+            }
+            self._repos[repo_key] = record
+            return deepcopy(record)
+
     def upsert_worker(
         self,
         *,
@@ -412,48 +439,48 @@ class FakeIssueSurface:
         repo_description: str | None = None,
         repo_metadata: dict[str, str] | None = None,
         worker_metadata: dict[str, str] | None = None,
+        meta: dict[str, str] | None = None,
         accept_directed: bool | None = None,
     ) -> JsonDict:
         resolved_worker_name = worker_name or worker_id
         if not resolved_worker_name:
             raise WorkflowError("worker_name is required.", code="invalid_value")
+        resolved_meta = meta if meta is not None else worker_metadata
         body = {
             "machine_id": machine_id,
             "repo_id": repo_id,
+            "repo_key": repo_id,
             "worker_name": resolved_worker_name,
             "path": path,
         }
-        if canonical_url is not None:
-            body["canonical_url"] = canonical_url
         if project is not None:
             body["project"] = project
         if role is not None:
             body["role"] = role
         if description is not None:
             body["description"] = description
-        if repo_description is not None:
-            body["repo_description"] = repo_description
-        if repo_metadata is not None:
-            body["repo_metadata"] = deepcopy(repo_metadata)
-        if worker_metadata is not None:
-            body["worker_metadata"] = deepcopy(worker_metadata)
+        if resolved_meta is not None:
+            body["meta"] = deepcopy(resolved_meta)
         if accept_directed is not None:
             body["accept_directed"] = accept_directed
         with self._lock:
             self._record("upsert_worker", body=body)
+            repo = self._repos.get(repo_id, {})
             record = {
                 "id": f"{resolved_worker_name}.{repo_id}",
                 "machine_id": machine_id,
                 "repo_id": repo_id,
+                "repo_key": repo_id,
                 "worker_name": resolved_worker_name,
                 "path": path,
-                "canonical_url": canonical_url,
+                "canonical_url": repo.get("canonical_url", canonical_url),
                 "project": project,
                 "role": role,
                 "description": description,
-                "repo_description": repo_description,
-                "repo_metadata": deepcopy(repo_metadata or {}),
-                "worker_metadata": deepcopy(worker_metadata or {}),
+                "repo_description": repo.get("description", repo_description),
+                "repo_metadata": deepcopy(repo.get("meta", repo_metadata or {})),
+                "worker_metadata": deepcopy(resolved_meta or {}),
+                "meta": deepcopy(resolved_meta or {}),
                 "accept_directed": bool(accept_directed),
                 "status": "idle",
                 "current_issue": None,

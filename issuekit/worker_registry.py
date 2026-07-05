@@ -50,17 +50,29 @@ def post_worker_registration(
         timeout=config.api_timeout,
     ) as client:
         try:
+            try:
+                client.upsert_repo(
+                    repo_key=worker.repo_id,
+                    canonical_url=resolved_canonical_url,
+                    description=config.repo_description or None,
+                    meta=config.repo_metadata or None,
+                )
+            except WorkflowError as exc:
+                if _is_missing_repo_endpoint(exc):
+                    if on_error is not None:
+                        on_error(exc)
+                    else:
+                        LOGGER.debug("%s", exc)
+                else:
+                    raise _registration_error(exc, config, default_conflict="repo") from exc
             client.upsert_worker(
                 machine_id=worker.machine_id,
                 repo_id=worker.repo_id,
                 worker_name=worker.worker_name,
                 path=repo_path.as_posix(),
-                canonical_url=resolved_canonical_url,
                 project=config.project,
                 role=config.worker_role or None,
                 description=config.worker_description or None,
-                repo_description=config.repo_description or None,
-                repo_metadata=config.repo_metadata or None,
                 worker_metadata=worker_metadata or None,
                 accept_directed=True if config.worker_accept_directed else None,
             )
@@ -175,13 +187,18 @@ class WorkerHeartbeat:
             try_post_worker_registration(self.config, self.cwd, on_error=self.on_error)
 
 
-def _registration_error(exc: WorkflowError, config: IssuekitConfig) -> Exception:
+def _registration_error(
+    exc: WorkflowError,
+    config: IssuekitConfig,
+    *,
+    default_conflict: str = "worker",
+) -> Exception:
     code = (exc.code or "").lower()
     if code != "http_409" and "conflict" not in code and code != "duplicate_worker":
         return exc
     details = exc.details
     conflict = _detail_text(details, "conflict", "type", "code")
-    if "repo" in conflict or _has_any(
+    if default_conflict == "repo" or "repo" in conflict or _has_any(
         details,
         "canonical_url",
         "registered_canonical_url",
@@ -223,3 +240,7 @@ def _detail_text(details: dict[str, object], *keys: str) -> str:
 
 def _has_any(details: dict[str, object], *keys: str) -> bool:
     return any(key in details for key in keys)
+
+
+def _is_missing_repo_endpoint(exc: WorkflowError) -> bool:
+    return (exc.code or "").lower() in {"http_404", "http_405"}
