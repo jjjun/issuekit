@@ -43,6 +43,7 @@ def test_api_cli_propose_posts_expected_body_and_dedupes(
 
     monkeypatch.setattr(proposals_api, "IssuekitClient", fake_client)
     monkeypatch.chdir(tmp_path)
+    client.register_catalog_project("target")
 
     argv = [
         "propose",
@@ -214,6 +215,90 @@ def test_api_cli_propose_accepts_worker_project_catalog(
     assert json.loads(capsys.readouterr().out)["title"] == "Worker catalog target"
 
 
+def test_api_cli_propose_rejects_target_for_empty_supported_profile_catalog(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    from issuekit.workflow import WorkflowError
+
+    class EmptyProfileCatalogClient(FakeIssuekitClient):
+        def list_project_profiles(self):
+            return []
+
+        def list_workers(self, *, repo_id=None, project=None):
+            raise WorkflowError("worker endpoint not found", code="http_404")
+
+    client = EmptyProfileCatalogClient()
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'source'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.chdir(tmp_path)
+
+    assert (
+        cli.main(
+            [
+                "propose",
+                "--to",
+                "unknown-target",
+                "--title",
+                "Empty profile catalog",
+                "--body",
+                "Body.",
+            ]
+        )
+        == 1
+    )
+
+    assert "Unknown target project 'unknown-target'" in capsys.readouterr().err
+    assert not any(call["method"] == "create_proposal" for call in client.calls)
+
+
+def test_api_cli_propose_rejects_target_for_empty_supported_worker_catalog(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    from issuekit.workflow import WorkflowError
+
+    class EmptyWorkerCatalogClient(FakeIssuekitClient):
+        def list_project_profiles(self):
+            raise WorkflowError("profile endpoint not found", code="http_404")
+
+        def list_workers(self, *, repo_id=None, project=None):
+            return []
+
+    client = EmptyWorkerCatalogClient()
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'source'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.chdir(tmp_path)
+
+    assert (
+        cli.main(
+            [
+                "propose",
+                "--to",
+                "unknown-target",
+                "--title",
+                "Empty worker catalog",
+                "--body",
+                "Body.",
+            ]
+        )
+        == 1
+    )
+
+    assert "Unknown target project 'unknown-target'" in capsys.readouterr().err
+    assert not any(call["method"] == "create_proposal" for call in client.calls)
+
+
 def test_api_cli_propose_can_mark_blocking(
     tmp_path: Path,
     monkeypatch,
@@ -227,6 +312,7 @@ def test_api_cli_propose_can_mark_blocking(
     )
     monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
     monkeypatch.chdir(tmp_path)
+    client.register_catalog_project("target")
 
     assert (
         cli.main(
@@ -271,6 +357,7 @@ def test_api_cli_propose_attaches_dependency_refs(
     )
     monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
     monkeypatch.chdir(tmp_path)
+    client.register_catalog_project("mine-js-monorepo")
 
     assert (
         cli.main(
@@ -317,6 +404,7 @@ def test_api_cli_propose_reads_structured_dependency_body_refs(
     )
     monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
     monkeypatch.chdir(tmp_path)
+    client.register_catalog_project("mine-js-monorepo")
 
     assert (
         cli.main(
@@ -353,6 +441,7 @@ def test_api_cli_propose_warns_for_unreferenced_upstream_dependency(
     _write_workspace_refs(tmp_path / "issuekit.workspace.toml", "mine-js-monorepo", "mine-py")
     monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
     monkeypatch.chdir(tmp_path)
+    client.register_catalog_project("dashboard-ui")
 
     assert (
         cli.main(
@@ -398,6 +487,7 @@ def test_api_cli_propose_warns_instead_of_rejecting_freeform_dependency_line(
     _write_workspace_refs(tmp_path / "issuekit.workspace.toml", "mine-js-monorepo", "mine-py")
     monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
     monkeypatch.chdir(tmp_path)
+    client.register_catalog_project("dashboard-ui")
 
     assert (
         cli.main(
@@ -424,6 +514,7 @@ def test_api_cli_propose_does_not_warn_for_target_owned_query_param_contract(
     capsys,
 ) -> None:
     client = FakeIssuekitClient()
+    client.register_catalog_project("mine-py")
     (tmp_path / "issuekit.toml").write_text(
         "api_url = 'https://mine.example'\nproject = 'mine-js-monorepo'\n",
         encoding="utf-8",
@@ -460,6 +551,7 @@ def test_api_cli_propose_warns_for_self_target_without_reply(
     capsys,
 ) -> None:
     client = FakeIssuekitClient()
+    client.register_catalog_project("source")
     (tmp_path / "issuekit.toml").write_text(
         "api_url = 'https://mine.example'\nproject = 'source'\n",
         encoding="utf-8",
@@ -587,6 +679,7 @@ def test_api_cli_propose_from_issue_reads_api_store(
             )
         ]
     )
+    client.register_catalog_project("target")
     (tmp_path / "issuekit.toml").write_text(
         "api_url = 'https://mine.example'\nproject = 'source'\n",
         encoding="utf-8",
@@ -620,6 +713,7 @@ def test_api_cli_propose_same_origin_payload_mismatch_fails(
             }
         ]
     )
+    client.register_catalog_project("target")
     (tmp_path / "issuekit.toml").write_text(
         "api_url = 'https://mine.example'\nproject = 'source'\n",
         encoding="utf-8",
@@ -679,6 +773,7 @@ def test_api_cli_outgoing_lists_own_proposals(
     )
     monkeypatch.setattr(proposals_api, "IssuekitClient", fake_client)
     monkeypatch.chdir(tmp_path)
+    client.register_catalog_project("target")
 
     assert cli.main(["outgoing", "--to", "target", "--json"]) == 0
     outgoing = json.loads(capsys.readouterr().out)
@@ -717,6 +812,7 @@ def test_api_cli_outgoing_rejects_foreign_and_invalid_lookups(
     )
     monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
     monkeypatch.chdir(tmp_path)
+    client.register_catalog_project("target")
 
     assert cli.main(["outgoing", "--to", "target", "--id", "2"]) == 1
     assert "was not sent by source" in capsys.readouterr().err

@@ -80,6 +80,18 @@ class FakeIssuekitClient(FakeIssueSurface, FakeProposalSurface):
         with self._lock:
             return [deepcopy(profile) for _, profile in sorted(self._profiles.items())]
 
+    def register_catalog_project(self, project: str, *, summary: str | None = None) -> None:
+        """Seed a project in the profile catalog so proposal target validation accepts it."""
+        with self._lock:
+            self._profiles[project] = {
+                "project": project,
+                "summary": summary,
+                "profile_md": None,
+                "tags": None,
+                "source_commit": None,
+                "source_committed_at": None,
+            }
+
     def __enter__(self) -> "FakeIssuekitClient":
         return self
 

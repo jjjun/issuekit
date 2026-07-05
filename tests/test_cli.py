@@ -214,6 +214,7 @@ def test_proposal_cli_round_trip(tmp_path, monkeypatch, capsys) -> None:
     client = FakeIssuekitClient(
         proposals=[{"id": 1, "origin": "source#1@abc123", "title": "Suggest Thing", "body": "Body"}]
     )
+    client.register_catalog_project("target")
     body_file = tmp_path / "proposal.md"
     body_file.write_text("## Suggested Change\n\nDo the thing.\n", encoding="utf-8", newline="\n")
     (tmp_path / "issuekit.toml").write_text(
@@ -542,6 +543,7 @@ def test_workspace_refs_drive_propose_and_reply_round_trip(
     client = NoListClient(
         issues=[api_issue(1, "Implemented", status="completed", origin="source#0@abc123")]
     )
+    client.register_catalog_project("source")
     (tmp_path / "issuekit.toml").write_text(
         "api_url = 'https://mine.example'\nproject = 'target'\n",
         encoding="utf-8",

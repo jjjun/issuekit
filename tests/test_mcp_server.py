@@ -918,6 +918,7 @@ def test_api_proposal_tools_send_list_adopt_and_discard(
             {"id": 11, "origin": "source#11@abc123", "title": "Discard", "body": "Discard body."},
         ]
     )
+    client.register_catalog_project("other_project")
     (tmp_path / "issuekit.toml").write_text(
         "api_url = 'https://mine.example'\nproject = 'target'\n",
         encoding="utf-8",
@@ -968,6 +969,7 @@ def test_mcp_propose_flags_same_origin_payload_mismatch(
             }
         ]
     )
+    client.register_catalog_project("other_project")
     (tmp_path / "issuekit.toml").write_text(
         "api_url = 'https://mine.example'\nproject = 'target'\n",
         encoding="utf-8",
@@ -1013,6 +1015,7 @@ def test_mcp_propose_rejects_unknown_target_when_profile_catalog_exists(
 
 def test_mcp_propose_attaches_dependency_refs(tmp_path: Path, monkeypatch) -> None:
     client = FakeIssuekitClient()
+    client.register_catalog_project("other_project")
     (tmp_path / "issuekit.toml").write_text(
         "api_url = 'https://mine.example'\nproject = 'target'\n",
         encoding="utf-8",
@@ -1082,6 +1085,7 @@ def test_mcp_list_outgoing_scopes_to_own_origin(tmp_path: Path, monkeypatch) -> 
         newline="\n",
     )
     monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    client.register_catalog_project("other_project")
     server = create_server(tmp_path)
 
     outgoing = _call(server, "list_outgoing", {"to": "other_project"})
@@ -1093,6 +1097,7 @@ def test_mcp_list_outgoing_scopes_to_own_origin(tmp_path: Path, monkeypatch) -> 
 
 def test_cli_proposal_json_matches_mcp_output(tmp_path: Path, monkeypatch, capsys) -> None:
     client = FakeIssuekitClient()
+    client.register_catalog_project("target")
     (tmp_path / "issuekit.toml").write_text(
         "api_url = 'https://mine.example'\nproject = 'source'\n",
         encoding="utf-8",
