@@ -73,8 +73,8 @@ def run_proposal_check_cycle(
 ) -> list[ProposalCheckDecision]:
     """Run one worker-side proposal-check poll/evaluate/result cycle."""
 
-    worker_key = config.worker_key()
-    if not worker_key:
+    worker_keys = config.worker_lookup_keys()
+    if not worker_keys:
         raise WorkflowError(
             "proposal-checks require this checkout to be registered as a worker."
         )
@@ -88,8 +88,9 @@ def run_proposal_check_cycle(
     adapter = resolve_adapter(agent, config=config)
 
     with api_client(config) as client:
-        checks = client.poll_proposal_checks(
-            target_worker=worker_key,
+        checks = _poll_worker_checks(
+            client,
+            worker_keys,
             status="pending",
             limit=min(limit, 500),
             offset=0,
@@ -209,8 +210,8 @@ def list_worker_proposal_checks(
 ) -> list[dict[str, Any]]:
     """List proposal checks addressed to this registered checkout."""
 
-    worker_key = config.worker_key()
-    if not worker_key:
+    worker_keys = config.worker_lookup_keys()
+    if not worker_keys:
         raise WorkflowError(
             "proposal-checks require this checkout to be registered as a worker."
         )
@@ -221,14 +222,53 @@ def list_worker_proposal_checks(
 
     with api_client(config) as client:
         if status is not None:
-            return client.poll_proposal_checks(
-                target_worker=worker_key,
+            return _poll_worker_checks(
+                client,
+                worker_keys,
                 status=status,
                 limit=min(limit, 500),
                 offset=offset,
             )
-        checks = client.list_proposal_checks(target_worker=worker_key, status=None)
+        checks = _list_worker_checks(client, worker_keys)
     return checks[offset : offset + limit]
+
+
+def _poll_worker_checks(
+    client,
+    worker_keys: tuple[str, ...],
+    *,
+    status: str,
+    limit: int,
+    offset: int,
+) -> list[dict[str, Any]]:
+    seen: set[int] = set()
+    checks: list[dict[str, Any]] = []
+    for target_worker in worker_keys:
+        for check in client.poll_proposal_checks(
+            target_worker=target_worker,
+            status=status,
+            limit=limit,
+            offset=offset,
+        ):
+            check_id = int(check["id"])
+            if check_id in seen:
+                continue
+            seen.add(check_id)
+            checks.append(check)
+    return checks[:limit]
+
+
+def _list_worker_checks(client, worker_keys: tuple[str, ...]) -> list[dict[str, Any]]:
+    seen: set[int] = set()
+    checks: list[dict[str, Any]] = []
+    for target_worker in worker_keys:
+        for check in client.list_proposal_checks(target_worker=target_worker, status=None):
+            check_id = int(check["id"])
+            if check_id in seen:
+                continue
+            seen.add(check_id)
+            checks.append(check)
+    return checks
 
 
 def parse_proposal_check_output(stdout: str) -> dict[str, str]:

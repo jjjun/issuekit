@@ -183,7 +183,7 @@ def test_review_command_approves_with_distinct_worker_identity(
             "summary": "Approved by reviewer agent.",
             "verification": "uv run pytest",
             "reviewer": "codex",
-            "worker": "machine/demo/reviewer",
+                "worker": "reviewer.demo",
         },
     }
 
@@ -223,7 +223,7 @@ def test_review_command_requests_changes(
         "body": {
             "notes": "Add focused tests.",
             "reviewer": "claude",
-            "worker": "machine/demo/reviewer",
+                "worker": "reviewer.demo",
         },
     }
 

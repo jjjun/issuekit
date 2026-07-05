@@ -116,9 +116,12 @@ def _local_config_text(
     lines: list[str] = []
     if worker:
         lines.append("[worker]")
-        for key in ("machine_id", "repo_id", "worker_id"):
-            if key in worker:
-                lines.append(f"{key} = {json.dumps(str(worker[key]))}")
+        for key in ("machine_id", "repo_id", "worker_name"):
+            value = worker.get(key)
+            if key == "worker_name" and value is None:
+                value = worker.get("worker_id")
+            if value is not None:
+                lines.append(f"{key} = {json.dumps(str(value))}")
         lines.append("")
     if author_guard:
         lines.append("[author_guard]")

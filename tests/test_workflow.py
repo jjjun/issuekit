@@ -91,7 +91,7 @@ def test_claim_next_sends_registered_worker(monkeypatch) -> None:
     assert client.calls == [
         {
             "method": "claim_next",
-            "body": {"assignee": "codex", "worker": "machine/repo/checkout"},
+            "body": {"assignee": "codex", "worker": "checkout.repo"},
         }
     ]
 
@@ -111,7 +111,7 @@ def test_claim_issue_sends_registered_worker(monkeypatch) -> None:
         {
             "method": "claim",
             "number": 1,
-            "body": {"assignee": "codex", "worker": "machine/repo/checkout"},
+            "body": {"assignee": "codex", "worker": "checkout.repo"},
         }
     ]
 
@@ -186,7 +186,7 @@ def test_reclaim_issue_sends_registered_worker_as_actor(monkeypatch) -> None:
 
     result = reclaim_issue(1, force=True, reason="stale checkout", config=config)
 
-    assert result.actor == "machine/repo/operator"
+    assert result.actor == "operator.repo"
     assert result.audit_reason == "stale checkout"
     assert result.issue.stage == "todo"
     assert client.calls == [
@@ -195,7 +195,7 @@ def test_reclaim_issue_sends_registered_worker_as_actor(monkeypatch) -> None:
             "number": 1,
             "body": {
                 "expected_worker": "machine/repo/dead",
-                "actor": "machine/repo/operator",
+                "actor": "operator.repo",
                 "reason": "stale checkout",
             },
         }
@@ -916,7 +916,7 @@ def test_request_changes_sends_registered_reviewer_worker(monkeypatch) -> None:
         {
             "method": "request_changes",
             "number": 1,
-            "body": {"notes": "Please add tests.", "worker": "machine/repo/reviewer"},
+            "body": {"notes": "Please add tests.", "worker": "reviewer.repo"},
         }
     ]
 
@@ -1021,7 +1021,7 @@ def test_approve_allows_same_agent_different_worker_open_review(
             "summary": "Approved.",
             "verification": "uv run pytest",
             "reviewer": "codex",
-            "worker": "machine/repo/reviewer",
+            "worker": "reviewer.repo",
         },
     }
 

@@ -18,6 +18,7 @@ from issuekit.core import ASCII_ONLY_HINT, Issue, has_non_ascii
 from issuekit.gitutil import git_status_short, run_git
 from issuekit.store import get_store
 from issuekit.workflow import WorkflowError, ensure_assigned_reviewer, request_changes
+from issuekit.worker_keys import worker_keys_match
 
 
 REVIEW_BLOCK_LANGUAGE = "review"
@@ -262,7 +263,7 @@ def _ensure_registered_distinct_worker(
         raise WorkflowError(
             "Automated review requires a registered worker identity. Run `issuekit add` first."
         )
-    if issue.worker and issue.worker == reviewer_worker:
+    if issue.worker and worker_keys_match(issue.worker, reviewer_worker):
         raise WorkflowError(
             f"Issue #{issue.id} was implemented by worker {issue.worker}; "
             "self-review by the same worker is not allowed."

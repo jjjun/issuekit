@@ -339,21 +339,41 @@ class _WorkerResourceMixin:
         *,
         machine_id: str,
         repo_id: str,
-        worker_id: str,
-        path: str | None,
+        worker_id: str | None = None,
+        worker_name: str | None = None,
+        path: str | None = None,
+        canonical_url: str | None = None,
         project: str | None = None,
         role: str | None = None,
         description: str | None = None,
+        repo_description: str | None = None,
+        repo_metadata: Mapping[str, str] | None = None,
+        worker_metadata: Mapping[str, str] | None = None,
     ) -> JsonDict:
+        resolved_worker_name = worker_name or worker_id
+        if not resolved_worker_name:
+            raise ValueError("upsert_worker requires worker_name or worker_id.")
         body = {
             "machine_id": machine_id,
             "repo_id": repo_id,
-            "worker_id": worker_id,
+            "worker_name": resolved_worker_name,
             "path": path,
         }
         # role/description are optional, backward-compatible fields: only send
         # them when set so older backends keep accepting the payload.
-        body.update(_drop_none({"project": project, "role": role, "description": description}))
+        body.update(
+            _drop_none(
+                {
+                    "canonical_url": canonical_url,
+                    "project": project,
+                    "role": role,
+                    "description": description,
+                    "repo_description": repo_description,
+                    "repo_metadata": dict(repo_metadata) if repo_metadata else None,
+                    "worker_metadata": dict(worker_metadata) if worker_metadata else None,
+                }
+            )
+        )
         payload = self._authorized_request("POST", "/api/workers", json=body)
         return _ensure_dict(payload, "Worker response")
 

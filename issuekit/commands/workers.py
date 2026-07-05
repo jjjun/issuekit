@@ -8,6 +8,7 @@ from pathlib import Path
 
 from issuekit.commands._common import run_command
 from issuekit.config import load_config
+from issuekit.worker_keys import worker_display_from_row
 from issuekit.workflow import WorkflowError
 from issuekit.worker_registry import WorkerListingError, list_api_workers
 
@@ -48,13 +49,13 @@ def run(args) -> int:
 
 
 def _print_worker(worker: dict) -> None:
-    key = "/".join(
-        str(worker.get(field, "?"))
-        for field in ("machine_id", "repo_id", "worker_id")
-    )
+    key = worker_display_from_row(worker)
     role = worker.get("role") or "-"
     print(f"{key}  role={role}")
     details = []
+    machine_id = worker.get("machine_id")
+    if machine_id:
+        details.append(f"machine={machine_id}")
     path = worker.get("path")
     if path:
         details.append(f"path={path}")
@@ -66,3 +67,13 @@ def _print_worker(worker: dict) -> None:
     description = worker.get("description")
     if description:
         print(f"  {description}")
+    repo_description = worker.get("repo_description")
+    if repo_description:
+        print(f"  repo: {repo_description}")
+    for label, metadata in (
+        ("repo_metadata", worker.get("repo_metadata")),
+        ("worker_metadata", worker.get("worker_metadata")),
+    ):
+        if isinstance(metadata, dict) and metadata:
+            values = "  ".join(f"{key}={metadata[key]}" for key in sorted(metadata))
+            print(f"  {label}: {values}")

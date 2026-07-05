@@ -26,10 +26,10 @@ that pool, and reviewers pull from the review pool. No central orchestrator is
 required for the normal author -> implement -> review cycle.
 
 Register each checkout once with `issuekit add` (alias `issuekit register`)
-before pulling work. It records a worker identity (machine/repo/worker) in a
-gitignored `issuekit.local.toml`, so claims report which physical checkout
-holds an issue. Multiple checkouts of one repo on one machine become distinct
-workers.
+before pulling work. It records repo_id, worker_name, and machine metadata in a
+gitignored `issuekit.local.toml`, so claims report which worker checkout holds
+an issue as `worker.repo`. Multiple checkouts of one repo can use distinct
+worker names.
 
 Issue lifecycle and cross-project proposal state are stored in the configured
 mine-py API project.

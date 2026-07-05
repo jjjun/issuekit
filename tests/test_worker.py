@@ -7,6 +7,7 @@ from issuekit import cli
 from issuekit.config import IssuekitConfig, WorkerIdentity, load_config
 from issuekit.worker import (
     WorkerRegistrationError,
+    canonicalize_remote_url,
     parse_repo_id_from_remote,
     register_worker,
     worker_key,
@@ -28,7 +29,18 @@ def test_parse_repo_id_from_remote(remote_url: str, expected: str) -> None:
 
 
 def test_worker_key_matches_registry_key_format() -> None:
-    assert worker_key(WorkerIdentity("machine", "repo", "checkout")) == "machine/repo/checkout"
+    assert worker_key(WorkerIdentity("machine", "repo", "checkout")) == "checkout.repo"
+
+
+def test_canonicalize_remote_url_normalizes_common_git_forms() -> None:
+    assert (
+        canonicalize_remote_url("git@github.com:Owner/project.git")
+        == "ssh://git@github.com/Owner/project"
+    )
+    assert (
+        canonicalize_remote_url("https://GitHub.com/Owner/project.git/")
+        == "https://github.com/Owner/project"
+    )
 
 
 def test_register_worker_uses_remote_repo_and_basename_worker(
@@ -60,6 +72,9 @@ def test_register_worker_uses_remote_repo_and_basename_worker(
     assert "repo_id = \"mine-js-monorepo\"" in (second / "issuekit.local.toml").read_text(
         encoding="utf-8"
     )
+    assert "worker_name = \"mine-js-monorepo2\"" in (
+        second / "issuekit.local.toml"
+    ).read_text(encoding="utf-8")
 
 
 def test_register_worker_requires_repo_id_for_repo_without_remote(
@@ -243,6 +258,7 @@ def test_worker_and_refs_share_local_config_without_clobbering(tmp_path: Path) -
     local_config = (repo / "issuekit.local.toml").read_text(encoding="utf-8")
     assert "[worker]" in local_config
     assert "machine_id = \"machine\"" in local_config
+    assert "worker_name = \"repo\"" in local_config
     assert "[refs]" in local_config
     assert "target" in local_config
 
@@ -260,8 +276,10 @@ def test_add_cli_writes_worker_and_gitignore(
     assert cli.main(["register", "--repo-id", "project"]) == 0
 
     captured = capsys.readouterr()
-    assert "machine_id = win-desktop" in captured.out
-    assert "repo_id    = project" in captured.out
+    assert "worker      =" in captured.out
+    assert ".project" in captured.out
+    assert "machine_id  = win-desktop" in captured.out
+    assert "repo_id     = project" in captured.out
     assert (tmp_path / "issuekit.local.toml").exists()
     assert (tmp_path / ".gitignore").read_text(encoding="utf-8") == (
         "issuekit.local.toml\n.agent-runs/\n"
@@ -294,7 +312,7 @@ def test_add_cli_fails_in_git_checkout_without_origin_unless_repo_id_is_supplied
     assert "no remote origin" in capsys.readouterr().err
 
     assert cli.main(["add", "--repo-id", "project"]) == 0
-    assert "repo_id    = project" in capsys.readouterr().out
+    assert "repo_id     = project" in capsys.readouterr().out
 
 
 def test_add_cli_best_effort_posts_worker_registry(
@@ -321,11 +339,134 @@ def test_add_cli_best_effort_posts_worker_registry(
         {
             "machine_id": "win-desktop",
             "repo_id": "demo",
-            "worker_id": "checkout",
+            "worker_name": "checkout",
             "path": tmp_path.resolve().as_posix(),
             "project": "demo",
         }
     ]
+
+
+def test_add_cli_posts_canonical_url_from_git_origin(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from issuekit import worker_registry
+
+    client = FakeRegistryClient()
+    _init_git(tmp_path, "git@github.com:Owner/demo.git")
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'demo'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("ISSUEKIT_WORKER_REGISTRY", str(tmp_path / "workers.toml"))
+    monkeypatch.setattr("issuekit.worker.platform.node", lambda: "win-desktop")
+    monkeypatch.setattr(worker_registry, "IssuekitClient", lambda *args, **kwargs: client)
+
+    assert cli.main(["add", "--worker-id", "checkout"]) == 0
+
+    assert client.calls[0]["canonical_url"] == "ssh://git@github.com/Owner/demo"
+
+
+def test_add_cli_posts_repo_and_worker_metadata(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from issuekit import worker_registry
+
+    client = FakeRegistryClient()
+    _init_git(tmp_path)
+    (tmp_path / "issuekit.toml").write_text(
+        (
+            "api_url = 'https://mine.example'\n"
+            "project = 'demo'\n"
+            "repo_description = 'Config repo description.'\n"
+            "[repo_metadata]\n"
+            "domain = 'api'\n"
+            "[worker_metadata]\n"
+            "gpu = 'false'\n"
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("ISSUEKIT_WORKER_REGISTRY", str(tmp_path / "workers.toml"))
+    monkeypatch.setattr("issuekit.worker.platform.node", lambda: "win-desktop")
+    monkeypatch.setattr(worker_registry, "IssuekitClient", lambda *args, **kwargs: client)
+
+    assert (
+        cli.main(
+            [
+                "add",
+                "--repo-id",
+                "demo",
+                "--worker-id",
+                "checkout",
+                "--repo-description",
+                "Flag repo description.",
+                "--repo-metadata",
+                "service=mine",
+                "--worker-metadata",
+                "queue=fast",
+            ]
+        )
+        == 0
+    )
+
+    assert client.calls[0]["repo_description"] == "Flag repo description."
+    assert client.calls[0]["repo_metadata"] == {"domain": "api", "service": "mine"}
+    assert client.calls[0]["worker_metadata"] == {"gpu": "false", "queue": "fast"}
+
+
+def test_add_cli_reports_repo_key_conflict(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from issuekit import worker_registry
+
+    _init_git(tmp_path, "https://github.com/owner/demo.git")
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'demo'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("ISSUEKIT_WORKER_REGISTRY", str(tmp_path / "workers.toml"))
+    monkeypatch.setattr("issuekit.worker.platform.node", lambda: "win-desktop")
+    monkeypatch.setattr(worker_registry, "IssuekitClient", RepoConflictRegistryClient)
+
+    assert cli.main(["add", "--worker-id", "checkout"]) == 0
+
+    err = capsys.readouterr().err
+    assert "https://github.com/other/demo" in err
+    assert "--repo-id <unique-repo-id>" in err
+
+
+def test_add_cli_reports_duplicate_worker_name_conflict(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from issuekit import worker_registry
+
+    _init_git(tmp_path)
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'demo'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("ISSUEKIT_WORKER_REGISTRY", str(tmp_path / "workers.toml"))
+    monkeypatch.setattr("issuekit.worker.platform.node", lambda: "win-desktop")
+    monkeypatch.setattr(worker_registry, "IssuekitClient", WorkerConflictRegistryClient)
+
+    assert cli.main(["add", "--repo-id", "demo", "--worker-id", "checkout"]) == 0
+
+    err = capsys.readouterr().err
+    assert "Worker name 'checkout' is already registered" in err
+    assert "--worker-id win-desktop-checkout" in err
 
 
 def test_add_cli_ignores_worker_registry_failure(
@@ -349,7 +490,7 @@ def test_add_cli_ignores_worker_registry_failure(
     assert cli.main(["add", "--repo-id", "demo"]) == 0
 
     captured = capsys.readouterr()
-    assert "machine_id = win-desktop" in captured.out
+    assert "machine_id  = win-desktop" in captured.out
     assert "worker registry update failed" in captured.err
 
 
@@ -382,11 +523,15 @@ def test_add_cli_posts_configured_role_and_description(
         {
             "machine_id": "win-desktop",
             "repo_id": "demo",
-            "worker_id": "checkout",
+            "worker_name": "checkout",
             "path": tmp_path.resolve().as_posix(),
             "project": "demo",
             "role": "api-server",
             "description": "Hosts the mine-py issue API.",
+            "worker_metadata": {
+                "role": "api-server",
+                "description": "Hosts the mine-py issue API.",
+            },
         }
     ]
 
@@ -524,26 +669,41 @@ class FakeRegistryClient:
         *,
         machine_id: str,
         repo_id: str,
-        worker_id: str,
-        path: str | None,
+        worker_id: str | None = None,
+        worker_name: str | None = None,
+        path: str | None = None,
+        canonical_url: str | None = None,
         project: str | None = None,
         role: str | None = None,
         description: str | None = None,
+        repo_description: str | None = None,
+        repo_metadata: dict[str, str] | None = None,
+        worker_metadata: dict[str, str] | None = None,
     ) -> dict[str, str | None]:
+        resolved_worker_name = worker_name or worker_id
+        assert resolved_worker_name is not None
         call = {
             "machine_id": machine_id,
             "repo_id": repo_id,
-            "worker_id": worker_id,
+            "worker_name": resolved_worker_name,
             "path": path,
         }
+        if canonical_url is not None:
+            call["canonical_url"] = canonical_url
         if project is not None:
             call["project"] = project
         if role is not None:
             call["role"] = role
         if description is not None:
             call["description"] = description
+        if repo_description is not None:
+            call["repo_description"] = repo_description
+        if repo_metadata is not None:
+            call["repo_metadata"] = repo_metadata
+        if worker_metadata is not None:
+            call["worker_metadata"] = worker_metadata
         self.calls.append(call)
-        return {"id": f"{machine_id}/{repo_id}/{worker_id}", **call}
+        return {"id": f"{resolved_worker_name}.{repo_id}", **call}
 
     def put_project_profile(self, **kwargs) -> dict[str, object]:
         self.profile_calls.append(kwargs)
@@ -562,6 +722,30 @@ class StaleProfileRegistryClient(FakeRegistryClient):
     def put_project_profile(self, **kwargs) -> dict[str, object]:
         self.profile_calls.append(kwargs)
         return {"project": "demo", **kwargs, "stale": True}
+
+
+class RepoConflictRegistryClient(FakeRegistryClient):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__()
+
+    def upsert_worker(self, **kwargs):
+        from issuekit.workflow import WorkflowError
+
+        raise WorkflowError(
+            "repo key conflict",
+            code="repo_key_conflict",
+            details={"registered_canonical_url": "https://github.com/other/demo"},
+        )
+
+
+class WorkerConflictRegistryClient(FakeRegistryClient):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__()
+
+    def upsert_worker(self, **kwargs):
+        from issuekit.workflow import WorkflowError
+
+        raise WorkflowError("duplicate worker", code="duplicate_worker", details={})
 
 
 class FailingRegistryClient:

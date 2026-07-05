@@ -461,7 +461,9 @@ def test_config_worker_key_returns_registered_identity() -> None:
     assert IssuekitConfig().worker_key() is None
     config = IssuekitConfig(worker=WorkerIdentity("machine", "repo", "checkout"))
 
-    assert config.worker_key() == "machine/repo/checkout"
+    assert config.worker_key() == "checkout.repo"
+    assert config.legacy_worker_key() == "machine/repo/checkout"
+    assert config.worker_lookup_keys() == ("checkout.repo", "machine/repo/checkout")
 
 
 def test_load_config_malformed_issuekit_toml_names_file(tmp_path: Path) -> None:

@@ -174,14 +174,14 @@ def test_serve_once_empty_queue_exits_without_agent(
             "body": {
                 "machine_id": "machine",
                 "repo_id": "demo",
-                "worker_id": "checkout",
+                "worker_name": "checkout",
                 "path": tmp_path.resolve().as_posix(),
                 "project": "demo",
             },
         },
         {
             "method": "claim_next",
-            "body": {"assignee": "codex", "worker": "machine/demo/checkout"},
+            "body": {"assignee": "codex", "worker": "checkout.demo"},
         }
     ]
     assert not (tmp_path / ".agent-runs" / "serve.lock").exists()
@@ -211,7 +211,7 @@ def test_serve_once_claims_runs_and_submits(
     assert issue_id == 1
     assert prompt_suffix is None
     assert [call["method"] for call in client.calls] == ["upsert_worker", "claim_next", "submit"]
-    assert client.calls[1]["body"]["worker"] == "machine/demo/checkout"
+    assert client.calls[1]["body"]["worker"] == "checkout.demo"
     assert "event=submitted issue=1" in capsys.readouterr().err
 
 
@@ -244,7 +244,7 @@ def test_serve_review_once_reviews_open_pool_issue(
     assert exit_code == 0
     assert ReviewApprovingRunner.calls == [1]
     assert [call["method"] for call in client.calls] == ["upsert_worker", "approve"]
-    assert client.calls[1]["body"]["worker"] == "machine/demo/checkout"
+    assert client.calls[1]["body"]["worker"] == "checkout.demo"
     captured = capsys.readouterr()
     assert "event=reviewing issue=1" in captured.err
     assert "event=reviewed issue=1" in captured.err
@@ -321,7 +321,7 @@ def test_serve_triage_auto_adopts_before_claiming(
     ]
     assert client.calls[1]["number"] == 1
     assert client.calls[1]["body"] == {"priority": "high"}
-    assert client.calls[2]["body"]["worker"] == "machine/demo/checkout"
+    assert client.calls[2]["body"]["worker"] == "checkout.demo"
     assert client.get_proposal(1)["status"] == "adopted"
     assert client.get_issue(1)["origin_proposal_id"] == "1"
     assert [call[4] for call in FakeRunner.calls] == [1]

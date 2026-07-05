@@ -189,7 +189,7 @@ copying the steps.
 | `issuekit dev-tool install-editable [--repo <path>] [--no-stop] [--json]` | Windows developer command to install this checkout as the global editable tool with the MCP extra. |
 | `issuekit dev-tool reinstall [--repo <path>] [--no-stop] [--json]` | Windows developer recovery command to reinstall the global tool from an absolute checkout path. |
 | `issuekit dev-tool reload-mcp [--json]` | Stop only running `issuekit-mcp.exe` processes; MCP clients own respawn and stdio reconnection. |
-| `issuekit add` / `issuekit register` | Register this git checkout as a worker (auto-derives machine/repo/worker ids and publishes the configured API project). |
+| `issuekit add` / `issuekit register` | Register this git repo namespace and this checkout's worker (auto-derives repo and worker ids, with machine metadata, and publishes the configured API project). |
 | `issuekit workers [--repo-id <id>] [--project <name>] [--json]` | List registered workers and their repo-level roles across projects. |
 | `issuekit add-ref <name> --path <repo> [--scope local\|workspace]` | Register an optional local project alias. |
 | `issuekit list-refs` | List effective local project aliases and their source. |
@@ -399,24 +399,35 @@ If `pyproject.toml` exists without `[tool.issuekit]`, issuekit falls back to
 `issuekit.toml`.
 
 Run `issuekit add` / `issuekit register` from a git-managed checkout. The
-command derives the physical `repo_id` from `remote.origin.url`; in a git
-checkout with no origin, pass `--repo-id <repository-id>` explicitly. It refuses
-non-git directories. `repo_id` identifies the worker checkout for claim
-ownership and orphan detection. `project` remains the API issue/proposal
-namespace, so an explicitly configured `project` is not overwritten by a remote
-name or `--repo-id`.
+command registers the repo issue namespace and a worker for this checkout in one
+step. It derives `repo_id` and the canonical repo URL from `remote.origin.url`;
+in a git checkout with no origin, pass `--repo-id <repository-id>` explicitly.
+It refuses non-git directories. The worker name defaults to the checkout
+directory basename and is displayed with the repo as `worker.repo`. `machine_id`
+is stored as worker metadata so duplicate worker names can be diagnosed across
+machines. `project` remains the API issue/proposal namespace, so an explicitly
+configured `project` is not overwritten by a remote name or `--repo-id`.
 
 A repo can advertise its role so agents in other projects recognize peers when
-choosing proposal or negotiation targets. Set `worker_role` (max 80 chars) and
-optional `worker_description` (max 500 chars) in shared config; they are keyed by
-repo/project and reused by every local checkout, unlike the machine-local
-worker identity in `issuekit.local.toml`. `issuekit add` and `issuekit serve`
-send them to the backend, and `issuekit workers` lists the catalog:
+choosing proposal or negotiation targets. Set `repo_description`,
+`repo_metadata`, `worker_metadata`, `worker_role` (max 80 chars), and optional
+`worker_description` (max 500 chars) in shared config, or pass
+`--repo-description`, `--repo-metadata KEY=VALUE`, and
+`--worker-metadata KEY=VALUE` to `issuekit add`. `issuekit add` and
+`issuekit serve` send them to the backend, and `issuekit workers` lists the
+catalog:
 
 ```toml
 [tool.issuekit]
 worker_role = "api-server"
 worker_description = "Hosts the mine-py issue API and issuekit backend."
+repo_description = "Issue API and issuekit backend."
+
+[tool.issuekit.repo_metadata]
+domain = "api"
+
+[tool.issuekit.worker_metadata]
+queue = "default"
 ```
 
 Built-in agent configs can be patched by name. A table such as
@@ -445,19 +456,20 @@ populated, the pull-based pool never re-offers it, so no idle agent picks it
 up and the issue silently stalls.
 
 `issuekit orphans` surfaces these without out-of-band forensics. An implementer
-claim records which physical checkout (`machine/repo/worker`) holds the issue,
-and the worker registry tracks each live checkout's `last_seen` heartbeat. The
+claim records which worker checkout (`worker.repo`, with legacy
+`machine/repo/worker` keys still recognized) holds the issue, and the worker
+registry tracks each live checkout's `last_seen` heartbeat. The
 command cross-references the two and flags an implementing issue when either:
 
-- `no_worker`: no registered worker matches the claim's `machine/repo/worker`
-  key, so the holder is gone; or
+- `no_worker`: no registered worker matches the claim's worker key, so the
+  holder is gone; or
 - `expired_heartbeat`: a matching worker exists but has not sent a heartbeat
   for at least `--stale-after-sec` seconds (default 300).
 
 ```console
 $ issuekit orphans
 Orphaned or stale implementing claims: 1
-- #168: ... [assignee=claude worker=main1/issuekit/issuekit] (stale: no heartbeat since 2026-07-03T01:32:30Z)
+- #168: ... [assignee=claude worker=issuekit.issuekit] (stale: no heartbeat since 2026-07-03T01:32:30Z)
 ```
 
 The `last_seen` heartbeat is refreshed by the `issuekit serve` worker loop (and

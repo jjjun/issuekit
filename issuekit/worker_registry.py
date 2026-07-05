@@ -10,6 +10,7 @@ import threading
 from issuekit.client import IssuekitClient, JsonDict
 from issuekit.config import IssuekitConfig
 from issuekit.project_profile import load_project_profile
+from issuekit.worker import canonical_git_origin_url
 from issuekit.workflow import WorkflowError
 
 
@@ -21,10 +22,15 @@ class WorkerListingError(RuntimeError):
     """Raised when the worker catalog cannot be listed."""
 
 
+class WorkerRegistryConflict(RuntimeError):
+    """Raised when the API rejects a worker registration conflict."""
+
+
 def post_worker_registration(
     config: IssuekitConfig,
     cwd: Path | str,
     *,
+    canonical_url: str | None = None,
     on_error: Callable[[Exception], None] | None = None,
 ) -> bool:
     if not config.api_url or config.worker is None:
@@ -32,20 +38,33 @@ def post_worker_registration(
 
     repo_path = Path(cwd).resolve()
     worker = config.worker
+    resolved_canonical_url = canonical_url or canonical_git_origin_url(repo_path)
+    worker_metadata = dict(config.worker_metadata)
+    if config.worker_role and "role" not in worker_metadata:
+        worker_metadata["role"] = config.worker_role
+    if config.worker_description and "description" not in worker_metadata:
+        worker_metadata["description"] = config.worker_description
     with IssuekitClient(
         config.api_url,
         project=config.project,
         timeout=config.api_timeout,
     ) as client:
-        client.upsert_worker(
-            machine_id=worker.machine_id,
-            repo_id=worker.repo_id,
-            worker_id=worker.worker_id,
-            path=repo_path.as_posix(),
-            project=config.project,
-            role=config.worker_role or None,
-            description=config.worker_description or None,
-        )
+        try:
+            client.upsert_worker(
+                machine_id=worker.machine_id,
+                repo_id=worker.repo_id,
+                worker_name=worker.worker_name,
+                path=repo_path.as_posix(),
+                canonical_url=resolved_canonical_url,
+                project=config.project,
+                role=config.worker_role or None,
+                description=config.worker_description or None,
+                repo_description=config.repo_description or None,
+                repo_metadata=config.repo_metadata or None,
+                worker_metadata=worker_metadata or None,
+            )
+        except WorkflowError as exc:
+            raise _registration_error(exc, config) from exc
         _push_project_profile(config, cwd, client, on_error=on_error)
     return True
 
@@ -105,10 +124,16 @@ def try_post_worker_registration(
     config: IssuekitConfig,
     cwd: Path | str,
     *,
+    canonical_url: str | None = None,
     on_error: Callable[[Exception], None] | None = None,
 ) -> bool:
     try:
-        return post_worker_registration(config, cwd, on_error=on_error)
+        return post_worker_registration(
+            config,
+            cwd,
+            canonical_url=canonical_url,
+            on_error=on_error,
+        )
     except Exception as exc:
         if on_error is not None:
             on_error(exc)
@@ -147,3 +172,53 @@ class WorkerHeartbeat:
     def _run(self) -> None:
         while not self._stop.wait(max(0.0, self.interval)):
             try_post_worker_registration(self.config, self.cwd, on_error=self.on_error)
+
+
+def _registration_error(exc: WorkflowError, config: IssuekitConfig) -> Exception:
+    code = (exc.code or "").lower()
+    if code != "http_409" and "conflict" not in code and code != "duplicate_worker":
+        return exc
+    details = exc.details
+    conflict = _detail_text(details, "conflict", "type", "code")
+    if "repo" in conflict or _has_any(
+        details,
+        "canonical_url",
+        "registered_canonical_url",
+        "existing_canonical_url",
+    ):
+        registered = _detail_text(
+            details,
+            "registered_canonical_url",
+            "existing_canonical_url",
+            "canonical_url",
+        )
+        suffix = (
+            f" Registered canonical_url for this repo key: {registered}."
+            if registered
+            else ""
+        )
+        return WorkerRegistryConflict(
+            f"{exc}.{suffix} Rerun `issuekit add --repo-id <unique-repo-id>` "
+            "to register this checkout under an explicit repository id."
+        )
+    worker = config.worker
+    if worker is None:
+        return exc
+    suggestion = f"{worker.machine_id}-{worker.worker_name}"
+    return WorkerRegistryConflict(
+        f"{exc}. Worker name '{worker.worker_name}' is already registered for "
+        f"repo_id '{worker.repo_id}' by another machine. Rerun with "
+        f"`issuekit add --worker-id {suggestion}` or choose an explicit --worker-id."
+    )
+
+
+def _detail_text(details: dict[str, object], *keys: str) -> str:
+    for key in keys:
+        value = details.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return ""
+
+
+def _has_any(details: dict[str, object], *keys: str) -> bool:
+    return any(key in details for key in keys)

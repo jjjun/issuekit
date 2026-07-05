@@ -227,7 +227,11 @@ class _ClientTransportMixin:
                 message = payload["message"]
             elif isinstance(payload.get("detail"), str):
                 message = payload["detail"]
-        raise WorkflowError(message, code=code)
+        raise WorkflowError(
+            message,
+            code=code,
+            details=payload if isinstance(payload, dict) else None,
+        )
 
     def _collection_path(self, collection: str, path: str) -> str:
         if path in ("", "/"):

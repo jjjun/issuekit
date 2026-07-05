@@ -37,6 +37,8 @@ def run(args) -> int:
             "total": len(active_issues) + completed_count,
         },
         "latestCompletedId": latest_completed_id,
+        "worker": config.worker_key(),
+        "workerPresent": config.worker is not None,
         "activeIssues": [
             {
                 "id": issue.id,
@@ -70,6 +72,7 @@ def run(args) -> int:
     print(f"- Total issues: {summary['counts']['total']}")
     print(f"- Latest completed id: {summary['latestCompletedId']}")
     print(f"- Incoming proposals: {len(summary['incomingProposals'])}")
+    print(f"- Worker: {summary['worker'] or '-'}")
     if summary["authorGuard"]:
         guard = summary["authorGuard"]
         print(

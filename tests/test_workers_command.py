@@ -37,7 +37,8 @@ def test_workers_command_lists_registered_workers(
     assert cli.main(["workers"]) == 0
 
     out = capsys.readouterr().out
-    assert "machine/mine-py/checkout  role=api-server" in out
+    assert "checkout.mine-py  role=api-server" in out
+    assert "machine=machine" in out
     assert "Hosts the mine-py issue API." in out
 
 
@@ -63,6 +64,31 @@ def test_workers_command_json_and_repo_filter(
         "method": "list_workers",
         "body": {"repo_id": "mine-py", "project": None},
     }
+
+
+def test_workers_command_prints_repo_and_worker_metadata(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    client = FakeIssuekitClient()
+    client.upsert_worker(
+        machine_id="machine",
+        repo_id="mine-py",
+        worker_name="checkout",
+        path="/repo",
+        repo_description="Mine API service.",
+        repo_metadata={"domain": "api"},
+        worker_metadata={"queue": "fast"},
+    )
+    _configure_api(tmp_path, monkeypatch, client)
+
+    assert cli.main(["workers"]) == 0
+
+    out = capsys.readouterr().out
+    assert "repo: Mine API service." in out
+    assert "repo_metadata: domain=api" in out
+    assert "worker_metadata: queue=fast" in out
 
 
 def test_workers_command_reports_missing_api_url(

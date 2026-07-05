@@ -12,7 +12,7 @@ def test_local_config_round_trips_worker_and_refs(tmp_path: Path) -> None:
     worker = {
         "machine_id": "machine",
         "repo_id": "repo",
-        "worker_id": "checkout",
+        "worker_name": "checkout",
     }
     refs = {"other": "../other", "self": "."}
 
@@ -25,12 +25,33 @@ def test_local_config_round_trips_worker_and_refs(tmp_path: Path) -> None:
         "[worker]\n"
         'machine_id = "machine"\n'
         'repo_id = "repo"\n'
-        'worker_id = "checkout"\n'
+        'worker_name = "checkout"\n'
         "\n"
         "[refs]\n"
         'other = "../other"\n'
         'self = "."\n'
     )
+
+
+def test_local_config_reads_legacy_worker_id(tmp_path: Path) -> None:
+    (tmp_path / LOCAL_CONFIG_NAME).write_text(
+        (
+            "[worker]\n"
+            'machine_id = "machine"\n'
+            'repo_id = "repo"\n'
+            'worker_id = "checkout"\n'
+            "\n"
+            "[refs]\n"
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    assert read_local_config(tmp_path).worker == {
+        "machine_id": "machine",
+        "repo_id": "repo",
+        "worker_id": "checkout",
+    }
 
 
 def test_local_config_round_trips_author_guard(tmp_path: Path) -> None:

@@ -980,10 +980,10 @@ def test_client_claim_next_sends_worker_when_provided() -> None:
 
 def test_client_upsert_worker_posts_top_level_workers_endpoint() -> None:
     response = {
-        "id": "machine/repo/checkout",
+        "id": "checkout.repo",
         "machine_id": "machine",
         "repo_id": "repo",
-        "worker_id": "checkout",
+        "worker_name": "checkout",
         "path": "/repo",
     }
 
@@ -993,7 +993,7 @@ def test_client_upsert_worker_posts_top_level_workers_endpoint() -> None:
         assert json.loads(request.content) == {
             "machine_id": "machine",
             "repo_id": "repo",
-            "worker_id": "checkout",
+            "worker_name": "checkout",
             "path": "/repo",
             "project": "demo",
         }
@@ -1021,13 +1021,17 @@ def test_client_upsert_worker_includes_role_and_description_when_set() -> None:
         assert json.loads(request.content) == {
             "machine_id": "machine",
             "repo_id": "repo",
-            "worker_id": "checkout",
+            "worker_name": "checkout",
             "path": "/repo",
             "project": "demo",
             "role": "api-server",
             "description": "Hosts the API.",
+            "canonical_url": "https://github.com/example/repo",
+            "repo_description": "Repo catalog entry.",
+            "repo_metadata": {"domain": "api"},
+            "worker_metadata": {"gpu": "false"},
         }
-        return httpx.Response(201, json={"id": "machine/repo/checkout"})
+        return httpx.Response(201, json={"id": "checkout.repo"})
 
     client = IssuekitClient(
         "https://mine.example",
@@ -1044,6 +1048,10 @@ def test_client_upsert_worker_includes_role_and_description_when_set() -> None:
         project="demo",
         role="api-server",
         description="Hosts the API.",
+        canonical_url="https://github.com/example/repo",
+        repo_description="Repo catalog entry.",
+        repo_metadata={"domain": "api"},
+        worker_metadata={"gpu": "false"},
     )
 
 

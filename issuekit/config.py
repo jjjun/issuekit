@@ -15,6 +15,7 @@ from issuekit.core import (
 )
 from issuekit.dotenv import load_dotenv
 from issuekit.localconfig import LocalConfigError, load_toml, read_local_config
+from issuekit.worker_keys import legacy_worker_key, worker_key
 
 
 _SENTINEL = object()
@@ -23,6 +24,7 @@ _SENTINEL = object()
 # (negotiation thread 18): role stays short, description allows a sentence or two.
 WORKER_ROLE_MAX_LEN = 80
 WORKER_DESCRIPTION_MAX_LEN = 500
+REPO_DESCRIPTION_MAX_LEN = 500
 
 # Project-level capability profile limits (mine-py#172). The long-form profile
 # lives in a committed markdown file; summary/tags are short optional metadata.
@@ -58,6 +60,10 @@ class WorkerIdentity:
     machine_id: str
     repo_id: str
     worker_id: str
+
+    @property
+    def worker_name(self) -> str:
+        return self.worker_id
 
 
 @dataclass(frozen=True)
@@ -96,6 +102,9 @@ class IssuekitConfig:
     worker: WorkerIdentity | None = None
     worker_role: str = ""
     worker_description: str = ""
+    repo_description: str = ""
+    repo_metadata: dict[str, str] = field(default_factory=dict)
+    worker_metadata: dict[str, str] = field(default_factory=dict)
     profile_file: str = DEFAULT_PROFILE_FILE
     profile_summary: str = ""
     profile_tags: tuple[str, ...] = ()
@@ -183,11 +192,21 @@ class IssuekitConfig:
     def worker_key(self) -> str | None:
         if self.worker is None:
             return None
-        return (
-            f"{self.worker.machine_id}/"
-            f"{self.worker.repo_id}/"
-            f"{self.worker.worker_id}"
+        return worker_key(self.worker.repo_id, self.worker.worker_name)
+
+    def legacy_worker_key(self) -> str | None:
+        if self.worker is None:
+            return None
+        return legacy_worker_key(
+            self.worker.machine_id,
+            self.worker.repo_id,
+            self.worker.worker_name,
         )
+
+    def worker_lookup_keys(self) -> tuple[str, ...]:
+        current = self.worker_key()
+        legacy = self.legacy_worker_key()
+        return tuple(key for key in (current, legacy) if key)
 
 
 def load_config(cwd: Path | str = ".") -> IssuekitConfig:
@@ -232,6 +251,15 @@ def load_config(cwd: Path | str = ".") -> IssuekitConfig:
         field="worker_description",
         max_len=WORKER_DESCRIPTION_MAX_LEN,
     )
+    repo_description = _worker_metadata(
+        raw_config.get("repo_description"),
+        field="repo_description",
+        max_len=REPO_DESCRIPTION_MAX_LEN,
+    )
+    repo_metadata = _metadata_table(raw_config.get("repo_metadata"), field="repo_metadata")
+    worker_metadata = _metadata_table(
+        raw_config.get("worker_metadata"), field="worker_metadata"
+    )
     profile_file = str(
         raw_config.get("profile_file", IssuekitConfig.profile_file)
     ).strip() or IssuekitConfig.profile_file
@@ -266,6 +294,9 @@ def load_config(cwd: Path | str = ".") -> IssuekitConfig:
         worker=worker,
         worker_role=worker_role,
         worker_description=worker_description,
+        repo_description=repo_description,
+        repo_metadata=repo_metadata,
+        worker_metadata=worker_metadata,
         profile_file=profile_file,
         profile_summary=profile_summary,
         profile_tags=profile_tags,
@@ -369,7 +400,9 @@ def _load_worker(raw: object) -> WorkerIdentity | None:
         return None
     machine_id = _required_worker_value(raw, "machine_id")
     repo_id = _required_worker_value(raw, "repo_id")
-    worker_id = _required_worker_value(raw, "worker_id")
+    worker_id = _required_worker_value(raw, "worker_name") or _required_worker_value(
+        raw, "worker_id"
+    )
     if not (machine_id and repo_id and worker_id):
         return None
     return WorkerIdentity(machine_id=machine_id, repo_id=repo_id, worker_id=worker_id)
@@ -382,6 +415,23 @@ def _worker_metadata(value: object, *, field: str, max_len: int) -> str:
     if len(text) > max_len:
         raise ValueError(f"{field} must be at most {max_len} characters.")
     return text
+
+
+def _metadata_table(value: object, *, field: str) -> dict[str, str]:
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise ValueError(f"{field} must be a table.")
+    metadata: dict[str, str] = {}
+    for raw_key, raw_value in value.items():
+        key = str(raw_key).strip()
+        if not key or not is_valid_workflow_token(key):
+            raise ValueError(f"Invalid {field} key: {raw_key}")
+        text = optional_str(raw_value)
+        if text is None:
+            continue
+        metadata[key] = text
+    return metadata
 
 
 def _load_profile_tags(value: object) -> tuple[str, ...]:

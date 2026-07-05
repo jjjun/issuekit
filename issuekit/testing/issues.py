@@ -7,6 +7,7 @@ from typing import Any
 
 from issuekit.core import _drop_none
 from issuekit.workflow import WorkflowError
+from issuekit.worker_keys import worker_keys_match
 
 
 JsonDict = dict[str, Any]
@@ -365,35 +366,55 @@ class FakeIssueSurface:
         *,
         machine_id: str,
         repo_id: str,
-        worker_id: str,
-        path: str | None,
+        worker_id: str | None = None,
+        worker_name: str | None = None,
+        path: str | None = None,
+        canonical_url: str | None = None,
         project: str | None = None,
         role: str | None = None,
         description: str | None = None,
+        repo_description: str | None = None,
+        repo_metadata: dict[str, str] | None = None,
+        worker_metadata: dict[str, str] | None = None,
     ) -> JsonDict:
+        resolved_worker_name = worker_name or worker_id
+        if not resolved_worker_name:
+            raise WorkflowError("worker_name is required.", code="invalid_value")
         body = {
             "machine_id": machine_id,
             "repo_id": repo_id,
-            "worker_id": worker_id,
+            "worker_name": resolved_worker_name,
             "path": path,
         }
+        if canonical_url is not None:
+            body["canonical_url"] = canonical_url
         if project is not None:
             body["project"] = project
         if role is not None:
             body["role"] = role
         if description is not None:
             body["description"] = description
+        if repo_description is not None:
+            body["repo_description"] = repo_description
+        if repo_metadata is not None:
+            body["repo_metadata"] = deepcopy(repo_metadata)
+        if worker_metadata is not None:
+            body["worker_metadata"] = deepcopy(worker_metadata)
         with self._lock:
             self._record("upsert_worker", body=body)
             record = {
-                "id": f"{machine_id}/{repo_id}/{worker_id}",
+                "id": f"{resolved_worker_name}.{repo_id}",
                 "machine_id": machine_id,
                 "repo_id": repo_id,
-                "worker_id": worker_id,
+                "worker_name": resolved_worker_name,
                 "path": path,
+                "canonical_url": canonical_url,
                 "project": project,
                 "role": role,
                 "description": description,
+                "repo_description": repo_description,
+                "repo_metadata": deepcopy(repo_metadata or {}),
+                "worker_metadata": deepcopy(worker_metadata or {}),
                 "status": "idle",
                 "current_issue": None,
                 "last_seen": "2026-01-01T00:00:00Z",
@@ -505,5 +526,5 @@ def _is_self_review(issue: JsonDict, reviewer: str, reviewer_worker: str | None)
         return False
     implementer_worker = str(issue.get("worker") or "")
     if implementer_worker and reviewer_worker:
-        return implementer_worker == reviewer_worker
+        return worker_keys_match(implementer_worker, reviewer_worker)
     return True

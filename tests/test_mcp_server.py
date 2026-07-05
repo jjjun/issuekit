@@ -142,7 +142,7 @@ def test_health_tool_reports_config_and_local_state(
     assert status["token_cached"] is True
     assert status["token_expires_at"] == expires_at
     assert status["worker_present"] is True
-    assert status["worker"] == "machine/demo/checkout"
+    assert status["worker"] == "checkout.demo"
     assert status["author_guard_active"] is True
     assert status["author_guard"]["ref"] == "demo#7"
     assert status["errors"] == []
@@ -273,6 +273,15 @@ def test_list_proposal_checks_tool_returns_raw_checks(
     assert checks[0]["status"] == "answered"
     assert checks[0]["verdict"] == "revise"
     assert client.calls == [
+        {
+            "method": "poll_proposal_checks",
+            "body": {
+                "target_worker": "worker.demo",
+                "status": "answered",
+                "limit": 5,
+                "offset": 0,
+            },
+        },
         {
             "method": "poll_proposal_checks",
             "body": {

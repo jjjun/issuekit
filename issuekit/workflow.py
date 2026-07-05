@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
+from typing import Any
 
 from issuekit.author_guard import (
     AuthorOrchestrationContext,
@@ -38,9 +40,16 @@ class ReclaimResult:
 class WorkflowError(RuntimeError):
     """Raised when a workflow transition cannot be completed."""
 
-    def __init__(self, message: str, *, code: str | None = None) -> None:
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str | None = None,
+        details: Mapping[str, Any] | None = None,
+    ) -> None:
         super().__init__(message)
         self.code = code
+        self.details = dict(details or {})
 
     def __str__(self) -> str:
         message = super().__str__()

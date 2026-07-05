@@ -1,6 +1,7 @@
 """Detect orphaned or stale implementing claims.
 
-An implementer claim records which physical checkout (machine/repo/worker)
+An implementer claim records which worker checkout (worker.repo, or the legacy
+machine/repo/worker key)
 holds the issue in ``Issue.worker``. The worker registry refreshes each live
 checkout's ``last_seen`` heartbeat (see ``WorkerHeartbeat``). Cross-referencing
 the two surfaces claims whose holding worker is gone or has stopped
@@ -22,6 +23,7 @@ from datetime import datetime, timezone
 from issuekit.config import IssuekitConfig
 from issuekit.core import Issue
 from issuekit.store import get_store
+from issuekit.worker_keys import worker_keys_from_row
 from issuekit.worker_registry import list_api_workers
 
 # The worker heartbeat posts every WORKER_HEARTBEAT_INTERVAL_SEC (60s). Wait for
@@ -45,12 +47,6 @@ class StaleClaim:
     worker: str
     last_seen: str | None
     stale_seconds: float | None
-
-
-def _worker_key(row: Mapping[str, object]) -> str:
-    return "/".join(
-        str(row.get(field, "")) for field in ("machine_id", "repo_id", "worker_id")
-    )
 
 
 def _parse_timestamp(value: object) -> datetime | None:
@@ -85,9 +81,10 @@ def detect_stale_claims(
     A worker whose ``last_seen`` is missing or unparseable is treated as live
     for the same reason.
     """
-    last_seen_by_worker: dict[str, object] = {
-        _worker_key(row): row.get("last_seen") for row in workers
-    }
+    last_seen_by_worker: dict[str, object] = {}
+    for row in workers:
+        for key in worker_keys_from_row(row):
+            last_seen_by_worker[key] = row.get("last_seen")
     stale: list[StaleClaim] = []
     for issue in issues:
         if issue.stage != IMPLEMENTING_STAGE:
@@ -119,9 +116,9 @@ def list_stale_claims(
 ) -> list[StaleClaim]:
     """Load implementing issues and live workers, then detect stale claims.
 
-    Workers are listed unfiltered: liveness is a property of the physical
-    checkout (machine/repo/worker), independent of which project it registered
-    under, so the full worker key is what identifies a live holder.
+    Workers are listed unfiltered: liveness is a property of the worker
+    checkout, independent of which project it registered under, so the worker
+    key is what identifies a live holder.
     """
     current = now or datetime.now(timezone.utc)
     workers = list_api_workers(config)

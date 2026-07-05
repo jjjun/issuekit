@@ -9,6 +9,7 @@ from pathlib import Path
 import platform
 import re
 from urllib.parse import urlparse
+from urllib.parse import urlsplit, urlunsplit
 
 from issuekit.config import WorkerIdentity
 from issuekit.core import is_valid_workflow_token
@@ -23,6 +24,7 @@ from issuekit.localconfig import (
     read_local_config,
     write_local_config,
 )
+from issuekit.worker_keys import legacy_worker_key, worker_key as current_worker_key
 
 
 WORKER_REGISTRY_ENV_VAR = "ISSUEKIT_WORKER_REGISTRY"
@@ -37,6 +39,7 @@ class WorkerRegistration:
     identity: WorkerIdentity
     sources: dict[str, str]
     written: bool
+    canonical_url: str | None = None
 
 
 def register_worker(
@@ -58,6 +61,7 @@ def register_worker(
     repo_path = git_repo.resolve()
     existing = load_local_worker(repo_path)
     defaults = _default_identity(repo_path)
+    canonical_url = canonical_git_origin_url(repo_path)
     if (
         defaults.sources["repo_id"] == "working-directory basename"
         and repo_id is None
@@ -110,6 +114,7 @@ def register_worker(
             "worker_id": worker_source,
         },
         written=written,
+        canonical_url=canonical_url,
     )
 
 
@@ -119,7 +124,7 @@ def load_local_worker(cwd: Path | str = ".") -> WorkerIdentity | None:
         return None
     machine_id = str(worker.get("machine_id", "")).strip()
     repo_id = str(worker.get("repo_id", "")).strip()
-    worker_id = str(worker.get("worker_id", "")).strip()
+    worker_id = str(worker.get("worker_name") or worker.get("worker_id") or "").strip()
     if not (machine_id and repo_id and worker_id):
         return None
     return WorkerIdentity(machine_id=machine_id, repo_id=repo_id, worker_id=worker_id)
@@ -131,7 +136,7 @@ def save_local_worker(identity: WorkerIdentity, cwd: Path | str = ".") -> bool:
     desired_worker = {
         "machine_id": identity.machine_id,
         "repo_id": identity.repo_id,
-        "worker_id": identity.worker_id,
+        "worker_name": identity.worker_name,
     }
     desired_content = local_config_text(
         worker=desired_worker,
@@ -171,6 +176,41 @@ def git_origin_url(cwd: Path | str = ".") -> str | None:
     return _git_origin_url(cwd)
 
 
+def canonical_git_origin_url(cwd: Path | str = ".") -> str | None:
+    remote_url = git_origin_url(cwd)
+    if remote_url is None:
+        return None
+    return canonicalize_remote_url(remote_url)
+
+
+def canonicalize_remote_url(remote_url: str) -> str | None:
+    value = remote_url.strip()
+    if not value:
+        return None
+    value = value.rstrip("/")
+
+    scp_match = re.match(r"^(?P<user>[^/@:]+)@(?P<host>[^:]+):(?P<path>.+)$", value)
+    if scp_match:
+        user = scp_match.group("user").lower()
+        host = scp_match.group("host").lower()
+        path = _canonical_remote_path(scp_match.group("path"))
+        if not path:
+            return None
+        return f"ssh://{user}@{host}/{path}"
+
+    parsed = urlsplit(value)
+    if parsed.scheme and parsed.netloc:
+        scheme = parsed.scheme.lower()
+        netloc = parsed.netloc.lower()
+        path = _canonical_remote_path(parsed.path)
+        if not path:
+            return None
+        return urlunsplit((scheme, netloc, f"/{path}", "", ""))
+
+    path = _canonical_remote_path(value)
+    return path or None
+
+
 def _default_identity(cwd: Path) -> WorkerRegistration:
     hostname = platform.node().strip()
     machine_id = _token(hostname, default="machine")
@@ -186,6 +226,7 @@ def _default_identity(cwd: Path) -> WorkerRegistration:
             "worker_id": "working-directory basename, pinned",
         },
         written=False,
+        canonical_url=canonical_git_origin_url(cwd),
     )
 
 
@@ -297,7 +338,11 @@ def _worker_registry_path(registry_path: Path | str | None) -> Path:
 
 
 def worker_key(identity: WorkerIdentity) -> str:
-    return f"{identity.machine_id}/{identity.repo_id}/{identity.worker_id}"
+    return current_worker_key(identity.repo_id, identity.worker_name)
+
+
+def legacy_worker_identity_key(identity: WorkerIdentity) -> str:
+    return legacy_worker_key(identity.machine_id, identity.repo_id, identity.worker_name)
 
 
 def _worker_key(identity: WorkerIdentity) -> str:
@@ -323,6 +368,14 @@ def _repo_name_from_path(value: str) -> str | None:
     if not normalized:
         return None
     return normalized.replace("\\", "/").split("/")[-1] or None
+
+
+def _canonical_remote_path(value: str) -> str:
+    normalized = value.strip().replace("\\", "/").strip("/")
+    if normalized.endswith(".git"):
+        normalized = normalized[:-4]
+    parts = [part for part in normalized.split("/") if part]
+    return "/".join(parts)
 
 
 def _token(value: str | None, *, default: str) -> str:
