@@ -6,6 +6,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 import subprocess
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -29,17 +30,24 @@ def run_git(
             ["git", *args],
             cwd=str(cwd),
             capture_output=True,
-            text=True,
             timeout=timeout,
             stdin=subprocess.DEVNULL,
         )
-    except (OSError, subprocess.SubprocessError):
+    except (OSError, subprocess.SubprocessError, UnicodeError):
         return None
     return GitResult(
         returncode=result.returncode,
-        stdout=result.stdout,
-        stderr=result.stderr,
+        stdout=_decode_stream(result.stdout),
+        stderr=_decode_stream(result.stderr),
     )
+
+
+def _decode_stream(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    return bytes(value).decode("utf-8", errors="replace")
 
 
 def git_status_short(

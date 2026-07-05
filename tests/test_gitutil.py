@@ -36,9 +36,30 @@ def test_run_git_redirects_stdin_and_normalizes_result(
     assert captured["args"] == ["git", "status", "--short"]
     assert captured["cwd"] == str(tmp_path)
     assert captured["capture_output"] is True
-    assert captured["text"] is True
+    assert "text" not in captured
     assert captured["timeout"] == 7
     assert captured["stdin"] == subprocess.DEVNULL
+
+
+def test_run_git_decodes_bytes_as_utf8_with_replacement(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    def fake_run(*args, **kwargs):
+        return subprocess.CompletedProcess(
+            args[0],
+            0,
+            stdout=b"ok \xe8\xbb\xbd \x87\n",
+            stderr=b"err \xff\n",
+        )
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    result = run_git(["status"], tmp_path)
+
+    assert result is not None
+    assert result.stdout == "ok \u8efd \ufffd\n"
+    assert result.stderr == "err \ufffd\n"
 
 
 def test_run_git_returns_none_on_subprocess_failure(

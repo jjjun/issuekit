@@ -2,6 +2,8 @@ from dataclasses import dataclass
 from pathlib import Path
 import subprocess
 
+import pytest
+
 from issuekit import cli
 from issuekit import store as store_module
 from issuekit.agents import review as review_agent
@@ -166,6 +168,7 @@ def test_review_command_approves_with_distinct_worker_identity(
     assert "Review issue demo#1" in prompt_text
     assert "Review correctness, tests, readability, maintainability" in prompt_text
     assert "Request changes for gratuitous obfuscation" in prompt_text
+    assert "All JSON string values must be ASCII-only" in prompt_text
     assert repo == tmp_path
     assert timeout == 9
     assert agent_name == "codex"
@@ -316,6 +319,33 @@ def test_review_prompt_surfaces_obfuscation_hints() -> None:
     assert "string-concatenated import_module path" in prompt
     assert "string-concatenated getattr name" in prompt
     assert "globals() attribute injection" in prompt
+
+
+def test_collect_git_diff_context_tolerates_missing_diff_stdout(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        review_agent,
+        "git_status_short",
+        lambda *args, **kwargs: " M code.py\n",
+    )
+    monkeypatch.setattr(review_agent, "_git_stdout", lambda *args, **kwargs: None)
+
+    context = review_agent._collect_git_diff_context(tmp_path)
+
+    assert context.has_changed_files is True
+    assert "git diff HEAD --:\n(unavailable or empty)" in context.text
+    assert context.suspicious_warnings == ()
+
+
+def test_parse_review_output_names_non_ascii_field() -> None:
+    with pytest.raises(review_agent.ReviewParseError, match="notes must be ASCII-only"):
+        review_agent.parse_review_output(
+            "```review\n"
+            '{"verdict":"request-changes","verification":"","notes":"\u76f4\u3057\u3066"}\n'
+            "```"
+        )
 
 
 def test_review_command_blocks_verdict_when_agent_mutates_worktree(

@@ -14,7 +14,7 @@ from typing import TextIO
 from issuekit.agents.runner import AgentResult, AgentRunner, resolve_adapter
 from issuekit.commands.approve import approve_issue
 from issuekit.config import IssuekitConfig
-from issuekit.core import Issue, has_non_ascii
+from issuekit.core import ASCII_ONLY_HINT, Issue, has_non_ascii
 from issuekit.gitutil import git_status_short, run_git
 from issuekit.store import get_store
 from issuekit.workflow import WorkflowError, ensure_assigned_reviewer, request_changes
@@ -231,8 +231,9 @@ def _review_verdict_from_json(raw: dict[str, object]) -> ReviewVerdict:
         raise ReviewParseError("Approved review verdict requires verification.")
     if verdict == "request-changes" and not notes:
         raise ReviewParseError("Request-changes review verdict requires notes.")
-    if has_non_ascii("\n".join((verdict, verification, notes))):
-        raise ReviewParseError("Review fields must be ASCII-only.")
+    _validate_ascii_review_field("verdict", verdict)
+    _validate_ascii_review_field("verification", verification)
+    _validate_ascii_review_field("notes", notes)
     return ReviewVerdict(verdict=verdict, verification=verification, notes=notes)
 
 
@@ -240,6 +241,13 @@ def _required_string(value: object, key: str) -> str:
     if not isinstance(value, str):
         raise ReviewParseError(f"Review key {key} must be a string.")
     return value
+
+
+def _validate_ascii_review_field(key: str, value: str) -> None:
+    if has_non_ascii(value):
+        raise ReviewParseError(
+            f"Review field {key} must be ASCII-only. {ASCII_ONLY_HINT}"
+        )
 
 
 def _ensure_registered_distinct_worker(
@@ -309,6 +317,7 @@ def _render_review_prompt(
             "The verdict must be approve or request-changes.",
             "For approve, verification must describe the checks you ran.",
             "For request-changes, notes must be actionable feedback for the implementer.",
+            f"All JSON string values must be ASCII-only. {ASCII_ONLY_HINT}",
             "```review",
             "{",
             '  "verdict": "approve-or-request-changes",',
@@ -327,8 +336,14 @@ def _git_diff_context(cwd: Path) -> str:
 
 def _collect_git_diff_context(cwd: Path) -> ReviewDiffContext:
     status = git_status_short(cwd, strip=False, untracked_files="all")
-    stat = _git_stdout(["--no-pager", "diff", "--stat", "HEAD", "--"], cwd)
-    diff = _git_stdout(["--no-pager", "diff", "--no-ext-diff", "--unified=80", "HEAD", "--"], cwd)
+    stat = _git_stdout(["--no-pager", "diff", "--stat", "HEAD", "--"], cwd) or ""
+    diff = (
+        _git_stdout(
+            ["--no-pager", "diff", "--no-ext-diff", "--unified=80", "HEAD", "--"],
+            cwd,
+        )
+        or ""
+    )
     if diff and len(diff) > _MAX_DIFF_CHARS:
         diff = diff[:_MAX_DIFF_CHARS] + "\n\n[diff truncated]\n"
     text = "\n".join(

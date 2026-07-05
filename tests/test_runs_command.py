@@ -1,3 +1,4 @@
+import io
 import json
 from datetime import datetime
 from pathlib import Path
@@ -246,3 +247,40 @@ def test_runs_list_shows_last_log_line(tmp_path: Path, monkeypatch, capsys) -> N
     output = capsys.readouterr().out
     assert "agent is processing..." in output
     assert "LAST LOG" in output
+
+
+def test_runs_output_escapes_characters_unsupported_by_console_encoding(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    run_dir = tmp_path / ".agent-runs"
+    write_status(
+        status_path(run_dir, "run-a"),
+        RunStatus(
+            run_id="run-a",
+            agent="codex",
+            issue=1,
+            status="running",
+            pid=123,
+            started_at="2026-06-08T11:00:00",
+            ended_at=None,
+            elapsed_sec=None,
+            exit_code=None,
+            plan="docs/issues/active/001_first.md",
+            stdout_log=".agent-runs/run-a.out.log",
+            agent_log=".agent-runs/run-a.agent.log",
+            last_log_line="\u8f7d log",
+            last_log_at="2026-06-08T11:00:05",
+            heartbeat_at="2026-06-08T11:00:05",
+        ),
+    )
+    monkeypatch.chdir(tmp_path)
+    buffer = io.BytesIO()
+    stream = io.TextIOWrapper(buffer, encoding="cp932", errors="strict")
+    monkeypatch.setattr("sys.stdout", stream)
+
+    assert cli.main(["runs"]) == 0
+
+    stream.flush()
+    output = buffer.getvalue().decode("cp932")
+    assert "\\u8f7d log" in output
