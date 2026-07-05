@@ -764,8 +764,37 @@ def test_cache_is_keyed_by_api_url(
         http_client=httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(500))),
     )
 
-    with pytest.raises(WorkflowError, match="issuekit login"):
+    with pytest.raises(WorkflowError, match="issuekit login") as excinfo:
         client.login()
+
+    message = str(excinfo.value)
+    assert "no cached token for https://other.example" in message
+    assert "cached: https://mine.example" in message
+    assert "ISSUEKIT_API_URL set to the URL this client uses" in message
+
+
+def test_token_cache_miss_message_lists_other_cached_urls(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cache_path = tmp_path / "token.json"
+    monkeypatch.setenv("ISSUEKIT_TOKEN_CACHE", str(cache_path))
+    cache_path.write_text(
+        json.dumps(
+            {
+                "https://alpha.example": {"token": "alpha", "expires_at": time.time() + 3600},
+                "https://beta.example": {"token": "beta", "expires_at": time.time() + 3600},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert token_cache_module._read_cached_token("https://missing.example") is None
+    assert token_cache_module._cached_token_miss_message("https://missing.example") == (
+        "no cached token for https://missing.example "
+        "(cached: https://alpha.example, https://beta.example); "
+        "re-run `issuekit login` with ISSUEKIT_API_URL set to the URL this client uses"
+    )
 
 
 def test_issuekit_api_token_is_not_written_to_cache(

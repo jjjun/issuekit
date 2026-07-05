@@ -1,5 +1,6 @@
 import asyncio
 import json
+import time
 from pathlib import Path
 from typing import Any
 
@@ -10,6 +11,7 @@ pytest.importorskip("mcp")
 from issuekit import cli
 from issuekit import proposals_api
 from issuekit import store as store_module
+from issuekit import token_cache as token_cache_module
 from issuekit import worker_registry
 from issuekit.agents.proposal_check import ProposalCheckDecision
 from issuekit.mcp.server import create_server
@@ -95,7 +97,13 @@ def test_server_registers_expected_tools(tmp_path: Path) -> None:
     }
 
 
-def test_health_tool_reports_config_and_local_state(tmp_path: Path) -> None:
+def test_health_tool_reports_config_and_local_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ISSUEKIT_TOKEN_CACHE", str(tmp_path / "token.json"))
+    expires_at = time.time() + 3600
+    token_cache_module._write_cached_token("https://mine.example", "cached-token", expires_at)
     (tmp_path / "issuekit.toml").write_text(
         "api_url = 'https://mine.example'\nproject = 'demo'\n",
         encoding="utf-8",
@@ -130,10 +138,37 @@ def test_health_tool_reports_config_and_local_state(tmp_path: Path) -> None:
     assert status["cwd"] == str(tmp_path.resolve())
     assert status["project"] == "demo"
     assert status["api_url_configured"] is True
+    assert status["token_cached"] is True
+    assert status["token_expires_at"] == expires_at
     assert status["worker_present"] is True
     assert status["worker"] == "machine/demo/checkout"
     assert status["author_guard_active"] is True
     assert status["author_guard"]["ref"] == "demo#7"
+    assert status["errors"] == []
+
+
+def test_health_tool_reports_token_cache_miss_for_resolved_url(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ISSUEKIT_TOKEN_CACHE", str(tmp_path / "token.json"))
+    token_cache_module._write_cached_token(
+        "https://mine.example",
+        "cached-token",
+        time.time() + 3600,
+    )
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://other.example/'\nproject = 'demo'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    server = create_server(tmp_path)
+
+    status = _call(server, "health", {})
+
+    assert status["api_url_configured"] is True
+    assert status["token_cached"] is False
+    assert status["token_expires_at"] is None
     assert status["errors"] == []
 
 

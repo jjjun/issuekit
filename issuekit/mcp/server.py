@@ -33,6 +33,7 @@ from issuekit.proposals_api import (
 )
 from issuekit.session import new_session_token
 from issuekit.store import get_store
+from issuekit.token_cache import _read_cached_token
 from issuekit.worker_registry import list_api_workers
 from issuekit.workflow import (
     claim_next,
@@ -427,6 +428,8 @@ def _health_status(root: Path) -> dict[str, Any]:
         "cwd": str(root.resolve()),
         "project": None,
         "api_url_configured": False,
+        "token_cached": False,
+        "token_expires_at": None,
         "worker_present": False,
         "worker": None,
         "author_guard_active": False,
@@ -453,6 +456,9 @@ def _health_status(root: Path) -> dict[str, Any]:
 
     payload["project"] = config.project
     payload["api_url_configured"] = bool(config.api_url)
+    cached_token = _read_cached_token(config.api_url.rstrip("/")) if config.api_url else None
+    payload["token_cached"] = cached_token is not None
+    payload["token_expires_at"] = None if cached_token is None else cached_token["expires_at"]
     payload["worker"] = config.worker_key()
     payload["worker_present"] = config.worker is not None
     return payload

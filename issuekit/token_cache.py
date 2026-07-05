@@ -43,6 +43,20 @@ def _read_cached_token(api_url: str) -> dict[str, Any] | None:
     return {"token": token, "expires_at": expiry}
 
 
+def _cached_token_miss_message(api_url: str) -> str | None:
+    cached_urls = sorted(
+        url
+        for url in _read_token_cache()
+        if isinstance(url, str) and url != api_url
+    )
+    if not cached_urls:
+        return None
+    return (
+        f"no cached token for {api_url} (cached: {', '.join(cached_urls)}); "
+        "re-run `issuekit login` with ISSUEKIT_API_URL set to the URL this client uses"
+    )
+
+
 def _write_cached_token(api_url: str, token: str, expires_at: float | None) -> None:
     cache = _read_token_cache()
     cache[api_url] = {"token": token, "expires_at": expires_at}

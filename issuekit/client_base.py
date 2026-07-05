@@ -14,7 +14,11 @@ from issuekit.client_security import (
     _warn_insecure_api_url,
 )
 from issuekit.core import _drop_none
-from issuekit.token_cache import _delete_cached_token, _write_cached_token
+from issuekit.token_cache import (
+    _cached_token_miss_message,
+    _delete_cached_token,
+    _write_cached_token,
+)
 from issuekit.workflow import WorkflowError
 
 
@@ -44,7 +48,7 @@ class _ClientTransportMixin:
         if not self.username or not self.password:
             if self._external_token and self._token and not _is_expired(self._token_expiry):
                 return self._token
-            raise WorkflowError(_LOGIN_GUIDANCE, code="unauthorized")
+            raise WorkflowError(_login_guidance(self.api_url), code="unauthorized")
 
         _warn_insecure_api_url(self.api_url)
         response = self._send(
@@ -129,7 +133,7 @@ class _ClientTransportMixin:
         )
         if response.status_code == 401:
             if not self.username or not self.password:
-                raise WorkflowError(_LOGIN_GUIDANCE, code="unauthorized")
+                raise WorkflowError(_login_guidance(self.api_url), code="unauthorized")
             token = self.login(force=True)
             response = self._send(
                 method,
@@ -243,6 +247,13 @@ def _ensure_dict(payload: Any, label: str) -> JsonDict:
     if not isinstance(payload, dict):
         raise WorkflowError(f"{label} was not a JSON object.", code="invalid_response")
     return payload
+
+
+def _login_guidance(api_url: str) -> str:
+    miss_message = _cached_token_miss_message(api_url)
+    if miss_message is None:
+        return _LOGIN_GUIDANCE
+    return f"{_LOGIN_GUIDANCE} {miss_message}."
 
 
 def _items_envelope_rows(payload: Any, *, page_label: str, item_label: str) -> list[JsonDict]:
