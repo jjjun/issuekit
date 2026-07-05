@@ -8,6 +8,7 @@ client created here.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 import os
 
 import httpx
@@ -33,6 +34,13 @@ from issuekit.core import is_valid_workflow_token
 from issuekit.token_cache import _read_cached_token
 
 
+DEFAULT_HTTP_LIMITS = httpx.Limits(
+    max_connections=5,
+    max_keepalive_connections=0,
+    keepalive_expiry=1.0,
+)
+
+
 class IssuekitClient(
     _IssueResourceMixin,
     _WorkerResourceMixin,
@@ -54,6 +62,8 @@ class IssuekitClient(
         token: str | None = None,
         use_env_token: bool = True,
         http_client: httpx.Client | None = None,
+        http_limits: httpx.Limits | None = None,
+        headers: Mapping[str, str] | None = None,
     ) -> None:
         if not api_url.strip():
             raise ValueError("api_url is required")
@@ -74,7 +84,15 @@ class IssuekitClient(
                 self._token = cached["token"]
                 self._token_expiry = cached["expires_at"]
         self._owns_http_client = http_client is None
-        self._http = http_client or httpx.Client(timeout=timeout, follow_redirects=True)
+        if http_client is None:
+            self._http = httpx.Client(
+                timeout=timeout,
+                follow_redirects=True,
+                limits=http_limits or DEFAULT_HTTP_LIMITS,
+                headers=headers,
+            )
+        else:
+            self._http = http_client
 
     def close(self) -> None:
         if self._owns_http_client:

@@ -13,7 +13,7 @@ import pytest
 
 import issuekit.client_security as security_module
 import issuekit.token_cache as token_cache_module
-from issuekit.client import IssuekitClient
+from issuekit.client import DEFAULT_HTTP_LIMITS, IssuekitClient
 from issuekit.testing import FakeIssuekitClient
 from issuekit.workflow import WorkflowError
 
@@ -296,12 +296,61 @@ def test_client_update_issue_rejects_empty_update() -> None:
         client.update_issue(7, {"title": None, "body": None, "priority": None})
 
 
-def test_client_owned_http_client_follows_redirects() -> None:
+def test_client_owned_http_client_follows_redirects_and_uses_bounded_pool(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    class RecordingClient:
+        def __init__(self, **kwargs: object) -> None:
+            captured.update(kwargs)
+            self.follow_redirects = kwargs.get("follow_redirects")
+
+        def close(self) -> None:
+            captured["closed"] = True
+
+    monkeypatch.setattr("issuekit.client.httpx.Client", RecordingClient)
+
     client = IssuekitClient("https://mine.example", token="static-token")
     try:
         assert client._http.follow_redirects is True
+        assert captured["limits"] is DEFAULT_HTTP_LIMITS
+        assert vars(DEFAULT_HTTP_LIMITS) == {
+            "max_connections": 5,
+            "max_keepalive_connections": 0,
+            "keepalive_expiry": 1.0,
+        }
     finally:
         client.close()
+    assert captured["closed"] is True
+
+
+def test_client_owned_http_client_accepts_transport_overrides(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    class RecordingClient:
+        def __init__(self, **kwargs: object) -> None:
+            captured.update(kwargs)
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr("issuekit.client.httpx.Client", RecordingClient)
+    limits = httpx.Limits(max_connections=2, max_keepalive_connections=1)
+    headers = {"Connection": "close"}
+
+    client = IssuekitClient(
+        "https://mine.example",
+        token="static-token",
+        http_limits=limits,
+        headers=headers,
+    )
+    client.close()
+
+    assert captured["limits"] is limits
+    assert captured["headers"] == headers
 
 
 def test_client_reauthenticates_once_after_401() -> None:
