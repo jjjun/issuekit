@@ -74,6 +74,7 @@ class ReviewOutcome:
 class ReviewDiffContext:
     text: str
     has_changed_files: bool
+    has_handoff_evidence: bool = False
     suspicious_warnings: tuple[str, ...] = ()
 
 
@@ -105,8 +106,8 @@ def run_review_and_decide(
     ensure_assigned_reviewer(issue, agent, agent)
 
     adapter = resolve_adapter(agent, config=config, model=model)
-    diff_context = _collect_git_diff_context(cwd)
-    if not diff_context.has_changed_files:
+    diff_context = _collect_git_diff_context(cwd, issue=issue)
+    if not diff_context.has_changed_files and not diff_context.has_handoff_evidence:
         raise WorkflowError(
             "No implementation diff is available for automated review; "
             "refusing to run the reviewer agent."
@@ -289,13 +290,20 @@ def _render_review_prompt(
             suspicious_warnings=_suspicious_readability_warnings(diff_context),
         )
     diff = review_context.text
+    review_target = (
+        "the implementation diff"
+        if review_context.has_changed_files
+        else "the submitted handoff evidence"
+    )
     return "\n".join(
         [
             f"# Review issue {issue.ref}",
             "",
-            "You are the reviewer. Review the implementation diff against the issue.",
+            f"You are the reviewer. Review {review_target} against the issue.",
             "Do not edit files, commit, push, claim, submit, approve, request changes, or mutate tracker state.",
             "Review correctness, tests, readability, maintainability, and fit with surrounding style.",
+            "When no local implementation diff is present, review the handoff evidence, command evidence,",
+            "and any referenced live state; request changes if the evidence is insufficient to decide.",
             "Request changes for gratuitous obfuscation or unexplained style deviations even when tests pass.",
             "Examples include string-concatenated identifiers or import paths, avoidable importlib/getattr indirection,",
             "and globals()/setattr attribute injection where a plain definition works.",
@@ -334,7 +342,7 @@ def _git_diff_context(cwd: Path) -> str:
     return _collect_git_diff_context(cwd).text
 
 
-def _collect_git_diff_context(cwd: Path) -> ReviewDiffContext:
+def _collect_git_diff_context(cwd: Path, *, issue: Issue | None = None) -> ReviewDiffContext:
     status = git_status_short(cwd, strip=False, untracked_files="all")
     stat = _git_stdout(["--no-pager", "diff", "--stat", "HEAD", "--"], cwd) or ""
     diff = (
@@ -346,6 +354,12 @@ def _collect_git_diff_context(cwd: Path) -> ReviewDiffContext:
     )
     if diff and len(diff) > _MAX_DIFF_CHARS:
         diff = diff[:_MAX_DIFF_CHARS] + "\n\n[diff truncated]\n"
+    handoff_evidence = _handoff_evidence_text(issue) if issue is not None else ""
+    no_diff_note = (
+        ""
+        if _has_reviewable_changed_files(status)
+        else "\n\nNo local implementation diff is available in this checkout."
+    )
     text = "\n".join(
         (
             "git status --short:",
@@ -356,13 +370,74 @@ def _collect_git_diff_context(cwd: Path) -> ReviewDiffContext:
             "",
             "git diff HEAD --:",
             diff.strip() if diff else "(unavailable or empty)",
+            no_diff_note,
+            handoff_evidence,
         )
-    )
+    ).strip()
     return ReviewDiffContext(
         text=text,
         has_changed_files=_has_reviewable_changed_files(status),
+        has_handoff_evidence=bool(handoff_evidence.strip()),
         suspicious_warnings=_suspicious_readability_warnings(diff),
     )
+
+
+_HANDOFF_METADATA_LABELS = {
+    "summary": "Handoff summary",
+    "handoff_summary": "Handoff summary",
+    "submit_summary": "Handoff summary",
+    "review_summary": "Handoff summary",
+    "branch": "Branch",
+    "handoff_branch": "Branch",
+    "submit_branch": "Branch",
+    "review_branch": "Branch",
+    "commit": "Commit",
+    "handoff_commit": "Commit",
+    "submit_commit": "Commit",
+    "review_commit": "Commit",
+    "verification": "Verification evidence",
+    "handoff_verification": "Verification evidence",
+    "review_verification": "Verification evidence",
+}
+
+_BODY_EVIDENCE_PATTERN = re.compile(
+    r"(?im)^\s*(handoff summary|branch|commit|verification|"
+    r"verification evidence|command evidence|commands run|checks|live host state)\s*:",
+)
+
+
+def _handoff_evidence_text(issue: Issue | None) -> str:
+    if issue is None:
+        return ""
+
+    entries: list[str] = []
+    seen_labels: set[str] = set()
+    for key, label in _HANDOFF_METADATA_LABELS.items():
+        value = issue.metadata.get(key, "").strip()
+        if not value:
+            continue
+        unique_label = label
+        if unique_label in seen_labels:
+            unique_label = f"{label} ({key})"
+        seen_labels.add(unique_label)
+        entries.append(f"{unique_label}: {value}")
+
+    body_evidence = _body_handoff_evidence(issue.body)
+    if body_evidence:
+        entries.append("Issue body evidence:")
+        entries.append(body_evidence)
+
+    if not entries:
+        return ""
+    return "\n".join(("Handoff evidence:", *entries))
+
+
+def _body_handoff_evidence(body: str) -> str:
+    if not _BODY_EVIDENCE_PATTERN.search(body):
+        return ""
+    lines = [line.rstrip() for line in body.splitlines()]
+    evidence_lines = [line for line in lines if _BODY_EVIDENCE_PATTERN.search(line)]
+    return "\n".join(evidence_lines)
 
 
 def _readability_hint_section(context: str | ReviewDiffContext) -> str:

@@ -258,6 +258,11 @@ class FakeIssueSurface:
                 issue["implementer_session"] = session
             issue["stage"] = "review"
             issue["assignee"] = reviewer or ""
+            issue["summary"] = summary
+            if branch is not None:
+                issue["branch"] = branch
+            if commit is not None:
+                issue["commit"] = commit
             return deepcopy(issue)
 
     def request_changes(

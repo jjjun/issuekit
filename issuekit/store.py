@@ -27,6 +27,24 @@ REQUIRED_API_FIELDS = {
     "author",
 }
 
+OPTIONAL_API_METADATA_FIELDS = (
+    "summary",
+    "branch",
+    "commit",
+    "verification",
+    "handoff_summary",
+    "handoff_branch",
+    "handoff_commit",
+    "handoff_verification",
+    "submit_summary",
+    "submit_branch",
+    "submit_commit",
+    "review_summary",
+    "review_branch",
+    "review_commit",
+    "review_verification",
+)
+
 
 class IssueStore(Protocol):
     def __enter__(self) -> "IssueStore":
@@ -360,6 +378,10 @@ class ApiStore:
             "origin": _string(raw.get("origin")),
             "title": _title(raw, body, issue_id),
         }
+        for field in OPTIONAL_API_METADATA_FIELDS:
+            value = _string(raw.get(field))
+            if value:
+                metadata[field] = value
         synthetic_ref = f"{self.config.project}#{issue_id}"
         return Issue(
             id=issue_id,

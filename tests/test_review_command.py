@@ -293,6 +293,56 @@ def test_review_command_rejects_empty_implementation_diff_before_agent(
     assert [call["method"] for call in client.calls] == []
 
 
+def test_review_command_allows_handoff_evidence_without_local_diff(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    raw_issue = api_issue(
+        1,
+        "Host operation",
+        status="in_progress",
+        assignee="",
+        stage="review",
+        implementer="codex",
+        worker="machine/demo/implementer",
+        author="claude",
+        body="# Issue #1: Host operation\n\nReview the live host state.\n",
+    )
+    raw_issue.update(
+        {
+            "summary": "Restarted the service on host a.",
+            "branch": "main",
+            "commit": "abc1234",
+            "verification": "systemctl status demo.service",
+        }
+    )
+    client = FakeIssuekitClient([raw_issue])
+    ApprovingRunner.calls.clear()
+    _configure_registered_api(tmp_path, monkeypatch, client)
+    (tmp_path / ".gitignore").write_text(".agent-runs/\n", encoding="utf-8", newline="\n")
+    (tmp_path / "code.py").write_text("value = 1\n", encoding="utf-8", newline="\n")
+    _init_git_repo(tmp_path)
+    monkeypatch.setattr("issuekit.commands.review.AgentRunner", ApprovingRunner)
+
+    exit_code = cli.main(["review", "1", "--agent", "codex"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert len(ApprovingRunner.calls) == 1
+    prompt_text = (tmp_path / ".agent-runs" / "review-issue-1.md").read_text(
+        encoding="utf-8"
+    )
+    assert "Review the submitted handoff evidence against the issue." in prompt_text
+    assert "No local implementation diff is available in this checkout." in prompt_text
+    assert "Handoff summary: Restarted the service on host a." in prompt_text
+    assert "Branch: main" in prompt_text
+    assert "Commit: abc1234" in prompt_text
+    assert "Verification evidence: systemctl status demo.service" in prompt_text
+    assert "review_decision verdict=approve" in captured.out
+    assert client.get_issue(1)["status"] == "completed"
+
+
 def test_review_prompt_surfaces_obfuscation_hints() -> None:
     diff_context = review_agent.ReviewDiffContext(
         text=(

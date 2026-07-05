@@ -174,6 +174,28 @@ def test_api_store_worker_field_is_optional() -> None:
     assert issue.worker == ""
 
 
+def test_api_store_preserves_review_handoff_metadata() -> None:
+    raw_issue = api_issue(7, "Review Path", status="in_progress", stage="review")
+    raw_issue.update(
+        {
+            "summary": "Updated the host service.",
+            "branch": "main",
+            "commit": "abc1234",
+            "verification": "systemctl status demo.service",
+        }
+    )
+    client = FakeIssuekitClient([raw_issue])
+    store = ApiStore(IssuekitConfig(api_url="https://mine.example", project="demo"), client=client)
+
+    issue = store.get_issue(7)
+
+    assert issue is not None
+    assert issue.metadata["summary"] == "Updated the host service."
+    assert issue.metadata["branch"] == "main"
+    assert issue.metadata["commit"] == "abc1234"
+    assert issue.metadata["verification"] == "systemctl status demo.service"
+
+
 def test_api_store_finds_implementing_issues_for_worker() -> None:
     client = FakeIssuekitClient(
         [
