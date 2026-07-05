@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from pathlib import Path
 from typing import Any
+from urllib.parse import unquote, urlparse
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp import Context, FastMCP
 
 from issuekit import __version__
 from issuekit.agents.proposal_check import (
@@ -18,9 +20,10 @@ from issuekit.author_guard import STOP_SENTINEL, create_author_guard, guard_dict
 from issuekit.commands.approve import approve_issue
 from issuekit.commands.edit import edit_issue
 from issuekit.commands.reclaim import reclaim_result_dict
-from issuekit.config import load_config
+from issuekit.config import IssuekitConfig, load_config
 from issuekit.core import issue_dict
-from issuekit.localconfig import LocalConfigError, read_local_config
+from issuekit.gitutil import git_root
+from issuekit.localconfig import LocalConfigError, load_toml, read_local_config
 from issuekit.orphans import DEFAULT_STALE_AFTER_SEC, list_stale_claims, stale_claim_dict
 from issuekit.protocol import render_protocol, render_server_instructions
 from issuekit.proposals_api import (
@@ -42,6 +45,7 @@ from issuekit.workflow import (
     reclaim_issue as workflow_reclaim_issue,
     request_changes as workflow_request_changes,
     submit_for_review as workflow_submit_for_review,
+    WorkflowError,
 )
 
 
@@ -58,8 +62,8 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
             "before workflow operations."
         )
     )
-    def health() -> dict[str, Any]:
-        return _health_status(root)
+    async def health(ctx: Context) -> dict[str, Any]:
+        return await _health_status(root, ctx)
 
     @server.tool(description="Read the current issuekit handoff protocol.")
     def get_protocol(agent: str | None = None, role: str | None = None) -> str:
@@ -71,20 +75,21 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
             "submit_for_review."
         )
     )
-    def claim_next_task(
+    async def claim_next_task(
         assignee: str = "codex",
         priority: str | None = None,
         allow_author_session: bool = False,
         allow_any_branch: bool = False,
+        ctx: Context | None = None,
     ) -> dict[str, Any]:
-        config = load_config(root)
+        config, config_root = await _load_api_config(root, ctx)
         with get_store(config) as store:
             issue = claim_next(
                 assignee,
                 priority=priority,
                 config=config,
                 store=store,
-                cwd=root,
+                cwd=config_root,
                 allow_author_guard_override=allow_author_session,
                 allow_any_branch=allow_any_branch,
                 session=MCP_SESSION,
@@ -99,7 +104,7 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
             "handoff with summary and optional branch/commit metadata."
         )
     )
-    def submit_for_review(
+    async def submit_for_review(
         id: int,
         summary: str,
         branch: str | None = None,
@@ -107,8 +112,9 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
         reviewer: str | None = None,
         allow_author_session: bool = False,
         allow_any_branch: bool = False,
+        ctx: Context | None = None,
     ) -> dict[str, Any]:
-        config = load_config(root)
+        config, config_root = await _load_api_config(root, ctx)
         with get_store(config) as store:
             issue = workflow_submit_for_review(
                 id,
@@ -118,7 +124,7 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
                 reviewer=reviewer,
                 config=config,
                 store=store,
-                cwd=root,
+                cwd=config_root,
                 allow_author_guard_override=allow_author_session,
                 allow_any_branch=allow_any_branch,
                 session=MCP_SESSION,
@@ -131,8 +137,11 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
             "then call approve or request_changes."
         )
     )
-    def next_review(reviewer: str | None = None) -> dict[str, Any]:
-        config = load_config(root)
+    async def next_review(
+        reviewer: str | None = None,
+        ctx: Context | None = None,
+    ) -> dict[str, Any]:
+        config, _config_root = await _load_api_config(root, ctx)
         with get_store(config) as store:
             issue = workflow_next_review(reviewer, config=config, store=store)
         if issue is None:
@@ -146,13 +155,14 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
     @server.tool(
         description="Reviewer protocol decision: return a review issue to its implementer with notes."
     )
-    def request_changes(
+    async def request_changes(
         id: int,
         notes: str,
         reviewer: str | None = None,
         assignee: str | None = None,
+        ctx: Context | None = None,
     ) -> dict[str, Any]:
-        config = load_config(root)
+        config, _config_root = await _load_api_config(root, ctx)
         with get_store(config) as store:
             issue = workflow_request_changes(
                 id,
@@ -168,8 +178,13 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
     @server.tool(
         description="Reviewer protocol decision: approve a reviewed issue and move it to completed."
     )
-    def approve(id: int, verification: str, reviewer: str | None = None) -> dict[str, Any]:
-        config = load_config(root)
+    async def approve(
+        id: int,
+        verification: str,
+        reviewer: str | None = None,
+        ctx: Context | None = None,
+    ) -> dict[str, Any]:
+        config, _config_root = await _load_api_config(root, ctx)
         with get_store(config) as store:
             issue = approve_issue(
                 id,
@@ -182,8 +197,8 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
         return issue_dict(issue)
 
     @server.tool(description="Read one active or completed issue by id.")
-    def get_issue(id: int) -> dict[str, Any]:
-        config = load_config(root)
+    async def get_issue(id: int, ctx: Context | None = None) -> dict[str, Any]:
+        config, _config_root = await _load_api_config(root, ctx)
         with get_store(config) as store:
             issue = store.get_issue(id)
         if issue is None:
@@ -191,17 +206,18 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
         return issue_dict(issue, include_body=True)
 
     @server.tool(description="Edit an API-backed issue title, body, appended text, or priority.")
-    def update_issue(
+    async def update_issue(
         id: int,
         title: str | None = None,
         body: str | None = None,
         append: str | None = None,
         priority: str | None = None,
         force: bool = False,
+        ctx: Context | None = None,
     ) -> dict[str, Any]:
         if body is not None and append is not None:
             raise ValueError("body and append are mutually exclusive.")
-        config = load_config(root)
+        config, _config_root = await _load_api_config(root, ctx)
         with get_store(config) as store:
             issue = edit_issue(
                 id,
@@ -216,8 +232,12 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
         return issue_dict(issue, include_body=True)
 
     @server.tool(description="List active queue entries, optionally filtered by assignee and stage.")
-    def list_queue(assignee: str | None = None, stage: str | None = None) -> list[dict[str, Any]]:
-        config = load_config(root)
+    async def list_queue(
+        assignee: str | None = None,
+        stage: str | None = None,
+        ctx: Context | None = None,
+    ) -> list[dict[str, Any]]:
+        config, _config_root = await _load_api_config(root, ctx)
         with get_store(config) as store:
             return [
                 issue_dict(issue)
@@ -230,11 +250,12 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
             "checkouts, optionally filtered by repo_id and project."
         )
     )
-    def list_workers(
+    async def list_workers(
         repo_id: str | None = None,
         project: str | None = None,
+        ctx: Context | None = None,
     ) -> list[dict[str, Any]]:
-        config = load_config(root)
+        config, _config_root = await _load_api_config(root, ctx)
         return list_api_workers(config, repo_id=repo_id, project=project)
 
     @server.tool(
@@ -244,10 +265,11 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
             "will not re-offer)."
         )
     )
-    def list_orphans(
+    async def list_orphans(
         stale_after_sec: float = DEFAULT_STALE_AFTER_SEC,
+        ctx: Context | None = None,
     ) -> list[dict[str, Any]]:
-        config = load_config(root)
+        config, _config_root = await _load_api_config(root, ctx)
         claims = list_stale_claims(config, stale_after_sec=stale_after_sec)
         return [stale_claim_dict(claim) for claim in claims]
 
@@ -258,13 +280,14 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
             "only for human emergency recovery."
         )
     )
-    def reclaim_issue(
+    async def reclaim_issue(
         id: int,
         force: bool = False,
         stale_after_sec: float = DEFAULT_STALE_AFTER_SEC,
         reason: str | None = None,
+        ctx: Context | None = None,
     ) -> dict[str, Any]:
-        config = load_config(root)
+        config, _config_root = await _load_api_config(root, ctx)
         result = workflow_reclaim_issue(
             id,
             force=force,
@@ -280,8 +303,8 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
             "router's input). Requires a backend that supports project profiles."
         )
     )
-    def list_project_profiles() -> list[dict[str, Any]]:
-        config = load_config(root)
+    async def list_project_profiles(ctx: Context | None = None) -> list[dict[str, Any]]:
+        config, _config_root = await _load_api_config(root, ctx)
         with api_client(config) as client:
             return client.list_project_profiles()
 
@@ -292,7 +315,7 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
             "Pass depends_on as project#issue-or-proposal for upstream dependencies."
         )
     )
-    def propose(
+    async def propose(
         to: str | None = None,
         title: str | None = None,
         body: str | None = None,
@@ -301,9 +324,11 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
         blocking: bool = False,
         depends_on: str | None = None,
         agent: str | None = None,
+        ctx: Context | None = None,
     ) -> dict[str, Any]:
+        config, config_root = await _load_api_config(root, ctx)
         proposal = build_proposal(
-            root,
+            config_root,
             to=to,
             title=title,
             body=body,
@@ -313,12 +338,11 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
             blocking=blocking,
             depends_on=depends_on,
         )
-        config = load_config(root)
         sent = send_proposal(config, proposal)
         if sent.get("payload_mismatch"):
             return sent
         guard = create_author_guard(
-            root,
+            config_root,
             config=config,
             kind="proposal",
             item_id=sent.get("id"),
@@ -333,8 +357,8 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
         return sent
 
     @server.tool(description="List incoming cross-repository proposals.")
-    def list_incoming() -> list[dict[str, Any]]:
-        config = load_config(root)
+    async def list_incoming(ctx: Context | None = None) -> list[dict[str, Any]]:
+        config, _config_root = await _load_api_config(root, ctx)
         with api_client(config) as client:
             return client.list_proposals(status="pending")
 
@@ -344,18 +368,23 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
             "(read-only, scoped to proposals this project authored)."
         )
     )
-    def list_outgoing(to: str, status: str | None = None) -> list[dict[str, Any]]:
-        config = load_config(root)
+    async def list_outgoing(
+        to: str,
+        status: str | None = None,
+        ctx: Context | None = None,
+    ) -> list[dict[str, Any]]:
+        config, _config_root = await _load_api_config(root, ctx)
         return list_outgoing_proposals(config, to=to, status=status)
 
     @server.tool(description="Adopt an incoming proposal as a local active issue.")
-    def adopt_proposal(
+    async def adopt_proposal(
         proposal_id: int | None = None,
         proposal_file: str | None = None,
         priority: str = "medium",
         append: str | None = None,
+        ctx: Context | None = None,
     ) -> dict[str, Any]:
-        config = load_config(root)
+        config, _config_root = await _load_api_config(root, ctx)
         raw_id = proposal_id if proposal_id is not None else proposal_id_arg(proposal_file or "")
         return adopt_proposal_with_append(
             config,
@@ -365,11 +394,12 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
         )
 
     @server.tool(description="Discard an incoming cross-repository proposal.")
-    def discard_proposal(
+    async def discard_proposal(
         proposal_id: int | None = None,
         proposal_file: str | None = None,
+        ctx: Context | None = None,
     ) -> dict[str, Any]:
-        config = load_config(root)
+        config, _config_root = await _load_api_config(root, ctx)
         raw_id = proposal_id if proposal_id is not None else proposal_id_arg(proposal_file or "")
         with api_client(config) as client:
             return client.discard_proposal(int(raw_id))
@@ -381,15 +411,16 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
             "and adopt approved proposals."
         )
     )
-    def run_proposal_checks(
+    async def run_proposal_checks(
         agent: str,
         timeout_sec: float = 600.0,
         limit: int = 50,
+        ctx: Context | None = None,
     ) -> list[dict[str, Any]]:
-        config = load_config(root)
+        config, config_root = await _load_api_config(root, ctx)
         decisions = run_proposal_check_cycle(
             config,
-            root,
+            config_root,
             agent=agent,
             timeout=timeout_sec,
             limit=limit,
@@ -403,12 +434,13 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
             "(read-only; posts nothing and runs no agent)."
         )
     )
-    def list_proposal_checks(
+    async def list_proposal_checks(
         status: str | None = None,
         limit: int = 50,
         offset: int = 0,
+        ctx: Context | None = None,
     ) -> list[dict[str, Any]]:
-        config = load_config(root)
+        config, _config_root = await _load_api_config(root, ctx)
         if status not in (None, "pending", "answered"):
             raise ValueError("status must be pending or answered.")
         return list_worker_proposal_checks(
@@ -421,11 +453,12 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
     return server
 
 
-def _health_status(root: Path) -> dict[str, Any]:
+async def _health_status(root: Path, ctx: Context | None = None) -> dict[str, Any]:
+    config_root = await _resolve_config_root(root, ctx)
     payload: dict[str, Any] = {
         "ok": True,
         "version": __version__,
-        "cwd": str(root.resolve()),
+        "cwd": str(config_root.resolve()),
         "project": None,
         "api_url_configured": False,
         "token_cached": False,
@@ -437,7 +470,7 @@ def _health_status(root: Path) -> dict[str, Any]:
         "errors": [],
     }
     try:
-        local_config = read_local_config(root)
+        local_config = read_local_config(config_root)
     except LocalConfigError as exc:
         payload["ok"] = False
         payload["errors"].append(f"local_config: {exc}")
@@ -448,7 +481,7 @@ def _health_status(root: Path) -> dict[str, Any]:
             payload["author_guard"] = dict(local_config.author_guard)
 
     try:
-        config = load_config(root)
+        config = load_config(config_root)
     except Exception as exc:
         payload["ok"] = False
         payload["errors"].append(f"config: {type(exc).__name__}: {exc}")
@@ -462,6 +495,98 @@ def _health_status(root: Path) -> dict[str, Any]:
     payload["worker"] = config.worker_key()
     payload["worker_present"] = config.worker is not None
     return payload
+
+
+async def _load_api_config(
+    root: Path,
+    ctx: Context | None = None,
+) -> tuple[IssuekitConfig, Path]:
+    config_root = await _resolve_config_root(root, ctx)
+    config = load_config(config_root)
+    if not config.api_url:
+        raise WorkflowError(_missing_api_url_message(config_root), code="missing_api_url")
+    return config, config_root
+
+
+async def _resolve_config_root(root: Path, ctx: Context | None = None) -> Path:
+    root = root.resolve()
+    local_root = _configured_root(root)
+    if local_root is not None:
+        return local_root
+
+    for client_root in await _client_roots(ctx):
+        configured = _configured_root(client_root)
+        if configured is not None:
+            return configured
+
+    return root
+
+
+def _configured_root(root: Path) -> Path | None:
+    root = root.resolve()
+    if _has_config_candidate(root):
+        return root
+    repository_root = git_root(root)
+    if repository_root is not None and _has_config_candidate(repository_root):
+        return repository_root
+    return None
+
+
+def _has_config_candidate(root: Path) -> bool:
+    if (root / "issuekit.toml").exists():
+        return True
+    pyproject_path = root / "pyproject.toml"
+    if not pyproject_path.exists():
+        return False
+    try:
+        data = load_toml(pyproject_path)
+    except LocalConfigError:
+        return True
+    tool_config = data.get("tool")
+    return isinstance(tool_config, dict) and "issuekit" in tool_config
+
+
+async def _client_roots(ctx: Context | None) -> tuple[Path, ...]:
+    if ctx is None:
+        return ()
+    try:
+        request_context = ctx.request_context
+    except ValueError:
+        return ()
+    try:
+        result = await request_context.session.list_roots()
+    except Exception:
+        return ()
+    paths: list[Path] = []
+    for root in result.roots:
+        path = _path_from_file_uri(str(root.uri))
+        if path is not None:
+            paths.append(path)
+    return tuple(paths)
+
+
+def _path_from_file_uri(uri: str) -> Path | None:
+    parsed = urlparse(uri)
+    if parsed.scheme != "file":
+        return None
+    path = unquote(parsed.path)
+    if os.name == "nt" and len(path) >= 3 and path[0] == "/" and path[2] == ":":
+        path = path[1:]
+    if parsed.netloc:
+        path = f"//{parsed.netloc}{path}"
+    return Path(path)
+
+
+def _missing_api_url_message(root: Path) -> str:
+    return (
+        "API store requires api_url. Set api_url in issuekit.toml/[tool.issuekit] "
+        "or ISSUEKIT_API_URL. MCP resolved the repository root to "
+        f"{root.resolve()} and searched {root / 'pyproject.toml'} [tool.issuekit], "
+        f"{root / 'issuekit.toml'}, and {root / '.env'}. If the CLI succeeds, it is "
+        "probably running from a different working directory or shell environment; "
+        "launch issuekit-mcp from the repo root, configure the MCP client workspace "
+        "root, or set ISSUEKIT_API_URL for the MCP server process."
+    )
 
 
 def main() -> None:

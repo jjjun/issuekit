@@ -14,6 +14,7 @@ from issuekit import store as store_module
 from issuekit import token_cache as token_cache_module
 from issuekit import worker_registry
 from issuekit.agents.proposal_check import ProposalCheckDecision
+from issuekit.mcp import server as mcp_server
 from issuekit.mcp.server import create_server
 from issuekit.testing import FakeIssuekitClient
 
@@ -507,6 +508,69 @@ def test_submit_for_review_tool_defaults_branch_to_current_checkout(
             },
         }
     ]
+
+
+def test_mcp_lifecycle_tools_discover_client_workspace_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    process_root = tmp_path / "process"
+    repo_root = tmp_path / "repo"
+    process_root.mkdir()
+    repo_root.mkdir()
+    (process_root / "pyproject.toml").write_text(
+        "[project]\nname = 'launcher'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                1,
+                "First",
+                status="in_progress",
+                assignee="codex",
+                stage="implementing",
+                implementer="codex",
+            )
+        ]
+    )
+    _configure_api(repo_root, monkeypatch, client)
+
+    async def fake_client_roots(ctx):
+        return (repo_root,)
+
+    monkeypatch.setattr(mcp_server, "_client_roots", fake_client_roots)
+    server = create_server(process_root)
+
+    submitted = _call(server, "submit_for_review", {"id": 1, "summary": "Implemented."})
+
+    assert submitted["stage"] == "review"
+    assert client.calls == [
+        {
+            "method": "submit",
+            "number": 1,
+            "body": {
+                "summary": "Implemented.",
+                "session": client.calls[0]["body"]["session"],
+            },
+        }
+    ]
+
+
+def test_mcp_lifecycle_missing_api_url_reports_searched_config_paths(tmp_path: Path) -> None:
+    server = create_server(tmp_path)
+
+    with pytest.raises(Exception) as excinfo:
+        _call(server, "list_queue", {})
+
+    message = str(excinfo.value)
+    assert "API store requires api_url" in message
+    assert f"MCP resolved the repository root to {tmp_path.resolve()}" in message
+    assert str(tmp_path / "pyproject.toml") in message
+    assert str(tmp_path / "issuekit.toml") in message
+    assert str(tmp_path / ".env") in message
+    assert "If the CLI succeeds" in message
 
 
 def test_mcp_lifecycle_tools_reuse_one_process_session(
