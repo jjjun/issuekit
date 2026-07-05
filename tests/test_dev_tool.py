@@ -158,6 +158,8 @@ def test_reload_mcp_stops_only_issuekit_mcp_processes(monkeypatch, capsys) -> No
             "status": "stopped",
         }
     ]
+    assert payload["mcp_process_check"] == {"status": "checked", "stopped_count": 1}
+    assert payload["client_transport_check"]["status"] == "unsupported_from_cli"
 
 
 def test_reload_mcp_stops_only_issuekit_mcp_processes_posix(monkeypatch, capsys) -> None:
@@ -194,6 +196,50 @@ def test_reload_mcp_stops_only_issuekit_mcp_processes_posix(monkeypatch, capsys)
             "status": "stopped",
         }
     ]
+    assert payload["mcp_process_check"] == {"status": "checked", "stopped_count": 1}
+    assert payload["client_transport_check"]["status"] == "unsupported_from_cli"
+
+
+def test_reload_mcp_warns_when_no_processes_stopped(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(dev_tool, "_is_windows", lambda: True)
+
+    def runner(argv):
+        argv = list(argv)
+        if argv[0] == "powershell":
+            return dev_tool.CommandResult(argv, 0, "")
+        raise AssertionError(f"unexpected command: {argv}")
+
+    exit_code = dev_tool._run_reload_mcp(SimpleNamespace(json=True), runner=runner)
+
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert payload["stopped_processes"] == []
+    assert payload["mcp_process_check"] == {"status": "checked", "stopped_count": 0}
+    assert payload["client_transport_check"]["status"] == "unsupported_from_cli"
+    assert any(
+        diagnostic["status"] == "warn"
+        and "does not reconnect an already-open Codex or Claude stdio transport"
+        in diagnostic["message"]
+        for diagnostic in payload["diagnostics"]
+    )
+
+
+def test_reload_mcp_human_output_explains_transport_boundary(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(dev_tool, "_is_windows", lambda: True)
+
+    def runner(argv):
+        argv = list(argv)
+        if argv[0] == "powershell":
+            return dev_tool.CommandResult(argv, 0, "")
+        raise AssertionError(f"unexpected command: {argv}")
+
+    exit_code = dev_tool._run_reload_mcp(SimpleNamespace(json=False), runner=runner)
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "MCP process check: checked (stopped_count=0)" in captured.out
+    assert "Client transport check: unsupported_from_cli" in captured.out
+    assert "reload or restart the MCP client session" in captured.out
 
 
 def test_filter_issuekit_mcp_processes_posix_matches_script_token() -> None:

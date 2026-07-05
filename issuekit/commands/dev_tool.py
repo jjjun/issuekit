@@ -14,6 +14,23 @@ import sys
 
 MCP_PROCESS_NAME = "issuekit-mcp.exe"
 MCP_PROCESS_NAME_POSIX = "issuekit-mcp"
+CLIENT_TRANSPORT_UNSUPPORTED_MESSAGE = (
+    "Standalone issuekit CLI commands can inspect local setup and stop matching "
+    "issuekit-mcp processes, but they cannot verify, reconnect, or respawn an "
+    "already-open Codex or Claude stdio MCP transport."
+)
+RELOAD_BOUNDARY_MESSAGE = (
+    "reload-mcp only stops matching issuekit-mcp processes. If MCP tools still "
+    "return Transport closed, reload or restart the MCP client session, reload "
+    "the thread/window if supported, or start a fresh session so the client can "
+    "spawn a new issuekit-mcp stdio transport."
+)
+NO_PROCESS_RELOAD_MESSAGE = (
+    "No issuekit-mcp processes were stopped. This does not reconnect an "
+    "already-open Codex or Claude stdio transport; reload or restart the MCP "
+    "client session, reload the thread/window if supported, or start a fresh "
+    "session after the client respawns issuekit-mcp."
+)
 
 
 @dataclass(frozen=True)
@@ -277,12 +294,19 @@ def _run_reload_mcp(args, runner: Runner | None = None) -> int:
     payload = _empty_payload()
     stop_payload = stop_issuekit_mcp_processes(runner)
     _merge_payload(payload, stop_payload)
+    stopped_count = len(payload["stopped_processes"])
+    payload["mcp_process_check"] = {
+        "status": "checked",
+        "stopped_count": stopped_count,
+    }
     payload["diagnostics"].append(
         _diagnostic(
             "info",
-            "Codex or Claude Code may respawn issuekit-mcp; restart the client if stdio is wedged.",
+            RELOAD_BOUNDARY_MESSAGE,
         )
     )
+    if stopped_count == 0:
+        payload["diagnostics"].append(_diagnostic("warn", NO_PROCESS_RELOAD_MESSAGE))
     return _finish(payload, json_output=args.json)
 
 
@@ -495,6 +519,10 @@ def _empty_payload() -> dict[str, object]:
         "stopped_processes": [],
         "commands": [],
         "diagnostics": [],
+        "client_transport_check": {
+            "status": "unsupported_from_cli",
+            "message": CLIENT_TRANSPORT_UNSUPPORTED_MESSAGE,
+        },
     }
 
 
@@ -515,6 +543,16 @@ def _finish(payload: dict[str, object], *, json_output: bool) -> int:
 def _print_human(payload: dict[str, object]) -> None:
     print("issuekit dev-tool")
     print(f"OK: {str(payload['ok']).lower()}")
+    if "mcp_process_check" in payload:
+        process_check = payload["mcp_process_check"]
+        print(
+            "MCP process check: "
+            f"{process_check['status']} "
+            f"(stopped_count={process_check['stopped_count']})"
+        )
+    transport_check = payload.get("client_transport_check")
+    if isinstance(transport_check, dict):
+        print(f"Client transport check: {transport_check['status']}")
     if payload["stopped_processes"]:
         print("Stopped issuekit-mcp.exe processes:")
         for process in payload["stopped_processes"]:

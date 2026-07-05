@@ -30,6 +30,8 @@ def test_render_protocol_returns_each_agent_and_both() -> None:
         assert "issuekit implement <id> --agent <agent> --timeout-sec <n>" in rendered
         assert "launches the configured agent" in rendered
         assert "submits the completed work for review" in rendered
+        assert "Transport closed" in rendered
+        assert "issuekit info --json" in rendered
         assert "Copyable CLI examples" in rendered
         assert 'issuekit author --title "Short title"' in rendered
         assert "issuekit claim --assignee codex" in rendered

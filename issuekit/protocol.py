@@ -34,6 +34,12 @@ workers.
 Issue lifecycle and cross-project proposal state are stored in the configured
 mine-py API project.
 
+If MCP tools return `Transport closed`, the client stdio transport is dead even
+if tool metadata is still visible. Fall back to read-only or proposal/inbox CLI
+commands such as `issuekit protocol --role author`, `issuekit incoming --json`,
+and `issuekit info --json` until the user reloads or restarts the MCP client
+session.
+
 When an orchestrator or author needs to drive a configured external
 implementer instead of waiting for the pull model, use
 `issuekit implement <id> --agent <agent> --timeout-sec <n>`. That command

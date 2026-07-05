@@ -16,6 +16,14 @@ from issuekit.commands.setup.diagnostics import Diagnostic, collect_diagnostics 
 CODEX_MCP_ADD_COMMAND = "codex mcp add issuekit -- issuekit-mcp"
 MCP_INSTALL_COMMAND = 'uv tool install "issuekit[mcp] @ <absolute-path-or-url>"'
 MCP_REINSTALL_COMMAND = 'uv tool install --reinstall "issuekit[mcp] @ <absolute-path-or-url>"'
+CLIENT_TRANSPORT_CHECK = {
+    "status": "unsupported_from_cli",
+    "message": (
+        "issuekit setup check verifies static files and importability only. "
+        "A standalone CLI cannot prove that an already-open Codex or Claude "
+        "stdio MCP transport is live."
+    ),
+}
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:
@@ -85,6 +93,7 @@ def build_json_payload(cwd: Path, result: InitResult) -> dict[str, object]:
     diagnostics = collect_diagnostics(cwd)
     return {
         "ok": all(diagnostic.status != "ACTION" for diagnostic in diagnostics),
+        "client_transport_check": CLIENT_TRANSPORT_CHECK,
         "scaffold": {
             "written": result.written,
             "skipped": result.skipped,
@@ -119,6 +128,7 @@ def build_check_json_payload(cwd: Path) -> dict[str, object]:
         "needs_setup": bool(actions),
         "would_write": any(action.action == "write" for action in actions),
         "would_update": any(action.action in {"update", "remove"} for action in actions),
+        "client_transport_check": CLIENT_TRANSPORT_CHECK,
         "diagnostics": [
             {
                 "status": diagnostic.status,
@@ -155,6 +165,9 @@ def _print_init_result(result: InitResult) -> None:
 def _print_check_payload(payload: dict[str, object]) -> None:
     print(f"Setup check: {payload['state']}")
     print(f"Needs setup: {str(payload['needs_setup']).lower()}")
+    transport_check = payload["client_transport_check"]
+    print(f"Client transport check: {transport_check['status']}")
+    print(f"  {transport_check['message']}")
     for action in payload["actions"]:
         print(f"[{action['state'].upper()}] {action['path']}: {action['reason']}")
 

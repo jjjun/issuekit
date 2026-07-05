@@ -71,6 +71,7 @@ def test_server_registers_expected_tools(tmp_path: Path) -> None:
     server = create_server(tmp_path)
 
     assert _tool_names(server) == {
+        "health",
         "get_protocol",
         "claim_next_task",
         "submit_for_review",
@@ -92,6 +93,48 @@ def test_server_registers_expected_tools(tmp_path: Path) -> None:
         "run_proposal_checks",
         "list_proposal_checks",
     }
+
+
+def test_health_tool_reports_config_and_local_state(tmp_path: Path) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'demo'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    (tmp_path / "issuekit.local.toml").write_text(
+        (
+            "[worker]\n"
+            "machine_id = 'machine'\n"
+            "repo_id = 'demo'\n"
+            "worker_id = 'checkout'\n"
+            "\n"
+            "[author_guard]\n"
+            "project = 'demo'\n"
+            "kind = 'issue'\n"
+            "id = '7'\n"
+            "ref = 'demo#7'\n"
+            "author_agent = 'codex'\n"
+            "required_next_action = 'STOP'\n"
+            "\n"
+            "[refs]\n"
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+    server = create_server(tmp_path)
+
+    status = _call(server, "health", {})
+
+    assert status["ok"] is True
+    assert status["version"] == "0.1.0"
+    assert status["cwd"] == str(tmp_path.resolve())
+    assert status["project"] == "demo"
+    assert status["api_url_configured"] is True
+    assert status["worker_present"] is True
+    assert status["worker"] == "machine/demo/checkout"
+    assert status["author_guard_active"] is True
+    assert status["author_guard"]["ref"] == "demo#7"
+    assert status["errors"] == []
 
 
 def test_run_proposal_checks_tool_returns_decisions(

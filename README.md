@@ -58,13 +58,16 @@ uv run issuekit dev-tool reinstall
 ```
 
 `install-editable` reflects source edits the next time a global `issuekit` or
-`issuekit-mcp` process starts. `reload-mcp` stops only `issuekit-mcp.exe`
-processes and reports their PIDs and executable paths when available; codex or
-Claude Code may respawn the server, and a full client restart may still be
-required if the stdio connection is wedged. `reinstall` is the recovery path
-when editable metadata gets stale or a global tool environment is partially
-broken. All generated uv install commands use an absolute checkout path, never a
-bare `.`.
+`issuekit-mcp` process starts. `reload-mcp` stops only matching
+`issuekit-mcp.exe` processes and reports their PIDs and executable paths when
+available. It cannot respawn or reconnect an already-open codex or Claude Code
+stdio MCP transport; the MCP client owns that connection. If MCP tools still
+return `Transport closed` after `reload-mcp`, reload or restart the MCP client
+session, reload the thread/window if supported, or start a fresh session so the
+client can spawn a new `issuekit-mcp` transport. `reinstall` is the recovery
+path when editable metadata gets stale or a global tool environment is
+partially broken. All generated uv install commands use an absolute checkout
+path, never a bare `.`.
 
 Then scaffold each repository that uses issuekit:
 
@@ -102,8 +105,11 @@ issuekit setup check --json
 ```
 
 The check does not write files or run subprocesses. Its JSON object reports
-`ok`, `needs_setup`, `would_write`, `would_update`, `diagnostics`, and `actions`
-so automation can decide whether to run the applying command. `issuekit setup`
+`ok`, `needs_setup`, `would_write`, `would_update`, `client_transport_check`,
+`diagnostics`, and `actions` so automation can decide whether to run the
+applying command. `client_transport_check.status` is `unsupported_from_cli`
+because a standalone CLI can verify static readiness but cannot prove that an
+already-open codex or Claude Code stdio transport is live. `issuekit setup`
 keeps its applying behavior, and `issuekit setup apply --json` is an explicit
 alias for that path.
 
@@ -112,6 +118,21 @@ and adds thin handoff references to `AGENTS.md` and `CLAUDE.md`. The generated
 MCP entries run the global `issuekit-mcp` binary; they do not use `uv run`, so
 they work outside the issuekit checkout. Launch codex or Claude Code from the
 target repo root so the server resolves repo configuration.
+
+When the MCP transport is live, the MCP `health` tool reports the server cwd,
+issuekit version, resolved project, API URL presence, local worker presence,
+and author guard state without mutating issue lifecycle state.
+
+If an MCP client still exposes `mcp__issuekit` tools but every call fails with
+`Transport closed`, tool discovery is stale. Until the client transport is
+reloaded, use the equivalent CLI commands for read-only inspection and proposal
+inbox work:
+
+```powershell
+issuekit protocol --role author
+issuekit incoming --json
+issuekit info --json
+```
 
 Repo-local `.env` files are treated as trusted repository input only for
 `ISSUEKIT_*` keys. Sensitive API settings loaded from `.env` are announced on
@@ -167,7 +188,7 @@ copying the steps.
 | `issuekit setup check --json` | Check setup state without writing files. |
 | `issuekit dev-tool install-editable [--repo <path>] [--no-stop] [--json]` | Windows developer command to install this checkout as the global editable tool with the MCP extra. |
 | `issuekit dev-tool reinstall [--repo <path>] [--no-stop] [--json]` | Windows developer recovery command to reinstall the global tool from an absolute checkout path. |
-| `issuekit dev-tool reload-mcp [--json]` | Stop only running `issuekit-mcp.exe` processes so MCP clients can restart them. |
+| `issuekit dev-tool reload-mcp [--json]` | Stop only running `issuekit-mcp.exe` processes; MCP clients own respawn and stdio reconnection. |
 | `issuekit add` / `issuekit register` | Register this git checkout as a worker (auto-derives machine/repo/worker ids and publishes the configured API project). |
 | `issuekit workers [--repo-id <id>] [--project <name>] [--json]` | List registered workers and their repo-level roles across projects. |
 | `issuekit add-ref <name> --path <repo> [--scope local\|workspace]` | Register an optional local project alias. |
@@ -484,4 +505,6 @@ uv run issuekit dev-tool reinstall
 ```
 
 Pass `--json` to any `dev-tool` action for automation. The JSON payload includes
-`ok`, `actions`, `stopped_processes`, `commands`, and `diagnostics`.
+`ok`, `actions`, `stopped_processes`, `commands`, `diagnostics`, and
+`client_transport_check`. `reload-mcp` also includes `mcp_process_check` with
+the stopped process count.

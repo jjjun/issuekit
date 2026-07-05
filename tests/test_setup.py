@@ -145,6 +145,7 @@ def test_setup_check_json_current_repo_reports_ok_without_writes(
     assert payload["needs_setup"] is False
     assert payload["would_write"] is False
     assert payload["would_update"] is False
+    assert payload["client_transport_check"]["status"] == "unsupported_from_cli"
     assert payload["actions"] == []
     assert _file_snapshot(tmp_path) == before
 
@@ -171,6 +172,7 @@ def test_setup_check_json_missing_repo_reports_writes_without_writing(
     assert payload["needs_setup"] is True
     assert payload["would_write"] is True
     assert payload["would_update"] is False
+    assert payload["client_transport_check"]["status"] == "unsupported_from_cli"
     assert ".mcp.json" in {item["path"] for item in payload["actions"]}
     assert _file_snapshot(tmp_path) == {}
 
@@ -307,6 +309,7 @@ def test_setup_json_empty_repo_prints_valid_payload(
     payload = json.loads(captured.out)
     assert exit_code == 0
     assert isinstance(payload["ok"], bool)
+    assert payload["client_transport_check"]["status"] == "unsupported_from_cli"
     assert ".mcp.json" in payload["scaffold"]["written"]
     assert isinstance(payload["diagnostics"], list)
     assert payload["diagnostics"]

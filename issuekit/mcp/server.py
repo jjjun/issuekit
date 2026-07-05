@@ -8,6 +8,7 @@ from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
+from issuekit import __version__
 from issuekit.agents.proposal_check import (
     list_worker_proposal_checks,
     run_proposal_check_cycle,
@@ -19,6 +20,7 @@ from issuekit.commands.edit import edit_issue
 from issuekit.commands.reclaim import reclaim_result_dict
 from issuekit.config import load_config
 from issuekit.core import issue_dict
+from issuekit.localconfig import LocalConfigError, read_local_config
 from issuekit.orphans import DEFAULT_STALE_AFTER_SEC, list_stale_claims, stale_claim_dict
 from issuekit.protocol import render_protocol, render_server_instructions
 from issuekit.proposals_api import (
@@ -44,6 +46,15 @@ from issuekit.workflow import (
 def create_server(cwd: Path | str | None = None) -> FastMCP:
     server = FastMCP("issuekit", instructions=render_server_instructions())
     root = Path.cwd() if cwd is None else Path(cwd)
+
+    @server.tool(
+        description=(
+            "Read-only MCP server health and configuration status. Safe to call "
+            "before workflow operations."
+        )
+    )
+    def health() -> dict[str, Any]:
+        return _health_status(root)
 
     @server.tool(description="Read the current issuekit handoff protocol.")
     def get_protocol(agent: str | None = None, role: str | None = None) -> str:
@@ -398,6 +409,44 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
         )
 
     return server
+
+
+def _health_status(root: Path) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "ok": True,
+        "version": __version__,
+        "cwd": str(root.resolve()),
+        "project": None,
+        "api_url_configured": False,
+        "worker_present": False,
+        "worker": None,
+        "author_guard_active": False,
+        "author_guard": None,
+        "errors": [],
+    }
+    try:
+        local_config = read_local_config(root)
+    except LocalConfigError as exc:
+        payload["ok"] = False
+        payload["errors"].append(f"local_config: {exc}")
+        local_config = None
+    if local_config is not None:
+        if local_config.author_guard:
+            payload["author_guard_active"] = True
+            payload["author_guard"] = dict(local_config.author_guard)
+
+    try:
+        config = load_config(root)
+    except Exception as exc:
+        payload["ok"] = False
+        payload["errors"].append(f"config: {type(exc).__name__}: {exc}")
+        return payload
+
+    payload["project"] = config.project
+    payload["api_url_configured"] = bool(config.api_url)
+    payload["worker"] = config.worker_key()
+    payload["worker_present"] = config.worker is not None
+    return payload
 
 
 def main() -> None:
