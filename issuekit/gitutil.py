@@ -30,6 +30,9 @@ def run_git(
             ["git", *args],
             cwd=str(cwd),
             capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="surrogateescape",
             timeout=timeout,
             stdin=subprocess.DEVNULL,
         )
