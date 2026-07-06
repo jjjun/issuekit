@@ -38,6 +38,7 @@ packages = ["issuekit"]
 # Per-repo overrides for the issue tracker. All keys are optional; defaults
 # match the mine-js-monorepo reference implementation.
 [tool.issuekit]
+worker_accept_directed = true
 # ascii_id_threshold = 0        # issue ids >= this value must be ASCII-only
 # issues_dir = "docs/issues"
 # api_url = "https://mine.example"
