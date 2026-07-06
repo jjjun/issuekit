@@ -159,6 +159,50 @@ def test_proposal_check_revise_posts_without_adopting(monkeypatch, tmp_path) -> 
     assert client._proposal_checks[1]["adopted_issue_ref"] is None
 
 
+def test_duplicate_pollers_report_already_decided_from_result_guard(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    client, runner, config = _setup(
+        monkeypatch,
+        tmp_path,
+        output=_check_block(verdict="reject", comment="Out of scope for this repo."),
+    )
+    stale_pending = client.poll_proposal_checks(
+        target_worker="machine/target/worker",
+        status="pending",
+    )
+    client.calls.clear()
+
+    def stale_poll(*, target_worker, status="pending", limit=50, offset=0):
+        return stale_pending[offset : offset + limit]
+
+    monkeypatch.setattr(client, "poll_proposal_checks", stale_poll)
+    runner._outputs.append(
+        _check_block(verdict="reject", comment="Still out of scope.")
+    )
+
+    first = run_proposal_check_cycle(
+        config,
+        tmp_path,
+        agent="codex",
+        runner_factory=lambda: runner,
+    )
+    second = run_proposal_check_cycle(
+        config,
+        tmp_path,
+        agent="codex",
+        runner_factory=lambda: runner,
+    )
+
+    assert [decision.status for decision in first] == ["answered"]
+    assert [decision.status for decision in second] == ["already_decided"]
+    assert client._proposal_checks[1]["status"] == "answered"
+    assert len(
+        [call for call in client.calls if call["method"] == "post_proposal_check_result"]
+    ) == 2
+
+
 def test_parse_proposal_check_output_rejects_non_ascii() -> None:
     with pytest.raises(ProposalCheckParseError, match="ASCII-only"):
         parse_proposal_check_output(

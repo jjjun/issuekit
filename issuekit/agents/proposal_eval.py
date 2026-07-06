@@ -6,6 +6,7 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 import json
 import re
+import threading
 from typing import Any, TextIO, TypeVar
 
 from issuekit.agents.runner import AgentResult
@@ -66,6 +67,7 @@ def run_readonly_proposal_evaluation(
     prompt_override: str,
     label: str,
     mutation_log_message: str,
+    abort_event: threading.Event | None = None,
 ) -> str:
     """Run an agent on a proposal prompt and reject output if the worktree changed."""
 
@@ -83,6 +85,7 @@ def run_readonly_proposal_evaluation(
         timeout=float(timeout),
         agent_name=agent,
         prompt_override=prompt_override,
+        abort_event=abort_event,
     )
     if result.timed_out:
         raise TimeoutError(f"{label} agent timed out for proposal #{proposal_id}.")

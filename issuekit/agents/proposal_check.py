@@ -7,6 +7,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 import re
 import sys
+import threading
 from typing import Any, TextIO
 
 from issuekit.agents.proposal_eval import (
@@ -70,6 +71,7 @@ def run_proposal_check_cycle(
     log: LogFn | None = None,
     out: TextIO | None = None,
     err: TextIO | None = None,
+    abort_event: threading.Event | None = None,
 ) -> list[ProposalCheckDecision]:
     """Run one worker-side proposal-check poll/evaluate/result cycle."""
 
@@ -113,6 +115,7 @@ def run_proposal_check_cycle(
                 timeout=timeout,
                 runner_factory=runner_factory,
                 err=err,
+                abort_event=abort_event,
             )
             adopted_issue_ref = None
             append_text = parsed.get("spec_markdown") or None
@@ -313,6 +316,7 @@ def _evaluate_check(
     timeout: float,
     runner_factory,
     err: TextIO,
+    abort_event: threading.Event | None = None,
 ) -> dict[str, str]:
     check_id = int(check["id"])
     proposal_id = int(check["proposal_id"])
@@ -332,6 +336,7 @@ def _evaluate_check(
         mutation_log_message=(
             "ERROR: proposal-check run modified the worktree; ignoring its output."
         ),
+        abort_event=abort_event,
     )
     try:
         return parse_proposal_check_output(stdout)

@@ -442,6 +442,14 @@ already trusts it for directed work. Combine this with target-owned intake
 policy such as `[triage].trusted_origins` when only selected origin projects
 should be auto-adopted into directed or blocking work.
 
+Directed proposal checks are also worker-pull based. Run
+`issuekit serve --agent <agent> --proposal-checks` from a registered checkout
+to poll pending checks addressed to that worker and answer them automatically.
+The loop uses `--interval` for idle polling, `--timeout-sec` for each read-only
+agent evaluation, `--once` for a single cycle, and `--proposal-check-limit` for
+the maximum checks evaluated per cycle. Transient API failures are logged and
+retried with the same capped backoff used by the issue and review serve loops.
+
 ## Registry Maintenance
 
 Use `issuekit workers remove <worker.repo>` to delete a known stale checkout

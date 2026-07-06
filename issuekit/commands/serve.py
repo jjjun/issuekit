@@ -15,6 +15,11 @@ import threading
 from types import FrameType
 from typing import Iterator
 
+from issuekit.agents.proposal_check import (
+    ProposalCheckParseError,
+    run_proposal_check_cycle,
+)
+from issuekit.agents.runner import AgentRunner
 from issuekit.agents.run_claimed import review_feedback_prompt, run_and_submit
 from issuekit.agents.review import ReviewParseError, run_review_and_decide
 from issuekit.agents.triage_author import run_triage_author_cycle
@@ -66,6 +71,17 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         "--review",
         action="store_true",
         help="Poll the review pool and run this checkout's reviewer agent.",
+    )
+    serve_parser.add_argument(
+        "--proposal-checks",
+        action="store_true",
+        help="Poll pending proposal checks addressed to this worker.",
+    )
+    serve_parser.add_argument(
+        "--proposal-check-limit",
+        type=int,
+        default=50,
+        help="Maximum proposal checks to evaluate per polling cycle.",
     )
     serve_parser.add_argument(
         "--max-issues",
@@ -170,6 +186,18 @@ def run(args) -> int:
     if args.review and args.triage:
         print("--review cannot be combined with --triage.", file=sys.stderr)
         return 1
+    if args.proposal_checks and args.triage:
+        print("--proposal-checks cannot be combined with --triage.", file=sys.stderr)
+        return 1
+    if args.proposal_checks and args.review:
+        print("--proposal-checks cannot be combined with --review.", file=sys.stderr)
+        return 1
+    if args.proposal_checks and args.priority is not None:
+        print("--proposal-checks cannot be combined with --priority.", file=sys.stderr)
+        return 1
+    if args.proposal_check_limit < 1:
+        print("--proposal-check-limit must be greater than zero.", file=sys.stderr)
+        return 1
 
     issues_dir = config.issues_path(cwd)
     run_dir = cwd / ".agent-runs"
@@ -210,6 +238,16 @@ def _serve_loop(
     submitted_count = 0
     backoff = _Backoff()
     attempt_count = 0
+    if getattr(args, "proposal_checks", False):
+        return _serve_proposal_checks_loop(
+            args,
+            agent=agent,
+            config=config,
+            cwd=cwd,
+            log_path=log_path,
+            controller=controller,
+        )
+
     store = get_store(config) if config.api_url else None
     recovery_store = None
     try:
@@ -345,6 +383,107 @@ def _serve_loop(
     finally:
         _close_store(store)
         _close_store(recovery_store)
+
+
+def _serve_proposal_checks_loop(
+    args,
+    *,
+    agent: str,
+    config: IssuekitConfig,
+    cwd: Path,
+    log_path: Path,
+    controller: ShutdownController,
+) -> int:
+    backoff = _Backoff()
+    attempt_count = 0
+    answered_count = 0
+    while not controller.requested:
+        attempt_count += 1
+        _log(
+            sys.stderr,
+            log_path,
+            "proposal_checks_cycle_start",
+            attempt=attempt_count,
+            agent=agent,
+            limit=args.proposal_check_limit,
+        )
+
+        try:
+            decisions = run_proposal_check_cycle(
+                config,
+                cwd,
+                agent=agent,
+                timeout=float(args.timeout_sec),
+                limit=int(args.proposal_check_limit),
+                runner_factory=AgentRunner,
+                log=lambda event, **fields: _log(sys.stderr, log_path, event, **fields),
+                out=sys.stderr,
+                err=sys.stderr,
+                abort_event=controller.abort_event,
+            )
+        except (
+            FileNotFoundError,
+            RuntimeError,
+            ValueError,
+            TimeoutError,
+            WorkflowError,
+            ProposalError,
+            ProposalCheckParseError,
+        ) as exc:
+            _log(
+                sys.stderr,
+                log_path,
+                "proposal_checks_cycle_error",
+                attempt=attempt_count,
+                error=str(exc),
+                backoff=backoff.current,
+            )
+            if args.once:
+                return 1
+            if controller.requested:
+                break
+            controller.sleep(backoff.current)
+            backoff.step()
+            continue
+
+        errors = [decision for decision in decisions if decision.error is not None]
+        if decisions:
+            answered_count += sum(
+                1
+                for decision in decisions
+                if decision.error is None
+                and decision.status in {"answered", "already_decided"}
+            )
+            _log(
+                sys.stderr,
+                log_path,
+                "proposal_checks_cycle_complete",
+                attempt=attempt_count,
+                decisions=len(decisions),
+                errors=len(errors),
+                answered=answered_count,
+            )
+        else:
+            _log(sys.stderr, log_path, "proposal_checks_idle", attempt=attempt_count)
+
+        if errors:
+            if args.once:
+                return 1
+            if controller.requested:
+                break
+            controller.sleep(backoff.current)
+            backoff.step()
+            continue
+
+        backoff.reset()
+        if args.once:
+            return 0
+        if controller.requested:
+            break
+        controller.sleep(float(args.interval))
+
+    _log(sys.stderr, log_path, "stopped")
+    return 0
 
 
 def _serve_review_loop(

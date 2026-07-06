@@ -81,6 +81,35 @@ class ReviewApprovingRunner:
         )
 
 
+class ProposalCheckRunner:
+    calls: list[dict] = []
+    outputs: list[str] = []
+
+    def run(
+        self,
+        adapter,
+        plan_path: Path,
+        repo: Path,
+        timeout: float,
+        agent_name: str | None = None,
+        issue_id: int | None = None,
+        follow: bool = False,
+        **kwargs,
+    ) -> FakeResult:
+        self.calls.append(
+            {
+                "plan_path": plan_path,
+                "repo": repo,
+                "timeout": timeout,
+                "agent_name": agent_name,
+                "issue_id": issue_id,
+                **kwargs,
+            }
+        )
+        stdout = self.outputs.pop(0) if self.outputs else ""
+        return FakeResult(parsed={"stdout": stdout}, status_short="")
+
+
 class ExplodingRunner:
     def run(self, *args, **kwargs):
         raise AssertionError("agent runner should not be called")
@@ -287,6 +316,144 @@ def test_serve_review_once_ignores_issue_assigned_to_other_reviewer(
     assert exit_code == 0
     assert ReviewApprovingRunner.calls == []
     assert [call["method"] for call in client.calls] == ["upsert_repo", "upsert_worker"]
+
+
+def test_serve_proposal_checks_once_processes_pending_check(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient(
+        proposals=[
+            {
+                "id": 1,
+                "origin": "source#1@abc",
+                "title": "Not here",
+                "body": "Send elsewhere.",
+            }
+        ]
+    )
+    client.create_proposal_check(
+        1,
+        target_worker="machine/demo/checkout",
+        project="demo",
+    )
+    client.calls.clear()
+    ProposalCheckRunner.calls.clear()
+    ProposalCheckRunner.outputs = [
+        (
+            "```proposal-check\n"
+            '{"verdict":"reject","comment":"Out of scope for this repo."}\n'
+            "```\n"
+        )
+    ]
+    _configure_registered_api(tmp_path, monkeypatch, client)
+    monkeypatch.setattr("issuekit.agents.proposal_check.resolve_adapter", lambda *a, **k: object())
+    monkeypatch.setattr(serve, "AgentRunner", ProposalCheckRunner)
+
+    exit_code = cli.main(
+        [
+            "serve",
+            "--agent",
+            "codex",
+            "--proposal-checks",
+            "--once",
+            "--timeout-sec",
+            "5",
+        ]
+    )
+
+    assert exit_code == 0
+    assert len(ProposalCheckRunner.calls) == 1
+    assert ProposalCheckRunner.calls[0]["timeout"] == 5
+    assert ProposalCheckRunner.calls[0]["agent_name"] == "codex"
+    assert ProposalCheckRunner.calls[0]["abort_event"] is not None
+    assert client._proposal_checks[1]["status"] == "answered"
+    assert client._proposal_checks[1]["verdict"] == "reject"
+    assert [call["method"] for call in client.calls[:2]] == [
+        "upsert_repo",
+        "upsert_worker",
+    ]
+    assert [call["method"] for call in client.calls[2:-1]] == [
+        "poll_proposal_checks",
+        "poll_proposal_checks",
+        "poll_proposal_checks",
+    ]
+    assert client.calls[-1]["method"] == "post_proposal_check_result"
+    captured = capsys.readouterr()
+    assert "event=proposal_checks_cycle_start" in captured.err
+    assert "event=proposal_check_decision check=1" in captured.err
+    assert "event=proposal_checks_cycle_complete attempt=1 decisions=1 errors=0" in captured.err
+
+
+def test_serve_proposal_checks_once_idle_does_not_spawn_agent(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient()
+    _configure_registered_api(tmp_path, monkeypatch, client)
+    monkeypatch.setattr(serve, "AgentRunner", ExplodingRunner)
+
+    exit_code = cli.main(["serve", "--agent", "codex", "--proposal-checks", "--once"])
+
+    assert exit_code == 0
+    assert [call["method"] for call in client.calls[:2]] == [
+        "upsert_repo",
+        "upsert_worker",
+    ]
+    assert [call["method"] for call in client.calls[2:]] == [
+        "poll_proposal_checks",
+        "poll_proposal_checks",
+        "poll_proposal_checks",
+    ]
+    assert "event=proposal_checks_idle attempt=1" in capsys.readouterr().err
+
+
+def test_serve_proposal_checks_backs_off_after_cycle_error(
+    monkeypatch,
+    tmp_path: Path,
+    capsys,
+) -> None:
+    class Args:
+        priority = None
+        once = False
+        interval = 0
+        timeout_sec = 1
+        max_issues = None
+        review = False
+        triage = False
+        proposal_checks = True
+        proposal_check_limit = 50
+
+    class StopAfterSleep:
+        requested = False
+
+        def __init__(self) -> None:
+            self.abort_event = serve.threading.Event()
+
+        def sleep(self, seconds: float) -> bool:
+            self.requested = True
+            return True
+
+    def fail_cycle(*args, **kwargs):
+        raise WorkflowError("temporary API failure")
+
+    monkeypatch.setattr(serve, "run_proposal_check_cycle", fail_cycle)
+    monkeypatch.setattr(serve, "BACKOFF_INITIAL_SEC", 0.0)
+
+    exit_code = serve._serve_loop(
+        Args(),
+        agent="codex",
+        config=serve.IssuekitConfig(api_url="https://mine.example"),
+        cwd=tmp_path,
+        issues_dir=tmp_path / "docs" / "issues",
+        log_path=tmp_path / "serve.log",
+        controller=StopAfterSleep(),
+    )
+
+    assert exit_code == 0
+    assert "event=proposal_checks_cycle_error" in capsys.readouterr().err
 
 
 def test_serve_triage_auto_adopts_before_claiming(
