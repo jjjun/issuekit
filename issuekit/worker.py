@@ -184,6 +184,14 @@ def canonical_git_origin_url(cwd: Path | str = ".") -> str | None:
 
 
 def canonicalize_remote_url(remote_url: str) -> str | None:
+    """Return a transport-agnostic identity for a git remote.
+
+    The canonical URL is an identity key, never a clone target, so the same
+    repository must map to one value regardless of how a checkout was cloned.
+    ssh/scp/git remotes and https remotes for the same host and path therefore
+    all collapse to a single ``https://<host>/<path>`` form (userinfo dropped),
+    so a machine cloning over ssh matches a peer that cloned over https.
+    """
     value = remote_url.strip()
     if not value:
         return None
