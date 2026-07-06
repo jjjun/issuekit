@@ -8,6 +8,7 @@ from pathlib import Path
 import sys
 
 from issuekit.author_guard import STOP_SENTINEL, create_author_guard, guard_dict, stop_message
+from issuekit.commands._common import load_config_for_project_mutation
 from issuekit.config import load_config
 from issuekit.core import VALID_ISSUE_PRIORITIES
 from issuekit.proposals import ProposalError
@@ -67,6 +68,13 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     propose_parser.add_argument("--from-issue", help="Local issue id to propose from.")
     propose_parser.add_argument("--reply", help="Local adopted issue id to reply from.")
     propose_parser.add_argument("--agent", help="Optional author agent for the local STOP guard.")
+    propose_parser.add_argument(
+        "--project",
+        help=(
+            "Explicit origin API project when running outside a local issuekit "
+            "project root."
+        ),
+    )
     propose_parser.add_argument(
         "--blocking",
         action="store_true",
@@ -164,8 +172,12 @@ def run_list_refs(_args) -> int:
 
 
 def run_propose(args) -> int:
-    config = load_config(Path.cwd())
     try:
+        config = load_config_for_project_mutation(
+            Path.cwd(),
+            command="propose",
+            project=args.project,
+        )
         proposal = build_proposal(
             Path.cwd(),
             to=args.to,
@@ -176,6 +188,7 @@ def run_propose(args) -> int:
             reply=args.reply,
             blocking=args.blocking,
             depends_on=args.depends_on,
+            config=config,
         )
         created = send_proposal(config, proposal)
     except (LookupError, ProposalError, RefError, ValueError, WorkflowError) as exc:

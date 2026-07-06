@@ -417,8 +417,9 @@ def build_proposal(
     reply: str | None,
     blocking: bool = False,
     depends_on: str | Sequence[str] | None = None,
+    config: IssuekitConfig | None = None,
 ) -> Proposal:
-    config = load_config(cwd)
+    config = config or load_config(cwd)
     if not config.api_url:
         raise ProposalError(
             "Proposal commands require api_url in issuekit.toml/[tool.issuekit] or ISSUEKIT_API_URL."

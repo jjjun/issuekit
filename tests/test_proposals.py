@@ -84,6 +84,77 @@ def test_api_cli_propose_posts_expected_body_and_dedupes(
     assert not (tmp_path / "docs" / "issues" / "incoming").exists()
 
 
+def test_api_cli_propose_requires_local_project_context(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("ISSUEKIT_API_URL", "https://mine.example")
+    monkeypatch.setenv("ISSUEKIT_PROJECT", "issuekit")
+
+    assert (
+        cli.main(
+            [
+                "propose",
+                "--to",
+                "target",
+                "--title",
+                "Scratch proposal",
+                "--body",
+                "Body.",
+            ]
+        )
+        == 1
+    )
+
+    captured = capsys.readouterr()
+    assert "needs a local issuekit project context" in captured.err
+    assert "--project <project>" in captured.err
+
+
+def test_api_cli_propose_project_override_allows_scratch_cwd(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient()
+    created_projects: list[str] = []
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("ISSUEKIT_API_URL", "https://mine.example")
+    monkeypatch.setenv("ISSUEKIT_PROJECT", "wrong-project")
+    client.register_catalog_project("target")
+
+    def fake_client(*args, **kwargs):
+        created_projects.append(kwargs["project"])
+        return client
+
+    monkeypatch.setattr(proposals_api, "IssuekitClient", fake_client)
+
+    assert (
+        cli.main(
+            [
+                "propose",
+                "--project",
+                "source",
+                "--to",
+                "target",
+                "--title",
+                "Explicit source",
+                "--body",
+                "Body.",
+                "--json",
+            ]
+        )
+        == 0
+    )
+
+    sent = json.loads(capsys.readouterr().out)
+    assert sent["origin"] == "source#0@unknown"
+    assert client.calls[0]["body"]["origin"] == "source#0@unknown"
+    assert created_projects == ["source", "target"]
+
+
 def test_api_cli_propose_accepts_worker_repo_target(
     tmp_path: Path,
     monkeypatch,

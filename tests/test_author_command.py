@@ -78,6 +78,67 @@ def test_author_command_creates_issue_via_api(tmp_path: Path, monkeypatch, capsy
     }
 
 
+def test_author_command_requires_local_project_context(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("ISSUEKIT_API_URL", "https://mine.example")
+    monkeypatch.setenv("ISSUEKIT_PROJECT", "issuekit")
+
+    exit_code = cli.main(
+        [
+            "author",
+            "--title",
+            "Misfiled issue",
+            "--body",
+            "## Problem\n\nThis came from a scratch directory.\n",
+            "--agent",
+            "codex",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "needs a local issuekit project context" in captured.err
+    assert "--project <project>" in captured.err
+
+
+def test_author_command_project_override_allows_scratch_cwd(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient()
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("ISSUEKIT_API_URL", "https://mine.example")
+    monkeypatch.setenv("ISSUEKIT_PROJECT", "wrong-project")
+    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+
+    exit_code = cli.main(
+        [
+            "author",
+            "--project",
+            "demo",
+            "--title",
+            "Explicit project",
+            "--body",
+            "## Problem\n\nThe target project was provided explicitly.\n",
+            "--agent",
+            "codex",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "Authored issue: demo#1" in captured.out
+    guard = read_author_guard(tmp_path)
+    assert guard is not None
+    assert guard.project == "demo"
+    assert client.calls[0]["body"]["title"] == "Explicit project"
+
+
 def test_author_command_can_assign_explicit_implementer(
     tmp_path: Path,
     monkeypatch,

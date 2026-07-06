@@ -8,8 +8,12 @@ from pathlib import Path
 import re
 
 from issuekit.author_guard import create_author_guard, stop_message
-from issuekit.commands._common import require_ascii, run_command
-from issuekit.config import IssuekitConfig, load_config
+from issuekit.commands._common import (
+    load_config_for_project_mutation,
+    require_ascii,
+    run_command,
+)
+from issuekit.config import IssuekitConfig
 from issuekit.core import (
     Issue,
     VALID_ISSUE_PRIORITIES,
@@ -38,6 +42,13 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     author_parser.add_argument("--agent", required=True, help="Configured author agent.")
     author_parser.add_argument("--assign", help="Optional implementer assignee.")
     author_parser.add_argument(
+        "--project",
+        help=(
+            "Explicit API project to author into when running outside a local "
+            "issuekit project root."
+        ),
+    )
+    author_parser.add_argument(
         "--direct-local-author",
         action="store_true",
         help=(
@@ -57,7 +68,11 @@ def register(subparsers: argparse._SubParsersAction) -> None:
 
 def run(args) -> int:
     def action() -> int:
-        config = load_config(Path.cwd())
+        config = load_config_for_project_mutation(
+            Path.cwd(),
+            command="author",
+            project=args.project,
+        )
         authored = author_issue(
             title=args.title,
             body=args.body,

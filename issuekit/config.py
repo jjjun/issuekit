@@ -330,6 +330,23 @@ def load_config(cwd: Path | str = ".") -> IssuekitConfig:
     )
 
 
+def has_local_project_context(cwd: Path | str = ".") -> bool:
+    """Return true when cwd looks like an issuekit project root."""
+
+    config_cwd = Path(cwd)
+    if (config_cwd / DEFAULT_PROFILE_FILE).is_file():
+        return True
+
+    pyproject_path = config_cwd / "pyproject.toml"
+    if pyproject_path.exists():
+        data = _load_config_toml(pyproject_path)
+        pyproject_config = data.get("tool", {}).get("issuekit")
+        if pyproject_config is not None:
+            return True
+
+    return (config_cwd / "issuekit.toml").is_file()
+
+
 def _load_raw_config(cwd: Path) -> dict[str, object]:
     raw_config: dict[str, object] = {}
     pyproject_has_issuekit = False
