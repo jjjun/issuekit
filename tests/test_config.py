@@ -470,6 +470,17 @@ def test_default_assignees_includes_kimi() -> None:
     assert "kimi" in IssuekitConfig.assignees
 
 
+def test_default_stages_match_server_vocabulary() -> None:
+    assert IssuekitConfig.stages == (
+        "planned",
+        "todo",
+        "implementing",
+        "review",
+        "changes_requested",
+        "done",
+    )
+
+
 def test_config_worker_key_returns_registered_identity() -> None:
     assert IssuekitConfig().worker_key() is None
     assert IssuekitConfig().qualified_worker_key() is None

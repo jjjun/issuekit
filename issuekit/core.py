@@ -8,7 +8,7 @@ import re
 from typing import Any
 
 
-VALID_ISSUE_STATUSES = {"active", "planned", "investigating", "in_progress", "completed"}
+VALID_ISSUE_STATUSES = {"active", "planned", "in_progress", "completed"}
 VALID_ISSUE_PRIORITIES = {"high", "medium", "low"}
 WORKFLOW_TOKEN_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]{0,31}$")
 MOJIBAKE_PATTERN = re.compile(

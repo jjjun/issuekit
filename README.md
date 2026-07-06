@@ -339,7 +339,7 @@ Python repositories can configure issuekit in `pyproject.toml`:
 api_url = "https://mine.example"
 project = "issuekit"
 assignees = ["codex", "claude"]
-stages = ["todo", "implementing", "review", "changes_requested", "done"]
+stages = ["planned", "todo", "implementing", "review", "changes_requested", "done"]
 default_reviewer = "auto"
 require_distinct_reviewer = true
 work_branch = "main"
@@ -352,7 +352,7 @@ with the same keys at the top level:
 api_url = "https://mine.example"
 project = "issuekit"
 assignees = ["codex", "claude"]
-stages = ["todo", "implementing", "review", "changes_requested", "done"]
+stages = ["planned", "todo", "implementing", "review", "changes_requested", "done"]
 default_reviewer = "auto"
 require_distinct_reviewer = true
 work_branch = "main"
