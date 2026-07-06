@@ -191,21 +191,26 @@ def canonicalize_remote_url(remote_url: str) -> str | None:
 
     scp_match = re.match(r"^(?P<user>[^/@:]+)@(?P<host>[^:]+):(?P<path>.+)$", value)
     if scp_match:
-        user = scp_match.group("user").lower()
         host = scp_match.group("host").lower()
         path = _canonical_remote_path(scp_match.group("path"))
         if not path:
             return None
-        return f"ssh://{user}@{host}/{path}"
+        return f"https://{host}/{path}"
 
     parsed = urlsplit(value)
     if parsed.scheme and parsed.netloc:
-        scheme = parsed.scheme.lower()
-        netloc = parsed.netloc.lower()
+        host = parsed.hostname
+        if not host:
+            return None
+        host = host.lower()
+        if ":" in host and not host.startswith("["):
+            host = f"[{host}]"
+        if parsed.port is not None:
+            host = f"{host}:{parsed.port}"
         path = _canonical_remote_path(parsed.path)
         if not path:
             return None
-        return urlunsplit((scheme, netloc, f"/{path}", "", ""))
+        return urlunsplit(("https", host, f"/{path}", "", ""))
 
     path = _canonical_remote_path(value)
     return path or None

@@ -32,15 +32,16 @@ def test_worker_key_matches_registry_key_format() -> None:
     assert worker_key(WorkerIdentity("machine", "repo", "checkout")) == "checkout.repo"
 
 
-def test_canonicalize_remote_url_normalizes_common_git_forms() -> None:
-    assert (
-        canonicalize_remote_url("git@github.com:Owner/project.git")
-        == "ssh://git@github.com/Owner/project"
-    )
-    assert (
-        canonicalize_remote_url("https://GitHub.com/Owner/project.git/")
-        == "https://github.com/Owner/project"
-    )
+@pytest.mark.parametrize(
+    "remote_url",
+    [
+        "git@github.com:Owner/project.git",
+        "ssh://git@github.com/Owner/project.git",
+        "https://GitHub.com/Owner/project.git/",
+    ],
+)
+def test_canonicalize_remote_url_normalizes_common_git_forms(remote_url: str) -> None:
+    assert canonicalize_remote_url(remote_url) == "https://github.com/Owner/project"
 
 
 def test_register_worker_uses_remote_repo_and_basename_worker(
@@ -367,7 +368,7 @@ def test_add_cli_posts_canonical_url_from_git_origin(
 
     assert cli.main(["add", "--worker-id", "checkout"]) == 0
 
-    assert client.repo_calls[0]["canonical_url"] == "ssh://git@github.com/Owner/demo"
+    assert client.repo_calls[0]["canonical_url"] == "https://github.com/Owner/demo"
 
 
 def test_add_cli_posts_repo_and_worker_metadata(
