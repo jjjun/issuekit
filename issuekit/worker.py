@@ -184,6 +184,14 @@ def canonical_git_origin_url(cwd: Path | str = ".") -> str | None:
 
 
 def canonicalize_remote_url(remote_url: str) -> str | None:
+    """Return a transport-agnostic identity for a git remote.
+
+    The canonical URL is an identity key, never a clone target, so the same
+    repository must map to one value regardless of how a checkout was cloned.
+    ssh/scp/git remotes and https remotes for the same host and path therefore
+    all collapse to a single ``https://<host>/<path>`` form (userinfo dropped),
+    so a machine cloning over ssh matches a peer that cloned over https.
+    """
     value = remote_url.strip()
     if not value:
         return None
@@ -191,21 +199,21 @@ def canonicalize_remote_url(remote_url: str) -> str | None:
 
     scp_match = re.match(r"^(?P<user>[^/@:]+)@(?P<host>[^:]+):(?P<path>.+)$", value)
     if scp_match:
-        user = scp_match.group("user").lower()
         host = scp_match.group("host").lower()
         path = _canonical_remote_path(scp_match.group("path"))
         if not path:
             return None
-        return f"ssh://{user}@{host}/{path}"
+        return f"https://{host}/{path}"
 
     parsed = urlsplit(value)
     if parsed.scheme and parsed.netloc:
-        scheme = parsed.scheme.lower()
-        netloc = parsed.netloc.lower()
+        host = (parsed.hostname or parsed.netloc).lower()
+        if parsed.port is not None:
+            host = f"{host}:{parsed.port}"
         path = _canonical_remote_path(parsed.path)
         if not path:
             return None
-        return urlunsplit((scheme, netloc, f"/{path}", "", ""))
+        return urlunsplit(("https", host, f"/{path}", "", ""))
 
     path = _canonical_remote_path(value)
     return path or None

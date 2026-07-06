@@ -33,9 +33,15 @@ def test_worker_key_matches_registry_key_format() -> None:
 
 
 def test_canonicalize_remote_url_normalizes_common_git_forms() -> None:
+    # ssh/scp and https clones of the same repo collapse to one https identity
+    # so peers that cloned over different transports still match.
     assert (
         canonicalize_remote_url("git@github.com:Owner/project.git")
-        == "ssh://git@github.com/Owner/project"
+        == "https://github.com/Owner/project"
+    )
+    assert (
+        canonicalize_remote_url("ssh://git@github.com/Owner/project.git")
+        == "https://github.com/Owner/project"
     )
     assert (
         canonicalize_remote_url("https://GitHub.com/Owner/project.git/")
@@ -367,7 +373,7 @@ def test_add_cli_posts_canonical_url_from_git_origin(
 
     assert cli.main(["add", "--worker-id", "checkout"]) == 0
 
-    assert client.repo_calls[0]["canonical_url"] == "ssh://git@github.com/Owner/demo"
+    assert client.repo_calls[0]["canonical_url"] == "https://github.com/Owner/demo"
 
 
 def test_add_cli_posts_repo_and_worker_metadata(
