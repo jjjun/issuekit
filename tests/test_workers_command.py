@@ -4,8 +4,11 @@ from pathlib import Path
 import pytest
 
 from issuekit import cli
+from issuekit import store as store_module
 from issuekit import worker_registry
 from issuekit.testing import FakeIssuekitClient
+
+from tests.issue_helpers import api_issue
 
 
 def _configure_api(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, client) -> None:
@@ -15,6 +18,7 @@ def _configure_api(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, client) -> N
         newline="\n",
     )
     monkeypatch.setattr(worker_registry, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
     monkeypatch.chdir(tmp_path)
 
 
@@ -118,3 +122,181 @@ def test_workers_command_handles_empty_catalog(
     assert cli.main(["workers"]) == 0
 
     assert "No workers registered." in capsys.readouterr().out
+
+
+def test_workers_remove_deletes_by_dotted_key(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    client = FakeIssuekitClient()
+    client.upsert_worker(
+        machine_id="machine",
+        repo_id="mine-py",
+        worker_name="checkout",
+        path="/repo",
+    )
+    _configure_api(tmp_path, monkeypatch, client)
+
+    assert cli.main(["workers", "remove", "checkout.mine-py", "--json"]) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["display"] == "checkout.mine-py"
+    assert payload["deleted"] == {"id": "checkout.mine-py", "deleted": True}
+    assert [call["method"] for call in client.calls[-2:]] == [
+        "list_workers",
+        "delete_worker",
+    ]
+
+
+def test_workers_remove_deletes_by_legacy_id(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    client = FakeIssuekitClient()
+    client.upsert_worker(
+        machine_id="machine",
+        repo_id="mine-py",
+        worker_name="checkout",
+        path="/repo",
+    )
+    _configure_api(tmp_path, monkeypatch, client)
+
+    assert cli.main(["workers", "remove", "machine/mine-py/checkout", "--json"]) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["display"] == "checkout.mine-py"
+    assert client.calls[-1] == {
+        "method": "delete_worker",
+        "body": {"id": "checkout.mine-py"},
+    }
+
+
+def test_workers_remove_refuses_implementing_holder_without_force(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                7,
+                "Held",
+                status="in_progress",
+                stage="implementing",
+                worker="checkout.mine-py",
+            )
+        ]
+    )
+    client.upsert_worker(
+        machine_id="machine",
+        repo_id="mine-py",
+        worker_name="checkout",
+        path="/repo",
+    )
+    _configure_api(tmp_path, monkeypatch, client)
+
+    assert cli.main(["workers", "remove", "checkout.mine-py"]) == 1
+
+    assert "holds implementing issue(s) #7" in capsys.readouterr().err
+    assert "delete_worker" not in [call["method"] for call in client.calls]
+
+
+def test_workers_remove_force_deletes_implementing_holder(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                7,
+                "Held",
+                status="in_progress",
+                stage="implementing",
+                worker="machine/mine-py/checkout",
+            )
+        ]
+    )
+    client.upsert_worker(
+        machine_id="machine",
+        repo_id="mine-py",
+        worker_name="checkout",
+        path="/repo",
+    )
+    _configure_api(tmp_path, monkeypatch, client)
+
+    assert cli.main(["workers", "remove", "checkout.mine-py", "--force", "--json"]) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["implementing_issues"][0]["id"] == 7
+    assert client.calls[-1]["method"] == "delete_worker"
+
+
+def test_workers_prune_dry_run_filters_to_stale_issueless_untargeted_workers(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                10,
+                "Held",
+                status="in_progress",
+                stage="implementing",
+                worker="held.mine-py",
+            ),
+            api_issue(
+                11,
+                "Directed",
+                stage="todo",
+                target_worker="targeted.mine-py",
+            ),
+        ]
+    )
+    for worker in ("stale", "held", "targeted", "fresh"):
+        client.upsert_worker(
+            machine_id="machine",
+            repo_id="mine-py",
+            worker_name=worker,
+            path=f"/{worker}",
+        )
+    client._workers["stale.mine-py"]["last_seen"] = "2000-01-01T00:00:00Z"
+    client._workers["held.mine-py"]["last_seen"] = "2000-01-01T00:00:00Z"
+    client._workers["targeted.mine-py"]["last_seen"] = "2000-01-01T00:00:00Z"
+    client._workers["fresh.mine-py"]["last_seen"] = "2999-01-01T00:00:00Z"
+    _configure_api(tmp_path, monkeypatch, client)
+
+    assert cli.main(["workers", "prune", "--dry-run", "--json"]) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert [item["display"] for item in payload["candidates"]] == ["stale.mine-py"]
+    assert "delete_worker" not in [call["method"] for call in client.calls]
+
+
+def test_workers_prune_requires_count_confirmation_before_delete(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    client = FakeIssuekitClient()
+    client.upsert_worker(
+        machine_id="machine",
+        repo_id="mine-py",
+        worker_name="stale",
+        path="/stale",
+    )
+    client._workers["stale.mine-py"]["last_seen"] = "2000-01-01T00:00:00Z"
+    _configure_api(tmp_path, monkeypatch, client)
+    monkeypatch.setattr("builtins.input", lambda prompt: "1")
+
+    assert cli.main(["workers", "prune", "--json"]) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["deleted"] == [{"id": "stale.mine-py", "deleted": True}]
+    assert client.calls[-1] == {
+        "method": "delete_worker",
+        "body": {"id": "stale.mine-py"},
+    }

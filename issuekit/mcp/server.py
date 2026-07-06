@@ -38,7 +38,8 @@ from issuekit.proposals_api import (
 from issuekit.session import new_session_token
 from issuekit.store import get_store
 from issuekit.token_cache import _read_cached_token
-from issuekit.worker_registry import list_api_workers
+from issuekit.worker_registry import list_api_workers, remove_api_repo, remove_api_worker
+from issuekit.worker_keys import worker_display_from_row
 from issuekit.workflow import (
     claim_next,
     find_for,
@@ -259,6 +260,43 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
     ) -> list[dict[str, Any]]:
         config, _config_root = await _load_api_config(root, ctx)
         return list_api_workers(config, repo_id=repo_id, project=project)
+
+    @server.tool(
+        description=(
+            "Remove a registered worker by worker.repo or legacy machine/repo/worker "
+            "id. Refuses workers that hold implementing issues unless force is true."
+        )
+    )
+    async def remove_worker(
+        address: str,
+        force: bool = False,
+        ctx: Context | None = None,
+    ) -> dict[str, Any]:
+        config, _config_root = await _load_api_config(root, ctx)
+        result = remove_api_worker(config, address, force=force)
+        return {
+            "worker": result.worker,
+            "display": worker_display_from_row(result.worker),
+            "deleted": result.deleted,
+            "implementing_issues": [
+                issue_dict(issue) | {"worker": issue.worker}
+                for issue in result.implementing_issues
+            ],
+        }
+
+    @server.tool(
+        description=(
+            "Remove a registered repo catalog entry. The API refuses repos that "
+            "still have worker, issue, or proposal references."
+        )
+    )
+    async def remove_repo(
+        repo: str,
+        ctx: Context | None = None,
+    ) -> dict[str, Any]:
+        config, _config_root = await _load_api_config(root, ctx)
+        result = remove_api_repo(config, repo)
+        return {"repo_key": result.repo_key, "deleted": result.deleted}
 
     @server.tool(
         description=(

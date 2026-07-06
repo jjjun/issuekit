@@ -192,6 +192,9 @@ copying the steps.
 | `issuekit dev-tool reload-mcp [--json]` | Stop only running `issuekit-mcp.exe` processes; MCP clients own respawn and stdio reconnection. |
 | `issuekit add` / `issuekit register` | Register this git repo namespace and this checkout's worker (auto-derives repo and worker ids, with machine metadata, and publishes the configured API project). |
 | `issuekit workers [--repo-id <id>] [--project <name>] [--json]` | List registered workers and their repo-level roles across projects. |
+| `issuekit workers remove <worker.repo\|machine/repo/worker> [--force] [--json]` | Remove a registered worker after checking for implementing issues. |
+| `issuekit workers prune [--stale-after-sec <n>] [--dry-run] [--json]` | Remove stale workers that hold no implementing issue and are not targeted by directed work. |
+| `issuekit repos remove <repo> [--json]` | Remove a repo catalog entry; the API refuses entries that still have references. |
 | `issuekit add-ref <name> --path <repo> [--scope local\|workspace]` | Register an optional local project alias. |
 | `issuekit list-refs` | List effective local project aliases and their source. |
 | `issuekit propose --to <project> --title "..."` | Send a proposal to a project API inbox. |
@@ -437,6 +440,33 @@ is false, so a checkout participates only in the repo pool unless the backend
 already trusts it for directed work. Combine this with target-owned intake
 policy such as `[triage].trusted_origins` when only selected origin projects
 should be auto-adopted into directed or blocking work.
+
+## Registry Maintenance
+
+Use `issuekit workers remove <worker.repo>` to delete a known stale checkout
+registration. The command accepts both the current dotted key and the legacy
+`machine/repo/worker` id, prints the worker status, `last_seen`, and any
+implementing issue it found, and refuses to delete an implementing holder unless
+`--force` is passed.
+
+Use `issuekit workers prune --dry-run` to review cleanup candidates before
+deleting anything. Prune only offers workers whose `last_seen` heartbeat is
+older than `--stale-after-sec`, that hold no implementing issue, and that are
+not the `target_worker` of directed work. Without `--dry-run`, the command asks
+you to type the candidate count before it deletes the workers.
+`last_seen` only refreshes while `serve` or the worker heartbeat is running, so
+quiet but live checkouts can look stale; start with `--dry-run` and use a
+generous `--stale-after-sec` before deleting.
+
+If prune skips a stale worker because an issue is still directed to it, use
+`issuekit readdress <id>` first to return that issue to the repo pool. If prune
+skips a stale worker because it holds an implementing claim, inspect
+`issuekit orphans` and use `issuekit reclaim <id>` when the claim is truly
+orphaned.
+
+Use `issuekit repos remove <repo>` only after worker cleanup. Catalog-aware API
+servers return a conflict when a repo still has worker, issue, proposal, or
+other references, and issuekit prints the reference counts returned by the API.
 
 ## Directed Addressing
 

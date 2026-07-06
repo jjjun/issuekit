@@ -510,6 +510,22 @@ class FakeIssueSurface:
             ]
             return rows
 
+    def delete_worker(self, worker_id: str) -> JsonDict:
+        with self._lock:
+            self._record("delete_worker", body={"id": worker_id})
+            worker = self._workers.pop(worker_id, None)
+            if worker is None:
+                raise WorkflowError(f"Worker {worker_id} was not found.", code="not_found")
+            return {"id": worker_id, "deleted": True}
+
+    def delete_repo(self, repo_key: str) -> JsonDict:
+        with self._lock:
+            self._record("delete_repo", body={"repo_key": repo_key})
+            if repo_key not in self._repos:
+                raise WorkflowError(f"Repo {repo_key} was not found.", code="not_found")
+            self._repos.pop(repo_key)
+            return {"repo_key": repo_key, "deleted": True}
+
     def _find(self, number: int) -> JsonDict:
         issue = self._issues.get(number)
         if issue is None:

@@ -85,6 +85,8 @@ def test_server_registers_expected_tools(tmp_path: Path) -> None:
         "update_issue",
         "list_queue",
         "list_workers",
+        "remove_worker",
+        "remove_repo",
         "list_orphans",
         "reclaim_issue",
         "readdress_issue",
@@ -337,6 +339,87 @@ def test_list_workers_preserves_target_worker_when_set(
     workers = _call(server, "list_workers", {"repo_id": "mine-py"})
 
     assert workers[0]["target_worker"] == "checkout.mine-py"
+
+
+def test_remove_worker_tool_deletes_by_legacy_id(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = FakeIssuekitClient()
+    client.upsert_worker(
+        machine_id="machine",
+        repo_id="mine-py",
+        worker_id="checkout",
+        path="/repo",
+    )
+    _configure_api(tmp_path, monkeypatch, client)
+    monkeypatch.setattr(worker_registry, "IssuekitClient", lambda *args, **kwargs: client)
+    server = create_server(tmp_path)
+
+    result = _call(
+        server,
+        "remove_worker",
+        {"address": "machine/mine-py/checkout"},
+    )
+
+    assert result["deleted"] == {"id": "checkout.mine-py", "deleted": True}
+    assert client.calls[-1] == {
+        "method": "delete_worker",
+        "body": {"id": "checkout.mine-py"},
+    }
+
+
+def test_remove_worker_tool_force_allows_implementing_holder(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                5,
+                "Held",
+                status="in_progress",
+                stage="implementing",
+                worker="checkout.mine-py",
+            )
+        ]
+    )
+    client.upsert_worker(
+        machine_id="machine",
+        repo_id="mine-py",
+        worker_id="checkout",
+        path="/repo",
+    )
+    _configure_api(tmp_path, monkeypatch, client)
+    monkeypatch.setattr(worker_registry, "IssuekitClient", lambda *args, **kwargs: client)
+    server = create_server(tmp_path)
+
+    result = _call(
+        server,
+        "remove_worker",
+        {"address": "checkout.mine-py", "force": True},
+    )
+
+    assert result["implementing_issues"][0]["id"] == 5
+    assert result["deleted"] == {"id": "checkout.mine-py", "deleted": True}
+
+
+def test_remove_repo_tool_deletes_repo(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = FakeIssuekitClient()
+    client.upsert_repo(repo_key="mine-py")
+    _configure_api(tmp_path, monkeypatch, client)
+    monkeypatch.setattr(worker_registry, "IssuekitClient", lambda *args, **kwargs: client)
+    server = create_server(tmp_path)
+
+    result = _call(server, "remove_repo", {"repo": "mine-py"})
+
+    assert result == {
+        "repo_key": "mine-py",
+        "deleted": {"repo_key": "mine-py", "deleted": True},
+    }
 
 
 def test_list_orphans_flags_dead_worker_claim(

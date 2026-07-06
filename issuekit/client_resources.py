@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from typing import Any
+from urllib.parse import quote
 
 from issuekit.client_base import JsonDict, _ensure_dict, _profile_rows, _worker_rows
 from issuekit.core import _drop_none
@@ -431,6 +432,24 @@ class _WorkerResourceMixin:
             params=_drop_none({"repo_id": repo_id, "project": project}),
         )
         return _worker_rows(payload)
+
+    def delete_worker(self, worker_id: str) -> JsonDict:
+        payload = self._authorized_request(
+            "DELETE",
+            f"/api/workers/{quote(worker_id, safe='')}",
+        )
+        if payload is None:
+            return {"id": worker_id, "deleted": True}
+        return _ensure_dict(payload, "Worker delete response")
+
+    def delete_repo(self, repo_key: str) -> JsonDict:
+        payload = self._authorized_request(
+            "DELETE",
+            f"/api/repos/{quote(repo_key, safe='')}",
+        )
+        if payload is None:
+            return {"repo_key": repo_key, "deleted": True}
+        return _ensure_dict(payload, "Repo delete response")
 
 
 class _ProfileResourceMixin:

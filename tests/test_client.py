@@ -1160,6 +1160,39 @@ def test_client_list_workers_parses_paginated_items_envelope() -> None:
     assert client.list_workers() == rows
 
 
+def test_client_delete_worker_uses_top_level_worker_endpoint() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "DELETE"
+        assert request.url.raw_path == b"/api/workers/machine%2Frepo%2Fcheckout"
+        return httpx.Response(204)
+
+    client = IssuekitClient(
+        "https://mine.example",
+        token="static-token",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    assert client.delete_worker("machine/repo/checkout") == {
+        "id": "machine/repo/checkout",
+        "deleted": True,
+    }
+
+
+def test_client_delete_repo_uses_top_level_repo_endpoint() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "DELETE"
+        assert request.url.path == "/api/repos/mine-py"
+        return httpx.Response(200, json={"repo_key": "mine-py", "deleted": True})
+
+    client = IssuekitClient(
+        "https://mine.example",
+        token="static-token",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    assert client.delete_repo("mine-py") == {"repo_key": "mine-py", "deleted": True}
+
+
 def test_client_import_issues_posts_wrapped_issues_body() -> None:
     items = [
         {
