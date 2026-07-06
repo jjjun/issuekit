@@ -192,7 +192,7 @@ copying the steps.
 | `issuekit dev-tool reload-mcp [--json]` | Stop only running `issuekit-mcp.exe` processes; MCP clients own respawn and stdio reconnection. |
 | `issuekit add` / `issuekit register` | Register this git repo namespace and this checkout's worker (auto-derives repo and worker ids, with machine metadata, and publishes the configured API project). |
 | `issuekit workers [--repo-id <id>] [--project <name>] [--json]` | List registered workers and their repo-level roles across projects. |
-| `issuekit workers remove <worker.repo\|machine/repo/worker> [--force] [--json]` | Remove a registered worker after checking for implementing issues. |
+| `issuekit workers remove <worker.repo[@machine]\|machine/repo/worker> [--force] [--json]` | Remove a registered worker after checking for implementing issues. |
 | `issuekit workers prune [--stale-after-sec <n>] [--dry-run] [--json]` | Remove stale workers that hold no implementing issue and are not targeted by directed work. |
 | `issuekit repos remove <repo> [--json]` | Remove a repo catalog entry; the API refuses entries that still have references. |
 | `issuekit add-ref <name> --path <repo> [--scope local\|workspace]` | Register an optional local project alias. |
@@ -408,8 +408,9 @@ step. It derives `repo_id` and the canonical repo URL from `remote.origin.url`;
 in a git checkout with no origin, pass `--repo-id <repository-id>` explicitly.
 It refuses non-git directories. The worker name defaults to the checkout
 directory basename and is displayed with the repo as `worker.repo`. `machine_id`
-is stored as worker metadata so duplicate worker names can be diagnosed across
-machines. `project` remains the API issue/proposal namespace, so an explicitly
+is stored as worker metadata, and same-named workers on different machines can
+be addressed individually with the machine-qualified `worker.repo@machine` form
+(see Directed Addressing). `project` remains the API issue/proposal namespace, so an explicitly
 configured `project` is not overwritten by a remote name or `--repo-id`.
 
 A repo can advertise its role so agents in other projects recognize peers when
@@ -444,10 +445,10 @@ should be auto-adopted into directed or blocking work.
 ## Registry Maintenance
 
 Use `issuekit workers remove <worker.repo>` to delete a known stale checkout
-registration. The command accepts both the current dotted key and the legacy
-`machine/repo/worker` id, prints the worker status, `last_seen`, and any
-implementing issue it found, and refuses to delete an implementing holder unless
-`--force` is passed.
+registration. The command accepts the current dotted key, the machine-qualified
+`worker.repo@machine` address, and the legacy `machine/repo/worker` id, prints
+the worker status, `last_seen`, and any implementing issue it found, and refuses
+to delete an implementing holder unless `--force` is passed.
 
 Use `issuekit workers prune --dry-run` to review cleanup candidates before
 deleting anything. Prune only offers workers whose `last_seen` heartbeat is
@@ -487,9 +488,25 @@ resulting work. When a target repo has opted a checkout into directed work, use
 $ issuekit propose --to prod.mine-py --title "Patch production profile" --body "..."
 ```
 
-The dotted form is client-side sugar. Issuekit validates both tokens, sends the
+The same worker name can exist on several machines (for example a
+provisioning-created devenv `alpha.mine-py` on both `pike3` and `main1`). To
+address exactly one of them, append the machine id in the canonical
+machine-qualified form `worker.repo@machine`:
+
+```console
+$ issuekit propose --to alpha.mine-py@pike3 --title "Patch pike3 profile" --body "..."
+```
+
+`issuekit workers` prints each worker's machine-qualified address so callers
+know the exact string to direct to. A machine-qualified target only matches a
+claiming worker on that machine, while the bare `worker.repo` form stays
+machine-agnostic; the API rejects a bare directed target as ambiguous when the
+same worker name is registered on multiple machines.
+
+The dotted form is client-side sugar. Issuekit validates each token, sends the
 repo/project separately from the worker name, and claim requests include the
-local `worker.repo` key so the API can hide work directed to other workers.
+local machine-qualified `worker.repo@machine` key so the API can hide work
+directed to other workers or other machines.
 
 Built-in agent configs can be patched by name. A table such as
 `[tool.issuekit.agents.codex]` overlays only the keys it specifies and leaves

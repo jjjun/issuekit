@@ -101,7 +101,7 @@ def claim_next(
 
     owned_store = _ensure_store(config, store)
     try:
-        worker = config.worker_key()
+        worker = config.qualified_worker_key()
         resolved_session = _resolve_session(session)
         return owned_store.claim_next(  # type: ignore[attr-defined]
             assignee=assignee,
@@ -147,7 +147,7 @@ def claim_issue(
 
     owned_store = _ensure_store(config, store)
     try:
-        worker = config.worker_key()
+        worker = config.qualified_worker_key()
         resolved_session = _resolve_session(session)
         _ensure_orchestration_session(orchestration, resolved_session)
         return owned_store.claim_issue(  # type: ignore[attr-defined]

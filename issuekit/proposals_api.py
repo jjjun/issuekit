@@ -467,7 +467,7 @@ def build_proposal(
     return Proposal(
         origin=origin,
         to=to,
-        target_worker=target.worker,
+        target_worker=target.directed_worker,
         reply_to=reply_to,
         created=date.today().isoformat(),
         title=title,

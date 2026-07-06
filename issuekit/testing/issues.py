@@ -7,7 +7,7 @@ from typing import Any
 
 from issuekit.core import _drop_none
 from issuekit.workflow import WorkflowError
-from issuekit.worker_keys import worker_keys_match
+from issuekit.worker_keys import directed_target_matches, worker_keys_match
 
 
 JsonDict = dict[str, Any]
@@ -587,10 +587,10 @@ class FakeIssueSurface:
                 f"Issue #{issue_id} is assigned to {issue.get('assignee')}, not {assignee}.",
                 code="invalid_transition",
             )
-        target_worker = str(issue.get("target_worker") or "")
-        if target_worker and target_worker != (worker or ""):
+        if not _matches_target_worker(issue, worker):
             raise WorkflowError(
-                f"Issue #{issue_id} is directed to worker {target_worker}, not {worker or '-'}.",
+                f"Issue #{issue_id} is directed to worker "
+                f"{issue.get('target_worker')}, not {worker or '-'}.",
                 code="invalid_transition",
             )
         if not allow_self_implement and issue.get("author") == assignee:
@@ -622,4 +622,6 @@ def _is_self_review(issue: JsonDict, reviewer: str, reviewer_worker: str | None)
 
 def _matches_target_worker(issue: JsonDict, worker: str | None) -> bool:
     target_worker = str(issue.get("target_worker") or "")
-    return not target_worker or target_worker == (worker or "")
+    if not target_worker:
+        return True
+    return directed_target_matches(target_worker, worker or "")

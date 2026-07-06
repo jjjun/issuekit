@@ -258,7 +258,7 @@ def _ensure_registered_distinct_worker(
     agent: str,
     config: IssuekitConfig,
 ) -> None:
-    reviewer_worker = config.worker_key()
+    reviewer_worker = config.qualified_worker_key()
     if reviewer_worker is None:
         raise WorkflowError(
             "Automated review requires a registered worker identity. Run `issuekit add` first."

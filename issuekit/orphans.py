@@ -23,7 +23,7 @@ from datetime import datetime, timezone
 from issuekit.config import IssuekitConfig
 from issuekit.core import Issue
 from issuekit.store import get_store
-from issuekit.worker_keys import worker_keys_from_row
+from issuekit.worker_keys import worker_keys_from_row, worker_keys_match
 from issuekit.worker_registry import list_api_workers
 
 # The worker heartbeat posts every WORKER_HEARTBEAT_INTERVAL_SEC (60s). Wait for
@@ -178,10 +178,16 @@ def _append_stale_worker(
     expired_reason: str,
     target_worker: str = "",
 ) -> None:
-    if worker not in last_seen_by_worker:
+    matched_key = worker if worker in last_seen_by_worker else None
+    if matched_key is None:
+        matched_key = next(
+            (key for key in last_seen_by_worker if worker_keys_match(worker, key)),
+            None,
+        )
+    if matched_key is None:
         stale.append(StaleClaim(issue, no_worker_reason, worker, None, None, target_worker))
         return
-    raw_last_seen = last_seen_by_worker[worker]
+    raw_last_seen = last_seen_by_worker[matched_key]
     seen = _parse_timestamp(raw_last_seen)
     if seen is None:
         return

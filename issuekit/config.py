@@ -15,7 +15,7 @@ from issuekit.core import (
 )
 from issuekit.dotenv import load_dotenv
 from issuekit.localconfig import LocalConfigError, load_toml, read_local_config
-from issuekit.worker_keys import legacy_worker_key, worker_key
+from issuekit.worker_keys import legacy_worker_key, qualified_worker_key, worker_key
 
 
 _SENTINEL = object()
@@ -204,10 +204,20 @@ class IssuekitConfig:
             self.worker.worker_name,
         )
 
+    def qualified_worker_key(self) -> str | None:
+        if self.worker is None:
+            return None
+        return qualified_worker_key(
+            self.worker.machine_id,
+            self.worker.repo_id,
+            self.worker.worker_name,
+        )
+
     def worker_lookup_keys(self) -> tuple[str, ...]:
+        qualified = self.qualified_worker_key()
         current = self.worker_key()
         legacy = self.legacy_worker_key()
-        return tuple(key for key in (current, legacy) if key)
+        return tuple(key for key in (qualified, current, legacy) if key)
 
 
 def load_config(cwd: Path | str = ".") -> IssuekitConfig:

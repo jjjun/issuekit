@@ -135,6 +135,75 @@ def test_api_cli_propose_accepts_worker_repo_target(
     assert created_projects == ["source", "target"]
 
 
+def test_api_cli_propose_sends_machine_qualified_target_worker(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'source'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    client = FakeIssuekitClient()
+
+    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.chdir(tmp_path)
+    client.register_catalog_project("target")
+
+    assert (
+        cli.main(
+            [
+                "propose",
+                "--to",
+                "checkout.target@pike3",
+                "--title",
+                "Directed",
+                "--body",
+                "Body.",
+                "--json",
+            ]
+        )
+        == 0
+    )
+
+    sent = json.loads(capsys.readouterr().out)
+    assert sent["target_worker"] == "checkout@pike3"
+    assert client.calls[0]["body"]["target_worker"] == "checkout@pike3"
+
+
+def test_api_cli_propose_rejects_machine_qualifier_without_worker(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'source'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    assert (
+        cli.main(
+            [
+                "propose",
+                "--to",
+                "target@pike3",
+                "--title",
+                "Bad",
+                "--body",
+                "Body.",
+            ]
+        )
+        == 1
+    )
+
+    assert "machine qualifier requires the worker.repo@machine form" in (
+        capsys.readouterr().err
+    )
+
+
 def test_api_cli_propose_rejects_invalid_worker_repo_target(
     tmp_path: Path,
     monkeypatch,
@@ -162,7 +231,7 @@ def test_api_cli_propose_rejects_invalid_worker_repo_target(
         == 1
     )
 
-    assert "Expected repo or worker.repo" in capsys.readouterr().err
+    assert "Expected repo, worker.repo, or worker.repo@machine" in capsys.readouterr().err
 
 
 def test_api_cli_propose_rejects_unknown_target_when_profile_catalog_exists(

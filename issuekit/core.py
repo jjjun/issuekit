@@ -40,6 +40,14 @@ class Issue:
 class TargetAddress:
     repo: str
     worker: str = ""
+    machine: str = ""
+
+    @property
+    def directed_worker(self) -> str:
+        """Return the worker token to send as a directed target."""
+        if self.worker and self.machine:
+            return f"{self.worker}@{self.machine}"
+        return self.worker
 
 
 def issue_dict(issue: "Issue", *, include_body: bool = False) -> dict[str, object]:
@@ -135,7 +143,19 @@ def parse_target_address(value: str, *, label: str = "target") -> TargetAddress:
     text = value.strip()
     if not text:
         raise ValueError(f"{label} is required.")
+    text, separator, machine = text.partition("@")
+    if separator and not machine:
+        raise ValueError(
+            f"Invalid {label} address: {value}. Expected worker.repo@machine."
+        )
+    if machine and not is_valid_workflow_token(machine):
+        raise ValueError(f"Invalid {label} machine token: {machine}")
     if "." not in text:
+        if machine:
+            raise ValueError(
+                f"Invalid {label} address: {value}. "
+                "A machine qualifier requires the worker.repo@machine form."
+            )
         if not is_valid_workflow_token(text):
             raise ValueError(f"Invalid {label} token: {value}")
         return TargetAddress(repo=text)
@@ -143,10 +163,11 @@ def parse_target_address(value: str, *, label: str = "target") -> TargetAddress:
     worker, repo = text.split(".", 1)
     if not worker or not repo or "." in repo:
         raise ValueError(
-            f"Invalid {label} address: {value}. Expected repo or worker.repo."
+            f"Invalid {label} address: {value}. "
+            "Expected repo, worker.repo, or worker.repo@machine."
         )
     if not is_valid_workflow_token(worker):
         raise ValueError(f"Invalid {label} worker token: {worker}")
     if not is_valid_workflow_token(repo):
         raise ValueError(f"Invalid {label} repo token: {repo}")
-    return TargetAddress(repo=repo, worker=worker)
+    return TargetAddress(repo=repo, worker=worker, machine=machine)

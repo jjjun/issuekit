@@ -191,7 +191,7 @@ def test_serve_once_empty_queue_exits_without_agent(
         },
         {
             "method": "claim_next",
-            "body": {"assignee": "codex", "worker": "checkout.demo"},
+            "body": {"assignee": "codex", "worker": "checkout.demo@machine"},
         }
     ]
     assert not (tmp_path / ".agent-runs" / "serve.lock").exists()
@@ -221,7 +221,7 @@ def test_serve_once_claims_runs_and_submits(
     assert issue_id == 1
     assert prompt_suffix is None
     assert [call["method"] for call in client.calls] == ["upsert_repo", "upsert_worker", "claim_next", "submit"]
-    assert client.calls[2]["body"]["worker"] == "checkout.demo"
+    assert client.calls[2]["body"]["worker"] == "checkout.demo@machine"
     assert "event=submitted issue=1" in capsys.readouterr().err
 
 
@@ -332,7 +332,7 @@ def test_serve_triage_auto_adopts_before_claiming(
     ]
     assert client.calls[2]["number"] == 1
     assert client.calls[2]["body"] == {"priority": "high"}
-    assert client.calls[3]["body"]["worker"] == "checkout.demo"
+    assert client.calls[3]["body"]["worker"] == "checkout.demo@machine"
     assert client.get_proposal(1)["status"] == "adopted"
     assert client.get_issue(1)["origin_proposal_id"] == "1"
     assert [call[4] for call in FakeRunner.calls] == [1]

@@ -92,7 +92,7 @@ def test_claim_next_sends_registered_worker(monkeypatch) -> None:
     assert client.calls == [
         {
             "method": "claim_next",
-            "body": {"assignee": "codex", "worker": "checkout.repo"},
+            "body": {"assignee": "codex", "worker": "checkout.repo@machine"},
         }
     ]
 
@@ -112,7 +112,7 @@ def test_claim_issue_sends_registered_worker(monkeypatch) -> None:
         {
             "method": "claim",
             "number": 1,
-            "body": {"assignee": "codex", "worker": "checkout.repo"},
+            "body": {"assignee": "codex", "worker": "checkout.repo@machine"},
         }
     ]
 
@@ -147,13 +147,46 @@ def test_claim_next_filters_directed_issues_to_target_worker(monkeypatch) -> Non
     assert client.calls == [
         {
             "method": "claim_next",
-            "body": {"assignee": "codex", "worker": "other.repo"},
+            "body": {"assignee": "codex", "worker": "other.repo@machine"},
         },
         {
             "method": "claim_next",
-            "body": {"assignee": "codex", "worker": "checkout.repo"},
+            "body": {"assignee": "codex", "worker": "checkout.repo@machine"},
         },
     ]
+
+
+def test_claim_next_machine_qualified_target_requires_matching_machine(
+    monkeypatch,
+) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                1,
+                "Directed",
+                author="claude",
+                target_worker="checkout.repo@pike3",
+            )
+        ]
+    )
+    other_machine_config = _config(
+        client,
+        monkeypatch,
+        worker=WorkerIdentity("main1", "repo", "checkout"),
+    )
+
+    assert claim_next("codex", config=other_machine_config) is None
+
+    same_machine_config = _config(
+        client,
+        monkeypatch,
+        worker=WorkerIdentity("pike3", "repo", "checkout"),
+    )
+
+    directed_issue = claim_next("codex", config=same_machine_config)
+
+    assert directed_issue is not None
+    assert directed_issue.id == 1
 
 
 def test_claim_issue_rejects_wrong_directed_worker(monkeypatch) -> None:

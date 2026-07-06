@@ -279,6 +279,15 @@ def test_list_proposal_checks_tool_returns_raw_checks(
         {
             "method": "poll_proposal_checks",
             "body": {
+                "target_worker": "worker.demo@machine",
+                "status": "answered",
+                "limit": 5,
+                "offset": 0,
+            },
+        },
+        {
+            "method": "poll_proposal_checks",
+            "body": {
                 "target_worker": "worker.demo",
                 "status": "answered",
                 "limit": 5,
