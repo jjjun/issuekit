@@ -14,6 +14,7 @@ from issuekit.author_guard import AuthorOrchestrationContext
 from issuekit.config import IssuekitConfig
 from issuekit.core import Issue, has_mojibake
 from issuekit.gitutil import git_root, git_status_short, run_git
+from issuekit.prompts import render_review_feedback_prompt
 from issuekit.store import get_store
 from issuekit.workflow import submit_for_review
 
@@ -191,11 +192,7 @@ def review_feedback_prompt(issue_body: str) -> str | None:
     notes = "\n".join(collected).strip()
     if not notes:
         return None
-    return (
-        "A reviewer requested the following changes. Address ONLY these notes; "
-        "do not re-touch unrelated lines:\n\n"
-        f"{notes}"
-    )
+    return render_review_feedback_prompt(notes)
 
 
 def _mojibake_touched_files(repo: Path, issues_dir: Path) -> list[str]:

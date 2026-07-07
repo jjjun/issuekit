@@ -2,55 +2,15 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 from pathlib import Path
-import json
-import re
 import threading
-from typing import Any, TextIO, TypeVar
+from typing import Any, TextIO
 
 from issuekit.agents.runner import AgentResult
 from issuekit.gitutil import git_status_short
+from issuekit.prompts import parse_newest_json_block
 from issuekit.workflow import WorkflowError
-
-
-ParseErrorT = TypeVar("ParseErrorT", bound=RuntimeError)
-ParseErrorFactory = Callable[[str], ParseErrorT]
-
-
-def parse_newest_json_block(
-    stdout: str,
-    *,
-    language: str,
-    block_label: str,
-    error_factory: ParseErrorFactory[ParseErrorT],
-) -> dict[str, object]:
-    """Parse the newest well-formed fenced JSON block for an agent contract."""
-
-    pattern = re.compile(
-        rf"```{re.escape(language)}[ \t]*\r?\n(?P<body>.*?)\r?\n```",
-        re.DOTALL,
-    )
-    blocks = [match.group("body") for match in pattern.finditer(stdout)]
-    if not blocks:
-        raise error_factory(f"No ```{language}``` block found in agent output.")
-
-    last_json_error: ParseErrorT | None = None
-    for block in reversed(blocks):
-        try:
-            raw = json.loads(block.strip())
-        except json.JSONDecodeError as exc:
-            last_json_error = error_factory(
-                f"{block_label} was not valid JSON: {exc.msg}."
-            )
-            continue
-        if not isinstance(raw, dict):
-            raise error_factory(f"{block_label} JSON must be an object.")
-        return raw
-
-    if last_json_error is not None:
-        raise last_json_error
-    raise error_factory(f"No well-formed ```{language}``` block found.")
 
 
 def run_readonly_proposal_evaluation(

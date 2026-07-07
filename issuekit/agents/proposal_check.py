@@ -11,26 +11,22 @@ import threading
 from typing import Any, TextIO
 
 from issuekit.agents.proposal_eval import (
-    parse_newest_json_block,
     run_readonly_proposal_evaluation,
 )
 from issuekit.agents.runner import AgentRunner, resolve_adapter
 from issuekit.config import IssuekitConfig
 from issuekit.core import has_non_ascii
+from issuekit.prompts import PROPOSAL_CHECK_PROMPT, ProposalCheckParseError
 from issuekit.proposals_api import ProposalError, adopt_proposal_with_append, api_client
 from issuekit.workflow import WorkflowError
 
 
-PROPOSAL_CHECK_BLOCK_LANGUAGE = "proposal-check"
+PROPOSAL_CHECK_BLOCK_LANGUAGE = PROPOSAL_CHECK_PROMPT.block_language
 PROPOSAL_CHECK_VERDICTS = {"approve", "reject", "revise"}
 PROPOSAL_CHECK_COMMENT_MAX = 100000
 ADOPTED_ISSUE_REF_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]{0,31}#[1-9][0-9]*$")
 
 LogFn = Callable[..., None]
-
-
-class ProposalCheckParseError(RuntimeError):
-    """Raised when a proposal-check agent response cannot be parsed."""
 
 
 @dataclass(frozen=True)
@@ -275,12 +271,7 @@ def _list_worker_checks(client, worker_keys: tuple[str, ...]) -> list[dict[str, 
 
 
 def parse_proposal_check_output(stdout: str) -> dict[str, str]:
-    raw = parse_newest_json_block(
-        stdout,
-        language=PROPOSAL_CHECK_BLOCK_LANGUAGE,
-        block_label="Proposal-check block",
-        error_factory=ProposalCheckParseError,
-    )
+    raw = PROPOSAL_CHECK_PROMPT.parse_json(stdout)
     verdict = raw.get("verdict")
     if verdict == "ok":
         verdict = "approve"
@@ -382,56 +373,17 @@ def _render_check_prompt(
         depends_text = ", ".join(str(ref) for ref in depends_on) or "(none)"
     else:
         depends_text = str(depends_on)
-    return "\n".join(
-        [
-            f"# Proposal check {check['id']} for proposal {check['target_project']}#{proposal['id']}",
-            "",
-            "You are checking whether this incoming cross-project proposal should",
-            "be accepted by this local repository. Inspect this repository read-only",
-            "for feasibility, project scope fit, dependency conflicts, and obvious",
-            "implementation risks. Do NOT edit files, run git commit or push, and",
-            "do NOT run issuekit claim, submit-review, request-changes, approve,",
-            "complete, adopt, discard, or otherwise mutate tracker state.",
-            "",
-            f"Target project: {check.get('target_project', '')}",
-            f"Proposal id: {proposal.get('id', '')}",
-            f"Proposal title: {proposal.get('title', '')}",
-            f"Origin: {proposal.get('origin', '')}",
-            f"Blocking: {bool(proposal.get('blocking', False))}",
-            f"Depends-on: {depends_text}",
-            "",
-            "Proposal body:",
-            "",
-            str(proposal.get("body", "")),
-            "",
-            "Verdicts:",
-            "- approve: the proposal belongs here, is feasible, and has no blocking",
-            "  conflict. It will be automatically adopted after your check.",
-            "- revise: the proposal may belong here, but needs concrete changes or",
-            "  clarification before it should be adopted.",
-            "- reject: the proposal is out of scope, infeasible here, or conflicts",
-            "  with this repository's direction.",
-            "",
-            "Output contract:",
-            "Emit exactly one fenced block and no other response text.",
-            "Everything outside the block is ignored by the parser.",
-            "All text must be ASCII-only (English; no em dashes or curly quotes).",
-            "Keep comment concise but specific; it is posted to the proposal-check result.",
-            "```proposal-check",
-            "{",
-            '  "verdict": "approve-or-revise-or-reject",',
-            '  "comment": "Why this verdict is correct.",',
-            '  "spec_markdown": "Optional implementation addendum when verdict is approve."',
-            "}",
-            "```",
-            "",
-        ]
+    return PROPOSAL_CHECK_PROMPT.render(
+        check_id=check["id"],
+        target_project=check.get("target_project", ""),
+        proposal_id=proposal.get("id", ""),
+        title=proposal.get("title", ""),
+        origin=proposal.get("origin", ""),
+        blocking=bool(proposal.get("blocking", False)),
+        depends_on=depends_text,
+        proposal_body=proposal.get("body", ""),
     )
 
 
 def _prompt_pointer(prompt_path: Path) -> str:
-    return (
-        f"Read the proposal-check prompt at: {prompt_path} and respond with exactly "
-        "one fenced proposal-check block per its instructions. Inspect the repo "
-        "read-only; do not modify files or mutate the tracker."
-    )
+    return PROPOSAL_CHECK_PROMPT.render_pointer(prompt_path=prompt_path)

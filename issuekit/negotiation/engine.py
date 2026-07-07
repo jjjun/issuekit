@@ -27,6 +27,7 @@ from issuekit.negotiation_prompts import (
     parse_round_output,
     render_round_prompt,
 )
+from issuekit.prompts import render_negotiation_round_pointer
 from issuekit.store import get_store
 from issuekit.workflow import WorkflowError
 
@@ -557,11 +558,7 @@ def _write_round_prompt(
 
 
 def _round_prompt_pointer(plan_path: Path) -> str:
-    return (
-        f"Read the negotiation round prompt at: {plan_path} and respond with exactly "
-        "one fenced negotiation block per its instructions. Do not implement code; "
-        "do not modify the tracker."
-    )
+    return render_negotiation_round_pointer(plan_path)
 
 
 def _evaluate_convergence(thread: list[NegotiationEntry]) -> str:

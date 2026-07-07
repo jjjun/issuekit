@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import hashlib
-import json
 import re
 import sys
 import threading
@@ -16,17 +15,14 @@ from issuekit.commands.approve import approve_issue
 from issuekit.config import IssuekitConfig
 from issuekit.core import ASCII_ONLY_HINT, Issue, has_non_ascii
 from issuekit.gitutil import git_status_short, run_git
+from issuekit.prompts import REVIEW_PROMPT, ReviewParseError
 from issuekit.store import get_store
 from issuekit.workflow import WorkflowError, ensure_assigned_reviewer, request_changes
 from issuekit.worker_keys import worker_keys_match
 
 
-REVIEW_BLOCK_LANGUAGE = "review"
-REVIEW_OUTPUT_KEYS = ("verdict", "verification", "notes")
-_REVIEW_BLOCK_PATTERN = re.compile(
-    r"```review[ \t]*\r?\n(?P<body>.*?)\r?\n```",
-    re.DOTALL,
-)
+REVIEW_BLOCK_LANGUAGE = REVIEW_PROMPT.block_language
+REVIEW_OUTPUT_KEYS = REVIEW_PROMPT.required_keys
 _REVIEW_VERDICTS = {"approve", "request-changes"}
 _MAX_DIFF_CHARS = 60000
 _SUSPICIOUS_READABILITY_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
@@ -49,10 +45,6 @@ _SUSPICIOUS_READABILITY_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
         "globals() attribute injection",
     ),
 )
-
-
-class ReviewParseError(RuntimeError):
-    """Raised when a reviewer response cannot be parsed."""
 
 
 @dataclass(frozen=True)
@@ -199,24 +191,7 @@ def run_review_and_decide(
 def parse_review_output(stdout: str) -> ReviewVerdict:
     """Parse the newest well-formed review block from agent stdout."""
 
-    blocks = [match.group("body") for match in _REVIEW_BLOCK_PATTERN.finditer(stdout)]
-    if not blocks:
-        raise ReviewParseError("No ```review``` block found in agent output.")
-
-    last_json_error: ReviewParseError | None = None
-    for block in reversed(blocks):
-        try:
-            raw = json.loads(block.strip())
-        except json.JSONDecodeError as exc:
-            last_json_error = ReviewParseError(f"Review block was not valid JSON: {exc.msg}.")
-            continue
-        if not isinstance(raw, dict):
-            raise ReviewParseError("Review block JSON must be an object.")
-        return _review_verdict_from_json(raw)
-
-    if last_json_error is not None:
-        raise last_json_error
-    raise ReviewParseError("No well-formed ```review``` block found.")
+    return _review_verdict_from_json(REVIEW_PROMPT.parse_json(stdout))
 
 
 def _review_verdict_from_json(raw: dict[str, object]) -> ReviewVerdict:
@@ -296,46 +271,14 @@ def _render_review_prompt(
         if review_context.has_changed_files
         else "the submitted handoff evidence"
     )
-    return "\n".join(
-        [
-            f"# Review issue {issue.ref}",
-            "",
-            f"You are the reviewer. Review {review_target} against the issue.",
-            "Do not edit files, commit, push, claim, submit, approve, request changes, or mutate tracker state.",
-            "Review correctness, tests, readability, maintainability, and fit with surrounding style.",
-            "When no local implementation diff is present, review the handoff evidence, command evidence,",
-            "and any referenced live state; request changes if the evidence is insufficient to decide.",
-            "Request changes for gratuitous obfuscation or unexplained style deviations even when tests pass.",
-            "Examples include string-concatenated identifiers or import paths, avoidable importlib/getattr indirection,",
-            "and globals()/setattr attribute injection where a plain definition works.",
-            "",
-            "Issue body:",
-            "",
-            issue.body,
-            "",
-            "Implementation context:",
-            "",
-            diff,
-            "",
-            _readability_hint_section(review_context),
-            "",
-            "Output contract:",
-            "Emit exactly one fenced block and no other response text.",
-            "Everything outside the block is ignored by the parser.",
-            f"The JSON keys must be: {', '.join(REVIEW_OUTPUT_KEYS)}.",
-            "The verdict must be approve or request-changes.",
-            "For approve, verification must describe the checks you ran.",
-            "For request-changes, notes must be actionable feedback for the implementer.",
-            f"All JSON string values must be ASCII-only. {ASCII_ONLY_HINT}",
-            "```review",
-            "{",
-            '  "verdict": "approve-or-request-changes",',
-            '  "verification": "Command(s) run, or empty string for request-changes.",',
-            '  "notes": "Short rationale or empty string."',
-            "}",
-            "```",
-            "",
-        ]
+    return REVIEW_PROMPT.render(
+        issue_ref=issue.ref,
+        review_target=review_target,
+        issue_body=issue.body,
+        implementation_context=diff,
+        readability_hints=_readability_hint_section(review_context),
+        output_keys=", ".join(REVIEW_OUTPUT_KEYS),
+        ascii_only_hint=ASCII_ONLY_HINT,
     )
 
 
@@ -488,11 +431,7 @@ def _git_stdout(args: list[str], cwd: Path) -> str:
 
 
 def _review_prompt_pointer(review_path: Path) -> str:
-    return (
-        f"Read the review prompt at: {review_path} and respond with exactly one "
-        "fenced review block per its instructions. Do not implement code; do not "
-        "modify files; do not mutate the tracker."
-    )
+    return REVIEW_PROMPT.render_pointer(prompt_path=review_path)
 
 
 def _worktree_fingerprint(cwd: Path) -> tuple[tuple[str, str, str], ...] | None:

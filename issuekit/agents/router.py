@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-import json
 import re
 import sys
 from typing import Any, TextIO
@@ -14,21 +13,14 @@ from issuekit.agents.runner import AgentResult, AgentRunner, resolve_adapter
 from issuekit.config import IssuekitConfig
 from issuekit.core import has_non_ascii
 from issuekit.gitutil import git_status_short
+from issuekit.prompts import ROUTER_PROMPT, RouterParseError
 from issuekit.proposals_api import DEPENDENCY_REF_PATTERN, api_client
 from issuekit.workflow import WorkflowError
 
 
-ROUTE_BLOCK_LANGUAGE = "route"
-_ROUTE_BLOCK_PATTERN = re.compile(
-    r"```route[ \t]*\r?\n(?P<body>.*?)\r?\n```",
-    re.DOTALL,
-)
+ROUTE_BLOCK_LANGUAGE = ROUTER_PROMPT.block_language
 _DECISIONS = {"route", "clarify", "reject"}
 _TARGET_PLACEHOLDER_PATTERN = re.compile(r"^target:(?P<index>[0-9]+)$")
-
-
-class RouterParseError(RuntimeError):
-    """Raised when a router agent response cannot be parsed or validated."""
 
 
 @dataclass(frozen=True)
@@ -135,33 +127,12 @@ def parse_router_output(
 ) -> RouterDecision:
     """Parse the newest well-formed ```route``` block from agent stdout."""
 
-    blocks = [match.group("body") for match in _ROUTE_BLOCK_PATTERN.finditer(stdout)]
-    if not blocks:
-        raise RouterParseError("No ```route``` block found in agent output.")
-
-    last_json_error: RouterParseError | None = None
     candidate_projects = {profile.project for profile in candidates}
-    for block in reversed(blocks):
-        if has_non_ascii(block):
-            raise RouterParseError("Route block must be ASCII-only.")
-        try:
-            raw = json.loads(block.strip())
-        except json.JSONDecodeError as exc:
-            last_json_error = RouterParseError(
-                f"Route block was not valid JSON: {exc.msg}."
-            )
-            continue
-        if not isinstance(raw, dict):
-            raise RouterParseError("Route block JSON must be an object.")
-        return _decision_from_json(
-            raw,
-            candidate_projects=candidate_projects,
-            max_targets=max_targets,
-        )
-
-    if last_json_error is not None:
-        raise last_json_error
-    raise RouterParseError("No well-formed ```route``` block found.")
+    return _decision_from_json(
+        ROUTER_PROMPT.parse_json(stdout),
+        candidate_projects=candidate_projects,
+        max_targets=max_targets,
+    )
 
 
 def run_router(
@@ -349,61 +320,12 @@ def _render_router_prompt(
         if force_final
         else "If the request cannot be routed safely, ask one concrete clarification question."
     )
-    return "\n".join(
-        [
-            "# PM route request",
-            "",
-            "You are the PM router for this issuekit API project. Route the",
-            "request to the owning project profiles as thin cross-project",
-            "proposals. Do not edit files, run git commit or push, claim,",
-            "implement, review, approve, complete, or mutate issue lifecycle state.",
-            "",
-            f"Max route targets: {max_targets}",
-            final_instruction,
-            "",
-            "Original request:",
-            "",
-            request_text.strip(),
-            "",
-            "Clarification history:",
-            "",
-            qa_text,
-            "",
-            "Candidate project profiles:",
-            "",
-            profile_text,
-            "",
-            "Decide exactly one of:",
-            "- route: choose one or more target projects in dependency-first order.",
-            "- clarify: ask one concrete question for the requester.",
-            "- reject: explain why no profiled project owns this request.",
-            "",
-            "For route targets, use only candidate project names. `depends_on`",
-            "entries may be existing refs like project#123 or target:<index>",
-            "placeholders referencing earlier targets in this same response.",
-            "",
-            "Output contract:",
-            "Emit exactly one fenced block and no other response text.",
-            "Everything outside the block is ignored by the parser.",
-            "All text must be ASCII-only (English; no em dashes or curly quotes).",
-            "```route",
-            "{",
-            '  "decision": "route-or-clarify-or-reject",',
-            '  "targets": [',
-            "    {",
-            '      "project": "target-project",',
-            '      "title": "Short proposal title",',
-            '      "body": "Thin proposal body for target-owned triage.",',
-            '      "blocking": true,',
-            '      "depends_on": ["project#123", "target:0"]',
-            "    }",
-            "  ],",
-            '  "question": "One clarification question when decision is clarify.",',
-            '  "reason": "Why no profiled project owns it when decision is reject."',
-            "}",
-            "```",
-            "",
-        ]
+    return ROUTER_PROMPT.render(
+        max_targets=max_targets,
+        final_instruction=final_instruction,
+        request_text=request_text.strip(),
+        qa_text=qa_text,
+        profile_text=profile_text,
     )
 
 
@@ -420,11 +342,7 @@ def _render_qa(qa_rounds: Sequence[Mapping[str, str]]) -> str:
 
 
 def _prompt_pointer(prompt_path: Path) -> str:
-    return (
-        f"Read the PM routing prompt at: {prompt_path} and respond with exactly "
-        "one fenced route block per its instructions. Inspect the repo read-only; "
-        "do not modify files or mutate the tracker."
-    )
+    return ROUTER_PROMPT.render_pointer(prompt_path=prompt_path)
 
 
 def _worktree_fingerprint(cwd: Path) -> tuple[tuple[str, str], ...] | None:

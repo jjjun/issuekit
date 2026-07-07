@@ -1,3 +1,4 @@
+from importlib import resources
 from pathlib import Path
 import tomllib
 
@@ -37,3 +38,11 @@ def test_issuekit_mcp_script_is_declared() -> None:
     scripts = pyproject["project"]["scripts"]
 
     assert scripts["issuekit-mcp"] == "issuekit.mcp.server:main"
+
+
+def test_prompt_templates_load_as_package_resources() -> None:
+    from issuekit.prompts import TEMPLATE_NAMES
+
+    template_dir = resources.files("issuekit.prompts").joinpath("templates")
+    for template_name in TEMPLATE_NAMES:
+        assert template_dir.joinpath(template_name).read_text(encoding="utf-8").strip()

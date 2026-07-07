@@ -23,7 +23,6 @@ import threading
 from typing import Any, TextIO
 
 from issuekit.agents.proposal_eval import (
-    parse_newest_json_block,
     run_readonly_proposal_evaluation,
 )
 from issuekit.agents.runner import AgentRunner, resolve_adapter
@@ -36,6 +35,7 @@ from issuekit.agents.triage_state import (
 )
 from issuekit.config import IssuekitConfig
 from issuekit.core import has_non_ascii
+from issuekit.prompts import TRIAGE_PROMPT, TriageAuthorParseError
 from issuekit.proposals import origin_destination
 from issuekit.proposals_api import (
     ProposalError,
@@ -48,7 +48,7 @@ from issuekit.proposals_api import (
 from issuekit.workflow import WorkflowError
 
 
-TRIAGE_BLOCK_LANGUAGE = "triage"
+TRIAGE_BLOCK_LANGUAGE = TRIAGE_PROMPT.block_language
 _DECISIONS = {"adopt", "reply", "discard"}
 _DECISION_FIELD = {
     "adopt": "spec_markdown",
@@ -60,10 +60,6 @@ _SUPERSEDES_LINE_PATTERN = re.compile(
 )
 
 LogFn = Callable[..., None]
-
-
-class TriageAuthorParseError(RuntimeError):
-    """Raised when a triage-author agent response cannot be parsed."""
 
 
 @dataclass(frozen=True)
@@ -94,12 +90,7 @@ class TriageDecision:
 def parse_triage_output(stdout: str) -> dict[str, str]:
     """Parse the newest well-formed ```triage``` block from agent stdout."""
 
-    raw = parse_newest_json_block(
-        stdout,
-        language=TRIAGE_BLOCK_LANGUAGE,
-        block_label="Triage block",
-        error_factory=TriageAuthorParseError,
-    )
+    raw = TRIAGE_PROMPT.parse_json(stdout)
     return _decision_from_json(raw)
 
 
@@ -428,57 +419,18 @@ def _render_triage_prompt(proposal: Mapping[str, Any]) -> str:
         depends_text = ", ".join(str(ref) for ref in depends_on) or "(none)"
     else:
         depends_text = str(depends_on)
-    return "\n".join(
-        [
-            f"# Triage proposal {proposal.get('origin', '')} (id {proposal['id']})",
-            "",
-            "You are triaging one incoming cross-project proposal for this project.",
-            "Inspect this repository read-only to judge whether the request belongs",
-            "here and how it should be specified. Do NOT edit files, run git commit or",
-            "push, and do NOT run issuekit claim, submit-review, request-changes,",
-            "approve, complete, or otherwise mutate tracker or issue lifecycle state.",
-            "",
-            f"Proposal title: {proposal.get('title', '')}",
-            f"Origin: {proposal.get('origin', '')}",
-            f"Blocking: {bool(proposal.get('blocking', False))}",
-            f"Depends-on: {depends_text}",
-            "",
-            "Proposal body:",
-            "",
-            str(proposal.get("body", "")),
-            "",
-            "Decide exactly one of:",
-            "- adopt: the request belongs to this project. Write an",
-            "  implementation-ready spec (background, scope, acceptance criteria,",
-            "  affected files) as spec_markdown; it is appended to the adopted issue.",
-            "- reply: the request intent is unclear. Ask one concrete question that",
-            "  the origin project must answer before this can be adopted.",
-            "- discard: the request does not belong to this project. Explain why so",
-            "  the sender can re-route.",
-            "",
-            "Output contract:",
-            "Emit exactly one fenced block and no other response text.",
-            "Everything outside the block is ignored by the parser.",
-            "All text must be ASCII-only (English; no em dashes or curly quotes).",
-            "```triage",
-            "{",
-            '  "decision": "adopt-or-reply-or-discard",',
-            '  "spec_markdown": "Implementation-ready spec when decision is adopt.",',
-            '  "question": "One clarifying question when decision is reply.",',
-            '  "reason": "Why it does not belong here when decision is discard."',
-            "}",
-            "```",
-            "",
-        ]
+    return TRIAGE_PROMPT.render(
+        proposal_id=proposal["id"],
+        origin=proposal.get("origin", ""),
+        title=proposal.get("title", ""),
+        blocking=bool(proposal.get("blocking", False)),
+        depends_on=depends_text,
+        proposal_body=proposal.get("body", ""),
     )
 
 
 def _prompt_pointer(prompt_path: Path) -> str:
-    return (
-        f"Read the triage prompt at: {prompt_path} and respond with exactly one "
-        "fenced triage block per its instructions. Inspect the repo read-only; do "
-        "not modify files or mutate the tracker."
-    )
+    return TRIAGE_PROMPT.render_pointer(prompt_path=prompt_path)
 
 
 def _skip_replied(
