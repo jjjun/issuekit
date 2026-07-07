@@ -84,7 +84,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         "--depends-on",
         action="append",
         dest="depends_on",
-        help="Attach an upstream dependency reference such as project#123.",
+        help="Attach an upstream dependency reference such as project#proposal:123.",
     )
     propose_parser.add_argument("--json", action="store_true", help="Print JSON output.")
     propose_parser.set_defaults(func=run_propose)
@@ -226,6 +226,9 @@ def run_propose(args) -> int:
         print(json.dumps(output, indent=2))
     if not args.json:
         print(f"Sent proposal #{created.get('id')}: {created.get('title', proposal.title)}")
+        dependency_ref = created.get("dependency_ref")
+        if dependency_ref:
+            print(f"Dependency ref: {dependency_ref}")
         print(stop_message(guard))
     return 0
 

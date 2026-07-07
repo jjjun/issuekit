@@ -35,7 +35,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         "--depends-on",
         action="append",
         dest="depends_on",
-        help="Replace upstream dependency refs with one or more project#123 values.",
+        help="Replace upstream dependency refs with one or more project#proposal:123 values.",
     )
     edit_parser.add_argument(
         "--force",

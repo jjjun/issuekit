@@ -198,6 +198,109 @@ def test_author_command_attaches_dependency_refs_and_prints_json(
     assert client.calls[0]["body"]["depends_on"] == ["mine-py#42"]
 
 
+def test_author_command_accepts_explicit_dependency_refs(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient()
+    _configure_api(tmp_path, monkeypatch, client)
+
+    exit_code = cli.main(
+        [
+            "author",
+            "--title",
+            "Explicit Dependencies",
+            "--body",
+            "## Problem\n\nWait for both upstream refs.",
+            "--agent",
+            "claude",
+            "--depends-on",
+            "mine-py#42 mine-py#issue:43",
+            "--depends-on",
+            "mine-py#proposal:44",
+            "--json",
+        ]
+    )
+
+    assert exit_code == 0
+    output = json.loads(capsys.readouterr().out)
+    assert output["depends_on"] == [
+        "mine-py#42",
+        "mine-py#issue:43",
+        "mine-py#proposal:44",
+    ]
+    assert client.calls[0]["body"]["depends_on"] == output["depends_on"]
+
+
+def test_author_command_rejects_malformed_dependency_prefix(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient()
+    _configure_api(tmp_path, monkeypatch, client)
+
+    exit_code = cli.main(
+        [
+            "author",
+            "--title",
+            "Bad Dependency",
+            "--body",
+            "## Problem\n\nBad ref.",
+            "--agent",
+            "claude",
+            "--depends-on",
+            "mine-py#foo:42",
+        ]
+    )
+
+    assert exit_code == 1
+    err = capsys.readouterr().err
+    assert "Invalid dependency reference: mine-py#foo:42" in err
+    assert "project#N, project#issue:N, or project#proposal:N" in err
+    assert client.calls == []
+
+
+def test_author_command_warns_for_bare_ref_collision(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    class CollisionClient(FakeIssuekitClient):
+        def create_issue(self, issue, *, session=None):
+            created = super().create_issue(issue, session=session)
+            created["dependencies"] = [
+                {
+                    "ref": "mine-py#42",
+                    "state": "attention",
+                    "issue_status": "completed",
+                    "proposal": {"id": 42, "status": "pending"},
+                }
+            ]
+            return created
+
+    client = CollisionClient()
+    _configure_api(tmp_path, monkeypatch, client)
+
+    exit_code = cli.main(
+        [
+            "author",
+            "--title",
+            "Ambiguous Dependency",
+            "--body",
+            "## Problem\n\nBad ref.",
+            "--agent",
+            "claude",
+            "--depends-on",
+            "mine-py#42",
+        ]
+    )
+
+    assert exit_code == 0
+    assert "Dependency reference mine-py#42 is ambiguous" in capsys.readouterr().err
+
+
 def test_author_command_records_configured_session(
     tmp_path: Path,
     monkeypatch,

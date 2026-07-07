@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import re
+import sys
 
 from issuekit.author_guard import (
     STOP_SENTINEL,
@@ -26,7 +27,7 @@ from issuekit.core import (
     issue_dict,
     is_valid_workflow_token,
 )
-from issuekit.dependencies import dependency_refs
+from issuekit.dependencies import bare_ref_collision_warnings, dependency_refs
 from issuekit.refs import RefError, current_repo_ref, list_effective_refs
 from issuekit.session import current_session_token
 from issuekit.workflow import WorkflowError
@@ -53,7 +54,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         "--depends-on",
         action="append",
         dest="depends_on",
-        help="Attach an upstream dependency reference such as project#123.",
+        help="Attach an upstream dependency reference such as project#proposal:123.",
     )
     author_parser.add_argument(
         "--project",
@@ -101,6 +102,8 @@ def run(args) -> int:
             direct_local_author=args.direct_local_author,
             origin_project=args.origin_project,
         )
+        for warning in _author_warnings(authored):
+            print(warning, file=sys.stderr)
         guard = create_author_guard(
             Path.cwd(),
             config=config,
@@ -217,6 +220,25 @@ def _depends_on(value: list[str] | None) -> tuple[str, ...]:
         return dependency_refs(value)
     except ValueError as exc:
         raise WorkflowError(str(exc)) from exc
+
+
+def _author_warnings(authored: Issue) -> tuple[str, ...]:
+    warnings: list[str] = []
+    if authored.warning:
+        warnings.extend(line for line in authored.warning.splitlines() if line.strip())
+    warnings.extend(bare_ref_collision_warnings(authored.dependencies))
+    return _dedupe_warnings(warnings)
+
+
+def _dedupe_warnings(warnings: list[str]) -> tuple[str, ...]:
+    seen: set[str] = set()
+    deduped: list[str] = []
+    for warning in warnings:
+        if warning in seen:
+            continue
+        seen.add(warning)
+        deduped.append(warning)
+    return tuple(deduped)
 
 
 def _authored_ref(authored: Issue) -> str:

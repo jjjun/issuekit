@@ -375,7 +375,8 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
         description=(
             "Send a cross-repository proposal from the origin project to the target "
             "project inbox; use this instead of authoring directly in the target repo. "
-            "Pass depends_on as project#issue-or-proposal for upstream dependencies."
+            "Pass depends_on as project#N, project#issue:N, or project#proposal:N "
+            "for upstream dependencies."
         )
     )
     async def propose(

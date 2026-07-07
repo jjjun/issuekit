@@ -301,10 +301,14 @@ first required API or contract change before sending downstream consumer
 proposals. Attach the upstream reference with `--depends-on`:
 
 ```powershell
-issuekit propose --to mine-js-monorepo --title "Use new API" --body-file proposal.md --depends-on mine-py#123
+issuekit propose --to mine-js-monorepo --title "Use new API" --body-file proposal.md --depends-on mine-py#proposal:123
 ```
 
-Structured body lines such as `Depends-On: mine-py#123` are also recognized.
+Accepted dependency refs are `project#N`, `project#issue:N`, and
+`project#proposal:N`. Bare `project#N` refs are accepted for compatibility, but
+can be shadowed when an issue and a proposal share the same number. Prefer
+`project#proposal:N` when depending on a not-yet-adopted proposal. Structured
+body lines such as `Depends-On: mine-py#proposal:123` are also recognized.
 If the proposal body appears to depend on a third project but no upstream
 reference is supplied, issuekit prints an advisory warning and still sends the
 proposal.

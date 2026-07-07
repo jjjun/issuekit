@@ -76,8 +76,10 @@ Local issues vs. cross-project proposals:
   owns the first required contract or API change. Create or propose that
   upstream owner work first, then send downstream consumer proposals only after
   the upstream proposal or issue exists. Reference it with
-  `--depends-on <project#issue-or-proposal>` on local issues or proposals, or
-  a `Depends-On:` body line.
+  `--depends-on <project#N|project#issue:N|project#proposal:N>` on local issues
+  or proposals, or a `Depends-On:` body line. Bare `project#N` refs can be
+  shadowed when an issue and proposal share a number; prefer
+  `project#proposal:N` for not-yet-adopted proposals.
 - If a direct issue was created in B by mistake, recover by sending the proposal
   from A, then close the mistaken B issue as superseded with
   `issuekit complete <id> --force --summary "Superseded by proposal <ref>"`
@@ -118,7 +120,7 @@ Copyable CLI examples:
 
 - Register worker: `issuekit add`
 - Author: `issuekit author --title "Short title" --body-file issue.md --priority medium --agent codex`
-- Author with upstream dependency: `issuekit author --title "Short title" --body-file issue.md --priority medium --agent codex --depends-on upstream#123`
+- Author with upstream dependency: `issuekit author --title "Short title" --body-file issue.md --priority medium --agent codex --depends-on upstream#proposal:123`
 - Author a local issue that references another project: `issuekit author --title "Short title" --body-file issue.md --direct-local-author`
 - Claim next: `issuekit claim --assignee codex`
 - Claim specific issue: `issuekit claim --id 123 --assignee codex`
@@ -129,7 +131,7 @@ Copyable CLI examples:
 - Complete: `issuekit complete 123 --summary "Done." --verification "uv run pytest"`
 - Close no-op issue: `issuekit complete 123 --force --summary "Obsolete." --verification "no local code scope"`
 - Blocking proposal: `issuekit propose --to <project> --title <t> --body <b> --blocking --json`
-- Proposal with upstream dependency: `issuekit propose --to <project> --title <t> --body <b> --depends-on upstream#123 --json`
+- Proposal with upstream dependency: `issuekit propose --to <project> --title <t> --body <b> --depends-on upstream#proposal:123 --json`
 - Incoming proposals: `issuekit incoming --json`
 - Adopt proposal: `issuekit adopt 42 --priority medium --json`
 - Outgoing proposal status: `issuekit outgoing --to <project> --json`
@@ -275,10 +277,12 @@ hard to read or maintain.
 For multi-project changes, work dependency-first. Identify the project that
 owns the first required contract or API change, create or propose that upstream
 work before downstream consumer work, and include
-`--depends-on <project#issue-or-proposal>` (or `Depends-On:` in the body) on
-later downstream local issues or proposals. If the body says it depends on
-another project and no upstream reference is supplied, proposal preflight warns
-but does not block the send.
+`--depends-on <project#N|project#issue:N|project#proposal:N>` (or `Depends-On:`
+in the body) on later downstream local issues or proposals. Bare `project#N`
+refs can be shadowed when an issue and proposal share a number; prefer
+`project#proposal:N` for not-yet-adopted proposals. If the body says it depends
+on another project and no upstream reference is supplied, proposal preflight
+warns but does not block the send.
 
 The API skips `dependency_state=waiting` and `dependency_state=attention`
 issues when claiming the next task. Do not manually pick waiting issues from
@@ -291,7 +295,7 @@ same structured output the MCP tools return):
 
 - `propose(to, title, body)` -> `issuekit propose --to <project> --title <t> --body <b> --json`
 - `propose(to, title, body, blocking=True)` -> `issuekit propose --to <project> --title <t> --body <b> --blocking --json`
-- `propose(to, title, body, depends_on="upstream#123")` -> `issuekit propose --to <project> --title <t> --body <b> --depends-on upstream#123 --json`
+- `propose(to, title, body, depends_on="upstream#proposal:123")` -> `issuekit propose --to <project> --title <t> --body <b> --depends-on upstream#proposal:123 --json`
 - `list_incoming()` -> `issuekit incoming --json`
 - `adopt_proposal(proposal_id, priority)` -> `issuekit adopt <id> --priority <p> --json`
 
@@ -343,15 +347,18 @@ target queue look like the work originated locally and bypasses proposal triage.
 For multi-project changes, work dependency-first. Identify the project that
 owns the first required contract or API change, create or propose that upstream
 work before downstream consumer local issues or proposals, then reference the
-upstream item with `--depends-on <project#issue-or-proposal>` or a
-`Depends-On:` body line. If a downstream proposal body says it depends on
-another project but lacks that reference, issuekit warns so the author can
-create the upstream proposal first.
+upstream item with
+`--depends-on <project#N|project#issue:N|project#proposal:N>` or a
+`Depends-On:` body line. Bare `project#N` refs can be shadowed when an issue and
+proposal share a number; prefer `project#proposal:N` for not-yet-adopted
+proposals. If a downstream proposal body says it depends on another project but
+lacks that reference, issuekit warns so the author can create the upstream
+proposal first.
 
 When the proposal-system MCP tools hang or error, fall back to the equivalent
 CLI: `issuekit propose --to <project> --title <t> --body <b> --json`,
 `issuekit propose --to <project> --title <t> --body <b> --blocking --json`,
-`issuekit propose --to <project> --title <t> --body <b> --depends-on upstream#123 --json`,
+`issuekit propose --to <project> --title <t> --body <b> --depends-on upstream#proposal:123 --json`,
 `issuekit incoming --json`, and `issuekit adopt <id> --json`. They share the
 same implementation and emit the same structured output.
 
@@ -361,8 +368,10 @@ When asked to write or plan an issue:
    use `issuekit propose --to <project>` from the origin project instead.
 2. Create local issues with `issuekit author`; the API allocates the issue id.
    When local work depends on an upstream issue or proposal that already
-   exists, pass `--depends-on <project#issue-or-proposal>` so implementers can
-   see and respect the dependency state. When `ISSUEKIT_SESSION` is set,
+   exists, pass
+   `--depends-on <project#N|project#issue:N|project#proposal:N>` so
+   implementers can see and respect the dependency state. Use
+   `project#proposal:N` for not-yet-adopted proposals. When `ISSUEKIT_SESSION` is set,
    issuekit records that authoring session so a later same-name delegated
    implementer can be distinguished by session.
 3. Leave the issue unstarted with no assignee unless a specific implementer is
@@ -406,7 +415,8 @@ when the proposal is a hard dependency.
 If review uncovers a multi-project chain, work dependency-first: record the
 upstream contract or API owner first. Send downstream consumer proposals only
 after that upstream issue or proposal exists, and reference it with
-`--depends-on <project#issue-or-proposal>` or a `Depends-On:` body line.
+`--depends-on <project#N|project#issue:N|project#proposal:N>` or a
+`Depends-On:` body line. Use `project#proposal:N` for not-yet-adopted proposals.
 
 1. Call the issuekit MCP tool `next_review(reviewer=None)`. Omit reviewer to
    use `default_reviewer`, or pass the reviewer assignee to inspect. With
@@ -442,7 +452,7 @@ To run continuously as a reviewer worker, use a separate registered checkout:
 When the proposal-system MCP tools hang or error, fall back to the equivalent
 CLI: `issuekit propose --to <project> --title <t> --body <b> --json`,
 `issuekit propose --to <project> --title <t> --body <b> --blocking --json`,
-`issuekit propose --to <project> --title <t> --body <b> --depends-on upstream#123 --json`,
+`issuekit propose --to <project> --title <t> --body <b> --depends-on upstream#proposal:123 --json`,
 `issuekit incoming --json`, and `issuekit adopt <id> --json`. They share the
 same implementation and emit the same structured output.
 """

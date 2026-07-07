@@ -12,9 +12,10 @@ from typing import Any, TextIO
 from issuekit.agents.runner import AgentResult, AgentRunner, resolve_adapter
 from issuekit.config import IssuekitConfig
 from issuekit.core import has_non_ascii
+from issuekit.dependencies import DEPENDENCY_REF_EXPECTED, DEPENDENCY_REF_PATTERN
 from issuekit.gitutil import git_status_short
 from issuekit.prompts import ROUTER_PROMPT, RouterParseError
-from issuekit.proposals_api import DEPENDENCY_REF_PATTERN, api_client
+from issuekit.proposals_api import api_client
 from issuekit.workflow import WorkflowError
 
 
@@ -285,7 +286,7 @@ def _depends_on_tuple(value: object, *, target_index: int) -> tuple[str, ...]:
         if not DEPENDENCY_REF_PATTERN.match(item):
             raise RouterParseError(
                 f"Invalid dependency reference: {item}. "
-                "Expected project#issue-or-proposal or target:<earlier-index>."
+                f"Expected {DEPENDENCY_REF_EXPECTED} or target:<earlier-index>."
             )
         refs.append(item)
     return tuple(_dedupe(refs))

@@ -63,6 +63,8 @@ def test_api_cli_propose_posts_expected_body_and_dedupes(
     assert first["id"] == second["id"]
     assert first["origin"] == "source#0@unknown"
     assert first["title"] == "API Proposal"
+    assert first["dependency_ref"] == "target#proposal:1"
+    assert second["dependency_ref"] == "target#proposal:1"
     assert first["payload_mismatch"] is False
     assert first["stop"] == "STOP_NOW"
     guard = read_author_guard(tmp_path)
@@ -600,6 +602,7 @@ def test_api_cli_propose_attaches_dependency_refs(
     sent = json.loads(capsys.readouterr().out)
 
     assert sent["depends_on"] == ["mine-py#42"]
+    assert sent["dependency_ref"] == "mine-js-monorepo#proposal:1"
     assert "warnings" not in sent
     assert client.calls[0] == {
         "method": "create_proposal",
@@ -648,6 +651,48 @@ def test_api_cli_propose_reads_structured_dependency_body_refs(
     assert client.calls[0]["body"]["depends_on"] == ["mine-py#42"]
 
 
+def test_api_cli_propose_accepts_explicit_dependency_refs(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient()
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'source'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.chdir(tmp_path)
+    client.register_catalog_project("target")
+
+    assert (
+        cli.main(
+            [
+                "propose",
+                "--to",
+                "target",
+                "--title",
+                "Explicit dependencies",
+                "--body",
+                "Depends-On: mine-py#proposal:44\n\nUse the API.",
+                "--depends-on",
+                "mine-py#42 mine-py#issue:43",
+                "--json",
+            ]
+        )
+        == 0
+    )
+
+    sent = json.loads(capsys.readouterr().out)
+    assert sent["depends_on"] == [
+        "mine-py#42",
+        "mine-py#issue:43",
+        "mine-py#proposal:44",
+    ]
+    assert client.calls[0]["body"]["depends_on"] == sent["depends_on"]
+
+
 def test_api_cli_propose_warns_for_unreferenced_upstream_dependency(
     tmp_path: Path,
     monkeypatch,
@@ -688,8 +733,9 @@ def test_api_cli_propose_warns_for_unreferenced_upstream_dependency(
         "Dependency preflight: proposal body appears to depend on mine-py, "
         "but no upstream reference was supplied. Create or propose the "
         "upstream owner work first, then pass "
-        "`--depends-on <project#issue-or-proposal>` or add a "
-        "`Depends-On: <project#issue-or-proposal>` body line."
+        "`--depends-on <project#proposal:N>` or add a "
+        "`Depends-On: <project#proposal:N>` body line. Use explicit "
+        "project#issue:N or project#proposal:N refs when both could exist."
     ]
     assert "depends_on" not in client.calls[0]["body"]
 
@@ -783,7 +829,9 @@ def test_api_cli_propose_warns_for_self_target_without_reply(
 
     assert cli.main(["propose", "--to", "source", "--title", "Local", "--body", "Body."]) == 0
 
-    assert "Self-target proposal preflight" in capsys.readouterr().err
+    captured = capsys.readouterr()
+    assert "Dependency ref: source#proposal:1" in captured.out
+    assert "Self-target proposal preflight" in captured.err
 
 
 def test_api_cli_propose_rejects_invalid_dependency_ref(
@@ -816,6 +864,96 @@ def test_api_cli_propose_rejects_invalid_dependency_ref(
     )
 
     assert "Invalid dependency reference" in capsys.readouterr().err
+
+
+def test_api_cli_propose_rejects_malformed_dependency_prefix(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'source'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    assert (
+        cli.main(
+            [
+                "propose",
+                "--to",
+                "target",
+                "--title",
+                "Bad dependency",
+                "--body",
+                "Body.",
+                "--depends-on",
+                "mine-py#foo:42",
+            ]
+        )
+        == 1
+    )
+
+    err = capsys.readouterr().err
+    assert "Invalid dependency reference: mine-py#foo:42" in err
+    assert "project#N, project#issue:N, or project#proposal:N" in err
+
+
+def test_api_cli_propose_warns_for_bare_ref_collision(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    class CollisionClient(FakeIssuekitClient):
+        def create_proposal(self, **kwargs):
+            proposal = super().create_proposal(**kwargs)
+            proposal["dependencies"] = [
+                {
+                    "ref": "mine-py#42",
+                    "state": "attention",
+                    "issue_status": "completed",
+                    "proposal": {"id": 42, "status": "pending"},
+                }
+            ]
+            return proposal
+
+    client = CollisionClient()
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'source'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.chdir(tmp_path)
+    client.register_catalog_project("target")
+
+    assert (
+        cli.main(
+            [
+                "propose",
+                "--to",
+                "target",
+                "--title",
+                "Collision",
+                "--body",
+                "Body.",
+                "--depends-on",
+                "mine-py#42",
+                "--json",
+            ]
+        )
+        == 0
+    )
+
+    captured = capsys.readouterr()
+    sent = json.loads(captured.out)
+    assert sent["warnings"] == [
+        "Dependency reference mine-py#42 is ambiguous: the API found both an issue "
+        "and a proposal. Use mine-py#issue:42 or mine-py#proposal:42; for pending "
+        "proposals prefer mine-py#proposal:42."
+    ]
+    assert "Dependency reference mine-py#42 is ambiguous" in captured.err
 
 
 def test_api_cli_propose_rejects_non_ascii_body(

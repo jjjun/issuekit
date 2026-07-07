@@ -18,6 +18,11 @@ from issuekit.core import (
     parse_issue_id_arg,
     parse_target_address,
 )
+from issuekit.dependencies import (
+    DEPENDENCY_REF_PATTERN,
+    bare_ref_collision_warnings,
+    dependency_refs,
+)
 from issuekit.gitutil import git_short_head
 from issuekit.proposals import Proposal, ProposalError, origin_destination
 from issuekit.refs import RefError, list_effective_refs
@@ -26,8 +31,9 @@ from issuekit.workflow import WorkflowError
 
 
 OUTGOING_PROPOSAL_STATUSES = ("pending", "adopted", "discarded")
-DEPENDENCY_REF_PATTERN = re.compile(r"^[A-Za-z0-9_.-]+#[A-Za-z0-9_.:-]+$")
-DEPENDENCY_REF_TOKEN_PATTERN = re.compile(r"\b[A-Za-z0-9_.-]+#[A-Za-z0-9_.:-]+\b")
+DEPENDENCY_REF_TOKEN_PATTERN = re.compile(
+    r"\b[A-Za-z0-9_.-]+#(?:(?:issue|proposal):)?[0-9]+\b"
+)
 STRUCTURED_DEPENDENCY_PATTERN = re.compile(
     r"(?im)^\s*(?:depends[-_ ]?on|upstream[-_ ]?dependency|dependency|"
     r"blocked[-_ ]?by|prerequisite)\s*:\s*(?P<refs>[^\n]+)$"
@@ -122,11 +128,18 @@ def send_proposal(config: IssuekitConfig, proposal: Proposal) -> dict:
             target_worker=proposal.target_worker or None,
         )
     result = dict(created)
+    dependency_ref = proposal_dependency_ref(proposal.to, result.get("id"))
+    if dependency_ref is not None:
+        result["dependency_ref"] = dependency_ref
     if proposal.depends_on and "depends_on" not in result:
         result["depends_on"] = list(proposal.depends_on)
-    warnings = [*target_warnings, *proposal.warnings]
+    warnings = [
+        *target_warnings,
+        *proposal.warnings,
+        *bare_ref_collision_warnings(_dependency_rows_from_response(result)),
+    ]
     if warnings:
-        result["warnings"] = warnings
+        result["warnings"] = list(_dedupe_refs(warnings))
     mismatched = proposal_payload_mismatch(proposal, created)
     result["payload_mismatch"] = bool(mismatched)
     if mismatched:
@@ -134,6 +147,16 @@ def send_proposal(config: IssuekitConfig, proposal: Proposal) -> dict:
         result["payload_mismatch_fields"] = mismatched
         result["warning"] = payload_mismatch_guidance(proposal, created, mismatched)
     return result
+
+
+def proposal_dependency_ref(project: str, proposal_id: object) -> str | None:
+    try:
+        raw_id = int(str(proposal_id).strip())
+    except (TypeError, ValueError):
+        return None
+    if raw_id <= 0:
+        return None
+    return f"{project}#proposal:{raw_id}"
 
 
 def adopt_proposal_with_append(
@@ -508,8 +531,9 @@ def proposal_preflight_warnings(
                 "Dependency preflight: proposal body appears to depend on "
                 f"{project_list}, but no upstream reference was supplied. "
                 "Create or propose the upstream owner work first, then pass "
-                "`--depends-on <project#issue-or-proposal>` or add a "
-                "`Depends-On: <project#issue-or-proposal>` body line."
+                "`--depends-on <project#proposal:N>` or add a "
+                "`Depends-On: <project#proposal:N>` body line. Use explicit "
+                "project#issue:N or project#proposal:N refs when both could exist."
             )
     return tuple(warnings)
 
@@ -544,29 +568,12 @@ def _proposal_dependency_refs(
 def _dependency_tuple(value: object) -> tuple[str, ...]:
     if value is None:
         return ()
-    if isinstance(value, str):
-        raw_items = _split_dependency_refs(value)
-    elif isinstance(value, Sequence):
-        raw_items = []
-        for item in value:
-            raw_items.extend(_split_dependency_refs(str(item)))
-    else:
-        raw_items = _split_dependency_refs(str(value))
-    return _dedupe_refs(raw_items)
-
-
-def _split_dependency_refs(value: str) -> list[str]:
-    refs: list[str] = []
-    for raw in re.split(r"[\s,]+", value):
-        ref = raw.strip().strip(".;")
-        if not ref:
-            continue
-        if not DEPENDENCY_REF_PATTERN.match(ref):
-            raise ProposalError(
-                f"Invalid dependency reference: {ref}. Expected project#issue-or-proposal."
-            )
-        refs.append(ref)
-    return refs
+    try:
+        if isinstance(value, str | Sequence):
+            return dependency_refs(value)
+        return dependency_refs(str(value))
+    except ValueError as exc:
+        raise ProposalError(str(exc)) from exc
 
 
 def _structured_dependency_refs(body: str) -> tuple[str, ...]:
@@ -585,6 +592,26 @@ def _dedupe_refs(refs: Sequence[str]) -> tuple[str, ...]:
         seen.add(ref)
         deduped.append(ref)
     return tuple(deduped)
+
+
+def _dependency_rows_from_response(raw: Mapping[str, Any]) -> tuple[dict[str, object], ...]:
+    rows: list[dict[str, object]] = []
+    _extend_dependency_rows(rows, raw)
+    issue = raw.get("issue")
+    if isinstance(issue, Mapping):
+        _extend_dependency_rows(rows, issue)
+    proposal = raw.get("proposal")
+    if isinstance(proposal, Mapping):
+        _extend_dependency_rows(rows, proposal)
+    return tuple(rows)
+
+
+def _extend_dependency_rows(rows: list[dict[str, object]], raw: Mapping[str, Any]) -> None:
+    for key in ("dependencies", "dependency_resolutions", "resolved_dependencies"):
+        value = raw.get(key)
+        if not isinstance(value, list):
+            continue
+        rows.extend(dict(item) for item in value if isinstance(item, Mapping))
 
 
 def _related_project_names(cwd: Path) -> tuple[str, ...]:

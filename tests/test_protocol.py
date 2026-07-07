@@ -26,7 +26,8 @@ def test_render_protocol_returns_each_agent_and_both() -> None:
         assert "issuekit propose --to <project>" in rendered
         assert "owns triage" in rendered
         assert "dependency-first" in rendered
-        assert "--depends-on <project#issue-or-proposal>" in rendered
+        assert "--depends-on <project#N|project#issue:N|project#proposal:N>" in rendered
+        assert "project#proposal:N" in rendered
         assert "issuekit implement <id> --agent <agent> --timeout-sec <n>" in rendered
         assert "launches the configured agent" in rendered
         assert "submits the completed work for review" in rendered
@@ -39,7 +40,7 @@ def test_render_protocol_returns_each_agent_and_both() -> None:
         assert "Author with upstream dependency" in rendered
         assert (
             'issuekit author --title "Short title" --body-file issue.md '
-            "--priority medium --agent codex --depends-on upstream#123"
+            "--priority medium --agent codex --depends-on upstream#proposal:123"
         ) in rendered
         assert "issuekit claim --assignee codex" in rendered
         assert "issuekit claim --id 123 --assignee codex" in rendered
@@ -49,7 +50,7 @@ def test_render_protocol_returns_each_agent_and_both() -> None:
         assert 'issuekit complete 123 --summary "Done."' in rendered
         assert "issuekit incoming --json" in rendered
         assert "issuekit propose --to <project> --title <t> --body <b> --blocking --json" in rendered
-        assert "issuekit propose --to <project> --title <t> --body <b> --depends-on upstream#123 --json" in rendered
+        assert "issuekit propose --to <project> --title <t> --body <b> --depends-on upstream#proposal:123 --json" in rendered
         assert "issuekit adopt 42 --priority medium --json" in rendered
         assert "issuekit outgoing --to <project> --json" in rendered
         assert "issuekit serve --agent codex --triage" in rendered
@@ -101,7 +102,7 @@ def test_render_protocol_returns_author_role() -> None:
     assert "Delegation cycle overview" in author
     assert "issuekit author" in author
     assert "API allocates the issue id" in author
-    assert "pass `--depends-on <project#issue-or-proposal>`" in author
+    assert "pass\n   `--depends-on <project#N|project#issue:N|project#proposal:N>`" in author
     assert "respect the dependency state" in author
     assert "records that authoring session" in author
     assert "Do not call `claim_next_task`" in author

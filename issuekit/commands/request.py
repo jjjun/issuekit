@@ -474,10 +474,12 @@ def _run_target_reply_answer(
         raise ProposalError(str(sent.get("warning") or "Proposal payload mismatch."))
 
     proposal_ref = f"{target['project']}#{sent.get('id')}"
+    dependency_ref = str(sent.get("dependency_ref") or proposal_ref)
     updated = dict(target)
     updated.update(
         {
             "proposal_ref": proposal_ref,
+            "dependency_ref": dependency_ref,
             "proposal_id": sent.get("id"),
             "sent_at": _now(),
             "clarifications": clarifications,
@@ -497,6 +499,7 @@ def _run_target_reply_answer(
         "decision": "answer",
         "target_project": updated.get("project"),
         "proposal_ref": proposal_ref,
+        "dependency_ref": dependency_ref,
         "supersedes": previous_ref,
     }
     _print_payload(payload, json_output=json_output)
@@ -600,7 +603,7 @@ def _send_route_targets(
         stored = existing_targets[index]
         stored_ref = str(stored.get("proposal_ref") or "").strip()
         if stored_ref:
-            refs_by_index[index] = stored_ref
+            refs_by_index[index] = str(stored.get("dependency_ref") or stored_ref)
             output.append(dict(stored))
             continue
         resolved_depends_on = _resolve_depends_on(target.depends_on, refs_by_index)
@@ -620,11 +623,13 @@ def _send_route_targets(
             _save_state(cwd, state)
             raise ProposalError(str(sent.get("warning") or "Proposal payload mismatch."))
         proposal_ref = f"{target.project}#{sent.get('id')}"
-        refs_by_index[index] = proposal_ref
+        dependency_ref = str(sent.get("dependency_ref") or proposal_ref)
+        refs_by_index[index] = dependency_ref
         updated = _target_state(target)
         updated.update(
             {
                 "proposal_ref": proposal_ref,
+                "dependency_ref": dependency_ref,
                 "proposal_id": sent.get("id"),
                 "sent_at": _now(),
             }
@@ -875,7 +880,7 @@ def _resolve_depends_on(depends_on: tuple[str, ...], refs_by_index: dict[int, st
 def _refs_by_target_index(targets: list[dict[str, Any]]) -> dict[int, str]:
     refs: dict[int, str] = {}
     for index, target in enumerate(targets):
-        ref = str(target.get("proposal_ref") or "").strip()
+        ref = str(target.get("dependency_ref") or target.get("proposal_ref") or "").strip()
         if ref:
             refs[index] = ref
     return refs

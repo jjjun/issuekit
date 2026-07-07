@@ -26,8 +26,9 @@ Decide exactly one of:
 - reject: explain why no profiled project owns this request.
 
 For route targets, use only candidate project names. `depends_on`
-entries may be existing refs like project#123 or target:<index>
-placeholders referencing earlier targets in this same response.
+entries may be existing refs like project#N, project#issue:N, or
+project#proposal:N, or target:<index> placeholders referencing earlier targets
+in this same response. Use project#proposal:N for not-yet-adopted proposals.
 
 Output contract:
 $single_fenced_block_instruction
@@ -42,11 +43,10 @@ $ascii_only_rule
       "title": "Short proposal title",
       "body": "Thin proposal body for target-owned triage.",
       "blocking": true,
-      "depends_on": ["project#123", "target:0"]
+      "depends_on": ["project#proposal:123", "target:0"]
     }
   ],
   "question": "One clarification question when decision is clarify.",
   "reason": "Why no profiled project owns it when decision is reject."
 }
 ```
-

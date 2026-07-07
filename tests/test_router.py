@@ -235,7 +235,7 @@ def test_request_routes_multi_target_and_resolves_target_dependency(
     payload = json.loads(capsys.readouterr().out)
 
     assert [target["proposal_ref"] for target in payload["targets"]] == ["api#1", "ui#1"]
-    assert clients["ui"].calls[0]["body"]["depends_on"] == ["api#1"]
+    assert clients["ui"].calls[0]["body"]["depends_on"] == ["api#proposal:1"]
 
 
 def test_request_stops_on_send_failure_and_resume_skips_sent_target(
@@ -299,7 +299,7 @@ def test_request_stops_on_send_failure_and_resume_skips_sent_target(
 
     assert [target["proposal_ref"] for target in payload["targets"]] == ["api#1", "ui#1"]
     assert len(clients["api"].calls) == 1
-    assert clients["ui"].calls[0]["body"]["depends_on"] == ["api#1"]
+    assert clients["ui"].calls[0]["body"]["depends_on"] == ["api#proposal:1"]
 
 
 def test_request_link_records_existing_proposal_for_unsent_target(

@@ -1326,6 +1326,7 @@ def test_api_proposal_tools_send_list_adopt_and_discard(
 
     assert sent["origin"] == "target#0@unknown"
     assert sent["title"] == "MCP API Proposal"
+    assert sent["dependency_ref"] == "other_project#proposal:12"
     assert sent["payload_mismatch"] is False
     assert [proposal["id"] for proposal in incoming] == [10, 11, sent["id"]]
     assert adopted["title"] == "Adopt"
@@ -1444,6 +1445,7 @@ def test_mcp_propose_attaches_dependency_refs(tmp_path: Path, monkeypatch) -> No
     )
 
     assert sent["depends_on"] == ["mine-py#42"]
+    assert sent["dependency_ref"] == "other_project#proposal:1"
     assert client.calls[0]["body"]["depends_on"] == ["mine-py#42"]
 
 
