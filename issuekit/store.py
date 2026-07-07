@@ -29,6 +29,14 @@ REQUIRED_API_FIELDS = {
 }
 
 OPTIONAL_API_METADATA_FIELDS = (
+    "implementation_worker",
+    "claimed",
+    "claimed_at",
+    "last_transition",
+    "last_transition_at",
+    "last_transitioned_at",
+    "updated",
+    "updated_at",
     "summary",
     "branch",
     "commit",

@@ -204,6 +204,26 @@ def test_info_json_includes_stage_when_present(tmp_path: Path, monkeypatch, caps
     assert review_issue["stage"] == "review"
 
 
+def test_info_json_includes_worker_when_present(tmp_path: Path, monkeypatch, capsys) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                3,
+                "Held",
+                status="in_progress",
+                stage="implementing",
+                worker="checkout.demo",
+            )
+        ]
+    )
+    _configure_api(tmp_path, monkeypatch, client)
+
+    cli.main(["info", "--json"])
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["activeIssues"][0]["worker"] == "checkout.demo"
+
+
 def test_info_json_includes_dependency_fields(tmp_path: Path, monkeypatch, capsys) -> None:
     client = FakeIssuekitClient(
         [

@@ -47,6 +47,14 @@ class WorkerRemovalResult:
 
 
 @dataclass(frozen=True)
+class WorkerClaim:
+    issue: Issue
+    worker: str
+    claimed: str = ""
+    last_transition: str = ""
+
+
+@dataclass(frozen=True)
 class WorkerPruneCandidate:
     worker: JsonDict
     stale_seconds: float
@@ -249,6 +257,42 @@ def prune_api_workers(
     )
 
 
+ACTIVE_CLAIM_STAGES = ("implementing", "review", "changes_requested")
+
+
+def list_worker_claims(
+    config: IssuekitConfig,
+    *,
+    worker: str | None = None,
+    stage: str | None = None,
+) -> list[WorkerClaim]:
+    with get_store(config) as store:
+        issues = store.find_for()
+    return [
+        _worker_claim(issue)
+        for issue in issues
+        if _is_active_worker_claim(issue, worker=worker, stage=stage)
+    ]
+
+
+def worker_claim_dict(claim: WorkerClaim) -> dict[str, object]:
+    issue = claim.issue
+    data: dict[str, object] = {
+        "id": issue.id,
+        "ref": issue.ref,
+        "title": issue.title,
+        "stage": issue.stage,
+        "assignee": issue.assignee,
+        "worker": claim.worker,
+        "target_worker": issue.target_worker,
+    }
+    if claim.claimed:
+        data["claimed"] = claim.claimed
+    if claim.last_transition:
+        data["last_transition"] = claim.last_transition
+    return data
+
+
 def remove_api_repo(config: IssuekitConfig, repo_key: str) -> RepoRemovalResult:
     if not config.api_url:
         raise WorkerListingError(
@@ -399,12 +443,10 @@ def _worker_implementing_issues(
     worker: Mapping[str, object],
 ) -> list[Issue]:
     keys = worker_keys_from_row(worker)
-    with get_store(config) as store:
-        issues = store.find_for(stage="implementing")
     return [
-        issue
-        for issue in issues
-        if issue.worker and any(worker_keys_match(issue.worker, key) for key in keys)
+        claim.issue
+        for claim in list_worker_claims(config, stage="implementing")
+        if any(worker_keys_match(claim.worker, key) for key in keys)
     ]
 
 
@@ -456,6 +498,52 @@ def _parse_timestamp(value: object) -> datetime | None:
     if parsed.tzinfo is None:
         return parsed.replace(tzinfo=timezone.utc)
     return parsed.astimezone(timezone.utc)
+
+
+def _is_active_worker_claim(
+    issue: Issue,
+    *,
+    worker: str | None,
+    stage: str | None,
+) -> bool:
+    if issue.stage not in ACTIVE_CLAIM_STAGES:
+        return False
+    if stage is not None and issue.stage != stage:
+        return False
+    claim_worker = _claim_worker(issue)
+    if not claim_worker:
+        return False
+    if worker is None:
+        return True
+    return worker_keys_match(claim_worker, worker)
+
+
+def _worker_claim(issue: Issue) -> WorkerClaim:
+    return WorkerClaim(
+        issue=issue,
+        worker=_claim_worker(issue),
+        claimed=_first_metadata_value(issue, "claimed", "claimed_at"),
+        last_transition=_first_metadata_value(
+            issue,
+            "last_transition",
+            "last_transition_at",
+            "last_transitioned_at",
+            "updated_at",
+            "updated",
+        ),
+    )
+
+
+def _claim_worker(issue: Issue) -> str:
+    return issue.worker or _first_metadata_value(issue, "implementation_worker")
+
+
+def _first_metadata_value(issue: Issue, *keys: str) -> str:
+    for key in keys:
+        value = issue.metadata.get(key)
+        if value:
+            return str(value)
+    return ""
 
 
 def _repo_removal_error(exc: WorkflowError, repo_key: str) -> WorkflowError:

@@ -71,6 +71,8 @@ def issue_dict(issue: "Issue", *, include_body: bool = False) -> dict[str, objec
     }
     if include_body:
         data["body"] = issue.body
+    if issue.worker:
+        data["worker"] = issue.worker
     if issue.target_worker:
         data["target_worker"] = issue.target_worker
     if issue.depends_on:

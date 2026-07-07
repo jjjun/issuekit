@@ -81,6 +81,7 @@ def test_api_store_maps_json_to_issue_and_issue_dict() -> None:
         "author": "kimi",
         "ref": "demo#7",
         "body": body,
+        "worker": "machine/demo/checkout",
     }
 
 
@@ -178,6 +179,7 @@ def test_api_store_preserves_review_handoff_metadata() -> None:
     raw_issue = api_issue(7, "Review Path", status="in_progress", stage="review")
     raw_issue.update(
         {
+            "implementation_worker": "worker.demo@main1",
             "summary": "Updated the host service.",
             "branch": "main",
             "commit": "abc1234",
@@ -190,6 +192,7 @@ def test_api_store_preserves_review_handoff_metadata() -> None:
     issue = store.get_issue(7)
 
     assert issue is not None
+    assert issue.metadata["implementation_worker"] == "worker.demo@main1"
     assert issue.metadata["summary"] == "Updated the host service."
     assert issue.metadata["branch"] == "main"
     assert issue.metadata["commit"] == "abc1234"
