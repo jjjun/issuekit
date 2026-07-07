@@ -613,12 +613,161 @@ def test_work_branch_guard_allows_claim_with_bypass(tmp_path, monkeypatch) -> No
         config=config,
         cwd=tmp_path,
         allow_any_branch=True,
+        no_sync=True,
     )
 
     assert issue.id == 1
     assert client.calls == [
         {"method": "claim", "number": 1, "body": {"assignee": "codex"}}
     ]
+
+
+def test_claim_sync_guard_blocks_claim_before_api_call(tmp_path, monkeypatch) -> None:
+    client = FakeIssuekitClient([api_issue(1, "Ready", author="claude")])
+    config = IssuekitConfig(api_url="https://mine.example", project="demo", work_branch="main")
+    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.setattr("issuekit.branch_guard.git_current_branch", lambda cwd: "main")
+    monkeypatch.setattr("issuekit.claim_sync.git_status_short", lambda cwd: "?? debris.txt")
+
+    with pytest.raises(WorkflowError, match="Claim-sync guard blocks claim issue #1"):
+        claim_issue(1, "codex", config=config, cwd=tmp_path)
+
+    assert client.calls == []
+
+
+def test_claim_sync_guard_allows_claim_with_no_sync(tmp_path, monkeypatch) -> None:
+    client = FakeIssuekitClient([api_issue(1, "Ready", author="claude")])
+    config = IssuekitConfig(api_url="https://mine.example", project="demo", work_branch="main")
+    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.setattr("issuekit.branch_guard.git_current_branch", lambda cwd: "main")
+    monkeypatch.setattr("issuekit.claim_sync.git_status_short", lambda cwd: "?? debris.txt")
+
+    issue = claim_issue(1, "codex", config=config, cwd=tmp_path, no_sync=True)
+
+    assert issue.id == 1
+    assert client.calls == [
+        {"method": "claim", "number": 1, "body": {"assignee": "codex"}}
+    ]
+
+
+def test_claim_issue_skips_claim_sync_for_same_worker_changes_continuation(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                1,
+                "Changes",
+                status="in_progress",
+                assignee="codex",
+                stage="changes_requested",
+                implementer="codex",
+                author="claude",
+            )
+            | {"implementation_worker": "checkout.repo@machine"}
+        ]
+    )
+    config = IssuekitConfig(
+        api_url="https://mine.example",
+        project="demo",
+        work_branch="main",
+        worker=WorkerIdentity("machine", "repo", "checkout"),
+    )
+    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.setattr("issuekit.branch_guard.git_current_branch", lambda cwd: "main")
+
+    def fail_claim_sync(*args, **kwargs):
+        raise WorkflowError("dirty tree", code="claim_sync_guard")
+
+    monkeypatch.setattr("issuekit.workflow.enforce_claim_sync", fail_claim_sync)
+
+    issue = claim_issue(1, "codex", config=config, cwd=tmp_path)
+
+    assert issue.stage == "implementing"
+    assert client.calls == [
+        {
+            "method": "claim",
+            "number": 1,
+            "body": {"assignee": "codex", "worker": "checkout.repo@machine"},
+        }
+    ]
+
+
+def test_claim_issue_enforces_claim_sync_for_other_worker_changes_continuation(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                1,
+                "Changes",
+                status="in_progress",
+                assignee="codex",
+                stage="changes_requested",
+                implementer="codex",
+                author="claude",
+                worker="other.repo@machine",
+            )
+        ]
+    )
+    config = IssuekitConfig(
+        api_url="https://mine.example",
+        project="demo",
+        work_branch="main",
+        worker=WorkerIdentity("machine", "repo", "checkout"),
+    )
+    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.setattr("issuekit.branch_guard.git_current_branch", lambda cwd: "main")
+
+    def fail_claim_sync(*args, **kwargs):
+        raise WorkflowError("dirty tree", code="claim_sync_guard")
+
+    monkeypatch.setattr("issuekit.workflow.enforce_claim_sync", fail_claim_sync)
+
+    with pytest.raises(WorkflowError, match="dirty tree"):
+        claim_issue(1, "codex", config=config, cwd=tmp_path)
+
+    assert client.calls == []
+
+
+def test_claim_next_still_enforces_claim_sync_for_dirty_changes_checkout(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                1,
+                "Changes",
+                status="in_progress",
+                assignee="codex",
+                stage="changes_requested",
+                implementer="codex",
+                author="claude",
+                worker="checkout.repo@machine",
+            )
+        ]
+    )
+    config = IssuekitConfig(
+        api_url="https://mine.example",
+        project="demo",
+        work_branch="main",
+        worker=WorkerIdentity("machine", "repo", "checkout"),
+    )
+    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.setattr("issuekit.branch_guard.git_current_branch", lambda cwd: "main")
+
+    def fail_claim_sync(*args, **kwargs):
+        raise WorkflowError("dirty tree", code="claim_sync_guard")
+
+    monkeypatch.setattr("issuekit.workflow.enforce_claim_sync", fail_claim_sync)
+
+    with pytest.raises(WorkflowError, match="dirty tree"):
+        claim_next("codex", config=config, cwd=tmp_path)
+
+    assert client.calls == []
 
 
 @pytest.mark.parametrize(

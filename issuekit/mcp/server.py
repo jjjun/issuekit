@@ -83,6 +83,7 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
         priority: str | None = None,
         allow_author_session: bool = False,
         allow_any_branch: bool = False,
+        no_sync: bool = False,
         ctx: Context | None = None,
     ) -> dict[str, Any]:
         config, config_root = await _load_api_config(root, ctx)
@@ -95,6 +96,7 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
                 cwd=config_root,
                 allow_author_guard_override=allow_author_session,
                 allow_any_branch=allow_any_branch,
+                no_sync=no_sync,
                 session=MCP_SESSION,
             )
         if issue is None:

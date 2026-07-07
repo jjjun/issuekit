@@ -12,6 +12,7 @@ from issuekit.author_guard import (
     enforce_no_author_guard,
 )
 from issuekit.branch_guard import enforce_work_branch
+from issuekit.claim_sync import enforce_claim_sync
 from issuekit.config import IssuekitConfig
 from issuekit.core import (
     ASCII_ONLY_HINT,
@@ -22,6 +23,7 @@ from issuekit.core import (
 )
 from issuekit.gitutil import git_current_branch
 from issuekit.session import current_session_token, validate_session_token
+from issuekit.worker_keys import worker_keys_match
 
 
 AUTO_REVIEWER = "auto"
@@ -79,6 +81,7 @@ def claim_next(
     cwd: str = ".",
     allow_author_guard_override: bool = False,
     allow_any_branch: bool = False,
+    no_sync: bool = False,
     session: str | None = None,
 ) -> Issue | None:
     config = config or IssuekitConfig()
@@ -97,6 +100,12 @@ def claim_next(
         config=config,
         action="claim-next",
         allow_any_branch=allow_any_branch,
+    )
+    enforce_claim_sync(
+        cwd,
+        config=config,
+        action="claim-next",
+        no_sync=no_sync,
     )
 
     owned_store = _ensure_store(config, store)
@@ -124,6 +133,7 @@ def claim_issue(
     cwd: str = ".",
     allow_author_guard_override: bool = False,
     allow_any_branch: bool = False,
+    no_sync: bool = False,
     session: str | None = None,
     orchestration: AuthorOrchestrationContext | None = None,
 ) -> Issue:
@@ -147,6 +157,14 @@ def claim_issue(
 
     owned_store = _ensure_store(config, store)
     try:
+        previous_issue = owned_store.get_issue(issue_id)
+        if not _is_same_worker_changes_continuation(previous_issue, config):
+            enforce_claim_sync(
+                cwd,
+                config=config,
+                action=f"claim issue #{issue_id}",
+                no_sync=no_sync,
+            )
         worker = config.qualified_worker_key()
         resolved_session = _resolve_session(session)
         _ensure_orchestration_session(orchestration, resolved_session)
@@ -498,6 +516,24 @@ def _ensure_store(config: IssuekitConfig, store):
     from issuekit.store import get_store
 
     return get_store(config)
+
+
+def _is_same_worker_changes_continuation(
+    issue: Issue | None,
+    config: IssuekitConfig,
+) -> bool:
+    if issue is None or issue.stage != "changes_requested":
+        return False
+    current_worker = config.qualified_worker_key()
+    if not current_worker:
+        return False
+    implementation_worker = issue.worker or str(
+        issue.metadata.get("implementation_worker") or ""
+    ).strip()
+    return bool(
+        implementation_worker
+        and worker_keys_match(implementation_worker, current_worker)
+    )
 
 
 def _resolve_session(explicit: str | None) -> str | None:

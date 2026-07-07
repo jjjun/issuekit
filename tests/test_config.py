@@ -108,6 +108,37 @@ def test_load_config_defaults_work_branch_to_empty(tmp_path: Path) -> None:
     assert load_config(tmp_path).work_branch == ""
 
 
+def test_load_config_reads_claim_sync_options(tmp_path: Path) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "claim_sync = false\nclaim_sync_interval_sec = 10.5\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    config = load_config(tmp_path)
+
+    assert config.claim_sync is False
+    assert config.claim_sync_interval_sec == 10.5
+
+
+def test_load_config_defaults_claim_sync_on(tmp_path: Path) -> None:
+    config = load_config(tmp_path)
+
+    assert config.claim_sync is True
+    assert config.claim_sync_interval_sec == 60.0
+
+
+def test_load_config_rejects_negative_claim_sync_interval(tmp_path: Path) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "claim_sync_interval_sec = -1\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    with pytest.raises(ValueError, match="claim_sync_interval_sec"):
+        load_config(tmp_path)
+
+
 @pytest.mark.parametrize("value", ["feature branch", "main\u3042"])
 def test_load_config_rejects_invalid_work_branch(tmp_path: Path, value: str) -> None:
     (tmp_path / "issuekit.toml").write_text(

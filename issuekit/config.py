@@ -106,6 +106,8 @@ class IssuekitConfig:
     default_reviewer: str = "claude"
     require_distinct_reviewer: bool = False
     work_branch: str = ""
+    claim_sync: bool = True
+    claim_sync_interval_sec: float = 60.0
     worker: WorkerIdentity | None = None
     worker_role: str = ""
     worker_description: str = ""
@@ -258,6 +260,13 @@ def load_config(cwd: Path | str = ".") -> IssuekitConfig:
     _validate_default_reviewer(default_reviewer, assignees)
     work_branch = str(raw_config.get("work_branch", IssuekitConfig.work_branch)).strip()
     _validate_work_branch(work_branch)
+    claim_sync_interval_sec = float(
+        raw_config.get(
+            "claim_sync_interval_sec",
+            IssuekitConfig.claim_sync_interval_sec,
+        )
+    )
+    _validate_claim_sync_interval(claim_sync_interval_sec)
     agents = _load_agents(raw_config.get("agents", {}))
     triage = _load_triage_policy(raw_config.get("triage", {}))
     router = _load_router_policy(raw_config.get("router", {}))
@@ -309,6 +318,8 @@ def load_config(cwd: Path | str = ".") -> IssuekitConfig:
             )
         ),
         work_branch=work_branch,
+        claim_sync=_bool_value(raw_config.get("claim_sync", IssuekitConfig.claim_sync)),
+        claim_sync_interval_sec=claim_sync_interval_sec,
         worker=worker,
         worker_role=worker_role,
         worker_description=worker_description,
@@ -411,6 +422,11 @@ def _validate_work_branch(work_branch: str) -> None:
         return
     if has_non_ascii(work_branch) or any(char.isspace() for char in work_branch):
         raise ValueError(f"Invalid work_branch token: {work_branch}")
+
+
+def _validate_claim_sync_interval(value: float) -> None:
+    if value < 0:
+        raise ValueError("claim_sync_interval_sec must be zero or greater.")
 
 
 def _load_agents(raw: dict[str, object]) -> tuple[tuple[str, AgentRunConfig], ...]:

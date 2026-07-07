@@ -59,6 +59,11 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         action="store_true",
         help="Override the configured work_branch guard for human recovery.",
     )
+    implement_parser.add_argument(
+        "--no-sync",
+        action="store_true",
+        help="Skip the claim-time clean checkout and fast-forward sync guard.",
+    )
     implement_parser.set_defaults(func=run)
 
 
@@ -91,6 +96,7 @@ def run(args) -> int:
             cwd=cwd,
             allow_author_guard_override=args.allow_author_session,
             allow_any_branch=args.allow_any_branch,
+            no_sync=args.no_sync,
             session=run_session,
             orchestration=orchestration,
         )

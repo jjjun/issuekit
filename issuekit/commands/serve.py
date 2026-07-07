@@ -99,6 +99,11 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         action="store_true",
         help="Override the configured work_branch guard for human recovery.",
     )
+    serve_parser.add_argument(
+        "--no-sync",
+        action="store_true",
+        help="Skip the claim-time clean checkout and fast-forward sync guard.",
+    )
     serve_parser.set_defaults(func=run)
 
 
@@ -321,6 +326,7 @@ def _serve_loop(
                     store=store,
                     cwd=cwd,
                     allow_any_branch=getattr(args, "allow_any_branch", False),
+                    no_sync=getattr(args, "no_sync", False),
                 )
             except (TimeoutError, WorkflowError, ValueError) as exc:
                 _log(sys.stderr, log_path, "claim_error", error=str(exc), backoff=backoff.current)

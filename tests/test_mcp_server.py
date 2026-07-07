@@ -564,6 +564,13 @@ def test_submit_for_review_schema_omits_assignee(tmp_path: Path) -> None:
     assert "allow_any_branch" in schema["properties"]
 
 
+def test_claim_next_task_schema_includes_sync_escape_hatch(tmp_path: Path) -> None:
+    schema = _tool_schema(create_server(tmp_path), "claim_next_task")
+
+    assert "allow_any_branch" in schema["properties"]
+    assert "no_sync" in schema["properties"]
+
+
 def test_get_protocol_matches_canonical_text(tmp_path: Path) -> None:
     from issuekit.protocol import render_protocol
 
