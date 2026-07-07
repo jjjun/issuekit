@@ -8,6 +8,8 @@ from pathlib import Path
 
 from issuekit.author_guard import guard_dict, read_author_guard
 from issuekit.config import load_config
+from issuekit.core import issue_dict
+from issuekit.issue_display import dependency_detail_lines, dependency_marker
 from issuekit.proposals_api import api_client
 from issuekit.store import get_store
 
@@ -40,13 +42,10 @@ def run(args) -> int:
         "worker": config.worker_key(),
         "workerPresent": config.worker is not None,
         "activeIssues": [
-            {
-                "id": issue.id,
-                "title": issue.title,
+            issue_dict(issue)
+            | {
                 "priority": issue.priority or None,
-                "status": issue.issue_status,
                 "stage": issue.stage or None,
-                "ref": issue.ref,
             }
             for issue in active_issues
         ],
@@ -82,9 +81,17 @@ def run(args) -> int:
     if summary["activeIssues"]:
         print()
         print("Active issues")
-        for issue in summary["activeIssues"]:
-            status_display = f"{issue['status']}, stage={issue['stage']}" if issue.get('stage') else issue['status']
-            print(f"- #{issue['id']}: {issue['title']} [{status_display}] ({issue['ref']})")
+        for issue in active_issues:
+            status_display = (
+                f"{issue.issue_status}, stage={issue.stage}"
+                if issue.stage
+                else issue.issue_status
+            )
+            dependency_status = dependency_marker(issue)
+            marker = f" {dependency_status}" if dependency_status else ""
+            print(f"- #{issue.id}: {issue.title} [{status_display}] ({issue.ref}){marker}")
+            for line in dependency_detail_lines(issue):
+                print(f"  {line}")
 
     if summary["incomingProposals"]:
         print()

@@ -7,6 +7,7 @@ from pathlib import Path
 
 from issuekit.commands._common import run_command
 from issuekit.config import load_config
+from issuekit.issue_display import dependency_marker
 from issuekit.workflow import WorkflowError, find_for
 
 
@@ -38,6 +39,9 @@ def run(args) -> int:
             ]
             if issue.target_worker:
                 parts.append(f"target_worker={issue.target_worker}")
+            marker = dependency_marker(issue)
+            if marker:
+                parts.append(marker)
             print(" ".join(parts))
         return 0
 

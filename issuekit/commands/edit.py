@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import argparse
+from collections.abc import Sequence
 import json
 from pathlib import Path
 
 from issuekit.commands._common import active_issue_not_found, require_ascii, run_command
 from issuekit.config import IssuekitConfig, load_config
 from issuekit.core import Issue, VALID_ISSUE_PRIORITIES, issue_dict, parse_issue_id_arg
+from issuekit.dependencies import dependency_refs
 from issuekit.workflow import WorkflowError
 
 
@@ -30,6 +32,12 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         help="Replacement issue priority.",
     )
     edit_parser.add_argument(
+        "--depends-on",
+        action="append",
+        dest="depends_on",
+        help="Replace upstream dependency refs with one or more project#123 values.",
+    )
+    edit_parser.add_argument(
         "--force",
         action="store_true",
         help="Allow editing an issue that is already in flight.",
@@ -49,6 +57,7 @@ def run(args) -> int:
             append=args.append,
             append_file=args.append_file,
             priority=args.priority,
+            depends_on=args.depends_on,
             force=args.force,
             config=config,
         )
@@ -73,6 +82,7 @@ def edit_issue(
     append: str | None = None,
     append_file: str | None = None,
     priority: str | None = None,
+    depends_on: str | Sequence[str] | None = None,
     force: bool = False,
     config: IssuekitConfig | None = None,
     store=None,
@@ -84,6 +94,7 @@ def edit_issue(
         append=append,
         append_file=append_file,
         priority=priority,
+        depends_on=depends_on,
     )
     config = config or IssuekitConfig()
     owned_store = None
@@ -118,6 +129,7 @@ def edit_issue(
             title=title.strip() if title is not None else None,
             body=update_body,
             priority=priority,
+            depends_on=_depends_on(depends_on) if depends_on is not None else None,
         )
     finally:
         if owned_store is not None:
@@ -132,14 +144,15 @@ def _validate_edit_input(
     append: str | None,
     append_file: str | None,
     priority: str | None,
+    depends_on: str | Sequence[str] | None,
 ) -> None:
     body_modes = [value is not None for value in (body, body_file, append, append_file)]
     if sum(body_modes) > 1:
         raise ValueError("Pass only one of --body, --body-file, --append, or --append-file.")
-    if title is None and not any(body_modes) and priority is None:
+    if title is None and not any(body_modes) and priority is None and depends_on is None:
         raise ValueError(
             "At least one of --title, --body, --body-file, --append, "
-            "--append-file, or --priority is required."
+            "--append-file, --priority, or --depends-on is required."
         )
     if title is not None:
         if not title.strip():
@@ -147,6 +160,8 @@ def _validate_edit_input(
         require_ascii(title, message="--title must be ASCII-only.")
     if priority is not None and priority not in VALID_ISSUE_PRIORITIES:
         raise ValueError(f"Invalid priority: {priority}")
+    if depends_on is not None:
+        _depends_on(depends_on)
 
 
 def _body_update(
@@ -174,3 +189,10 @@ def _body_update(
         require_ascii(append_body, message="--append and --append-file must be ASCII-only.")
         return f"{existing.body}\n\n{append_body}"
     return None
+
+
+def _depends_on(value: str | Sequence[str]) -> tuple[str, ...]:
+    try:
+        return dependency_refs(value)
+    except ValueError as exc:
+        raise WorkflowError(str(exc)) from exc

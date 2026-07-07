@@ -40,6 +40,29 @@ def test_queue_command_uses_api_store_when_configured(
     assert "id=2" not in captured.out
 
 
+def test_queue_command_marks_waiting_dependencies(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient(
+        [api_issue(1, "Blocked", assignee="codex", dependency_state="waiting")]
+    )
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'demo'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = cli.main(["queue", "--assignee", "codex"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "dependency_state=waiting" in captured.out
+
+
 def test_author_command_uses_api_allocated_id(
     tmp_path: Path,
     monkeypatch,
@@ -128,6 +151,38 @@ def test_claim_command_can_claim_specific_issue(
     assert exit_code == 0
     assert "id=5 ref=demo#5 assignee=codex stage=implementing" in captured.out
     assert client.calls == [{"method": "claim", "number": 5, "body": {"assignee": "codex"}}]
+
+
+def test_claim_command_prints_dependency_warning_from_explicit_claim(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                5,
+                "Waiting",
+                priority="high",
+                author="claude",
+                dependency_state="waiting",
+            )
+        ]
+    )
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'demo'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = cli.main(["claim", "--id", "5", "--assignee", "codex"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "id=5 ref=demo#5 assignee=codex stage=implementing" in captured.out
+    assert "dependency_state=waiting" in captured.err
 
 
 def test_claim_command_allow_any_branch_bypasses_work_branch_guard(

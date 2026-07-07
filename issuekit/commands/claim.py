@@ -68,6 +68,8 @@ def run(args) -> int:
             f"id={issue.id} ref={issue.ref} "
             f"assignee={issue.assignee} stage={issue.stage}"
         )
+        if issue.warning:
+            print(issue.warning, file=sys.stderr)
         return 0
 
     return run_command(action, errors=(ValueError, TimeoutError, WorkflowError))

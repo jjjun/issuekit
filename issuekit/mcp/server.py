@@ -215,6 +215,7 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
         body: str | None = None,
         append: str | None = None,
         priority: str | None = None,
+        depends_on: list[str] | str | None = None,
         force: bool = False,
         ctx: Context | None = None,
     ) -> dict[str, Any]:
@@ -228,6 +229,7 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
                 body=body,
                 append=append,
                 priority=priority,
+                depends_on=depends_on,
                 force=force,
                 config=config,
                 store=store,

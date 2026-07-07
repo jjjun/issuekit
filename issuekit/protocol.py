@@ -76,7 +76,8 @@ Local issues vs. cross-project proposals:
   owns the first required contract or API change. Create or propose that
   upstream owner work first, then send downstream consumer proposals only after
   the upstream proposal or issue exists. Reference it with
-  `--depends-on <project#issue-or-proposal>` or a `Depends-On:` body line.
+  `--depends-on <project#issue-or-proposal>` on local issues or proposals, or
+  a `Depends-On:` body line.
 - If a direct issue was created in B by mistake, recover by sending the proposal
   from A, then close the mistaken B issue as superseded with
   `issuekit complete <id> --force --summary "Superseded by proposal <ref>"`
@@ -117,6 +118,7 @@ Copyable CLI examples:
 
 - Register worker: `issuekit add`
 - Author: `issuekit author --title "Short title" --body-file issue.md --priority medium --agent codex`
+- Author with upstream dependency: `issuekit author --title "Short title" --body-file issue.md --priority medium --agent codex --depends-on upstream#123`
 - Author a local issue that references another project: `issuekit author --title "Short title" --body-file issue.md --direct-local-author`
 - Claim next: `issuekit claim --assignee codex`
 - Claim specific issue: `issuekit claim --id 123 --assignee codex`
@@ -261,9 +263,14 @@ For multi-project changes, work dependency-first. Identify the project that
 owns the first required contract or API change, create or propose that upstream
 work before downstream consumer work, and include
 `--depends-on <project#issue-or-proposal>` (or `Depends-On:` in the body) on
-later downstream proposals. If the body says it depends on another project and
-no upstream reference is supplied, proposal preflight warns but does not block
-the send.
+later downstream local issues or proposals. If the body says it depends on
+another project and no upstream reference is supplied, proposal preflight warns
+but does not block the send.
+
+The API skips `dependency_state=waiting` and `dependency_state=attention`
+issues when claiming the next task. Do not manually pick waiting issues from
+queue output. If an explicit claim returns a dependency warning, read the
+upstream ref first and only proceed when the warning is understood.
 
 Proposal-system MCP and CLI share one implementation, so the CLI is a drop-in
 fallback when the MCP tools hang or error. Equivalents (add `--json` for the
@@ -322,10 +329,11 @@ target queue look like the work originated locally and bypasses proposal triage.
 
 For multi-project changes, work dependency-first. Identify the project that
 owns the first required contract or API change, create or propose that upstream
-work before downstream consumer proposals, then reference the upstream item with
-`--depends-on <project#issue-or-proposal>` or a `Depends-On:` body line. If a
-downstream proposal body says it depends on another project but lacks that
-reference, issuekit warns so the author can create the upstream proposal first.
+work before downstream consumer local issues or proposals, then reference the
+upstream item with `--depends-on <project#issue-or-proposal>` or a
+`Depends-On:` body line. If a downstream proposal body says it depends on
+another project but lacks that reference, issuekit warns so the author can
+create the upstream proposal first.
 
 When the proposal-system MCP tools hang or error, fall back to the equivalent
 CLI: `issuekit propose --to <project> --title <t> --body <b> --json`,
@@ -339,8 +347,11 @@ When asked to write or plan an issue:
 1. First decide whether this is local work. If it originates in another project,
    use `issuekit propose --to <project>` from the origin project instead.
 2. Create local issues with `issuekit author`; the API allocates the issue id.
-   When `ISSUEKIT_SESSION` is set, issuekit records that authoring session so a
-   later same-name delegated implementer can be distinguished by session.
+   When local work depends on an upstream issue or proposal that already
+   exists, pass `--depends-on <project#issue-or-proposal>` so implementers can
+   see and respect the dependency state. When `ISSUEKIT_SESSION` is set,
+   issuekit records that authoring session so a later same-name delegated
+   implementer can be distinguished by session.
 3. Leave the issue unstarted with no assignee unless a specific implementer is
    required.
 4. STOP_NOW. The command writes a local author-session guard for that issue.

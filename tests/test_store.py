@@ -196,6 +196,80 @@ def test_api_store_preserves_review_handoff_metadata() -> None:
     assert issue.metadata["verification"] == "systemctl status demo.service"
 
 
+def test_api_store_maps_issue_dependencies_and_warning() -> None:
+    raw_issue = api_issue(
+        7,
+        "Dependent",
+        depends_on=["mine-py#42"],
+        dependency_state="waiting",
+        dependencies=[
+            {
+                "ref": "mine-py#42",
+                "state": "waiting",
+                "status": "in_progress",
+                "stage": "review",
+            }
+        ],
+    )
+    client = FakeIssuekitClient([raw_issue])
+    store = ApiStore(IssuekitConfig(api_url="https://mine.example", project="demo"), client=client)
+
+    issue = store._issue_from_response(
+        {
+            "issue": client.get_issue(7),
+            "warning": "Issue #7 has dependency_state=waiting.",
+        }
+    )
+
+    assert issue.depends_on == ("mine-py#42",)
+    assert issue.dependency_state == "waiting"
+    assert issue.dependencies[0]["status"] == "in_progress"
+    assert issue.warning == "Issue #7 has dependency_state=waiting."
+    assert issue_dict(issue) == {
+        "id": 7,
+        "title": "Dependent",
+        "status": "active",
+        "assignee": "",
+        "stage": "",
+        "implementer": "",
+        "author": "",
+        "ref": "demo#7",
+        "depends_on": ["mine-py#42"],
+        "dependency_state": "waiting",
+        "dependencies": [
+            {
+                "ref": "mine-py#42",
+                "state": "waiting",
+                "status": "in_progress",
+                "stage": "review",
+            }
+        ],
+        "warning": "Issue #7 has dependency_state=waiting.",
+    }
+
+
+def test_api_store_maps_wrapped_issue_warnings_list() -> None:
+    raw_issue = api_issue(7, "Dependent", dependency_state="waiting")
+    client = FakeIssuekitClient([raw_issue])
+    store = ApiStore(IssuekitConfig(api_url="https://mine.example", project="demo"), client=client)
+
+    issue = store._issue_from_response(
+        {
+            "issue": client.get_issue(7),
+            "warnings": [
+                "Issue #7 has dependency_state=waiting.",
+                "Check upstream dependencies before implementing.",
+            ],
+        }
+    )
+
+    assert issue.warning == (
+        "Issue #7 has dependency_state=waiting.\n"
+        "Check upstream dependencies before implementing."
+    )
+    assert issue.metadata["warning"] == issue.warning
+
+
 def test_api_store_finds_implementing_issues_for_worker() -> None:
     client = FakeIssuekitClient(
         [

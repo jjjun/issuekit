@@ -991,6 +991,66 @@ def test_mcp_update_issue_edits_and_appends(tmp_path: Path, monkeypatch) -> None
     ]
 
 
+def test_mcp_update_issue_accepts_dependency_refs(tmp_path: Path, monkeypatch) -> None:
+    client = FakeIssuekitClient([api_issue(1, "Old", body="Original body")])
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'demo'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    server = create_server(tmp_path)
+
+    updated = _call(
+        server,
+        "update_issue",
+        {"id": 1, "depends_on": ["mine-py#42"]},
+    )
+
+    assert updated["depends_on"] == ["mine-py#42"]
+    assert client.calls == [
+        {
+            "method": "update_issue",
+            "number": 1,
+            "body": {"depends_on": ["mine-py#42"]},
+        },
+    ]
+
+
+def test_mcp_get_issue_includes_dependency_state_and_rows(tmp_path: Path, monkeypatch) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                1,
+                "Dependent",
+                depends_on=["mine-py#42"],
+                dependency_state="waiting",
+                dependencies=[
+                    {
+                        "ref": "mine-py#42",
+                        "state": "waiting",
+                        "status": "in_progress",
+                        "stage": "review",
+                    }
+                ],
+            )
+        ]
+    )
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'demo'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    server = create_server(tmp_path)
+
+    issue = _call(server, "get_issue", {"id": 1})
+
+    assert issue["depends_on"] == ["mine-py#42"]
+    assert issue["dependency_state"] == "waiting"
+    assert issue["dependencies"][0]["stage"] == "review"
+
+
 def test_mcp_update_issue_requires_force_for_in_flight_issue(
     tmp_path: Path,
     monkeypatch,

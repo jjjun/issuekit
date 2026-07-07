@@ -204,6 +204,36 @@ def test_info_json_includes_stage_when_present(tmp_path: Path, monkeypatch, caps
     assert review_issue["stage"] == "review"
 
 
+def test_info_json_includes_dependency_fields(tmp_path: Path, monkeypatch, capsys) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                1,
+                "Dependent",
+                depends_on=["mine-py#42"],
+                dependency_state="waiting",
+                dependencies=[
+                    {
+                        "ref": "mine-py#42",
+                        "state": "waiting",
+                        "status": "in_progress",
+                        "stage": "review",
+                    }
+                ],
+            )
+        ]
+    )
+    _configure_api(tmp_path, monkeypatch, client)
+
+    cli.main(["info", "--json"])
+    payload = json.loads(capsys.readouterr().out)
+
+    issue = payload["activeIssues"][0]
+    assert issue["depends_on"] == ["mine-py#42"]
+    assert issue["dependency_state"] == "waiting"
+    assert issue["dependencies"][0]["status"] == "in_progress"
+
+
 def test_info_text_renders_stage_when_present(tmp_path: Path, monkeypatch, capsys) -> None:
     client = FakeIssuekitClient([api_issue(3, "Review", status="in_progress", stage="review")])
     _configure_api(tmp_path, monkeypatch, client)
@@ -213,6 +243,35 @@ def test_info_text_renders_stage_when_present(tmp_path: Path, monkeypatch, capsy
 
     assert exit_code == 0
     assert "[in_progress, stage=review]" in captured.out
+
+
+def test_info_text_renders_dependency_details(tmp_path: Path, monkeypatch, capsys) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                1,
+                "Dependent",
+                depends_on=["mine-py#42"],
+                dependency_state="waiting",
+                dependencies=[
+                    {
+                        "ref": "mine-py#42",
+                        "state": "waiting",
+                        "status": "in_progress",
+                        "stage": "review",
+                    }
+                ],
+            )
+        ]
+    )
+    _configure_api(tmp_path, monkeypatch, client)
+
+    exit_code = cli.main(["info"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "dependency_state=waiting" in captured.out
+    assert "depends_on=mine-py#42 state=waiting status=in_progress stage=review" in captured.out
 
 
 def test_info_text_renders_status_only_when_no_stage(tmp_path: Path, monkeypatch, capsys) -> None:

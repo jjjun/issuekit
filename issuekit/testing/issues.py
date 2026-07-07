@@ -133,7 +133,11 @@ class FakeIssueSurface:
                 allow_self_implement=allow_self_implement,
                 session=session,
             )
-            return deepcopy(issue)
+            response = deepcopy(issue)
+            warning = _dependency_warning(issue)
+            if warning:
+                response["warnings"] = [warning]
+            return response
 
     def claim_next(
         self,
@@ -167,6 +171,7 @@ class FakeIssueSurface:
                 and issue.get("assignee", "") in {"", assignee}
                 and (priority is None or issue.get("priority") == priority)
                 and _matches_target_worker(issue, worker)
+                and issue.get("dependency_state", "none") not in {"waiting", "attention"}
             ]
             if not candidates:
                 return None
@@ -609,6 +614,16 @@ class FakeIssueSurface:
             issue["implementer_session"] = session
         if worker is not None:
             issue["worker"] = worker
+
+
+def _dependency_warning(issue: JsonDict) -> str:
+    state = str(issue.get("dependency_state") or "")
+    if state not in {"waiting", "attention"}:
+        return ""
+    return (
+        f"Issue #{issue.get('id')} has dependency_state={state}; "
+        "check upstream dependencies before implementing."
+    )
 
 
 def _is_self_review(issue: JsonDict, reviewer: str, reviewer_worker: str | None) -> bool:

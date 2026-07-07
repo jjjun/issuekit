@@ -36,6 +36,11 @@ def test_render_protocol_returns_each_agent_and_both() -> None:
         assert "issuekit info --json" in rendered
         assert "Copyable CLI examples" in rendered
         assert 'issuekit author --title "Short title"' in rendered
+        assert "Author with upstream dependency" in rendered
+        assert (
+            'issuekit author --title "Short title" --body-file issue.md '
+            "--priority medium --agent codex --depends-on upstream#123"
+        ) in rendered
         assert "issuekit claim --assignee codex" in rendered
         assert "issuekit claim --id 123 --assignee codex" in rendered
         assert 'issuekit submit-review 123 --summary "Implemented."' in rendered
@@ -57,6 +62,8 @@ def test_render_protocol_returns_each_agent_and_both() -> None:
     assert 'submit_for_review(id, summary, branch, commit, assignee="<agent>"' not in codex
     assert "ASCII summary" in codex
     assert "Write maintainable, idiomatic code" in codex
+    assert "dependency_state=waiting" in codex
+    assert "explicit claim returns a dependency warning" in codex
     assert "otherwise obfuscate string literals" in codex
     assert "`importlib`, `getattr`, `setattr`, or `globals()`" in codex
     assert "next_review" in claude
@@ -94,6 +101,8 @@ def test_render_protocol_returns_author_role() -> None:
     assert "Delegation cycle overview" in author
     assert "issuekit author" in author
     assert "API allocates the issue id" in author
+    assert "pass `--depends-on <project#issue-or-proposal>`" in author
+    assert "respect the dependency state" in author
     assert "records that authoring session" in author
     assert "Do not call `claim_next_task`" in author
     assert "the author may run" in author

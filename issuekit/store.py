@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any, Protocol
 
 from issuekit.client import IssuekitClient
@@ -69,6 +70,7 @@ class IssueStore(Protocol):
         title: str | None = None,
         body: str | None = None,
         priority: str | None = None,
+        depends_on: Sequence[str] | None = None,
     ) -> Issue:
         """Update editable issue fields."""
 
@@ -170,6 +172,7 @@ class ApiStore:
         author: str,
         assignee: str | None = None,
         session: str | None = None,
+        depends_on: Sequence[str] | None = None,
     ) -> Issue:
         return self._issue_from_response(
             self.client.create_issue(
@@ -180,6 +183,7 @@ class ApiStore:
                         "priority": priority,
                         "author": author,
                         "assignee": assignee,
+                        "depends_on": list(depends_on) if depends_on is not None else None,
                     }
                 ),
                 session=session,
@@ -196,11 +200,19 @@ class ApiStore:
         title: str | None = None,
         body: str | None = None,
         priority: str | None = None,
+        depends_on: Sequence[str] | None = None,
     ) -> Issue:
         return self._issue_from_response(
             self.client.update_issue(
                 issue_id,
-                _drop_none({"title": title, "body": body, "priority": priority}),
+                _drop_none(
+                    {
+                        "title": title,
+                        "body": body,
+                        "priority": priority,
+                        "depends_on": list(depends_on) if depends_on is not None else None,
+                    }
+                ),
             )
         )
 
@@ -375,6 +387,7 @@ class ApiStore:
         return sorted(issues, key=lambda issue: (issue.id or 0, issue.ref))
 
     def _issue_from_response(self, raw: dict[str, Any]) -> Issue:
+        raw = _unwrap_issue_response(raw)
         missing = sorted(field for field in REQUIRED_API_FIELDS if field not in raw)
         if missing:
             ref = raw.get("id", "<unknown>")
@@ -410,6 +423,24 @@ class ApiStore:
             value = _string(raw.get(field))
             if value:
                 metadata[field] = value
+        depends_on = _string_tuple(raw.get("depends_on"))
+        dependencies = _dependency_rows(raw)
+        if not depends_on and dependencies:
+            depends_on = tuple(
+                ref
+                for ref in (_dependency_ref(row) for row in dependencies)
+                if ref
+            )
+        dependency_state = _string(raw.get("dependency_state"))
+        warning = _issue_warning(raw)
+        if depends_on:
+            metadata["depends_on"] = list(depends_on)
+        if dependencies:
+            metadata["dependencies"] = [dict(item) for item in dependencies]
+        if dependency_state:
+            metadata["dependency_state"] = dependency_state
+        if warning:
+            metadata["warning"] = warning
         synthetic_ref = f"{self.config.project}#{issue_id}"
         return Issue(
             id=issue_id,
@@ -427,6 +458,10 @@ class ApiStore:
             metadata=metadata,
             worker=metadata["worker"],
             target_worker=metadata["target_worker"],
+            depends_on=depends_on,
+            dependencies=dependencies,
+            dependency_state=dependency_state,
+            warning=warning,
         )
 
 
@@ -442,6 +477,58 @@ def get_store(config: IssuekitConfig) -> IssueStore:
 
 def _string(value: object) -> str:
     return "" if value is None else str(value).strip()
+
+
+def _unwrap_issue_response(raw: dict[str, Any]) -> dict[str, Any]:
+    issue = raw.get("issue")
+    if not isinstance(issue, dict):
+        return raw
+    merged = dict(issue)
+    warnings = raw.get("warnings")
+    if warnings is not None and "warnings" not in merged:
+        merged["warnings"] = warnings
+    warning = raw.get("warning")
+    if warning is not None and "warning" not in merged:
+        merged["warning"] = warning
+    return merged
+
+
+def _issue_warning(raw: dict[str, Any]) -> str:
+    warnings = _string_tuple(raw.get("warnings"))
+    if warnings:
+        return "\n".join(warnings)
+    return _string(raw.get("warning"))
+
+
+def _string_tuple(value: object) -> tuple[str, ...]:
+    if value is None:
+        return ()
+    if isinstance(value, str):
+        items = [value]
+    elif isinstance(value, Sequence):
+        items = list(value)
+    else:
+        items = [value]
+    return tuple(text for text in (_string(item) for item in items) if text)
+
+
+def _dependency_rows(raw: dict[str, Any]) -> tuple[dict[str, object], ...]:
+    for key in ("dependencies", "dependency_resolutions", "resolved_dependencies"):
+        value = raw.get(key)
+        if not isinstance(value, list):
+            continue
+        rows = [dict(item) for item in value if isinstance(item, dict)]
+        if rows:
+            return tuple(rows)
+    return ()
+
+
+def _dependency_ref(row: dict[str, object]) -> str:
+    for key in ("ref", "depends_on", "dependency", "target_ref"):
+        value = _string(row.get(key))
+        if value:
+            return value
+    return ""
 
 
 def _body(value: object) -> str:

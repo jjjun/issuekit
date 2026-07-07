@@ -53,6 +53,28 @@ def test_edit_command_updates_title_body_priority_and_prints_json(
     ]
 
 
+def test_edit_command_replaces_dependency_refs(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient([api_issue(1, "Depends", depends_on=["old#1"])])
+    _configure_api(tmp_path, monkeypatch, client)
+
+    exit_code = cli.main(["edit", "1", "--depends-on", "mine-py#42", "--json"])
+
+    assert exit_code == 0
+    output = json.loads(capsys.readouterr().out)
+    assert output["depends_on"] == ["mine-py#42"]
+    assert client.calls == [
+        {
+            "method": "update_issue",
+            "number": 1,
+            "body": {"depends_on": ["mine-py#42"]},
+        }
+    ]
+
+
 def test_edit_command_append_file_preserves_original_body(
     tmp_path: Path,
     monkeypatch,

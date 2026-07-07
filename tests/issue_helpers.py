@@ -57,9 +57,12 @@ def api_issue(
     worker: str = "",
     target_worker: str = "",
     origin: str = "",
+    depends_on: list[str] | None = None,
+    dependency_state: str | None = None,
+    dependencies: list[dict[str, object]] | None = None,
     body: str | None = None,
 ) -> dict[str, object]:
-    return {
+    issue: dict[str, object] = {
         "id": issue_id,
         "title": title,
         "status": status,
@@ -75,6 +78,13 @@ def api_issue(
         "origin": origin,
         "body": body if body is not None else f"# Issue #{issue_id}: {title}\n",
     }
+    if depends_on is not None:
+        issue["depends_on"] = depends_on
+    if dependency_state is not None:
+        issue["dependency_state"] = dependency_state
+    if dependencies is not None:
+        issue["dependencies"] = dependencies
+    return issue
 
 
 def make_issue_tree(tmp_path: Path) -> Path:

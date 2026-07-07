@@ -246,6 +246,7 @@ def test_client_update_issue_uses_issue_resource_path_and_editable_payload() -> 
             "title": "Updated title",
             "body": "Updated body",
             "priority": "high",
+            "depends_on": ["mine-py#42"],
         }
         return httpx.Response(
             200,
@@ -254,6 +255,7 @@ def test_client_update_issue_uses_issue_resource_path_and_editable_payload() -> 
                 "title": "Updated title",
                 "body": "Updated body",
                 "priority": "high",
+                "depends_on": ["mine-py#42"],
             },
         )
 
@@ -270,6 +272,7 @@ def test_client_update_issue_uses_issue_resource_path_and_editable_payload() -> 
             "title": "Updated title",
             "body": "Updated body",
             "priority": "high",
+            "depends_on": ["mine-py#42"],
             "ignored": "value",
         },
     ) == {
@@ -277,6 +280,7 @@ def test_client_update_issue_uses_issue_resource_path_and_editable_payload() -> 
         "title": "Updated title",
         "body": "Updated body",
         "priority": "high",
+        "depends_on": ["mine-py#42"],
     }
 
     assert len(seen_requests) == 1
@@ -2000,6 +2004,25 @@ def test_fake_issuekit_client_round_trips_create_list_get_claim() -> None:
     assert claimed["stage"] == "implementing"
     assert claimed["implementer"] == "codex"
     assert client.claim_next(assignee="codex") is None
+
+
+def test_fake_issuekit_client_skips_waiting_dependency_claim_next() -> None:
+    client = FakeIssuekitClient(
+        [
+            {
+                "id": 1,
+                "title": "Blocked",
+                "dependency_state": "waiting",
+                "body": "Blocked.",
+            },
+            {"id": 2, "title": "Ready", "body": "Ready."},
+        ]
+    )
+
+    claimed = client.claim_next(assignee="codex")
+
+    assert claimed is not None
+    assert claimed["id"] == 2
 
 
 def test_fake_issuekit_client_round_trips_proposal_lifecycle() -> None:

@@ -3,11 +3,17 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 from pathlib import Path
 import re
 
-from issuekit.author_guard import create_author_guard, stop_message
+from issuekit.author_guard import (
+    STOP_SENTINEL,
+    create_author_guard,
+    guard_dict,
+    stop_message,
+)
 from issuekit.commands._common import (
     load_config_for_project_mutation,
     require_ascii,
@@ -17,8 +23,10 @@ from issuekit.config import IssuekitConfig
 from issuekit.core import (
     Issue,
     VALID_ISSUE_PRIORITIES,
+    issue_dict,
     is_valid_workflow_token,
 )
+from issuekit.dependencies import dependency_refs
 from issuekit.refs import RefError, current_repo_ref, list_effective_refs
 from issuekit.session import current_session_token
 from issuekit.workflow import WorkflowError
@@ -42,6 +50,12 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     author_parser.add_argument("--agent", required=True, help="Configured author agent.")
     author_parser.add_argument("--assign", help="Optional implementer assignee.")
     author_parser.add_argument(
+        "--depends-on",
+        action="append",
+        dest="depends_on",
+        help="Attach an upstream dependency reference such as project#123.",
+    )
+    author_parser.add_argument(
         "--project",
         help=(
             "Explicit API project to author into when running outside a local "
@@ -63,6 +77,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
             "the current project, use propose unless --direct-local-author is set."
         ),
     )
+    author_parser.add_argument("--json", action="store_true", help="Print JSON output.")
     author_parser.set_defaults(func=run)
 
 
@@ -80,6 +95,7 @@ def run(args) -> int:
             priority=args.priority,
             agent=args.agent,
             assign=args.assign,
+            depends_on=args.depends_on,
             config=config,
             cwd=Path.cwd(),
             direct_local_author=args.direct_local_author,
@@ -95,6 +111,12 @@ def run(args) -> int:
             author_session=current_session_token(),
         )
 
+        if args.json:
+            output = issue_dict(authored, include_body=True)
+            output["authorGuard"] = guard_dict(guard)
+            output["stop"] = STOP_SENTINEL
+            print(json.dumps(output, indent=2))
+            return 0
         print(f"Authored issue: {_authored_ref(authored)}")
         print(stop_message(guard))
         return 0
@@ -113,6 +135,7 @@ def author_issue(
     priority: str,
     agent: str,
     assign: str | None = None,
+    depends_on: list[str] | None = None,
     config: IssuekitConfig | None = None,
     cwd: Path | None = None,
     direct_local_author: bool = False,
@@ -128,6 +151,7 @@ def author_issue(
         config=config,
     )
     issue_body = _read_body(body=body, body_file=body_file)
+    dependency_refs = _depends_on(depends_on)
     require_ascii(issue_body, message="--body and --body-file must be ASCII-only.")
     _require_local_author_context(
         title=title,
@@ -151,6 +175,7 @@ def author_issue(
         author=agent,
         assignee=assign,
         session=session,
+        depends_on=dependency_refs or None,
     )
 
 
@@ -185,6 +210,13 @@ def _read_body(*, body: str | None, body_file: str | None) -> str:
     if body_file:
         return Path(body_file).read_text(encoding="utf-8-sig").strip()
     raise ValueError("--body or --body-file is required.")
+
+
+def _depends_on(value: list[str] | None) -> tuple[str, ...]:
+    try:
+        return dependency_refs(value)
+    except ValueError as exc:
+        raise WorkflowError(str(exc)) from exc
 
 
 def _authored_ref(authored: Issue) -> str:

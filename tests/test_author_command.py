@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from issuekit import cli
@@ -165,6 +166,36 @@ def test_author_command_can_assign_explicit_implementer(
     capsys.readouterr()
     assert client.get_issue(1)["author"] == "claude"
     assert client.get_issue(1)["assignee"] == "kimi"
+
+
+def test_author_command_attaches_dependency_refs_and_prints_json(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient()
+    _configure_api(tmp_path, monkeypatch, client)
+
+    exit_code = cli.main(
+        [
+            "author",
+            "--title",
+            "Dependent Handoff",
+            "--body",
+            "## Problem\n\nWait for the API.",
+            "--agent",
+            "claude",
+            "--depends-on",
+            "mine-py#42",
+            "--json",
+        ]
+    )
+
+    assert exit_code == 0
+    output = json.loads(capsys.readouterr().out)
+    assert output["depends_on"] == ["mine-py#42"]
+    assert output["stop"] == "STOP_NOW"
+    assert client.calls[0]["body"]["depends_on"] == ["mine-py#42"]
 
 
 def test_author_command_records_configured_session(

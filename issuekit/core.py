@@ -31,9 +31,13 @@ class Issue:
     implementer: str
     author: str
     body: str
-    metadata: dict[str, str]
+    metadata: dict[str, Any]
     worker: str = ""
     target_worker: str = ""
+    depends_on: tuple[str, ...] = ()
+    dependencies: tuple[dict[str, object], ...] = ()
+    dependency_state: str = ""
+    warning: str = ""
 
 
 @dataclass(frozen=True)
@@ -69,6 +73,14 @@ def issue_dict(issue: "Issue", *, include_body: bool = False) -> dict[str, objec
         data["body"] = issue.body
     if issue.target_worker:
         data["target_worker"] = issue.target_worker
+    if issue.depends_on:
+        data["depends_on"] = list(issue.depends_on)
+    if issue.dependency_state:
+        data["dependency_state"] = issue.dependency_state
+    if issue.dependencies:
+        data["dependencies"] = [dict(item) for item in issue.dependencies]
+    if issue.warning:
+        data["warning"] = issue.warning
     for key in ("author_session", "implementer_session", "reviewer_session"):
         value = issue.metadata.get(key)
         if value:

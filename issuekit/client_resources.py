@@ -158,6 +158,7 @@ class _IssueResourceMixin:
                 "title": issue.get("title"),
                 "body": issue.get("body"),
                 "priority": issue.get("priority"),
+                "depends_on": issue.get("depends_on"),
             }
         )
         if not update:
