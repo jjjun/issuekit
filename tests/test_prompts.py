@@ -85,6 +85,17 @@ def test_prompt_render_fails_on_missing_context_key() -> None:
         PROMPT_SPECS["triage"].render(proposal_id=1)
 
 
+def test_triage_prompt_requires_verified_claims_and_design_decisions() -> None:
+    rendered = PROMPT_SPECS["triage"].render(**SPEC_CONTEXTS["triage"])
+    rendered_words = " ".join(rendered.split())
+
+    assert "verified or corrected factual claims about this codebase" in rendered
+    assert "resolved design decisions for any open choices" in rendered
+    assert "implementation order when several pending proposals interact" in rendered_words
+    assert "spec_markdown" in rendered
+    rendered.encode("ascii")
+
+
 def test_pointer_templates_render_ascii() -> None:
     for spec in PROMPT_SPECS.values():
         if spec.pointer_template_name is None:

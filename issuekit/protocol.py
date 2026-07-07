@@ -151,10 +151,23 @@ or triage proposals.
    this project rather than the origin or a third project), dependencies
    (referenced upstream proposals or issues exist and are accepted or tracked),
    and cost (a simple, well-scoped implementation exists). Read the referenced
-   code and check whether the change already landed before judging.
+   code and check whether the change already landed before judging. Perform a
+   code-verified review: verify each factual claim the proposal makes about
+   this codebase, including named functions, guards, config keys, validation
+   patterns, and existing helpers, and note claims that are wrong or already
+   implemented. Identify design decisions the proposal leaves open, such as
+   ordering constraints, skip-vs-hard-fail behavior, escape hatches, and command
+   shape among proposed alternatives, and resolve each with a recommendation
+   grounded in existing code conventions.
 3. Adopt worthwhile proposals with `issuekit adopt <id> --priority <p>
-   --json`. Adoption creates an active issue in the open implement pool; keep
-   one issue per proposal and do not merge unrelated proposals.
+   --append-file <file> --json` or MCP `adopt_proposal(append=...)`. Fold the
+   verified findings and resolved decisions into the adopted issue body through
+   that append surface, using an ASCII English section headed
+   `## Reviewer design decisions (<date>, verified against current code)`.
+   When several pending proposals interact, state the recommended
+   implementation order in each adopted body. Adoption creates an active issue
+   in the open implement pool; keep one issue per proposal and do not merge
+   unrelated proposals.
 4. Discard proposals that are already implemented, duplicates, consumed
    negotiation-thread entries, or out of scope with `issuekit discard <id>`.
    If a downstream proposal is missing a required upstream prerequisite,

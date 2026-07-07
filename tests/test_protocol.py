@@ -114,11 +114,21 @@ def test_render_protocol_returns_author_role() -> None:
 
 def test_render_protocol_returns_triage_role() -> None:
     triage = render_protocol(role="triage")
+    triage_words = " ".join(triage.split())
     assert "Delegation cycle overview" in triage
     assert "Handoff protocol (triage)" in triage
     assert "issuekit incoming --json" in triage
     assert "value" in triage and "fit" in triage and "dependencies" in triage and "cost" in triage
     assert "issuekit adopt <id> --priority <p>" in triage
+    assert "code-verified review" in triage
+    assert "verify each factual claim" in triage
+    assert "claims that are wrong or already implemented" in triage_words
+    assert "Identify design decisions" in triage
+    assert "resolve each with a recommendation" in triage_words
+    assert "MCP `adopt_proposal(append=...)`" in triage
+    assert "issuekit adopt <id> --priority <p> --append-file <file> --json" in triage_words
+    assert "Reviewer design decisions (<date>, verified against current code)" in triage
+    assert "recommended implementation order" in triage_words
     assert "issuekit discard <id>" in triage
     assert "missing a required upstream prerequisite" in triage
     assert "Do not implement adopted issues in the triage session" in triage
