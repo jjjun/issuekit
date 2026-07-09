@@ -11,6 +11,7 @@ Configure the API in `pyproject.toml` or `issuekit.toml`:
 api_url = "https://mine.example"
 project = "repo_key"
 assignees = ["codex", "claude", "kimi"]
+disabled_agents = []
 default_reviewer = "auto"
 require_distinct_reviewer = true
 ```

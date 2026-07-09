@@ -54,6 +54,69 @@ def test_local_config_reads_legacy_worker_id(tmp_path: Path) -> None:
     }
 
 
+def test_local_config_reads_disabled_agents(tmp_path: Path) -> None:
+    (tmp_path / LOCAL_CONFIG_NAME).write_text(
+        (
+            'disabled_agents = ["kimi", "old_agent"]\n'
+            "\n"
+            "[refs]\n"
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    assert read_local_config(tmp_path).disabled_agents == ("kimi", "old_agent")
+
+
+def test_local_config_reads_tool_issuekit_disabled_agents(tmp_path: Path) -> None:
+    (tmp_path / LOCAL_CONFIG_NAME).write_text(
+        (
+            "[tool.issuekit]\n"
+            'disabled_agents = ["kimi"]\n'
+            "\n"
+            "[refs]\n"
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    assert read_local_config(tmp_path).disabled_agents == ("kimi",)
+
+
+def test_local_config_preserves_disabled_agents_when_rewriting_refs(tmp_path: Path) -> None:
+    (tmp_path / LOCAL_CONFIG_NAME).write_text(
+        (
+            'disabled_agents = ["kimi"]\n'
+            "\n"
+            "[refs]\n"
+            'self = "."\n'
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    write_local_config(tmp_path, worker=None, refs={"other": "../other"})
+
+    assert read_local_config(tmp_path).disabled_agents == ("kimi",)
+    assert (tmp_path / LOCAL_CONFIG_NAME).read_text(encoding="utf-8") == (
+        'disabled_agents = ["kimi"]\n'
+        "\n"
+        "[refs]\n"
+        'other = "../other"\n'
+    )
+
+
+def test_local_config_writes_explicit_empty_disabled_agents(tmp_path: Path) -> None:
+    write_local_config(tmp_path, worker=None, refs={}, disabled_agents=())
+
+    assert read_local_config(tmp_path).disabled_agents == ()
+    assert (tmp_path / LOCAL_CONFIG_NAME).read_text(encoding="utf-8") == (
+        "disabled_agents = []\n"
+        "\n"
+        "[refs]\n"
+    )
+
+
 def test_local_config_round_trips_author_guard(tmp_path: Path) -> None:
     guard = {
         "project": "demo",

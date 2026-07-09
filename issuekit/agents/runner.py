@@ -67,6 +67,8 @@ class ConfigAgentAdapter(AgentAdapter):
         self.config = config or IssuekitConfig()
         agents_dict = dict(self.config.agents)
         if agent_name not in agents_dict:
+            if agent_name in self.config.disabled_agents:
+                raise ValueError(f"Agent disabled by config: {agent_name}")
             raise ValueError(f"Unknown agent: {agent_name}")
         self.run_config = agents_dict[agent_name]
         self.model = model
@@ -143,6 +145,8 @@ def resolve_adapter(
     config = config or IssuekitConfig()
     run_config = dict(config.agents).get(agent_name)
     if run_config is None:
+        if agent_name in config.disabled_agents:
+            raise ValueError(f"Agent disabled by config: {agent_name}")
         raise ValueError(f"Unknown agent: {agent_name}")
     if run_config.adapter:
         from issuekit.agents.adapters.registry import resolve_custom_adapter

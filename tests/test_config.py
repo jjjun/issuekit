@@ -501,6 +501,126 @@ def test_default_assignees_includes_kimi() -> None:
     assert "kimi" in IssuekitConfig.assignees
 
 
+def test_load_config_filters_disabled_agents_from_assignees_and_agents(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "disabled_agents = ['kimi']\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    config = load_config(tmp_path)
+
+    assert config.disabled_agents == ("kimi",)
+    assert config.assignees == ("codex", "claude")
+    assert tuple(dict(config.agents)) == ("codex", "claude")
+
+
+def test_load_config_local_disabled_agents_override_committed_config(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "disabled_agents = ['kimi']\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    (tmp_path / "issuekit.local.toml").write_text(
+        (
+            "disabled_agents = []\n"
+            "\n"
+            "[refs]\n"
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    config = load_config(tmp_path)
+
+    assert config.disabled_agents == ()
+    assert "kimi" in config.assignees
+    assert "kimi" in dict(config.agents)
+
+
+def test_load_config_defaults_assignees_to_enabled_agent_names(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        (
+            "disabled_agents = ['kimi']\n"
+            "[agents.custom]\n"
+            "binary = 'custom-agent'\n"
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    config = load_config(tmp_path)
+
+    assert config.assignees == ("codex", "claude", "custom")
+
+
+def test_load_config_explicit_assignees_override_enabled_agent_names(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        (
+            "disabled_agents = ['kimi']\n"
+            "assignees = ['human', 'kimi', 'codex']\n"
+            "default_reviewer = 'human'\n"
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    config = load_config(tmp_path)
+
+    assert config.assignees == ("human", "codex")
+
+
+def test_load_config_rejects_invalid_disabled_agent_token(tmp_path: Path) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "disabled_agents = ['bad agent']\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    with pytest.raises(ValueError, match="Invalid disabled_agents token"):
+        load_config(tmp_path)
+
+
+@pytest.mark.parametrize(
+    ("body", "message"),
+    [
+        (
+            "disabled_agents = ['claude']\ndefault_reviewer = 'claude'\n",
+            "default_reviewer references disabled agent: claude",
+        ),
+        (
+            "disabled_agents = ['codex']\n[router]\nagent = 'codex'\n",
+            "router.agent references disabled agent: codex",
+        ),
+        (
+            "disabled_agents = ['codex']\n[triage]\nauthor_agent = 'codex'\n",
+            "triage.author_agent references disabled agent: codex",
+        ),
+    ],
+)
+def test_load_config_rejects_disabled_agent_policy_references(
+    tmp_path: Path,
+    body: str,
+    message: str,
+) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        body,
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    with pytest.raises(ValueError, match=message):
+        load_config(tmp_path)
+
+
 def test_default_stages_match_server_vocabulary() -> None:
     assert IssuekitConfig.stages == (
         "planned",

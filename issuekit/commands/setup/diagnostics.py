@@ -12,6 +12,7 @@ import tomllib
 
 from issuekit.author_guard import read_author_guard
 from issuekit.commands.init import CODEX_MCP_HEADER, HANDOFF_HEADER
+from issuekit.config import load_config
 
 
 MCP_INSTALL_COMMAND = 'uv tool install "issuekit[mcp] @ <absolute-path-or-url>"'
@@ -37,6 +38,7 @@ def collect_diagnostics(
         _codex_config_diagnostic(cwd),
         _handoff_reference_diagnostic(cwd, "AGENTS.md"),
         _handoff_reference_diagnostic(cwd, "CLAUDE.md"),
+        _agent_config_diagnostic(cwd),
         _author_guard_diagnostic(cwd),
     ]
 
@@ -125,6 +127,27 @@ def _handoff_reference_diagnostic(cwd: Path, filename: str) -> Diagnostic:
         "ACTION",
         f"{filename} does not contain the handoff reference.",
         ("Run issuekit setup.",),
+    )
+
+
+def _agent_config_diagnostic(cwd: Path) -> Diagnostic:
+    try:
+        config = load_config(cwd)
+    except ValueError as exc:
+        return Diagnostic(
+            "ACTION",
+            "Agent config could not be loaded.",
+            (str(exc),),
+        )
+    enabled = ", ".join(name for name, _run_config in config.agents) or "(none)"
+    disabled = ", ".join(config.disabled_agents) or "(none)"
+    return Diagnostic(
+        "OK",
+        "Agent config loaded.",
+        (
+            f"Enabled agents: {enabled}",
+            f"Disabled agents: {disabled}",
+        ),
     )
 
 

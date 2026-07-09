@@ -343,6 +343,7 @@ Python repositories can configure issuekit in `pyproject.toml`:
 api_url = "https://mine.example"
 project = "issuekit"
 assignees = ["codex", "claude"]
+disabled_agents = ["kimi"]
 stages = ["planned", "todo", "implementing", "review", "changes_requested", "done"]
 default_reviewer = "auto"
 require_distinct_reviewer = true
@@ -356,6 +357,7 @@ with the same keys at the top level:
 api_url = "https://mine.example"
 project = "issuekit"
 assignees = ["codex", "claude"]
+disabled_agents = ["kimi"]
 stages = ["planned", "todo", "implementing", "review", "changes_requested", "done"]
 default_reviewer = "auto"
 require_distinct_reviewer = true
@@ -377,6 +379,14 @@ require_distinct_reviewer = true
 
 Legacy `docs/issues/` files are read only by the migration commands. Runtime
 issue lifecycle commands use the API store.
+
+Use `disabled_agents` to remove an agent from claim, review, router, triage, and
+`implement --agent` candidacy without deleting its run configuration. The key is
+a deny-list; omit it or set `disabled_agents = []` to enable all configured
+agents. `issuekit.local.toml` accepts the same key as a machine-local override,
+so a checkout can disable an unavailable binary without changing committed
+repo policy. When `assignees` is omitted, issuekit defaults it to the enabled
+agent names; an explicit `assignees` list still defines the assignment pool.
 
 Set `work_branch` to pin handoff lifecycle work to one branch. When set,
 `claim`, `implement`, `serve`, and `submit-review` fail before mutating issue

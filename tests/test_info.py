@@ -60,6 +60,18 @@ def test_info_json_output(tmp_path: Path, monkeypatch, capsys) -> None:
     assert payload["incomingProposals"] == []
 
 
+def test_info_json_surfaces_enabled_agents(tmp_path: Path, monkeypatch, capsys) -> None:
+    _configure_api(tmp_path, monkeypatch, _issue_client())
+    with (tmp_path / "issuekit.toml").open("a", encoding="utf-8", newline="\n") as handle:
+        handle.write("disabled_agents = ['kimi']\n")
+
+    cli.main(["info", "--json"])
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["enabledAgents"] == ["codex", "claude"]
+    assert payload["disabledAgents"] == ["kimi"]
+
+
 def test_info_reads_issue_list_once_for_counts(tmp_path: Path, monkeypatch, capsys) -> None:
     class RecordingClient(FakeIssuekitClient):
         def __init__(self, *args, **kwargs) -> None:

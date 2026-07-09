@@ -141,6 +141,7 @@ def save_local_worker(identity: WorkerIdentity, cwd: Path | str = ".") -> bool:
     desired_content = local_config_text(
         worker=desired_worker,
         refs=local_config.refs,
+        disabled_agents=local_config.disabled_agents,
         author_guard=local_config.author_guard,
     )
     if path.exists():

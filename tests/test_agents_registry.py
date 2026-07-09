@@ -78,6 +78,30 @@ def test_resolve_adapter_unknown_raises() -> None:
         resolve_adapter("unknown")
 
 
+def test_resolve_adapter_disabled_agent_raises_clear_error() -> None:
+    config = IssuekitConfig(
+        disabled_agents=("kimi",),
+        agents=(
+            ("codex", AgentRunConfig(binary="codex", headless_argv=("exec",))),
+        ),
+    )
+
+    with pytest.raises(ValueError, match="Agent disabled by config: kimi"):
+        resolve_adapter("kimi", config=config)
+
+
+def test_config_agent_adapter_disabled_agent_raises_clear_error() -> None:
+    config = IssuekitConfig(
+        disabled_agents=("kimi",),
+        agents=(
+            ("codex", AgentRunConfig(binary="codex", headless_argv=("exec",))),
+        ),
+    )
+
+    with pytest.raises(ValueError, match="Agent disabled by config: kimi"):
+        ConfigAgentAdapter("kimi", config=config)
+
+
 def test_resolve_adapter_returns_configured_agent() -> None:
     config = IssuekitConfig(
         agents=(

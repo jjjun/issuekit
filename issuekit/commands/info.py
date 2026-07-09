@@ -41,6 +41,8 @@ def run(args) -> int:
         "latestCompletedId": latest_completed_id,
         "worker": config.worker_key(),
         "workerPresent": config.worker is not None,
+        "enabledAgents": [name for name, _run_config in config.agents],
+        "disabledAgents": list(config.disabled_agents),
         "activeIssues": [
             issue_dict(issue)
             | {

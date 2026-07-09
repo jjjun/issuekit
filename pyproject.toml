@@ -44,5 +44,6 @@ worker_accept_directed = true
 # api_url = "https://mine.example"
 # project = "issuekit"
 assignees = ["codex", "claude", "kimi"]
+disabled_agents = ["kimi"]
 default_reviewer = "auto"
 work_branch = "main"

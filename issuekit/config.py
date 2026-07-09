@@ -121,6 +121,7 @@ class IssuekitConfig:
     profile_tags: tuple[str, ...] = ()
     triage: TriagePolicy = field(default_factory=TriagePolicy)
     router: RouterPolicy = field(default_factory=RouterPolicy)
+    disabled_agents: tuple[str, ...] = ()
     agents: tuple[tuple[str, AgentRunConfig], ...] = (
         (
             "kimi",
@@ -253,12 +254,20 @@ def load_config(cwd: Path | str = ".") -> IssuekitConfig:
         )
     ).strip()
     _validate_project(project)
-    assignees = _string_tuple(raw_config.get("assignees", IssuekitConfig.assignees))
+    disabled_agents = _load_disabled_agents(
+        raw_config.get("disabled_agents", IssuekitConfig.disabled_agents)
+    )
+    agents = _filter_disabled_agents(
+        _load_agents(raw_config.get("agents", {})),
+        disabled_agents,
+    )
+    assignees = _load_assignees(raw_config, agents, disabled_agents)
     default_reviewer = (
         "auto"
         if api_url
         else str(raw_config.get("default_reviewer", IssuekitConfig.default_reviewer)).strip()
     )
+    _validate_not_disabled("default_reviewer", default_reviewer, disabled_agents)
     _validate_default_reviewer(default_reviewer, assignees)
     work_branch = str(raw_config.get("work_branch", IssuekitConfig.work_branch)).strip()
     _validate_work_branch(work_branch)
@@ -269,9 +278,10 @@ def load_config(cwd: Path | str = ".") -> IssuekitConfig:
         )
     )
     _validate_claim_sync_interval(claim_sync_interval_sec)
-    agents = _load_agents(raw_config.get("agents", {}))
     triage = _load_triage_policy(raw_config.get("triage", {}))
     router = _load_router_policy(raw_config.get("router", {}))
+    _validate_not_disabled("router.agent", router.agent, disabled_agents)
+    _validate_not_disabled("triage.author_agent", triage.author_agent, disabled_agents)
     worker_role = _worker_metadata(
         raw_config.get("worker_role"), field="worker_role", max_len=WORKER_ROLE_MAX_LEN
     )
@@ -339,6 +349,7 @@ def load_config(cwd: Path | str = ".") -> IssuekitConfig:
         profile_tags=profile_tags,
         triage=triage,
         router=router,
+        disabled_agents=disabled_agents,
         agents=agents,
     )
 
@@ -377,18 +388,21 @@ def _load_raw_config(cwd: Path) -> dict[str, object]:
     if not pyproject_has_issuekit and issuekit_path.exists():
         raw_config = _load_config_toml(issuekit_path)
 
-    return _merge_local_worker_config(cwd, raw_config)
+    return _merge_local_config(cwd, raw_config)
 
 
-def _merge_local_worker_config(cwd: Path, raw_config: dict[str, object]) -> dict[str, object]:
+def _merge_local_config(cwd: Path, raw_config: dict[str, object]) -> dict[str, object]:
     try:
-        local_worker = read_local_config(cwd).worker
+        local_config = read_local_config(cwd)
     except LocalConfigError as exc:
         raise ValueError(str(exc)) from exc
-    if local_worker is None:
+    if local_config.worker is None and local_config.disabled_agents is None:
         return raw_config
     merged = dict(raw_config)
-    merged["worker"] = dict(local_worker)
+    if local_config.worker is not None:
+        merged["worker"] = dict(local_config.worker)
+    if local_config.disabled_agents is not None:
+        merged["disabled_agents"] = list(local_config.disabled_agents)
     return merged
 
 
@@ -403,6 +417,64 @@ def _string_tuple(value: object) -> tuple[str, ...]:
     if isinstance(value, (list, tuple)):
         return tuple(str(item) for item in value)
     return tuple(str(value).split()) if isinstance(value, str) else tuple()
+
+
+def _load_disabled_agents(value: object) -> tuple[str, ...]:
+    disabled_agents = _dedupe_tokens(_string_tuple(value))
+    for agent in disabled_agents:
+        if not agent or not is_valid_workflow_token(agent):
+            raise ValueError(f"Invalid disabled_agents token: {agent}")
+    return disabled_agents
+
+
+def _load_assignees(
+    raw_config: dict[str, object],
+    agents: tuple[tuple[str, AgentRunConfig], ...],
+    disabled_agents: tuple[str, ...],
+) -> tuple[str, ...]:
+    if "assignees" in raw_config:
+        assignees = _string_tuple(raw_config["assignees"])
+    else:
+        enabled_agent_names = tuple(name for name, _run_config in agents)
+        builtin_order = tuple(
+            name for name in IssuekitConfig.assignees if name in enabled_agent_names
+        )
+        extra_agents = tuple(
+            name for name in enabled_agent_names if name not in IssuekitConfig.assignees
+        )
+        assignees = builtin_order + extra_agents
+    disabled = set(disabled_agents)
+    return tuple(assignee for assignee in assignees if assignee not in disabled)
+
+
+def _filter_disabled_agents(
+    agents: tuple[tuple[str, AgentRunConfig], ...],
+    disabled_agents: tuple[str, ...],
+) -> tuple[tuple[str, AgentRunConfig], ...]:
+    if not disabled_agents:
+        return agents
+    disabled = set(disabled_agents)
+    return tuple((name, cfg) for name, cfg in agents if name not in disabled)
+
+
+def _dedupe_tokens(values: tuple[str, ...]) -> tuple[str, ...]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        result.append(value)
+    return tuple(result)
+
+
+def _validate_not_disabled(
+    field: str,
+    value: str,
+    disabled_agents: tuple[str, ...],
+) -> None:
+    if value and value in set(disabled_agents):
+        raise ValueError(f"{field} references disabled agent: {value}")
 
 
 def _validate_default_reviewer(default_reviewer: str, assignees: tuple[str, ...]) -> None:

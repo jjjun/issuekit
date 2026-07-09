@@ -248,6 +248,39 @@ def test_setup_diagnostics_warn_when_author_guard_is_active(tmp_path: Path) -> N
     assert _diagnostic_status(diagnostics, "Local author-session guard is active.") == "WARN"
 
 
+def test_setup_diagnostics_surface_enabled_agents(tmp_path: Path) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "disabled_agents = ['kimi']\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    diagnostics = setup.collect_diagnostics(tmp_path)
+    diagnostic = next(
+        item for item in diagnostics if item.label == "Agent config loaded."
+    )
+
+    assert diagnostic.status == "OK"
+    assert "Enabled agents: codex, claude" in diagnostic.details
+    assert "Disabled agents: kimi" in diagnostic.details
+
+
+def test_setup_diagnostics_report_invalid_agent_config(tmp_path: Path) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "disabled_agents = ['claude']\ndefault_reviewer = 'claude'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    diagnostics = setup.collect_diagnostics(tmp_path)
+    diagnostic = next(
+        item for item in diagnostics if item.label == "Agent config could not be loaded."
+    )
+
+    assert diagnostic.status == "ACTION"
+    assert diagnostic.details == ("default_reviewer references disabled agent: claude",)
+
+
 def test_setup_check_json_blocked_repo_reports_manual_action_without_writing(
     tmp_path: Path,
     monkeypatch,

@@ -20,6 +20,7 @@ class LocalConfigError(RuntimeError):
 @dataclass(frozen=True)
 class LocalConfig:
     worker: dict[str, object] | None
+    disabled_agents: tuple[str, ...] | None
     refs: dict[str, str]
     author_guard: dict[str, object] | None
 
@@ -37,13 +38,19 @@ def load_toml(path: Path) -> dict[str, object]:
 def read_local_config(cwd: Path | str = ".") -> LocalConfig:
     path = Path(cwd) / LOCAL_CONFIG_NAME
     if not path.exists():
-        return LocalConfig(worker=None, refs={}, author_guard=None)
+        return LocalConfig(
+            worker=None,
+            disabled_agents=None,
+            refs={},
+            author_guard=None,
+        )
     data = load_toml(path)
     refs = data.get("refs", {})
     if not isinstance(refs, dict):
         raise LocalConfigError(f"{LOCAL_CONFIG_NAME} must contain a [refs] table.")
     return LocalConfig(
         worker=_worker_table(data),
+        disabled_agents=_disabled_agents(data),
         refs={str(name): str(value) for name, value in refs.items()},
         author_guard=_author_guard_table(data),
     )
@@ -54,13 +61,22 @@ def write_local_config(
     *,
     worker: Mapping[str, object] | None,
     refs: Mapping[str, str],
+    disabled_agents: tuple[str, ...] | None | object = _PRESERVE,
     author_guard: Mapping[str, object] | None | object = _PRESERVE,
 ) -> None:
     path = Path(cwd) / LOCAL_CONFIG_NAME
+    existing = read_local_config(cwd) if path.exists() else None
+    if disabled_agents is _PRESERVE:
+        disabled_agents = existing.disabled_agents if existing is not None else None
     if author_guard is _PRESERVE:
-        author_guard = read_local_config(cwd).author_guard if path.exists() else None
+        author_guard = existing.author_guard if existing is not None else None
     path.write_text(
-        local_config_text(worker=worker, refs=refs, author_guard=author_guard),
+        local_config_text(
+            worker=worker,
+            refs=refs,
+            disabled_agents=disabled_agents,
+            author_guard=author_guard,
+        ),
         encoding="utf-8",
         newline="\n",
     )
@@ -70,9 +86,15 @@ def local_config_text(
     *,
     worker: Mapping[str, object] | None,
     refs: Mapping[str, str],
+    disabled_agents: tuple[str, ...] | None = None,
     author_guard: Mapping[str, object] | None = None,
 ) -> str:
-    return _local_config_text(worker=worker, refs=refs, author_guard=author_guard)
+    return _local_config_text(
+        worker=worker,
+        refs=refs,
+        disabled_agents=disabled_agents,
+        author_guard=author_guard,
+    )
 
 
 def missing_gitignore_entries(content: str) -> list[str]:
@@ -111,9 +133,13 @@ def _local_config_text(
     *,
     worker: Mapping[str, object] | None,
     refs: Mapping[str, str],
+    disabled_agents: tuple[str, ...] | None,
     author_guard: Mapping[str, object] | None,
 ) -> str:
     lines: list[str] = []
+    if disabled_agents is not None:
+        lines.append(f"disabled_agents = {json.dumps(list(disabled_agents))}")
+        lines.append("")
     if worker:
         lines.append("[worker]")
         for key in ("machine_id", "repo_id", "worker_name"):
@@ -158,6 +184,24 @@ def _worker_table(data: dict[str, object]) -> dict[str, object] | None:
         return None
     worker = issuekit.get("worker")
     return worker if isinstance(worker, dict) else None
+
+
+def _disabled_agents(data: dict[str, object]) -> tuple[str, ...] | None:
+    if "disabled_agents" in data:
+        return _string_tuple(data["disabled_agents"])
+    tool = data.get("tool")
+    if not isinstance(tool, dict):
+        return None
+    issuekit = tool.get("issuekit")
+    if not isinstance(issuekit, dict) or "disabled_agents" not in issuekit:
+        return None
+    return _string_tuple(issuekit["disabled_agents"])
+
+
+def _string_tuple(value: object) -> tuple[str, ...]:
+    if isinstance(value, (list, tuple)):
+        return tuple(str(item) for item in value)
+    return tuple(str(value).split()) if isinstance(value, str) else tuple()
 
 
 def _author_guard_table(data: dict[str, object]) -> dict[str, object] | None:
