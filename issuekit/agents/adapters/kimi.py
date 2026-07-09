@@ -18,10 +18,12 @@ class KimiAdapter(ConfigAgentAdapter):
 
     def __init__(
         self,
+        agent_name: str = "kimi",
+        *,
         config: IssuekitConfig | None = None,
         model: str | None = None,
     ) -> None:
-        super().__init__("kimi", config=config, model=model)
+        super().__init__(agent_name, config=config, model=model)
 
     def parse_output(self, stdout: str, stderr: str) -> dict[str, str]:
         result: dict[str, str] = {

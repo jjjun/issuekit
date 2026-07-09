@@ -39,6 +39,7 @@ class AgentRunConfig:
     """Per-agent headless run settings."""
 
     binary: str
+    adapter: str | None = None
     known_paths: tuple[str, ...] = ()
     headless_argv: tuple[str, ...] = ()
     resumable: bool = False
@@ -125,6 +126,7 @@ class IssuekitConfig:
             "kimi",
             AgentRunConfig(
                 binary="kimi",
+                adapter="kimi",
                 known_paths=("~/.kimi-code/bin/kimi", "~/.kimi-code/bin/kimi.exe"),
                 headless_argv=("-p",),
                 output_format_flag="--output-format",
@@ -575,6 +577,7 @@ def _required_worker_value(raw: dict[str, object], key: str) -> str:
 def _agent_overrides(cfg: dict[str, object]) -> dict[str, object]:
     loaders = {
         "binary": str,
+        "adapter": optional_str,
         "known_paths": _string_tuple,
         "headless_argv": _string_tuple,
         "resumable": _bool_value,

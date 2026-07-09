@@ -141,21 +141,19 @@ def resolve_adapter(
 ) -> AgentAdapter:
     """Resolve an AgentAdapter by registered agent name."""
     config = config or IssuekitConfig()
-    if agent_name == "kimi":
-        from issuekit.agents.adapters.kimi import KimiAdapter
+    run_config = dict(config.agents).get(agent_name)
+    if run_config is None:
+        raise ValueError(f"Unknown agent: {agent_name}")
+    if run_config.adapter:
+        from issuekit.agents.adapters.registry import resolve_custom_adapter
 
-        return KimiAdapter(config=config, model=model)
-    if agent_name == "codex":
-        from issuekit.agents.adapters.codex import CodexAdapter
-
-        return CodexAdapter(config=config, model=model)
-    if agent_name == "claude":
-        from issuekit.agents.adapters.claude import ClaudeAdapter
-
-        return ClaudeAdapter(config=config, model=model)
-    if agent_name in dict(config.agents):
-        return ConfigAgentAdapter(agent_name, config=config, model=model)
-    raise ValueError(f"Unknown agent: {agent_name}")
+        adapter_class = resolve_custom_adapter(run_config.adapter)
+        if adapter_class is None:
+            raise ValueError(
+                f"Unknown adapter '{run_config.adapter}' for agent: {agent_name}"
+            )
+        return adapter_class(agent_name, config=config, model=model)
+    return ConfigAgentAdapter(agent_name, config=config, model=model)
 
 
 @dataclass(frozen=True)
