@@ -21,6 +21,19 @@ uv run issuekit --help
 uv run issuekit dev-tool install-editable
 ```
 
+## Tests
+
+Run the normal project gates by hand before publishing changes:
+
+```powershell
+uv run pytest
+uv run issuekit check-encoding
+```
+
+Maintainers can also run the same pytest and encoding checks from GitHub
+Actions with the manual `Tests` workflow and the `Run workflow` button. These
+checks are intentionally not an automatic CI gate on push or pull request.
+
 On Windows, `dev-tool install-editable` installs the global `issuekit` and
 `issuekit-mcp` tool shims from this checkout in editable mode. It stops stale
 `issuekit-mcp.exe` processes first, uninstalls any existing global `issuekit`
