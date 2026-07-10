@@ -7,14 +7,24 @@ import pytest
 
 
 # Delete-safe live E2E artifact for negotiation thread 17 / issuekit#126 / mine-py#393.
-_ISSUEKIT_API_URL = os.environ.get("ISSUEKIT_API_URL")
+_RUN_LIVE_CONTRACTS = "ISSUEKIT_RUN_LIVE_CONTRACTS"
+_ISSUEKIT_API_URL = "ISSUEKIT_API_URL"
 
 
+@pytest.mark.live_contract
 def test_negotiation17_finalize_recovery_contract() -> None:
-    if not _ISSUEKIT_API_URL:
-        pytest.skip("ISSUEKIT_API_URL is not set; skipping live negotiation 17 contract check.")
+    if os.environ.get(_RUN_LIVE_CONTRACTS) != "1":
+        pytest.skip(
+            f"{_RUN_LIVE_CONTRACTS}=1 is not set; skipping live negotiation 17 contract check."
+        )
 
-    url = f"{_ISSUEKIT_API_URL.rstrip('/')}/e2e/ping"
+    api_url = os.environ.get(_ISSUEKIT_API_URL)
+    if not api_url:
+        pytest.skip(
+            f"{_ISSUEKIT_API_URL} is not set; skipping live negotiation 17 contract check."
+        )
+
+    url = f"{api_url.rstrip('/')}/e2e/ping"
     try:
         response = httpx.get(url, timeout=5.0)
     except httpx.RequestError as exc:

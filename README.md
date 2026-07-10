@@ -30,6 +30,24 @@ uv run pytest
 uv run issuekit check-encoding
 ```
 
+The default pytest suite is intended for offline development and CI. Tests that
+would call a live issuekit API backend are marked `live_contract` and skip
+unless explicitly enabled.
+
+Run only the live contract checks with a reachable delete-safe test backend:
+
+```powershell
+$env:ISSUEKIT_RUN_LIVE_CONTRACTS = "1"
+$env:ISSUEKIT_API_URL = "https://mine.example"
+uv run pytest -m live_contract -q
+```
+
+`ISSUEKIT_RUN_LIVE_CONTRACTS=1` is the opt-in switch. `ISSUEKIT_API_URL` must
+point at the backend under test; individual future live contract tests may also
+use the normal API credential variables, such as `ISSUEKIT_API_TOKEN` or
+`ISSUEKIT_API_USER` and `ISSUEKIT_API_PASSWORD`, when they hit authenticated
+endpoints.
+
 Maintainers can also run the same pytest and encoding checks from GitHub
 Actions with the manual `Tests` workflow and the `Run workflow` button. These
 checks are intentionally not an automatic CI gate on push or pull request.

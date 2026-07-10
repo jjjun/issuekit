@@ -17,6 +17,9 @@ _ISSUEKIT_ENV_KEYS = (
 
 
 @pytest.fixture(autouse=True)
-def isolated_issuekit_env(monkeypatch: pytest.MonkeyPatch) -> None:
+def isolated_issuekit_env(monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest) -> None:
+    if request.node.get_closest_marker("live_contract"):
+        return
+
     for key in _ISSUEKIT_ENV_KEYS:
         monkeypatch.delenv(key, raising=False)
