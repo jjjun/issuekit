@@ -572,9 +572,13 @@ table without the `tool.issuekit` prefix:
 
 ```toml
 [tool.issuekit.agents.codex]
-approval_flag = "--sandbox"
-approval_value = "danger-full-access"
+approval_flag = "--full-auto"
 ```
+
+By default, issuekit runs Codex without a sandbox and relies on the repository
+worktree plus the review gate. Projects that require the strict sandbox can use
+the override above, or set `approval_flag = "--sandbox"` and
+`approval_value = "workspace-write"`.
 
 `default_reviewer` controls where MCP and CLI review handoffs go when no
 reviewer is specified. It must be one of the configured `assignees`, or `auto`.

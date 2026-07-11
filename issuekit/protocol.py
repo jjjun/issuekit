@@ -51,6 +51,11 @@ orchestrator in the submit summary. It is different from
 STOP guard. Prefer a clean worktree before orchestrating so existing author
 edits are not attributed to the implementer run.
 
+By default, the built-in Codex config runs without a sandbox and relies on the
+repository worktree plus the review gate. Projects that require the strict
+sandbox can set `[agents.codex] approval_flag = "--full-auto"`, or set
+`approval_flag = "--sandbox"` with `approval_value = "workspace-write"`.
+
 When a reviewer daemon is needed, run it from a separate registered checkout:
 `issuekit serve --agent <reviewer> --review`. For a one-shot agent review of a
 specific review-stage issue, use `issuekit review <id> --agent <reviewer>`.

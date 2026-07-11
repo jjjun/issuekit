@@ -180,7 +180,7 @@ def test_codex_adapter_argv_contains_exec() -> None:
     argv = adapter.build_argv("prompt", Path("/plan.md"))
     assert "exec" in argv
     assert argv[1].startswith("prompt")
-    assert "--full-auto" in argv
+    assert "--dangerously-bypass-approvals-and-sandbox" in argv
 
 
 def test_codex_adapter_argv_includes_model() -> None:

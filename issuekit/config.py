@@ -144,7 +144,7 @@ class IssuekitConfig:
                     "~/.codex/.sandbox-bin/codex.exe",
                 ),
                 headless_argv=("exec",),
-                approval_flag="--full-auto",
+                approval_flag="--dangerously-bypass-approvals-and-sandbox",
                 model_flag="--model",
                 prompt_suffix=(
                     "Make minimal, additive diffs. Do not reformat, re-quote, "

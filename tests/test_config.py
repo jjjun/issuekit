@@ -754,7 +754,7 @@ def test_load_config_reads_agent_guardrail_fields(tmp_path: Path) -> None:
             "~/.codex/.sandbox-bin/codex.exe",
         ),
         headless_argv=("exec",),
-        approval_flag="--full-auto",
+        approval_flag="--dangerously-bypass-approvals-and-sandbox",
         resumable=True,
         session_flag="--session-id",
         model_flag="--model",
