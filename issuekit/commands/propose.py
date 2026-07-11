@@ -28,7 +28,7 @@ from issuekit.refs import (
     add_workspace_ref,
     list_effective_refs,
 )
-from issuekit.session import current_session_token
+from issuekit.session import resolved_or_new_session_token
 from issuekit.workflow import WorkflowError
 
 
@@ -178,6 +178,7 @@ def run_propose(args) -> int:
             command="propose",
             project=args.project,
         )
+        session = resolved_or_new_session_token("cli")
         proposal = build_proposal(
             Path.cwd(),
             to=args.to,
@@ -215,7 +216,7 @@ def run_propose(args) -> int:
             ref=f"{proposal.to}#{created.get('id')}",
             target_project=proposal.to,
             author_agent=args.agent,
-            author_session=current_session_token(),
+            author_session=session,
         )
     except ValueError as exc:
         print(str(exc), file=sys.stderr)

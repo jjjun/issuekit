@@ -4,6 +4,7 @@ import pytest
 
 from issuekit import cli
 from issuekit import store as store_module
+from issuekit.author_guard import read_author_guard
 from issuekit.commands.approve import approve_issue
 from issuekit.commands.complete import complete_issue
 from issuekit.config import IssuekitConfig
@@ -95,6 +96,8 @@ def test_author_command_uses_api_allocated_id(
     assert exit_code == 0
     assert "Authored issue: demo#1" in captured.out
     assert "API validation passed" not in captured.out
+    guard = read_author_guard(tmp_path)
+    assert guard is not None
     assert client.calls[0] == {
         "method": "create_issue",
         "body": {
@@ -102,6 +105,7 @@ def test_author_command_uses_api_allocated_id(
             "body": "## Problem\n\nUse the API.",
             "priority": "high",
             "author": "codex",
+            "session": guard.author_session,
         },
     }
     assert not (tmp_path / "docs" / "issues" / "active").exists()

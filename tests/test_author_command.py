@@ -75,6 +75,7 @@ def test_author_command_creates_issue_via_api(tmp_path: Path, monkeypatch, capsy
             "body": "## Problem\n\nSomething is missing.\n\n## Test Plan\n\n- uv run pytest",
             "priority": "high",
             "author": "codex",
+            "session": guard.author_session,
         },
     }
 
@@ -329,6 +330,36 @@ def test_author_command_records_configured_session(
     assert guard.author_session == "author-123"
     assert client.calls[0]["body"]["session"] == "author-123"
     assert client.get_issue(1)["author_session"] == "author-123"
+
+
+def test_author_command_generates_shared_fallback_session(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient()
+    _configure_api(tmp_path, monkeypatch, client)
+
+    exit_code = cli.main(
+        [
+            "author",
+            "--title",
+            "Session Handoff",
+            "--body",
+            "## Problem\n\nGenerate the author session.\n",
+            "--agent",
+            "codex",
+        ]
+    )
+
+    assert exit_code == 0
+    capsys.readouterr()
+    guard = read_author_guard(tmp_path)
+    assert guard is not None
+    assert guard.author_session is not None
+    assert guard.author_session.startswith("cli-")
+    assert client.calls[0]["body"]["session"] == guard.author_session
+    assert client.get_issue(1)["author_session"] == guard.author_session
 
 
 def test_author_command_blocks_likely_cross_project_direct_authoring(

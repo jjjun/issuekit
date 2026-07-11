@@ -29,7 +29,7 @@ from issuekit.core import (
 )
 from issuekit.dependencies import bare_ref_collision_warnings, dependency_refs
 from issuekit.refs import RefError, current_repo_ref, list_effective_refs
-from issuekit.session import current_session_token
+from issuekit.session import resolved_or_new_session_token
 from issuekit.workflow import WorkflowError
 
 
@@ -89,6 +89,7 @@ def run(args) -> int:
             command="author",
             project=args.project,
         )
+        session = resolved_or_new_session_token("cli")
         authored = author_issue(
             title=args.title,
             body=args.body,
@@ -101,6 +102,7 @@ def run(args) -> int:
             cwd=Path.cwd(),
             direct_local_author=args.direct_local_author,
             origin_project=args.origin_project,
+            session=session,
         )
         for warning in _author_warnings(authored):
             print(warning, file=sys.stderr)
@@ -111,7 +113,7 @@ def run(args) -> int:
             item_id=authored.id,
             ref=authored.ref,
             author_agent=args.agent,
-            author_session=current_session_token(),
+            author_session=session,
         )
 
         if args.json:
@@ -143,6 +145,7 @@ def author_issue(
     cwd: Path | None = None,
     direct_local_author: bool = False,
     origin_project: str | None = None,
+    session: str | None = None,
 ) -> Issue:
     config = config or IssuekitConfig()
     cwd = cwd or Path.cwd()
@@ -168,7 +171,7 @@ def author_issue(
 
     store = get_store(config)
     try:
-        session = current_session_token()
+        session = session or resolved_or_new_session_token("cli")
     except ValueError as exc:
         raise WorkflowError(str(exc), code="invalid_session") from exc
     return store.create_issue(  # type: ignore[attr-defined]

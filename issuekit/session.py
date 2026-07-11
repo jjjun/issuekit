@@ -36,6 +36,13 @@ def current_session_token(environ: Mapping[str, str] | None = None) -> str | Non
     return validate_session_token(raw, label=ISSUEKIT_SESSION_ENV)
 
 
+def resolved_or_new_session_token(
+    prefix: str,
+    environ: Mapping[str, str] | None = None,
+) -> str:
+    return current_session_token(environ) or new_session_token(prefix)
+
+
 def new_session_token(prefix: str) -> str:
     valid_prefix = validate_session_token(prefix, label="session prefix")
     return f"{valid_prefix}-{uuid.uuid4().hex}"

@@ -72,6 +72,8 @@ def test_api_cli_propose_posts_expected_body_and_dedupes(
     assert guard.kind == "proposal"
     assert guard.project == "source"
     assert guard.target_project == "target"
+    assert guard.author_session is not None
+    assert guard.author_session.startswith("cli-")
     assert second["payload_mismatch"] is False
     assert "idempotent_existing" not in second
     assert client.calls[0] == {
