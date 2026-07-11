@@ -34,6 +34,7 @@ constraint-dependencies = [
 ]
 
 [tool.pytest.ini_options]
+addopts = "-q"
 markers = [
     "live_contract: live API contract checks that require explicit opt-in and a reachable issuekit backend",
 ]

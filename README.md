@@ -30,6 +30,10 @@ uv run pytest
 uv run issuekit check-encoding
 ```
 
+Pytest uses concise progress output by default while retaining failure details
+and the final test summary. For verbose progress during interactive diagnosis,
+run `uv run pytest -o addopts= -v`.
+
 The default pytest suite is intended for offline development and CI. Tests that
 would call a live issuekit API backend are marked `live_contract` and skip
 unless explicitly enabled.
@@ -39,7 +43,7 @@ Run only the live contract checks with a reachable delete-safe test backend:
 ```powershell
 $env:ISSUEKIT_RUN_LIVE_CONTRACTS = "1"
 $env:ISSUEKIT_API_URL = "https://mine.example"
-uv run pytest -m live_contract -q
+uv run pytest -m live_contract
 ```
 
 `ISSUEKIT_RUN_LIVE_CONTRACTS=1` is the opt-in switch. `ISSUEKIT_API_URL` must
