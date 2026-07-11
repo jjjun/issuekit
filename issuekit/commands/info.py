@@ -43,6 +43,9 @@ def run(args) -> int:
         "workerPresent": config.worker is not None,
         "enabledAgents": [name for name, _run_config in config.agents],
         "disabledAgents": list(config.disabled_agents),
+        "machineConfigPath": (
+            str(config.machine_config_path) if config.machine_config_path is not None else None
+        ),
         "activeIssues": [
             issue_dict(issue)
             | {
@@ -74,6 +77,7 @@ def run(args) -> int:
     print(f"- Latest completed id: {summary['latestCompletedId']}")
     print(f"- Incoming proposals: {len(summary['incomingProposals'])}")
     print(f"- Worker: {summary['worker'] or '-'}")
+    print(f"- Machine config: {summary['machineConfigPath'] or '-'}")
     if summary["authorGuard"]:
         guard = summary["authorGuard"]
         print(

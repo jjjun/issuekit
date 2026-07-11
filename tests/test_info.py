@@ -72,6 +72,20 @@ def test_info_json_surfaces_enabled_agents(tmp_path: Path, monkeypatch, capsys) 
     assert payload["disabledAgents"] == ["kimi"]
 
 
+def test_info_json_surfaces_machine_config_path(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    _configure_api(tmp_path, monkeypatch, _issue_client())
+    machine_path = tmp_path / "machine.toml"
+    machine_path.write_text("issues_dir = 'machine/issues'\n", encoding="utf-8")
+    monkeypatch.setenv("ISSUEKIT_CONFIG", str(machine_path))
+
+    cli.main(["info", "--json"])
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["machineConfigPath"] == str(machine_path)
+
+
 def test_info_reads_issue_list_once_for_counts(tmp_path: Path, monkeypatch, capsys) -> None:
     class RecordingClient(FakeIssuekitClient):
         def __init__(self, *args, **kwargs) -> None:

@@ -147,6 +147,7 @@ def _agent_config_diagnostic(cwd: Path) -> Diagnostic:
         (
             f"Enabled agents: {enabled}",
             f"Disabled agents: {disabled}",
+            f"Machine config: {config.machine_config_path or '(none)'}",
         ),
     )
 

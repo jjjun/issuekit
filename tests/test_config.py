@@ -53,6 +53,72 @@ def test_load_config_reads_standalone_issuekit_toml(tmp_path: Path) -> None:
     assert config.issues_dir == "docs/issues"
 
 
+def test_load_config_reads_machine_config(tmp_path: Path, monkeypatch) -> None:
+    machine_path = tmp_path / "machine.toml"
+    machine_path.write_text("issues_dir = 'machine/issues'\n", encoding="utf-8")
+    monkeypatch.setenv("ISSUEKIT_CONFIG", str(machine_path))
+
+    config = load_config(tmp_path)
+
+    assert config.issues_dir == "machine/issues"
+    assert config.machine_config_path == machine_path
+
+
+def test_repo_config_overrides_machine_and_merges_agent_keys(
+    tmp_path: Path, monkeypatch
+) -> None:
+    machine_path = tmp_path / "machine.toml"
+    machine_path.write_text(
+        "issues_dir = 'machine/issues'\n[agents.codex]\nmodel = 'machine-model'\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "issuekit.toml").write_text(
+        "issues_dir = 'repo/issues'\n[agents.codex]\napproval_flag = '--full-auto'\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ISSUEKIT_CONFIG", str(machine_path))
+
+    config = load_config(tmp_path)
+    codex = dict(config.agents)["codex"]
+
+    assert config.issues_dir == "repo/issues"
+    assert codex.model == "machine-model"
+    assert codex.approval_flag == "--full-auto"
+
+
+def test_empty_issuekit_config_disables_machine_config(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("ISSUEKIT_CONFIG", "")
+
+    assert load_config(tmp_path).machine_config_path is None
+
+
+def test_machine_config_rejects_worker(tmp_path: Path, monkeypatch) -> None:
+    machine_path = tmp_path / "machine.toml"
+    machine_path.write_text("[worker]\nworker_id = 'shared'\n", encoding="utf-8")
+    monkeypatch.setenv("ISSUEKIT_CONFIG", str(machine_path))
+
+    with pytest.raises(ValueError, match="cannot define worker"):
+        load_config(tmp_path)
+
+
+def test_default_machine_config_path_windows(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.delenv("ISSUEKIT_CONFIG", raising=False)
+    monkeypatch.setenv("APPDATA", str(tmp_path))
+
+    from issuekit.config import resolve_machine_config_path
+
+    assert resolve_machine_config_path(platform="nt") == tmp_path / "issuekit" / "config.toml"
+
+
+def test_default_machine_config_path_posix(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.delenv("ISSUEKIT_CONFIG", raising=False)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+
+    from issuekit.config import resolve_machine_config_path
+
+    assert resolve_machine_config_path(platform="posix") == tmp_path / "issuekit" / "config.toml"
+
+
 def test_load_config_prefers_pyproject_tool_issuekit(tmp_path: Path) -> None:
     (tmp_path / "pyproject.toml").write_text(
         "[tool.issuekit]\nascii_id_threshold = 100\nissues_dir = 'py/issues'\n",

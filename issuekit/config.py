@@ -122,6 +122,7 @@ class IssuekitConfig:
     triage: TriagePolicy = field(default_factory=TriagePolicy)
     router: RouterPolicy = field(default_factory=RouterPolicy)
     disabled_agents: tuple[str, ...] = ()
+    machine_config_path: Path | None = None
     agents: tuple[tuple[str, AgentRunConfig], ...] = (
         (
             "kimi",
@@ -235,7 +236,8 @@ class IssuekitConfig:
 def load_config(cwd: Path | str = ".") -> IssuekitConfig:
     config_cwd = Path(cwd)
     load_dotenv(config_cwd)
-    raw_config = _load_raw_config(config_cwd)
+    machine_path = resolve_machine_config_path()
+    raw_config = _load_raw_config(config_cwd, machine_path)
     api_url = str(
         os.getenv("ISSUEKIT_API_URL", raw_config.get("api_url", IssuekitConfig.api_url))
     ).strip()
@@ -350,6 +352,7 @@ def load_config(cwd: Path | str = ".") -> IssuekitConfig:
         triage=triage,
         router=router,
         disabled_agents=disabled_agents,
+        machine_config_path=machine_path if machine_path is not None and machine_path.is_file() else None,
         agents=agents,
     )
 
@@ -371,8 +374,19 @@ def has_local_project_context(cwd: Path | str = ".") -> bool:
     return (config_cwd / "issuekit.toml").is_file()
 
 
-def _load_raw_config(cwd: Path) -> dict[str, object]:
-    raw_config: dict[str, object] = {}
+def resolve_machine_config_path(*, platform: str | None = None) -> Path | None:
+    configured = os.getenv("ISSUEKIT_CONFIG")
+    if configured is not None:
+        return Path(configured).expanduser() if configured else None
+    if (platform or os.name) == "nt":
+        config_home = Path(os.getenv("APPDATA", Path.home() / "AppData" / "Roaming"))
+    else:
+        config_home = Path(os.getenv("XDG_CONFIG_HOME", Path.home() / ".config"))
+    return config_home / "issuekit" / "config.toml"
+
+
+def _load_raw_config(cwd: Path, machine_path: Path | None) -> dict[str, object]:
+    raw_config = _load_machine_config(machine_path)
     pyproject_has_issuekit = False
     pyproject_path = cwd / "pyproject.toml"
     if pyproject_path.exists():
@@ -382,13 +396,43 @@ def _load_raw_config(cwd: Path) -> dict[str, object]:
             pyproject_has_issuekit = True
             # pyproject's [tool.issuekit] wins when present so Python repos keep
             # their existing behavior even if a standalone config also exists.
-            raw_config = dict(pyproject_config)
+            raw_config = _merge_config_layers(raw_config, dict(pyproject_config))
 
     issuekit_path = cwd / "issuekit.toml"
     if not pyproject_has_issuekit and issuekit_path.exists():
-        raw_config = _load_config_toml(issuekit_path)
+        raw_config = _merge_config_layers(raw_config, _load_config_toml(issuekit_path))
 
     return _merge_local_config(cwd, raw_config)
+
+
+def _load_machine_config(path: Path | None) -> dict[str, object]:
+    if path is None or not path.is_file():
+        return {}
+    config = _load_config_toml(path)
+    if "worker" in config:
+        raise ValueError(
+            f"Machine config {path} cannot define worker; use issuekit.local.toml"
+        )
+    return config
+
+
+def _merge_config_layers(
+    lower: dict[str, object], higher: dict[str, object]
+) -> dict[str, object]:
+    merged = dict(lower)
+    merged.update(higher)
+    lower_agents = lower.get("agents")
+    higher_agents = higher.get("agents")
+    if isinstance(lower_agents, dict) and isinstance(higher_agents, dict):
+        agents = dict(lower_agents)
+        for name, value in higher_agents.items():
+            previous = agents.get(name)
+            if isinstance(previous, dict) and isinstance(value, dict):
+                agents[name] = previous | value
+            else:
+                agents[name] = value
+        merged["agents"] = agents
+    return merged
 
 
 def _merge_local_config(cwd: Path, raw_config: dict[str, object]) -> dict[str, object]:

@@ -399,6 +399,17 @@ require_distinct_reviewer = true
 work_branch = "main"
 ```
 
+Machine-wide defaults can be stored in `%APPDATA%\issuekit\config.toml` on
+Windows or `$XDG_CONFIG_HOME/issuekit/config.toml` on POSIX (falling back to
+`~/.config/issuekit/config.toml`). Set `ISSUEKIT_CONFIG` to use an explicit
+file, or set it to an empty string to disable machine config loading. Machine
+config has lower precedence than repository config and cannot define `worker`;
+checkout registration belongs in `issuekit.local.toml`. Agent tables merge by
+key between machine and repository layers, while other values are replaced by
+the higher-precedence layer. Repository identity settings such as `project`,
+`work_branch`, `issues_dir`, and `profile_*` normally belong in repository
+config.
+
 The mine-py server owns issue ids and reviewer policy. When `api_url` is set,
 issuekit always treats review handoff as `default_reviewer = "auto"` and
 `require_distinct_reviewer = true` for local decisions, regardless of local
@@ -435,8 +446,9 @@ At startup, issuekit also reads a repo-local `.env` file from the current repo
 root and loads values such as `ISSUEKIT_API_URL`, `ISSUEKIT_API_USER`,
 `ISSUEKIT_API_PASSWORD`, `ISSUEKIT_API_TOKEN`, `ISSUEKIT_TOKEN_CACHE`, and
 `ISSUEKIT_PROJECT`. Existing process environment variables are not overwritten.
-Overall precedence is process environment, then `.env`, then `[tool.issuekit]`
-or `issuekit.toml`, then built-in defaults. Set
+Overall precedence is per-run CLI flags, process environment, `.env`, then
+`[tool.issuekit]` or `issuekit.toml`, machine config, and built-in defaults.
+Set
 `ISSUEKIT_ENFORCE_AUTHOR_HANDOFF=0` to skip only the local author-session STOP
 guard enforcement across checkouts; unset or truthy values keep the default
 enforcement behavior.

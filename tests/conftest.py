@@ -23,3 +23,4 @@ def isolated_issuekit_env(monkeypatch: pytest.MonkeyPatch, request: pytest.Fixtu
 
     for key in _ISSUEKIT_ENV_KEYS:
         monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv("ISSUEKIT_CONFIG", "")

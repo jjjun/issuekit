@@ -265,6 +265,21 @@ def test_setup_diagnostics_surface_enabled_agents(tmp_path: Path) -> None:
     assert "Disabled agents: kimi" in diagnostic.details
 
 
+def test_setup_diagnostics_surface_machine_config_path(
+    tmp_path: Path, monkeypatch
+) -> None:
+    machine_path = tmp_path / "machine.toml"
+    machine_path.write_text("issues_dir = 'machine/issues'\n", encoding="utf-8")
+    monkeypatch.setenv("ISSUEKIT_CONFIG", str(machine_path))
+
+    diagnostics = setup.collect_diagnostics(tmp_path)
+    diagnostic = next(
+        item for item in diagnostics if item.label == "Agent config loaded."
+    )
+
+    assert f"Machine config: {machine_path}" in diagnostic.details
+
+
 def test_setup_diagnostics_report_invalid_agent_config(tmp_path: Path) -> None:
     (tmp_path / "issuekit.toml").write_text(
         "disabled_agents = ['claude']\ndefault_reviewer = 'claude'\n",
