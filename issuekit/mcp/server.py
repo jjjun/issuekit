@@ -478,6 +478,7 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
     async def run_proposal_checks(
         agent: str,
         timeout_sec: float = 600.0,
+        model: str | None = None,
         limit: int = 50,
         ctx: Context | None = None,
     ) -> list[dict[str, Any]]:
@@ -487,6 +488,7 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
             config_root,
             agent=agent,
             timeout=timeout_sec,
+            model=model,
             limit=limit,
             runner_factory=AgentRunner,
         )

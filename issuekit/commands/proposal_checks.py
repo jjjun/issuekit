@@ -26,6 +26,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         help="Run one worker-side proposal-check polling cycle.",
     )
     parser.add_argument("--agent", help="Configured agent name to run.")
+    parser.add_argument("--model", help="Optional model name passed to the agent.")
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument(
         "--list",
@@ -88,6 +89,7 @@ def run(args) -> int:
             cwd,
             agent=agent,
             timeout=float(args.timeout_sec),
+            model=args.model,
             limit=int(args.limit),
             runner_factory=AgentRunner,
             out=sys.stdout,

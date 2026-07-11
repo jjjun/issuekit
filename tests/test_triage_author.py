@@ -153,6 +153,28 @@ def test_triage_author_adopt_appends_spec(monkeypatch, tmp_path) -> None:
     assert ("triage_author_decision", {"proposal": 5, "decision": "adopt", "issue": issue_id}) in events
 
 
+def test_triage_author_forwards_model_to_adapter(monkeypatch, tmp_path) -> None:
+    _client, runner, config, _events, log = _setup(
+        monkeypatch,
+        tmp_path,
+        proposals=[],
+        outputs=[],
+    )
+    seen = {}
+    monkeypatch.setattr(
+        triage_author,
+        "resolve_adapter",
+        lambda agent, **kwargs: seen.update(agent=agent, **kwargs) or object(),
+    )
+
+    run_triage_author_cycle(
+        config, tmp_path, model="gpt-5.6", runner_factory=lambda: runner, log=log
+    )
+
+    assert seen["agent"] == "codex"
+    assert seen["model"] == "gpt-5.6"
+
+
 def test_triage_author_adopt_discards_superseded_pending_proposal(
     monkeypatch,
     tmp_path,

@@ -62,6 +62,7 @@ def run_proposal_check_cycle(
     *,
     agent: str,
     timeout: float = 600.0,
+    model: str | None = None,
     limit: int = 50,
     runner_factory=None,
     log: LogFn | None = None,
@@ -83,7 +84,7 @@ def run_proposal_check_cycle(
     err = err or sys.stderr
     emit = log or (lambda *args, **kwargs: None)
     runner_factory = runner_factory or AgentRunner
-    adapter = resolve_adapter(agent, config=config)
+    adapter = resolve_adapter(agent, config=config, model=model)
 
     with api_client(config) as client:
         checks = _poll_worker_checks(

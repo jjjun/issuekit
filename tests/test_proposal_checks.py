@@ -90,6 +90,31 @@ def _setup(monkeypatch, tmp_path: Path, *, output: str):
     return client, runner, load_config(tmp_path)
 
 
+def test_proposal_check_forwards_model_to_adapter(monkeypatch, tmp_path) -> None:
+    _client, runner, config = _setup(
+        monkeypatch,
+        tmp_path,
+        output=_check_block(verdict="reject", comment="Out of scope."),
+    )
+    seen = {}
+    monkeypatch.setattr(
+        proposal_check,
+        "resolve_adapter",
+        lambda agent, **kwargs: seen.update(agent=agent, **kwargs) or object(),
+    )
+
+    run_proposal_check_cycle(
+        config,
+        tmp_path,
+        agent="codex",
+        model="gpt-5.6",
+        runner_factory=lambda: runner,
+    )
+
+    assert seen["agent"] == "codex"
+    assert seen["model"] == "gpt-5.6"
+
+
 def test_proposal_check_approve_adopts_and_posts_issue_ref(monkeypatch, tmp_path) -> None:
     client, runner, config = _setup(
         monkeypatch,

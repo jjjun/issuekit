@@ -47,6 +47,13 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     )
     serve_parser.add_argument("--agent", help="Configured agent name to run.")
     serve_parser.add_argument(
+        "--model",
+        help=(
+            "Optional model name applied to every agent launched by this serve loop; "
+            "use per-agent config for mixed-agent model selection."
+        ),
+    )
+    serve_parser.add_argument(
         "--interval",
         type=float,
         default=15.0,
@@ -420,6 +427,7 @@ def _serve_proposal_checks_loop(
                 cwd,
                 agent=agent,
                 timeout=float(args.timeout_sec),
+                model=getattr(args, "model", None),
                 limit=int(args.proposal_check_limit),
                 runner_factory=AgentRunner,
                 log=lambda event, **fields: _log(sys.stderr, log_path, event, **fields),
@@ -662,6 +670,7 @@ def _run_claimed_issue(
             cwd=cwd,
             issues_dir=issues_dir,
             timeout=float(args.timeout_sec),
+            model=getattr(args, "model", None),
             prompt_suffix=review_feedback_prompt(issue.body),
             abort_event=controller.abort_event,
             store=store,
@@ -720,6 +729,7 @@ def _run_review_issue(
             config=config,
             cwd=cwd,
             timeout=float(args.timeout_sec),
+            model=getattr(args, "model", None),
             abort_event=controller.abort_event,
             store=store,
             out=sys.stderr,
@@ -835,6 +845,7 @@ def _run_triage_author_cycle(
         config,
         cwd,
         timeout=float(args.timeout_sec),
+        model=getattr(args, "model", None),
         log=emit,
         out=sys.stderr,
         err=sys.stderr,

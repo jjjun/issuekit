@@ -29,6 +29,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         action="store_true",
         help="Run a single evaluation cycle and exit (currently required).",
     )
+    triage_parser.add_argument("--model", help="Optional model name passed to the agent.")
     triage_parser.add_argument(
         "--timeout-sec",
         type=float,
@@ -60,6 +61,7 @@ def run(args) -> int:
             config,
             cwd,
             timeout=float(args.timeout_sec),
+            model=args.model,
             runner_factory=AgentRunner,
             out=sys.stdout,
             err=sys.stderr,

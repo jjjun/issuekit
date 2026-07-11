@@ -573,12 +573,25 @@ table without the `tool.issuekit` prefix:
 ```toml
 [tool.issuekit.agents.codex]
 approval_flag = "--full-auto"
+model = "gpt-5.6"
+
+[tool.issuekit.agents.codex.model_prompts]
+"gpt-5.6" = "Follow the gpt-5.6 project guidance."
 ```
 
 By default, issuekit runs Codex without a sandbox and relies on the repository
 worktree plus the review gate. Projects that require the strict sandbox can use
 the override above, or set `approval_flag = "--sandbox"` and
 `approval_value = "workspace-write"`.
+
+Agent-launching commands accept a pass-through `--model <model-id>` override,
+including `implement`, `review`, `negotiate`, `serve`, `triage`, and
+`proposal-checks`. Issuekit does not restrict model ids; the selected agent CLI
+validates them. The `model` agent overlay sets the default, while
+`model_prompts` adds prompt text for keys matching the exact resolved model id.
+An explicit `--model` takes precedence over the configured default. A serve
+override applies to every agent launched by that loop, so mixed-agent serve
+setups should configure `model` in each agent's overlay instead.
 
 `default_reviewer` controls where MCP and CLI review handoffs go when no
 reviewer is specified. It must be one of the configured `assignees`, or `auto`.
