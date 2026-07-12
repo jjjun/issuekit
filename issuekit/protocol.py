@@ -56,14 +56,18 @@ repository worktree plus the review gate. Projects that require the strict
 sandbox can set `[agents.codex] approval_flag = "--full-auto"`, or set
 `approval_flag = "--sandbox"` with `approval_value = "workspace-write"`.
 
-Agent-launching commands accept a pass-through `--model <model-id>` override.
+Agent-launching commands accept pass-through `--model <model-id>` and
+`--reasoning-effort <value>` overrides.
 This includes `implement`, `review`, `negotiate`, `serve`, `triage`, and
 `proposal-checks`; issuekit does not maintain a model allowlist. Set an agent's
-default with `[agents.codex] model = "gpt-5.6"`. The optional
+defaults with `[agents.codex] model = "gpt-5.6"` and
+`[agents.codex] reasoning_effort = "medium"`. The optional
 `[agents.codex.model_prompts]` entries append model-specific guidance and their
-keys must match the exact model id string. An explicit `--model` overrides the
-configured default. A serve-level model applies to every agent it launches;
-use per-agent overlays when a mixed-agent serve setup needs different models.
+keys must match the exact model id string. Per-run values override configured
+defaults. A reasoning effort setting requires an `effort_argv` template; the
+built-in Codex adapter uses `("-c", "model_reasoning_effort={{value}}")`.
+Serve-level overrides apply to every agent launched; use per-agent overlays
+when a mixed-agent serve setup needs different models or effort levels.
 
 When a reviewer daemon is needed, run it from a separate registered checkout:
 `issuekit serve --agent <reviewer> --review`. For a one-shot agent review of a

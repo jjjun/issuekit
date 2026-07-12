@@ -28,6 +28,9 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     )
     review_parser.add_argument("--model", help="Optional model name passed to the agent.")
     review_parser.add_argument(
+        "--reasoning-effort", help="Optional reasoning effort passed to the agent."
+    )
+    review_parser.add_argument(
         "--timeout-sec",
         type=float,
         default=600.0,
@@ -58,6 +61,7 @@ def run(args) -> int:
             cwd=cwd,
             timeout=float(args.timeout_sec),
             model=args.model,
+            reasoning_effort=args.reasoning_effort,
             follow=getattr(args, "follow", False),
             runner_factory=AgentRunner,
             out=sys.stdout,

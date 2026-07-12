@@ -462,6 +462,49 @@ def test_config_adapter_cli_model_overrides_config_model_for_argv_and_prompt() -
     assert argv[argv.index("--model") + 1] == "cli-model"
 
 
+def test_config_adapter_reasoning_effort_formats_template_and_cli_overrides_default() -> None:
+    config = IssuekitConfig(
+        agents=(
+            (
+                "codex",
+                AgentRunConfig(
+                    binary="codex",
+                    headless_argv=("exec",),
+                    model_flag="--model",
+                    model="configured-model",
+                    reasoning_effort="medium",
+                    effort_argv=("-c", "model_reasoning_effort={value}"),
+                ),
+            ),
+        )
+    )
+
+    argv = ConfigAgentAdapter(
+        "codex",
+        config=config,
+        model="cli-model",
+        reasoning_effort="low",
+    ).build_argv("base", Path("/plan.md"))
+
+    assert argv == [
+        "exec",
+        "base",
+        "--model",
+        "cli-model",
+        "-c",
+        "model_reasoning_effort=low",
+    ]
+
+
+def test_config_adapter_rejects_reasoning_effort_without_template() -> None:
+    config = IssuekitConfig(
+        agents=(("claude", AgentRunConfig(binary="claude", headless_argv=("-p",))),)
+    )
+
+    with pytest.raises(ValueError, match="reasoning_effort"):
+        ConfigAgentAdapter("claude", config=config, reasoning_effort="medium")
+
+
 def test_config_adapter_model_prompt_requires_exact_match() -> None:
     config = IssuekitConfig(
         agents=(

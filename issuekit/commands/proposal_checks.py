@@ -27,6 +27,9 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     )
     parser.add_argument("--agent", help="Configured agent name to run.")
     parser.add_argument("--model", help="Optional model name passed to the agent.")
+    parser.add_argument(
+        "--reasoning-effort", help="Optional reasoning effort passed to the agent."
+    )
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument(
         "--list",
@@ -90,6 +93,7 @@ def run(args) -> int:
             agent=agent,
             timeout=float(args.timeout_sec),
             model=args.model,
+            reasoning_effort=args.reasoning_effort,
             limit=int(args.limit),
             runner_factory=AgentRunner,
             out=sys.stdout,

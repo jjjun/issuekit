@@ -71,6 +71,9 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     )
     negotiate_parser.add_argument("--model", help="Optional model name passed to both agents.")
     negotiate_parser.add_argument(
+        "--reasoning-effort", help="Optional reasoning effort passed to both agents."
+    )
+    negotiate_parser.add_argument(
         "--timeout-sec",
         type=float,
         default=120.0,
@@ -156,6 +159,7 @@ def run(args) -> int:
             max_rounds=max_rounds,
             timeout=float(args.timeout_sec),
             model=args.model,
+            reasoning_effort=args.reasoning_effort,
             config=config,
             cwd=cwd,
             store=store,

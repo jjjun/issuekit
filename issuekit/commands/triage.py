@@ -31,6 +31,9 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     )
     triage_parser.add_argument("--model", help="Optional model name passed to the agent.")
     triage_parser.add_argument(
+        "--reasoning-effort", help="Optional reasoning effort passed to the agent."
+    )
+    triage_parser.add_argument(
         "--timeout-sec",
         type=float,
         default=600.0,
@@ -62,6 +65,7 @@ def run(args) -> int:
             cwd,
             timeout=float(args.timeout_sec),
             model=args.model,
+            reasoning_effort=args.reasoning_effort,
             runner_factory=AgentRunner,
             out=sys.stdout,
             err=sys.stderr,

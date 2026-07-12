@@ -79,6 +79,7 @@ def run_review_and_decide(
     cwd: Path,
     timeout: float,
     model: str | None = None,
+    reasoning_effort: str | None = None,
     follow: bool = False,
     abort_event: threading.Event | None = None,
     runner_factory=None,
@@ -98,7 +99,12 @@ def run_review_and_decide(
     _ensure_registered_distinct_worker(issue, agent=agent, config=config)
     ensure_assigned_reviewer(issue, agent, agent)
 
-    adapter = resolve_adapter(agent, config=config, model=model)
+    adapter = resolve_adapter(
+        agent,
+        config=config,
+        model=model,
+        reasoning_effort=reasoning_effort,
+    )
     diff_context = _collect_git_diff_context(cwd, issue=issue)
     if not diff_context.has_changed_files and not diff_context.has_handoff_evidence:
         raise WorkflowError(

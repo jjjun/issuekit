@@ -62,6 +62,7 @@ class ConfigAgentAdapter(AgentAdapter):
         *,
         config: IssuekitConfig | None = None,
         model: str | None = None,
+        reasoning_effort: str | None = None,
     ) -> None:
         self.agent_name = agent_name
         self.config = config or IssuekitConfig()
@@ -72,6 +73,14 @@ class ConfigAgentAdapter(AgentAdapter):
             raise ValueError(f"Unknown agent: {agent_name}")
         self.run_config = agents_dict[agent_name]
         self.model = model
+        self.reasoning_effort = reasoning_effort
+        if (
+            (self.reasoning_effort or self.run_config.reasoning_effort)
+            and not self.run_config.effort_argv
+        ):
+            raise ValueError(
+                f"Agent '{agent_name}' config sets reasoning_effort but has no effort_argv."
+            )
 
     def resolve_binary(self) -> Path:
         found = shutil.which(self.run_config.binary)
@@ -93,6 +102,7 @@ class ConfigAgentAdapter(AgentAdapter):
         session_id: str | None = None,
     ) -> list[str]:
         resolved_model = self.model or self.run_config.model
+        resolved_effort = self.reasoning_effort or self.run_config.reasoning_effort
         prompt = self._append_prompt_suffixes(prompt, resolved_model)
         argv = list(self.run_config.headless_argv)
         argv.append(prompt)
@@ -106,6 +116,11 @@ class ConfigAgentAdapter(AgentAdapter):
             )
         if resolved_model and self.run_config.model_flag:
             argv.extend([self.run_config.model_flag, resolved_model])
+        if resolved_effort:
+            argv.extend(
+                entry.format(value=resolved_effort)
+                for entry in self.run_config.effort_argv
+            )
         if (
             session_id
             and self.run_config.resumable
@@ -140,6 +155,7 @@ def resolve_adapter(
     agent_name: str,
     config: IssuekitConfig | None = None,
     model: str | None = None,
+    reasoning_effort: str | None = None,
 ) -> AgentAdapter:
     """Resolve an AgentAdapter by registered agent name."""
     config = config or IssuekitConfig()
@@ -156,8 +172,18 @@ def resolve_adapter(
             raise ValueError(
                 f"Unknown adapter '{run_config.adapter}' for agent: {agent_name}"
             )
-        return adapter_class(agent_name, config=config, model=model)
-    return ConfigAgentAdapter(agent_name, config=config, model=model)
+        return adapter_class(
+            agent_name,
+            config=config,
+            model=model,
+            reasoning_effort=reasoning_effort,
+        )
+    return ConfigAgentAdapter(
+        agent_name,
+        config=config,
+        model=model,
+        reasoning_effort=reasoning_effort,
+    )
 
 
 @dataclass(frozen=True)

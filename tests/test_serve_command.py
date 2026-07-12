@@ -30,6 +30,7 @@ class FakeResult:
 class FakeRunner:
     calls: list[tuple[Path, Path, float, str | None, int | None, str | None]] = []
     models: list[str | None] = []
+    reasoning_efforts: list[str | None] = []
 
     def run(
         self,
@@ -43,6 +44,7 @@ class FakeRunner:
         **kwargs,
     ) -> FakeResult:
         self.models.append(adapter.model)
+        self.reasoning_efforts.append(adapter.reasoning_effort)
         self.calls.append(
             (
                 plan_path,
@@ -237,6 +239,7 @@ def test_serve_once_claims_runs_and_submits(
     client = FakeIssuekitClient([api_issue(1, "First", author="claude", body="# Issue #1: First\n")])
     FakeRunner.calls.clear()
     FakeRunner.models.clear()
+    FakeRunner.reasoning_efforts.clear()
     _configure_registered_api(tmp_path, monkeypatch, client)
     monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", FakeRunner)
 
@@ -247,6 +250,8 @@ def test_serve_once_claims_runs_and_submits(
             "codex",
             "--model",
             "gpt-5.6",
+            "--reasoning-effort",
+            "medium",
             "--once",
             "--timeout-sec",
             "7",
@@ -264,6 +269,7 @@ def test_serve_once_claims_runs_and_submits(
     assert issue_id == 1
     assert prompt_suffix is None
     assert FakeRunner.models == ["gpt-5.6"]
+    assert FakeRunner.reasoning_efforts == ["medium"]
     assert [call["method"] for call in client.calls] == ["upsert_repo", "upsert_worker", "claim_next", "submit"]
     assert client.calls[2]["body"]["worker"] == "checkout.demo@machine"
     assert "event=submitted issue=1" in capsys.readouterr().err

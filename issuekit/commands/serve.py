@@ -54,6 +54,13 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         ),
     )
     serve_parser.add_argument(
+        "--reasoning-effort",
+        help=(
+            "Optional reasoning effort applied to every agent launched by this serve "
+            "loop; use per-agent config for mixed-agent effort selection."
+        ),
+    )
+    serve_parser.add_argument(
         "--interval",
         type=float,
         default=15.0,
@@ -428,6 +435,7 @@ def _serve_proposal_checks_loop(
                 agent=agent,
                 timeout=float(args.timeout_sec),
                 model=getattr(args, "model", None),
+                reasoning_effort=getattr(args, "reasoning_effort", None),
                 limit=int(args.proposal_check_limit),
                 runner_factory=AgentRunner,
                 log=lambda event, **fields: _log(sys.stderr, log_path, event, **fields),
@@ -671,6 +679,7 @@ def _run_claimed_issue(
             issues_dir=issues_dir,
             timeout=float(args.timeout_sec),
             model=getattr(args, "model", None),
+            reasoning_effort=getattr(args, "reasoning_effort", None),
             prompt_suffix=review_feedback_prompt(issue.body),
             abort_event=controller.abort_event,
             store=store,
@@ -730,6 +739,7 @@ def _run_review_issue(
             cwd=cwd,
             timeout=float(args.timeout_sec),
             model=getattr(args, "model", None),
+            reasoning_effort=getattr(args, "reasoning_effort", None),
             abort_event=controller.abort_event,
             store=store,
             out=sys.stderr,
@@ -846,6 +856,7 @@ def _run_triage_author_cycle(
         cwd,
         timeout=float(args.timeout_sec),
         model=getattr(args, "model", None),
+        reasoning_effort=getattr(args, "reasoning_effort", None),
         log=emit,
         out=sys.stderr,
         err=sys.stderr,

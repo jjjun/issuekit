@@ -596,14 +596,18 @@ worktree plus the review gate. Projects that require the strict sandbox can use
 the override above, or set `approval_flag = "--sandbox"` and
 `approval_value = "workspace-write"`.
 
-Agent-launching commands accept a pass-through `--model <model-id>` override,
+Agent-launching commands accept pass-through `--model <model-id>` and
+`--reasoning-effort <value>` overrides,
 including `implement`, `review`, `negotiate`, `serve`, `triage`, and
 `proposal-checks`. Issuekit does not restrict model ids; the selected agent CLI
-validates them. The `model` agent overlay sets the default, while
+validates them. The `model` and `reasoning_effort` agent overlays set defaults,
+while
 `model_prompts` adds prompt text for keys matching the exact resolved model id.
-An explicit `--model` takes precedence over the configured default. A serve
+Explicit per-run values take precedence over configured defaults. A serve
 override applies to every agent launched by that loop, so mixed-agent serve
-setups should configure `model` in each agent's overlay instead.
+setups should configure `model` and `reasoning_effort` in each agent's overlay
+instead. An agent must define `effort_argv` to support `reasoning_effort`; the
+built-in Codex adapter uses `("-c", "model_reasoning_effort={value}")`.
 
 `default_reviewer` controls where MCP and CLI review handoffs go when no
 reviewer is specified. It must be one of the configured `assignees`, or `auto`.

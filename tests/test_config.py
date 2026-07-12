@@ -69,7 +69,10 @@ def test_repo_config_overrides_machine_and_merges_agent_keys(
 ) -> None:
     machine_path = tmp_path / "machine.toml"
     machine_path.write_text(
-        "issues_dir = 'machine/issues'\n[agents.codex]\nmodel = 'machine-model'\n",
+        (
+            "issues_dir = 'machine/issues'\n[agents.codex]\n"
+            "model = 'machine-model'\nreasoning_effort = 'medium'\n"
+        ),
         encoding="utf-8",
     )
     (tmp_path / "issuekit.toml").write_text(
@@ -83,6 +86,7 @@ def test_repo_config_overrides_machine_and_merges_agent_keys(
 
     assert config.issues_dir == "repo/issues"
     assert codex.model == "machine-model"
+    assert codex.reasoning_effort == "medium"
     assert codex.approval_flag == "--full-auto"
 
 
@@ -825,6 +829,7 @@ def test_load_config_reads_agent_guardrail_fields(tmp_path: Path) -> None:
         session_flag="--session-id",
         model_flag="--model",
         model="gpt-5.3-codex-spark",
+        effort_argv=("-c", "model_reasoning_effort={value}"),
         prompt_suffix="Keep diffs small.",
         model_prompts=(("gpt-5.3-codex-spark", "Spark-only guardrail."),),
         mojibake_gate=True,
@@ -858,6 +863,8 @@ def test_load_config_merges_builtin_agent_overrides(tmp_path: Path) -> None:
         output_format=codex_default.output_format,
         model_flag=codex_default.model_flag,
         model=codex_default.model,
+        reasoning_effort=codex_default.reasoning_effort,
+        effort_argv=codex_default.effort_argv,
         prompt_suffix=codex_default.prompt_suffix,
         model_prompts=codex_default.model_prompts,
         mojibake_gate=True,
@@ -865,6 +872,17 @@ def test_load_config_merges_builtin_agent_overrides(tmp_path: Path) -> None:
     )
     assert agents["kimi"] == dict(IssuekitConfig.agents)["kimi"]
     assert agents["claude"] == dict(IssuekitConfig.agents)["claude"]
+
+
+def test_load_config_rejects_reasoning_effort_without_effort_argv(tmp_path: Path) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "[agents.claude]\nreasoning_effort = 'medium'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    with pytest.raises(ValueError, match="reasoning_effort requires"):
+        load_config(tmp_path)
 
 
 def test_load_config_honors_false_builtin_agent_override(tmp_path: Path) -> None:

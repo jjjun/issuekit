@@ -50,6 +50,8 @@ class AgentRunConfig:
     output_format: str | None = None
     model_flag: str | None = None
     model: str | None = None
+    reasoning_effort: str | None = None
+    effort_argv: tuple[str, ...] = ()
     prompt_suffix: str | None = None
     model_prompts: tuple[tuple[str, str], ...] = ()
     mojibake_gate: bool = False
@@ -147,6 +149,7 @@ class IssuekitConfig:
                 headless_argv=("exec",),
                 approval_flag="--dangerously-bypass-approvals-and-sandbox",
                 model_flag="--model",
+                effort_argv=("-c", "model_reasoning_effort={value}"),
                 prompt_suffix=(
                     "Make minimal, additive diffs. Do not reformat, re-quote, "
                     "re-order imports, or rewrite/translate comments on lines "
@@ -559,6 +562,10 @@ def _load_agents(raw: dict[str, object]) -> tuple[tuple[str, AgentRunConfig], ..
             continue
         base = default_by_name.get(name, AgentRunConfig(binary=name))
         configured[name] = replace(base, **_agent_overrides(cfg))
+        if configured[name].reasoning_effort and not configured[name].effort_argv:
+            raise ValueError(
+                f"agents.{name}.reasoning_effort requires agents.{name}.effort_argv."
+            )
         if name not in default_by_name:
             new_agent_names.append(name)
 
@@ -704,6 +711,8 @@ def _agent_overrides(cfg: dict[str, object]) -> dict[str, object]:
         "output_format": optional_str,
         "model_flag": optional_str,
         "model": optional_str,
+        "reasoning_effort": optional_str,
+        "effort_argv": _string_tuple,
         "prompt_suffix": optional_str,
         "model_prompts": _model_prompts,
         "mojibake_gate": _bool_value,

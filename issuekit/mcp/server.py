@@ -479,6 +479,7 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
         agent: str,
         timeout_sec: float = 600.0,
         model: str | None = None,
+        reasoning_effort: str | None = None,
         limit: int = 50,
         ctx: Context | None = None,
     ) -> list[dict[str, Any]]:
@@ -489,6 +490,7 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
             agent=agent,
             timeout=timeout_sec,
             model=model,
+            reasoning_effort=reasoning_effort,
             limit=limit,
             runner_factory=AgentRunner,
         )

@@ -207,7 +207,13 @@ def test_run_proposal_checks_tool_returns_decisions(
     decisions = _call(
         server,
         "run_proposal_checks",
-        {"agent": "codex", "timeout_sec": 12.0, "model": "gpt-5.6", "limit": 3},
+        {
+            "agent": "codex",
+            "timeout_sec": 12.0,
+            "model": "gpt-5.6",
+            "reasoning_effort": "medium",
+            "limit": 3,
+        },
     )
 
     assert decisions == [
@@ -225,6 +231,7 @@ def test_run_proposal_checks_tool_returns_decisions(
     assert seen["agent"] == "codex"
     assert seen["timeout"] == 12.0
     assert seen["model"] == "gpt-5.6"
+    assert seen["reasoning_effort"] == "medium"
     assert seen["limit"] == 3
 
 

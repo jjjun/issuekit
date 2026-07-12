@@ -175,6 +175,11 @@ def test_resolve_adapter_passes_model() -> None:
     assert adapter.model == "k2"
 
 
+def test_resolve_adapter_passes_reasoning_effort() -> None:
+    adapter = resolve_adapter("codex", reasoning_effort="medium")
+    assert adapter.reasoning_effort == "medium"
+
+
 def test_codex_adapter_argv_contains_exec() -> None:
     adapter = ConfigAgentAdapter("codex")
     argv = adapter.build_argv("prompt", Path("/plan.md"))

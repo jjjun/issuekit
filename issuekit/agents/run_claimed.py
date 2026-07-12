@@ -42,6 +42,7 @@ def run_and_submit(
     issues_dir: Path,
     timeout: float,
     model: str | None = None,
+    reasoning_effort: str | None = None,
     follow: bool = False,
     prompt_suffix: str | None = None,
     allow_no_changes: bool = False,
@@ -64,7 +65,12 @@ def run_and_submit(
     if issue_id is None:
         raise ValueError("Claimed issue is missing an id.")
 
-    adapter = resolve_adapter(agent, config=config, model=model)
+    adapter = resolve_adapter(
+        agent,
+        config=config,
+        model=model,
+        reasoning_effort=reasoning_effort,
+    )
     run_dir = cwd / ".agent-runs"
     run_dir.mkdir(exist_ok=True)
     plan_path = run_dir / f"issue-{issue_id}.md"

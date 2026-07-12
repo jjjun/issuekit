@@ -115,6 +115,7 @@ def run_triage_author_cycle(
     *,
     timeout: float = 600.0,
     model: str | None = None,
+    reasoning_effort: str | None = None,
     runner_factory=None,
     log: LogFn | None = None,
     out: TextIO | None = None,
@@ -132,7 +133,12 @@ def run_triage_author_cycle(
     emit = log or (lambda *args, **kwargs: None)
     runner_factory = runner_factory or AgentRunner
 
-    adapter = resolve_adapter(agent, config=config, model=model)
+    adapter = resolve_adapter(
+        agent,
+        config=config,
+        model=model,
+        reasoning_effort=reasoning_effort,
+    )
     state = _load_state(cwd)
     decisions: list[TriageDecision] = []
     evaluated = 0

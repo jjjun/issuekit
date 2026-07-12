@@ -319,6 +319,7 @@ def run_negotiation(
     max_rounds: int = DEFAULT_MAX_ROUNDS,
     timeout: float = 120.0,
     model: str | None = None,
+    reasoning_effort: str | None = None,
     config: IssuekitConfig,
     cwd: Path,
     store: NegotiationStore,
@@ -332,8 +333,18 @@ def run_negotiation(
     seed = _seed_text(issue, config=config, to_project=to_project)
     run_records: list[RoundRun] = []
     adapters = {
-        FRONTEND_SIDE: resolve_adapter(frontend_agent, config=config, model=model),
-        BACKEND_SIDE: resolve_adapter(backend_agent, config=config, model=model),
+        FRONTEND_SIDE: resolve_adapter(
+            frontend_agent,
+            config=config,
+            model=model,
+            reasoning_effort=reasoning_effort,
+        ),
+        BACKEND_SIDE: resolve_adapter(
+            backend_agent,
+            config=config,
+            model=model,
+            reasoning_effort=reasoning_effort,
+        ),
     }
     agents = {
         FRONTEND_SIDE: frontend_agent,
