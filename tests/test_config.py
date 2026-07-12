@@ -105,22 +105,28 @@ def test_machine_config_rejects_worker(tmp_path: Path, monkeypatch) -> None:
         load_config(tmp_path)
 
 
-def test_default_machine_config_path_windows(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.delenv("ISSUEKIT_CONFIG", raising=False)
-    monkeypatch.setenv("APPDATA", str(tmp_path))
-
-    from issuekit.config import resolve_machine_config_path
-
-    assert resolve_machine_config_path(platform="nt") == tmp_path / "issuekit" / "config.toml"
-
-
-def test_default_machine_config_path_posix(tmp_path: Path, monkeypatch) -> None:
+def test_default_machine_config_path_uses_xdg_config_home(
+    tmp_path: Path, monkeypatch
+) -> None:
     monkeypatch.delenv("ISSUEKIT_CONFIG", raising=False)
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
 
     from issuekit.config import resolve_machine_config_path
 
-    assert resolve_machine_config_path(platform="posix") == tmp_path / "issuekit" / "config.toml"
+    assert resolve_machine_config_path() == tmp_path / "issuekit" / "config.toml"
+
+
+def test_default_machine_config_path_defaults_to_home_config_dir(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.delenv("ISSUEKIT_CONFIG", raising=False)
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
+    from issuekit.config import resolve_machine_config_path
+
+    assert resolve_machine_config_path() == tmp_path / ".config" / "issuekit" / "config.toml"
 
 
 def test_load_config_prefers_pyproject_tool_issuekit(tmp_path: Path) -> None:

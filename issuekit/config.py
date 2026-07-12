@@ -379,14 +379,11 @@ def has_local_project_context(cwd: Path | str = ".") -> bool:
     return (config_cwd / "issuekit.toml").is_file()
 
 
-def resolve_machine_config_path(*, platform: str | None = None) -> Path | None:
+def resolve_machine_config_path() -> Path | None:
     configured = os.getenv("ISSUEKIT_CONFIG")
     if configured is not None:
         return Path(configured).expanduser() if configured else None
-    if (platform or os.name) == "nt":
-        config_home = Path(os.getenv("APPDATA", Path.home() / "AppData" / "Roaming"))
-    else:
-        config_home = Path(os.getenv("XDG_CONFIG_HOME", Path.home() / ".config"))
+    config_home = Path(os.getenv("XDG_CONFIG_HOME", Path.home() / ".config"))
     return config_home / "issuekit" / "config.toml"
 
 

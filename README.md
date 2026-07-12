@@ -399,14 +399,16 @@ require_distinct_reviewer = true
 work_branch = "main"
 ```
 
-Machine-wide defaults can be stored in `%APPDATA%\issuekit\config.toml` on
-Windows or `$XDG_CONFIG_HOME/issuekit/config.toml` on POSIX (falling back to
-`~/.config/issuekit/config.toml`). Set `ISSUEKIT_CONFIG` to use an explicit
-file, or set it to an empty string to disable machine config loading. Machine
-config has lower precedence than repository config and cannot define `worker`;
-checkout registration belongs in `issuekit.local.toml`. Agent tables merge by
-key between machine and repository layers, while other values are replaced by
-the higher-precedence layer. Repository identity settings such as `project`,
+Machine-wide defaults can be stored in `~/.config/issuekit/config.toml` on both
+platforms (on Windows, `%USERPROFILE%\.config\issuekit\config.toml`).
+`XDG_CONFIG_HOME` is honored on both platforms. Set `ISSUEKIT_CONFIG` to use an
+explicit file, or set it to an empty string to disable machine config loading.
+Existing Windows users with a config under `%APPDATA%` should move it to
+`%USERPROFILE%\.config\issuekit\` or set `ISSUEKIT_CONFIG`. Machine config has
+lower precedence than repository config and cannot define `worker`; checkout
+registration belongs in `issuekit.local.toml`. Agent tables merge by key between
+machine and repository layers, while other values are replaced by the
+higher-precedence layer. Repository identity settings such as `project`,
 `work_branch`, `issues_dir`, and `profile_*` normally belong in repository
 config.
 
