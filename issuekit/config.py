@@ -125,6 +125,7 @@ class IssuekitConfig:
     router: RouterPolicy = field(default_factory=RouterPolicy)
     disabled_agents: tuple[str, ...] = ()
     machine_config_path: Path | None = None
+    repo_config_source: str = field(default="none", compare=False)
     agents: tuple[tuple[str, AgentRunConfig], ...] = (
         (
             "kimi",
@@ -240,7 +241,7 @@ def load_config(cwd: Path | str = ".") -> IssuekitConfig:
     config_cwd = Path(cwd)
     load_dotenv(config_cwd)
     machine_path = resolve_machine_config_path()
-    raw_config = _load_raw_config(config_cwd, machine_path)
+    raw_config, repo_config_source = _load_raw_config(config_cwd, machine_path)
     api_url = str(
         os.getenv("ISSUEKIT_API_URL", raw_config.get("api_url", IssuekitConfig.api_url))
     ).strip()
@@ -356,6 +357,7 @@ def load_config(cwd: Path | str = ".") -> IssuekitConfig:
         router=router,
         disabled_agents=disabled_agents,
         machine_config_path=machine_path if machine_path is not None and machine_path.is_file() else None,
+        repo_config_source=repo_config_source,
         agents=agents,
     )
 
@@ -388,24 +390,25 @@ def resolve_machine_config_path(*, platform: str | None = None) -> Path | None:
     return config_home / "issuekit" / "config.toml"
 
 
-def _load_raw_config(cwd: Path, machine_path: Path | None) -> dict[str, object]:
+def _load_raw_config(cwd: Path, machine_path: Path | None) -> tuple[dict[str, object], str]:
     raw_config = _load_machine_config(machine_path)
-    pyproject_has_issuekit = False
+    repo_config_source = "none"
     pyproject_path = cwd / "pyproject.toml"
     if pyproject_path.exists():
         data = _load_config_toml(pyproject_path)
         pyproject_config = data.get("tool", {}).get("issuekit")
         if pyproject_config is not None:
-            pyproject_has_issuekit = True
+            repo_config_source = "pyproject [tool.issuekit]"
             # pyproject's [tool.issuekit] wins when present so Python repos keep
             # their existing behavior even if a standalone config also exists.
             raw_config = _merge_config_layers(raw_config, dict(pyproject_config))
 
     issuekit_path = cwd / "issuekit.toml"
-    if not pyproject_has_issuekit and issuekit_path.exists():
+    if repo_config_source == "none" and issuekit_path.exists():
+        repo_config_source = "issuekit.toml"
         raw_config = _merge_config_layers(raw_config, _load_config_toml(issuekit_path))
 
-    return _merge_local_config(cwd, raw_config)
+    return _merge_local_config(cwd, raw_config), repo_config_source
 
 
 def _load_machine_config(path: Path | None) -> dict[str, object]:

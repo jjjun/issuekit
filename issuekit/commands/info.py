@@ -46,6 +46,19 @@ def run(args) -> int:
         "machineConfigPath": (
             str(config.machine_config_path) if config.machine_config_path is not None else None
         ),
+        "repoConfigSource": config.repo_config_source,
+        "agentConfigs": {
+            name: {
+                "binary": run_config.binary,
+                "model": run_config.model,
+                "reasoningEffort": run_config.reasoning_effort,
+                "approvalFlag": run_config.approval_flag,
+                "approvalValue": run_config.approval_value,
+                "headlessArgv": list(run_config.headless_argv),
+                "modelPromptKeys": [model for model, _prompt in run_config.model_prompts],
+            }
+            for name, run_config in config.agents
+        },
         "activeIssues": [
             issue_dict(issue)
             | {
@@ -78,11 +91,31 @@ def run(args) -> int:
     print(f"- Incoming proposals: {len(summary['incomingProposals'])}")
     print(f"- Worker: {summary['worker'] or '-'}")
     print(f"- Machine config: {summary['machineConfigPath'] or '-'}")
+    print(f"- Repository config: {summary['repoConfigSource']}")
     if summary["authorGuard"]:
         guard = summary["authorGuard"]
         print(
             f"- Author guard: STOP_NOW {guard['kind']} {guard.get('ref') or guard.get('id')}"
         )
+
+    print()
+    print("Agent config")
+    for name, agent_config in summary["agentConfigs"].items():
+        approval_value = agent_config["approvalValue"]
+        approval_value_display = (
+            f" approval_value={approval_value}" if approval_value is not None else ""
+        )
+        print(
+            f"- {name}: binary={agent_config['binary']} model={agent_config['model'] or '-'} "
+            f"reasoning_effort={agent_config['reasoningEffort'] or '-'} "
+            f"approval_flag={agent_config['approvalFlag'] or '-'}{approval_value_display}"
+        )
+
+    if summary["disabledAgents"]:
+        print()
+        print("Disabled agents")
+        for name in summary["disabledAgents"]:
+            print(f"- {name}")
 
     if summary["activeIssues"]:
         print()

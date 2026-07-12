@@ -72,6 +72,76 @@ def test_info_json_surfaces_enabled_agents(tmp_path: Path, monkeypatch, capsys) 
     assert payload["disabledAgents"] == ["kimi"]
 
 
+def test_info_surfaces_effective_agent_config_and_sources(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    _configure_api(tmp_path, monkeypatch, _issue_client())
+    machine_path = tmp_path / "machine.toml"
+    machine_path.write_text(
+        "[agents.codex]\nmodel = 'machine-model'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    with (tmp_path / "issuekit.toml").open("a", encoding="utf-8", newline="\n") as handle:
+        handle.write(
+            "disabled_agents = ['kimi']\n[agents.codex]\napproval_flag = '--full-auto'\n"
+        )
+    monkeypatch.setenv("ISSUEKIT_CONFIG", str(machine_path))
+
+    cli.main(["info", "--json"])
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["repoConfigSource"] == "issuekit.toml"
+    assert payload["agentConfigs"] == {
+        "codex": {
+            "binary": "codex",
+            "model": "machine-model",
+            "reasoningEffort": None,
+            "approvalFlag": "--full-auto",
+            "approvalValue": None,
+            "headlessArgv": ["exec"],
+            "modelPromptKeys": [],
+        },
+        "claude": {
+            "binary": "claude",
+            "model": None,
+            "reasoningEffort": None,
+            "approvalFlag": "--permission-mode",
+            "approvalValue": "acceptEdits",
+            "headlessArgv": ["-p"],
+            "modelPromptKeys": [],
+        },
+    }
+
+
+def test_info_text_surfaces_effective_agent_config_and_sources(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    _configure_api(tmp_path, monkeypatch, _issue_client())
+    machine_path = tmp_path / "machine.toml"
+    machine_path.write_text(
+        "[agents.codex]\nmodel = 'machine-model'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    with (tmp_path / "issuekit.toml").open("a", encoding="utf-8", newline="\n") as handle:
+        handle.write(
+            "disabled_agents = ['kimi']\n[agents.codex]\napproval_flag = '--full-auto'\n"
+        )
+    monkeypatch.setenv("ISSUEKIT_CONFIG", str(machine_path))
+
+    cli.main(["info"])
+    text = capsys.readouterr().out
+
+    assert "Repository config: issuekit.toml" in text
+    assert "Agent config\n" in text
+    assert (
+        "codex: binary=codex model=machine-model reasoning_effort=- "
+        "approval_flag=--full-auto" in text
+    )
+    assert "Disabled agents\n- kimi" in text
+
+
 def test_info_json_surfaces_machine_config_path(
     tmp_path: Path, monkeypatch, capsys
 ) -> None:
