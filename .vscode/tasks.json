@@ -4,20 +4,32 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "test/all",
+      "label": "🧪Pytest/all",
       "type": "shell",
-      "command": "uv run pytest",
+      "command": "uv run pytest --override-ini addopts='-q --tb=line -rfE --show-capture=no' -v -ra -W default",
       "group": {
         "kind": "test",
-        "isDefault": true
       },
+      "problemMatcher": [
+        "$python",
+        {
+          "owner": "pytest-warnings",
+          "severity": "warning",
+          "pattern": [
+            {
+              "regexp": "^\\s*((?:[A-Za-z]:\\\\|/).+?):(\\d+):\\s+(.*Warning:.*)$",
+              "file": 1,
+              "line": 2,
+              "message": 3
+            }
+          ]
+        }
+      ],
       "presentation": {
-        "echo": true,
         "reveal": "always",
-        "focus": false,
-        "panel": "shared"
-      },
-      "problemMatcher": []
+        "panel": "shared",
+        "clear": true
+      }
     },
     {
       "label": "issue: info",
