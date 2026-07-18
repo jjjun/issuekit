@@ -21,7 +21,7 @@ from issuekit.commands.approve import approve_issue
 from issuekit.commands.edit import edit_issue
 from issuekit.commands.readdress import readdress_result_dict
 from issuekit.commands.reclaim import reclaim_result_dict
-from issuekit.config import IssuekitConfig, load_config
+from issuekit.config import IssuekitConfig, load_config, resolve_machine_config_path
 from issuekit.core import issue_dict
 from issuekit.gitutil import git_root
 from issuekit.localconfig import LocalConfigError, load_toml, read_local_config
@@ -595,7 +595,11 @@ def _configured_root(root: Path) -> Path | None:
     if _has_config_candidate(root):
         return root
     repository_root = git_root(root)
-    if repository_root is not None and _has_config_candidate(repository_root):
+    # A machine API config is sufficient for an existing repository root, but
+    # does not make an arbitrary MCP process directory a project context.
+    if repository_root is not None and (
+        _has_config_candidate(repository_root) or _machine_config_has_api_url()
+    ):
         return repository_root
     return None
 
@@ -612,6 +616,17 @@ def _has_config_candidate(root: Path) -> bool:
         return True
     tool_config = data.get("tool")
     return isinstance(tool_config, dict) and "issuekit" in tool_config
+
+
+def _machine_config_has_api_url() -> bool:
+    machine_path = resolve_machine_config_path()
+    if machine_path is None or not machine_path.is_file():
+        return False
+    try:
+        data = load_toml(machine_path)
+    except LocalConfigError:
+        return False
+    return bool(str(data.get("api_url", "")).strip())
 
 
 async def _client_roots(ctx: Context | None) -> tuple[Path, ...]:
@@ -646,14 +661,19 @@ def _path_from_file_uri(uri: str) -> Path | None:
 
 
 def _missing_api_url_message(root: Path) -> str:
+    machine_path = resolve_machine_config_path()
+    machine_config = "disabled" if machine_path is None else str(machine_path)
+    machine_exists = machine_path is not None and machine_path.is_file()
     return (
         "API store requires api_url. Set api_url in issuekit.toml/[tool.issuekit] "
         "or ISSUEKIT_API_URL. MCP resolved the repository root to "
         f"{root.resolve()} and searched {root / 'pyproject.toml'} [tool.issuekit], "
-        f"{root / 'issuekit.toml'}, and {root / '.env'}. If the CLI succeeds, it is "
+        f"{root / 'issuekit.toml'}, and {root / '.env'}. Machine config: "
+        f"{machine_config} (exists: {machine_exists}). If the CLI succeeds, it is "
         "probably running from a different working directory or shell environment; "
         "launch issuekit-mcp from the repo root, configure the MCP client workspace "
-        "root, or set ISSUEKIT_API_URL for the MCP server process."
+        "root, or ensure the MCP server process receives the same ISSUEKIT_CONFIG, "
+        "HOME, or XDG_CONFIG_HOME setting as the CLI."
     )
 
 

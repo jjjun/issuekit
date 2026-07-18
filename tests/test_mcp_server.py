@@ -14,6 +14,7 @@ from issuekit import store as store_module
 from issuekit import token_cache as token_cache_module
 from issuekit import worker_registry
 from issuekit.agents.proposal_check import ProposalCheckDecision
+from issuekit.config import load_config
 from issuekit.mcp import server as mcp_server
 from issuekit.mcp.server import create_server
 from issuekit.testing import FakeIssuekitClient
@@ -741,7 +742,36 @@ def test_mcp_lifecycle_missing_api_url_reports_searched_config_paths(tmp_path: P
     assert str(tmp_path / "pyproject.toml") in message
     assert str(tmp_path / "issuekit.toml") in message
     assert str(tmp_path / ".env") in message
+    assert "Machine config:" in message
+    assert "(exists: False)" in message
     assert "If the CLI succeeds" in message
+
+
+def test_mcp_loads_api_config_from_machine_config_at_git_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo_root = tmp_path / "repo"
+    nested_root = repo_root / "nested"
+    machine_path = tmp_path / "config.toml"
+    nested_root.mkdir(parents=True)
+    machine_path.write_text(
+        "api_url = 'https://mine.example'\nproject = 'demo'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setenv("ISSUEKIT_CONFIG", str(machine_path))
+    monkeypatch.setattr(mcp_server, "git_root", lambda root: repo_root)
+
+    assert load_config(nested_root).api_url == "https://mine.example"
+
+    config, config_root = asyncio.run(mcp_server._load_api_config(nested_root))
+
+    assert config.api_url == "https://mine.example"
+    assert config_root == repo_root
+    message = mcp_server._missing_api_url_message(repo_root)
+    assert str(machine_path) in message
+    assert "(exists: True)" in message
 
 
 def test_mcp_lifecycle_tools_reuse_one_process_session(
