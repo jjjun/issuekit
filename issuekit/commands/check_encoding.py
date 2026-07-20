@@ -57,6 +57,11 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         help="Disable CRLF line-ending scanning.",
     )
     check_encoding_parser.add_argument(
+        "--no-stray-cr",
+        action="store_true",
+        help="Disable stray carriage-return scanning in tracked source files.",
+    )
+    check_encoding_parser.add_argument(
         "--fix",
         action="store_true",
         help="Strip leading UTF-8 BOM bytes from tracked source files.",
@@ -101,6 +106,7 @@ def run(args) -> int:
 
     bom_files: list[str] = []
     mojibake_files: list[str] = []
+    stray_cr_files: dict[str, list[int]] = {}
     fixed_files: list[str] = []
     crlf_files = [] if args.no_crlf else list_crlf_files(cwd, paths=crlf_paths)
 
@@ -117,6 +123,10 @@ def run(args) -> int:
                     fixed_files.append(file)
             if not args.no_mojibake and has_mojibake(content.decode("utf-8", errors="ignore")):
                 mojibake_files.append(file)
+            if not args.no_stray_cr:
+                stray_cr_lines = _stray_carriage_return_lines(content)
+                if stray_cr_lines:
+                    stray_cr_files[file] = stray_cr_lines
         except OSError:
             continue
 
@@ -124,20 +134,36 @@ def run(args) -> int:
     payload = {
         "bom_files": remaining_bom_files,
         "mojibake_files": mojibake_files,
+        "stray_cr_files": list(stray_cr_files),
         "crlf_files": crlf_files,
         "fixed": fixed_files,
     }
     if args.json:
         print(json.dumps(payload, indent=2))
 
-    if not remaining_bom_files and not mojibake_files and not crlf_files:
+    if not remaining_bom_files and not mojibake_files and not stray_cr_files and not crlf_files:
         if not args.json:
             for file in fixed_files:
                 print(f"Fixed BOM: {file}")
+            completed_checks = ["UTF-8 BOM"]
+            if not args.no_mojibake:
+                completed_checks.append("likely mojibake")
+            if not args.no_stray_cr:
+                completed_checks.append("stray carriage returns")
+            if not args.no_crlf:
+                completed_checks.append("CRLF")
+            checks_text = _join_checks(completed_checks)
             if fixed_files:
-                print("Encoding check passed after fixing UTF-8 BOM files; no mojibake or CRLF found.")
+                remaining_checks = completed_checks[1:]
+                if remaining_checks:
+                    print(
+                        "Encoding check passed after fixing UTF-8 BOM files; "
+                        f"no {_join_checks(remaining_checks)} found."
+                    )
+                else:
+                    print("Encoding check passed after fixing UTF-8 BOM files.")
             else:
-                print("Encoding check passed: no UTF-8 BOM, likely mojibake, or CRLF in tracked files.")
+                print(f"Encoding check passed: no {checks_text} in tracked files.")
         return 0
 
     if not args.json:
@@ -162,6 +188,18 @@ def run(args) -> int:
             )
             for file in mojibake_files:
                 print(f"  {file}", file=sys.stderr)
+        if stray_cr_files:
+            print(
+                f"Encoding check failed: {len(stray_cr_files)} source file(s) contain stray carriage returns.",
+                file=sys.stderr,
+            )
+            for file, lines in stray_cr_files.items():
+                line_numbers = ", ".join(map(str, lines))
+                print(f"  {file}: line(s) {line_numbers}", file=sys.stderr)
+            print(
+                "\nTip: locate carriage returns with `grep -nU $'\\r' <file>`.",
+                file=sys.stderr,
+            )
         if crlf_files:
             print(
                 f"Encoding check failed: {len(crlf_files)} tracked file(s) have CRLF or mixed line endings.",
@@ -252,3 +290,22 @@ def _has_source_extension(file: str) -> bool:
 
 def _is_issue_file(file: str) -> bool:
     return Path(file).as_posix().startswith("docs/issues/")
+
+
+def _stray_carriage_return_lines(content: bytes) -> list[int]:
+    if b"\r" not in content:
+        return []
+    return [
+        content.count(b"\n", 0, index) + 1
+        for index, byte in enumerate(content)
+        if byte == ord("\r")
+        and (index + 1 == len(content) or content[index + 1] != ord("\n"))
+    ]
+
+
+def _join_checks(checks: list[str]) -> str:
+    if len(checks) == 1:
+        return checks[0]
+    if len(checks) == 2:
+        return " or ".join(checks)
+    return ", ".join(checks[:-1]) + f", or {checks[-1]}"

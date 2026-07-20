@@ -91,6 +91,7 @@ def test_check_encoding_json_shape(tmp_path: Path, monkeypatch, capsys) -> None:
     assert payload == {
         "bom_files": ["bom.py"],
         "mojibake_files": ["bad.md"],
+        "stray_cr_files": [],
         "crlf_files": [],
         "fixed": [],
     }
@@ -178,6 +179,43 @@ def test_check_encoding_no_crlf_toggle_keeps_other_checks(
     assert "crlf.txt" not in captured.err
 
 
+def test_check_encoding_no_stray_cr_toggle_keeps_other_checks(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    init_git_repo(tmp_path)
+    add_tracked(tmp_path, "stray.txt", b"one\rtwo\n")
+    add_tracked(tmp_path, "bom.py", b"\xef\xbb\xbfprint('bad')\n")
+    add_tracked(tmp_path, "bad.md", "\u7e67\n".encode("utf-8"))
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = cli.main(["check-encoding", "--no-stray-cr"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 1
+    assert "bom.py" in captured.err
+    assert "bad.md" in captured.err
+    assert "stray.txt" not in captured.err
+
+
+def test_check_encoding_stray_carriage_return_fails(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    init_git_repo(tmp_path)
+    add_tracked(tmp_path, "stray.txt", b"one\ntwo\rthree\n")
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = cli.main(["check-encoding", "--json"])
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 1
+    assert payload["stray_cr_files"] == ["stray.txt"]
+    assert payload["crlf_files"] == []
+
+
 def test_check_encoding_crlf_path_with_space(tmp_path: Path, monkeypatch, capsys) -> None:
     init_git_repo(tmp_path)
     add_tracked(tmp_path, "bad path.txt", b"one\r\ntwo\r\n")
@@ -234,7 +272,13 @@ def test_check_encoding_fix_json_reports_fixed_files(tmp_path: Path, monkeypatch
     payload = json.loads(capsys.readouterr().out)
 
     assert exit_code == 0
-    assert payload == {"bom_files": [], "mojibake_files": [], "crlf_files": [], "fixed": ["bom.py"]}
+    assert payload == {
+        "bom_files": [],
+        "mojibake_files": [],
+        "stray_cr_files": [],
+        "crlf_files": [],
+        "fixed": ["bom.py"],
+    }
     assert (tmp_path / "bom.py").read_bytes() == b"print('ok')\n"
 
 
