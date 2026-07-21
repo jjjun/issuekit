@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import argparse
+import fnmatch
 import json
 from pathlib import Path
 import subprocess
 import sys
 
+from issuekit.config import load_config
 from issuekit.core import has_encoding_artifacts
 from issuekit.gitutil import run_git
 
@@ -87,25 +89,40 @@ def register(subparsers: argparse._SubParsersAction) -> None:
             "origin/main) instead of only uncommitted working-tree changes."
         ),
     )
+    check_encoding_parser.add_argument(
+        "--exclude",
+        action="append",
+        default=[],
+        metavar="PATTERN",
+        help="Exclude repo-relative paths matching this POSIX glob pattern.",
+    )
     check_encoding_parser.set_defaults(func=run)
 
 
 def run(args) -> int:
     cwd = Path.cwd()
+    exclude_patterns = (*load_config(cwd).check_encoding_exclude, *args.exclude)
     changed = getattr(args, "changed", False)
     if changed:
         changed_files = list_changed_files(cwd, getattr(args, "base", None))
         source_files = [
             file
             for file in changed_files
-            if _has_source_extension(file) and not _is_issue_file(file)
+            if _has_source_extension(file)
+            and not _is_issue_file(file)
+            and not _is_excluded_path(file, exclude_patterns)
         ]
-        crlf_paths: list[str] | None = changed_files
+        crlf_paths: list[str] | None = [
+            file for file in changed_files if not _is_excluded_path(file, exclude_patterns)
+        ]
     else:
+        tracked_files = list_tracked_files(cwd)
         source_files = [
             file
-            for file in list_tracked_files(cwd)
-            if _has_source_extension(file) and not _is_issue_file(file)
+            for file in tracked_files
+            if _has_source_extension(file)
+            and not _is_issue_file(file)
+            and not _is_excluded_path(file, exclude_patterns)
         ]
         crlf_paths = None
 
@@ -113,7 +130,11 @@ def run(args) -> int:
     mojibake_files: list[str] = []
     stray_cr_files: dict[str, list[int]] = {}
     fixed_files: list[str] = []
-    crlf_files = [] if args.no_crlf else list_crlf_files(cwd, paths=crlf_paths)
+    crlf_files = [] if args.no_crlf else [
+        file
+        for file in list_crlf_files(cwd, paths=crlf_paths)
+        if not _is_excluded_path(file, exclude_patterns)
+    ]
 
     for file in source_files:
         path = Path(file)
@@ -294,6 +315,35 @@ def _git_stdout(args: list[str], cwd: Path) -> str:
 def _has_source_extension(file: str) -> bool:
     suffix = Path(file).suffix
     return bool(suffix) and suffix[1:].lower() in SOURCE_EXTENSIONS
+
+
+def _is_excluded_path(file: str, patterns: tuple[str, ...]) -> bool:
+    path = Path(file).as_posix()
+    return any(_matches_path_pattern(path, pattern) for pattern in patterns)
+
+
+def _matches_path_pattern(path: str, pattern: str) -> bool:
+    path_parts = path.split("/")
+    pattern_parts = pattern.replace("\\", "/").split("/")
+    return _matches_path_parts(path_parts, pattern_parts)
+
+
+def _matches_path_parts(path_parts: list[str], pattern_parts: list[str]) -> bool:
+    if not pattern_parts:
+        return not path_parts
+    pattern_part = pattern_parts[0]
+    if pattern_part == "**":
+        return any(
+            _matches_path_parts(path_parts[index:], pattern_parts[1:])
+            for index in range(len(path_parts) + 1)
+        )
+    if not path_parts or not _matches_path_segment(path_parts[0], pattern_part):
+        return False
+    return _matches_path_parts(path_parts[1:], pattern_parts[1:])
+
+
+def _matches_path_segment(segment: str, pattern: str) -> bool:
+    return fnmatch.fnmatchcase(segment, pattern)
 
 
 def _is_issue_file(file: str) -> bool:

@@ -63,6 +63,18 @@ def test_load_config_reads_gate_halfwidth_kana(tmp_path: Path) -> None:
     assert load_config(tmp_path).gate_halfwidth_kana is False
 
 
+def test_load_config_reads_check_encoding_exclude(tmp_path: Path) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "check_encoding_exclude = ['packages/*/src/generated/**']\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    assert load_config(tmp_path).check_encoding_exclude == (
+        "packages/*/src/generated/**",
+    )
+
+
 def test_load_config_reads_machine_config(tmp_path: Path, monkeypatch) -> None:
     machine_path = tmp_path / "machine.toml"
     machine_path.write_text("issues_dir = 'machine/issues'\n", encoding="utf-8")

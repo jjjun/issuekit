@@ -110,6 +110,7 @@ class IssuekitConfig:
     require_distinct_reviewer: bool = False
     work_branch: str = ""
     gate_halfwidth_kana: bool = True
+    check_encoding_exclude: tuple[str, ...] = ()
     claim_sync: bool = True
     claim_sync_interval_sec: float = 60.0
     worker: WorkerIdentity | None = None
@@ -339,6 +340,11 @@ def load_config(cwd: Path | str = ".") -> IssuekitConfig:
         work_branch=work_branch,
         gate_halfwidth_kana=_bool_value(
             raw_config.get("gate_halfwidth_kana", IssuekitConfig.gate_halfwidth_kana)
+        ),
+        check_encoding_exclude=_string_tuple(
+            raw_config.get(
+                "check_encoding_exclude", IssuekitConfig.check_encoding_exclude
+            )
         ),
         claim_sync=_bool_value(raw_config.get("claim_sync", IssuekitConfig.claim_sync)),
         claim_sync_interval_sec=claim_sync_interval_sec,

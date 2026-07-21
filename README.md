@@ -384,6 +384,7 @@ default_reviewer = "auto"
 require_distinct_reviewer = true
 work_branch = "main"
 gate_halfwidth_kana = true
+check_encoding_exclude = ["packages/*/src/generated/**"]
 ```
 
 Non-Python repositories can use a standalone `issuekit.toml` at the repo root
@@ -399,6 +400,7 @@ default_reviewer = "auto"
 require_distinct_reviewer = true
 work_branch = "main"
 gate_halfwidth_kana = true
+check_encoding_exclude = ["packages/*/src/generated/**"]
 ```
 
 Machine-wide defaults can be stored in `~/.config/issuekit/config.toml` on both
@@ -450,6 +452,12 @@ The agent submit mojibake gate checks half-width katakana by default, matching
 `issuekit check-encoding`. Set `gate_halfwidth_kana = false` only when touched
 generated files legitimately contain half-width katakana; other encoding-artifact
 checks remain enabled.
+
+Set `check_encoding_exclude` to a list of POSIX-style, repo-relative glob
+patterns for generated paths that `issuekit check-encoding` should skip. The
+exclusions apply to BOM, mojibake, stray carriage-return, and CRLF checks. Use
+repeatable `--exclude PATTERN` flags for one-off exclusions. Legacy
+`docs/issues/` files remain excluded from source text checks as before.
 
 At startup, issuekit also reads a repo-local `.env` file from the current repo
 root and loads values such as `ISSUEKIT_API_URL`, `ISSUEKIT_API_USER`,

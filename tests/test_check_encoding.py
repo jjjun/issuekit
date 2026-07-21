@@ -3,6 +3,7 @@ from pathlib import Path
 import subprocess
 
 from issuekit import cli
+from issuekit.commands import check_encoding
 
 
 def init_git_repo(path: Path) -> None:
@@ -48,6 +49,23 @@ def test_check_encoding_clean_tree_passes(tmp_path: Path, monkeypatch, capsys) -
     assert "Encoding check passed" in capsys.readouterr().out
 
 
+def test_check_encoding_full_scan_uses_no_crlf_pathspec(tmp_path: Path, monkeypatch) -> None:
+    init_git_repo(tmp_path)
+    add_tracked(tmp_path, "clean.py", b"print('ok')\n")
+    crlf_paths: list[list[str] | None] = []
+    original_list_crlf_files = check_encoding.list_crlf_files
+
+    def record_crlf_paths(cwd: Path, paths: list[str] | None = None) -> list[str]:
+        crlf_paths.append(paths)
+        return original_list_crlf_files(cwd, paths)
+
+    monkeypatch.setattr(check_encoding, "list_crlf_files", record_crlf_paths)
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["check-encoding"]) == 0
+    assert crlf_paths == [None]
+
+
 def test_check_encoding_bom_fails(tmp_path: Path, monkeypatch, capsys) -> None:
     init_git_repo(tmp_path)
     add_tracked(tmp_path, "bom.py", b"\xef\xbb\xbfprint('bad')\n")
@@ -68,6 +86,39 @@ def test_check_encoding_mojibake_fails(tmp_path: Path, monkeypatch, capsys) -> N
 
     assert exit_code == 1
     assert "bad.md" in capsys.readouterr().err
+
+
+def test_check_encoding_excludes_configured_generated_paths(tmp_path: Path, monkeypatch) -> None:
+    init_git_repo(tmp_path)
+    add_tracked(tmp_path, "generated/openapi.ts", b"\xef\xbb\xbf\xef\xbd\xb1\r\n")
+    (tmp_path / "issuekit.toml").write_text(
+        "check_encoding_exclude = ['generated/**']\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["check-encoding"]) == 0
+
+
+def test_check_encoding_exclude_keeps_other_paths_checked(tmp_path: Path, monkeypatch, capsys) -> None:
+    init_git_repo(tmp_path)
+    add_tracked(tmp_path, "generated/openapi.ts", "\uff71\n".encode("utf-8"))
+    add_tracked(tmp_path, "source/bad.md", "\uff71\n".encode("utf-8"))
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = cli.main(["check-encoding", "--exclude", "generated/**"])
+
+    assert exit_code == 1
+    assert "source/bad.md" in capsys.readouterr().err
+
+
+def test_check_encoding_default_does_not_exclude_generated_paths(tmp_path: Path, monkeypatch) -> None:
+    init_git_repo(tmp_path)
+    add_tracked(tmp_path, "generated/openapi.ts", "\uff71\n".encode("utf-8"))
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["check-encoding"]) == 1
 
 
 def test_check_encoding_ignores_non_source_extensions(tmp_path: Path, monkeypatch) -> None:
