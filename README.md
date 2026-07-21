@@ -217,7 +217,7 @@ copying the steps.
 | `issuekit orphans [--stale-after-sec <n>] [--json]` | List implementing issues whose claiming worker is gone or has stopped heartbeating. |
 | `issuekit reclaim <id> [--force] [--reason "..."] [--json]` | Return an orphaned or stale implementing claim to the implement pool. |
 | `issuekit readdress <id> [--reason "..."] [--json]` | Return a directed issue to the repo pool. |
-| `issuekit check-encoding [--json]` | Check tracked source files for leading BOM bytes and likely mojibake. |
+| `issuekit check-encoding [--json] [--fail-on-unconfirmed]` | Check tracked source files for leading BOM bytes and likely mojibake. |
 | `issuekit protocol [--agent codex\|claude]` | Print the canonical handoff protocol. |
 | `issuekit init [--with-mcp]` | Install tracker templates, encoding hooks, and optional MCP handoff scaffolding. |
 | `issuekit setup [--force] [--json]` | Run per-repo MCP handoff scaffolding and setup diagnostics. |
@@ -456,7 +456,11 @@ checks remain enabled.
 For likely mojibake, `check-encoding` has three outcomes: confirmed candidates
 are reported, unconfirmed candidates are suppressed but available through
 `--show-unconfirmed-mojibake` and `unconfirmed_mojibake_hits`, and other text is
-not a candidate. Unconfirmed means inconclusive, not proven legitimate.
+not a candidate. Unconfirmed means inconclusive, not proven legitimate. CI can
+use `--fail-on-unconfirmed` to report and fail on unconfirmed candidates, but it
+also fails on legitimate Japanese that is indistinguishable from lossy
+corruption. Use it only with `check_encoding_exclude` entries for trees that
+legitimately contain such text, or when the project has none.
 
 Set `check_encoding_exclude` to a list of POSIX-style, repo-relative glob
 patterns for generated paths that `issuekit check-encoding` should skip. The

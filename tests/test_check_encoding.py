@@ -162,6 +162,44 @@ def test_check_encoding_audits_unconfirmed_mojibake_candidates(
     assert "Encoding check failed" not in captured.err
 
 
+def test_check_encoding_fails_on_unconfirmed_mojibake_candidates(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    init_git_repo(tmp_path)
+    add_tracked(tmp_path, "clean.md", "\u87f2\u5e2b\n".encode("utf-8"))
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["check-encoding"]) == 0
+    assert cli.main(["check-encoding", "--fail-on-unconfirmed"]) == 1
+    captured = capsys.readouterr()
+    assert "Encoding audit" in captured.err
+    assert "clean.md:1:1: U+87F2" in captured.err
+
+
+def test_check_encoding_clean_tree_passes_with_fail_on_unconfirmed(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    init_git_repo(tmp_path)
+    add_tracked(tmp_path, "clean.py", b"print('ok')\n")
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["check-encoding", "--fail-on-unconfirmed"]) == 0
+
+
+def test_check_encoding_confirmed_mojibake_fails_with_fail_on_unconfirmed(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    init_git_repo(tmp_path)
+    add_tracked(tmp_path, "bad.md", f"{MOJIBAKE}\n".encode("utf-8"))
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["check-encoding", "--fail-on-unconfirmed"]) == 1
+
+
 def test_check_encoding_confirms_single_kanji_recovery_with_c1_control(
     tmp_path: Path,
     monkeypatch,

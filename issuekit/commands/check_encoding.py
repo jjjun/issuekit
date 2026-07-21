@@ -64,6 +64,14 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         help="Report likely mojibake candidates that fail CP932 reverse confirmation.",
     )
     check_encoding_parser.add_argument(
+        "--fail-on-unconfirmed",
+        action="store_true",
+        help=(
+            "Fail on unconfirmed mojibake candidates and report their locations. "
+            "Legitimate Japanese can also match; exclude paths containing it."
+        ),
+    )
+    check_encoding_parser.add_argument(
         "--no-crlf",
         action="store_true",
         help="Disable CRLF line-ending scanning.",
@@ -168,7 +176,7 @@ def run(args) -> int:
                 if confirmed_hits:
                     mojibake_files.append(file)
                     mojibake_hits.extend(confirmed_hits)
-                if args.show_unconfirmed_mojibake:
+                if args.show_unconfirmed_mojibake or args.fail_on_unconfirmed:
                     unconfirmed_mojibake_hits.extend(unconfirmed_hits)
             if not args.no_stray_cr:
                 stray_cr_lines = _stray_carriage_return_lines(content)
@@ -190,7 +198,13 @@ def run(args) -> int:
     if args.json:
         print(json.dumps(payload, indent=2))
 
-    if not remaining_bom_files and not mojibake_files and not stray_cr_files and not crlf_files:
+    if (
+        not remaining_bom_files
+        and not mojibake_files
+        and (not args.fail_on_unconfirmed or not unconfirmed_mojibake_hits)
+        and not stray_cr_files
+        and not crlf_files
+    ):
         if not args.json:
             for file in fixed_files:
                 print(f"Fixed BOM: {file}")
