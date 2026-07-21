@@ -149,10 +149,30 @@ def has_mojibake(text: str) -> bool:
     return bool(MOJIBAKE_PATTERN.search(text))
 
 
+def find_encoding_artifacts(
+    text: str, *, include_halfwidth_katakana: bool = True
+) -> list[tuple[int, str]]:
+    patterns = [
+        ENCODING_ARTIFACT_PATTERN,
+        CP932_DOUBLE_ENCODING_LEAD_CHARACTER_PATTERN,
+    ]
+    if include_halfwidth_katakana:
+        patterns.append(HALFWIDTH_KATAKANA_PATTERN)
+    matches = {
+        match.start(): match.group()
+        for pattern in patterns
+        for match in pattern.finditer(text)
+    }
+    return sorted(matches.items())
+
+
 def has_encoding_artifacts(text: str, *, include_halfwidth_katakana: bool = True) -> bool:
-    if ENCODING_ARTIFACT_PATTERN.search(text) or CP932_DOUBLE_ENCODING_LEAD_CHARACTER_PATTERN.search(text):
-        return True
-    return include_halfwidth_katakana and bool(HALFWIDTH_KATAKANA_PATTERN.search(text))
+    return bool(
+        find_encoding_artifacts(
+            text,
+            include_halfwidth_katakana=include_halfwidth_katakana,
+        )
+    )
 
 
 def has_non_ascii(text: str) -> bool:

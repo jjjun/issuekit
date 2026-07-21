@@ -79,13 +79,16 @@ def test_check_encoding_bom_fails(tmp_path: Path, monkeypatch, capsys) -> None:
 
 def test_check_encoding_mojibake_fails(tmp_path: Path, monkeypatch, capsys) -> None:
     init_git_repo(tmp_path)
-    add_tracked(tmp_path, "bad.md", "\u7e67\n".encode("utf-8"))
+    add_tracked(tmp_path, "bad.md", "first\nprefix \u7e67 suffix\n".encode("utf-8"))
     monkeypatch.chdir(tmp_path)
 
     exit_code = cli.main(["check-encoding"])
+    captured = capsys.readouterr()
 
     assert exit_code == 1
-    assert "bad.md" in capsys.readouterr().err
+    assert "bad.md:2:8: U+7E67" in captured.err
+    assert "[U+7E67]" in captured.err
+    assert "\u7e67" not in captured.err
 
 
 def test_check_encoding_excludes_configured_generated_paths(tmp_path: Path, monkeypatch) -> None:
@@ -142,6 +145,15 @@ def test_check_encoding_json_shape(tmp_path: Path, monkeypatch, capsys) -> None:
     assert payload == {
         "bom_files": ["bom.py"],
         "mojibake_files": ["bad.md"],
+        "mojibake_hits": [
+            {
+                "file": "bad.md",
+                "line": 1,
+                "column": 1,
+                "code_point": "U+7E67",
+                "context": "... [U+7E67] U+000A ...",
+            }
+        ],
         "stray_cr_files": [],
         "crlf_files": [],
         "fixed": [],
@@ -346,6 +358,7 @@ def test_check_encoding_fix_json_reports_fixed_files(tmp_path: Path, monkeypatch
     assert payload == {
         "bom_files": [],
         "mojibake_files": [],
+        "mojibake_hits": [],
         "stray_cr_files": [],
         "crlf_files": [],
         "fixed": ["bom.py"],

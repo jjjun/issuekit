@@ -10,7 +10,7 @@ import subprocess
 import sys
 
 from issuekit.config import load_config
-from issuekit.core import has_encoding_artifacts
+from issuekit.core import find_encoding_artifacts
 from issuekit.gitutil import run_git
 
 
@@ -128,6 +128,7 @@ def run(args) -> int:
 
     bom_files: list[str] = []
     mojibake_files: list[str] = []
+    mojibake_hits: list[dict[str, int | str]] = []
     stray_cr_files: dict[str, list[int]] = {}
     fixed_files: list[str] = []
     crlf_files = [] if args.no_crlf else [
@@ -147,11 +148,15 @@ def run(args) -> int:
                     path.write_bytes(content[len(BOM) :])
                     content = content[len(BOM) :]
                     fixed_files.append(file)
-            if not args.no_mojibake and has_encoding_artifacts(
-                content.decode("utf-8", errors="ignore"),
-                include_halfwidth_katakana=not args.no_halfwidth_kana,
-            ):
-                mojibake_files.append(file)
+            if not args.no_mojibake:
+                text = content.decode("utf-8", errors="ignore")
+                artifacts = find_encoding_artifacts(
+                    text,
+                    include_halfwidth_katakana=not args.no_halfwidth_kana,
+                )
+                if artifacts:
+                    mojibake_files.append(file)
+                    mojibake_hits.extend(_mojibake_hits(file, text, artifacts))
             if not args.no_stray_cr:
                 stray_cr_lines = _stray_carriage_return_lines(content)
                 if stray_cr_lines:
@@ -163,6 +168,7 @@ def run(args) -> int:
     payload = {
         "bom_files": remaining_bom_files,
         "mojibake_files": mojibake_files,
+        "mojibake_hits": mojibake_hits,
         "stray_cr_files": list(stray_cr_files),
         "crlf_files": crlf_files,
         "fixed": fixed_files,
@@ -215,8 +221,16 @@ def run(args) -> int:
                 f"Encoding check failed: {len(mojibake_files)} file(s) contain likely mojibake.",
                 file=sys.stderr,
             )
-            for file in mojibake_files:
-                print(f"  {file}", file=sys.stderr)
+            for hit in mojibake_hits:
+                print(
+                    f"  {hit['file']}:{hit['line']}:{hit['column']}: {hit['code_point']}",
+                    file=sys.stderr,
+                )
+                print(f"    {hit['context']}", file=sys.stderr)
+            print(
+                "\nTip: use the reported location and code-point context to replace mojibake with the intended UTF-8 text.",
+                file=sys.stderr,
+            )
         if stray_cr_files:
             print(
                 f"Encoding check failed: {len(stray_cr_files)} source file(s) contain stray carriage returns.",
@@ -359,6 +373,46 @@ def _stray_carriage_return_lines(content: bytes) -> list[int]:
         if byte == ord("\r")
         and (index + 1 == len(content) or content[index + 1] != ord("\n"))
     ]
+
+
+def _mojibake_hits(
+    file: str,
+    text: str,
+    artifacts: list[tuple[int, str]],
+) -> list[dict[str, int | str]]:
+    hits: list[dict[str, int | str]] = []
+    for index, character in artifacts:
+        line = text.count("\n", 0, index) + 1
+        column = index - text.rfind("\n", 0, index)
+        context = _code_point_context(text, index, character)
+        hits.append(
+            {
+                "file": file,
+                "line": line,
+                "column": column,
+                "code_point": _code_point(character),
+                "context": context,
+            }
+        )
+    return hits
+
+
+def _code_point_context(text: str, index: int, character: str) -> str:
+    before = text[max(0, index - 5) : index]
+    after = text[index + 1 : index + 6]
+    return " ".join(
+        [
+            "...",
+            *(_code_point(value) for value in before),
+            f"[{_code_point(character)}]",
+            *(_code_point(value) for value in after),
+            "...",
+        ]
+    )
+
+
+def _code_point(character: str) -> str:
+    return f"U+{ord(character):04X}"
 
 
 def _join_checks(checks: list[str]) -> str:
