@@ -6,6 +6,9 @@ from issuekit import cli
 from issuekit.commands import check_encoding
 
 
+MOJIBAKE = "\u7e67\uff62\u7e5d\u4e5d\u0393"
+
+
 def init_git_repo(path: Path) -> None:
     subprocess.run(["git", "init"], cwd=path, check=True, stdout=subprocess.DEVNULL)
     subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=path, check=True)
@@ -79,7 +82,7 @@ def test_check_encoding_bom_fails(tmp_path: Path, monkeypatch, capsys) -> None:
 
 def test_check_encoding_mojibake_fails(tmp_path: Path, monkeypatch, capsys) -> None:
     init_git_repo(tmp_path)
-    add_tracked(tmp_path, "bad.md", "first\nprefix \u7e67 suffix\n".encode("utf-8"))
+    add_tracked(tmp_path, "bad.md", f"first\nprefix {MOJIBAKE} suffix\n".encode("utf-8"))
     monkeypatch.chdir(tmp_path)
 
     exit_code = cli.main(["check-encoding"])
@@ -89,6 +92,47 @@ def test_check_encoding_mojibake_fails(tmp_path: Path, monkeypatch, capsys) -> N
     assert "bad.md:2:8: U+7E67" in captured.err
     assert "[U+7E67]" in captured.err
     assert "\u7e67" not in captured.err
+    assert "recovers to U+30A2 U+30CB U+30E1" in captured.err
+
+
+def test_check_encoding_drops_unconfirmed_legitimate_japanese(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    init_git_repo(tmp_path)
+    add_tracked(tmp_path, "clean.md", "\u95be\u5024\n\uff71\uff86\uff92\n".encode("utf-8"))
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["check-encoding"]) == 0
+
+
+def test_check_encoding_audits_unconfirmed_mojibake_candidates(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    init_git_repo(tmp_path)
+    add_tracked(tmp_path, "clean.md", "\u87f2\u5e2b\n".encode("utf-8"))
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["check-encoding", "--show-unconfirmed-mojibake"]) == 0
+    captured = capsys.readouterr()
+    assert "Encoding audit" in captured.err
+    assert "U+87F2" in captured.err
+    assert "Encoding check failed" not in captured.err
+
+
+def test_check_encoding_confirms_single_kanji_recovery_with_c1_control(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    init_git_repo(tmp_path)
+    add_tracked(tmp_path, "bad.md", "\u87bb\u0080\n".encode("utf-8"))
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["check-encoding"]) == 1
+    assert "recovers to U+5C40" in capsys.readouterr().err
 
 
 def test_check_encoding_excludes_configured_generated_paths(tmp_path: Path, monkeypatch) -> None:
@@ -106,8 +150,8 @@ def test_check_encoding_excludes_configured_generated_paths(tmp_path: Path, monk
 
 def test_check_encoding_exclude_keeps_other_paths_checked(tmp_path: Path, monkeypatch, capsys) -> None:
     init_git_repo(tmp_path)
-    add_tracked(tmp_path, "generated/openapi.ts", "\uff71\n".encode("utf-8"))
-    add_tracked(tmp_path, "source/bad.md", "\uff71\n".encode("utf-8"))
+    add_tracked(tmp_path, "generated/openapi.ts", f"{MOJIBAKE}\n".encode("utf-8"))
+    add_tracked(tmp_path, "source/bad.md", f"{MOJIBAKE}\n".encode("utf-8"))
     monkeypatch.chdir(tmp_path)
 
     exit_code = cli.main(["check-encoding", "--exclude", "generated/**"])
@@ -118,7 +162,7 @@ def test_check_encoding_exclude_keeps_other_paths_checked(tmp_path: Path, monkey
 
 def test_check_encoding_default_does_not_exclude_generated_paths(tmp_path: Path, monkeypatch) -> None:
     init_git_repo(tmp_path)
-    add_tracked(tmp_path, "generated/openapi.ts", "\uff71\n".encode("utf-8"))
+    add_tracked(tmp_path, "generated/openapi.ts", f"{MOJIBAKE}\n".encode("utf-8"))
     monkeypatch.chdir(tmp_path)
 
     assert cli.main(["check-encoding"]) == 1
@@ -135,7 +179,7 @@ def test_check_encoding_ignores_non_source_extensions(tmp_path: Path, monkeypatc
 def test_check_encoding_json_shape(tmp_path: Path, monkeypatch, capsys) -> None:
     init_git_repo(tmp_path)
     add_tracked(tmp_path, "bom.py", b"\xef\xbb\xbfprint('bad')\n")
-    add_tracked(tmp_path, "bad.md", "\u7e67\n".encode("utf-8"))
+    add_tracked(tmp_path, "bad.md", f"{MOJIBAKE}\n".encode("utf-8"))
     monkeypatch.chdir(tmp_path)
 
     exit_code = cli.main(["check-encoding", "--json"])
@@ -151,9 +195,11 @@ def test_check_encoding_json_shape(tmp_path: Path, monkeypatch, capsys) -> None:
                 "line": 1,
                 "column": 1,
                 "code_point": "U+7E67",
-                "context": "... [U+7E67] U+000A ...",
+                "context": "... [U+7E67] U+FF62 U+7E5D U+4E5D U+0393 U+000A ...",
+                "recovered": "U+30A2 U+30CB U+30E1",
             }
         ],
+        "unconfirmed_mojibake_hits": [],
         "stray_cr_files": [],
         "crlf_files": [],
         "fixed": [],
@@ -162,18 +208,18 @@ def test_check_encoding_json_shape(tmp_path: Path, monkeypatch, capsys) -> None:
 
 def test_check_encoding_no_mojibake_toggle(tmp_path: Path, monkeypatch) -> None:
     init_git_repo(tmp_path)
-    add_tracked(tmp_path, "bad.md", "\u7e67\n".encode("utf-8"))
+    add_tracked(tmp_path, "bad.md", f"{MOJIBAKE}\n".encode("utf-8"))
     monkeypatch.chdir(tmp_path)
 
     assert cli.main(["check-encoding", "--no-mojibake"]) == 0
 
 
-def test_check_encoding_halfwidth_katakana_fails_by_default(tmp_path: Path, monkeypatch) -> None:
+def test_check_encoding_allows_legitimate_halfwidth_katakana(tmp_path: Path, monkeypatch) -> None:
     init_git_repo(tmp_path)
     add_tracked(tmp_path, "bad.md", "\uff71\n".encode("utf-8"))
     monkeypatch.chdir(tmp_path)
 
-    assert cli.main(["check-encoding"]) == 1
+    assert cli.main(["check-encoding"]) == 0
     assert cli.main(["check-encoding", "--no-halfwidth-kana"]) == 0
 
 
@@ -182,7 +228,7 @@ def test_check_encoding_additional_encoding_artifacts_fail(
     monkeypatch,
 ) -> None:
     init_git_repo(tmp_path)
-    add_tracked(tmp_path, "bad.md", "\u8700\ue000\n".encode("utf-8"))
+    add_tracked(tmp_path, "bad.md", f"{MOJIBAKE}\n".encode("utf-8"))
     monkeypatch.chdir(tmp_path)
 
     assert cli.main(["check-encoding"]) == 1
@@ -250,7 +296,7 @@ def test_check_encoding_no_crlf_toggle_keeps_other_checks(
     init_git_repo(tmp_path)
     add_tracked(tmp_path, "crlf.txt", b"one\r\ntwo\r\n")
     add_tracked(tmp_path, "bom.py", b"\xef\xbb\xbfprint('bad')\n")
-    add_tracked(tmp_path, "bad.md", "\u7e67\n".encode("utf-8"))
+    add_tracked(tmp_path, "bad.md", f"{MOJIBAKE}\n".encode("utf-8"))
     monkeypatch.chdir(tmp_path)
 
     exit_code = cli.main(["check-encoding", "--no-crlf"])
@@ -270,7 +316,7 @@ def test_check_encoding_no_stray_cr_toggle_keeps_other_checks(
     init_git_repo(tmp_path)
     add_tracked(tmp_path, "stray.txt", b"one\rtwo\n")
     add_tracked(tmp_path, "bom.py", b"\xef\xbb\xbfprint('bad')\n")
-    add_tracked(tmp_path, "bad.md", "\u7e67\n".encode("utf-8"))
+    add_tracked(tmp_path, "bad.md", f"{MOJIBAKE}\n".encode("utf-8"))
     monkeypatch.chdir(tmp_path)
 
     exit_code = cli.main(["check-encoding", "--no-stray-cr"])
@@ -335,7 +381,7 @@ def test_check_encoding_fix_does_not_modify_mojibake_files(
     capsys,
 ) -> None:
     init_git_repo(tmp_path)
-    original = "\u7e67\r\n".encode("utf-8")
+    original = f"{MOJIBAKE}\r\n".encode("utf-8")
     add_tracked(tmp_path, "bad.md", original)
     monkeypatch.chdir(tmp_path)
 
@@ -359,6 +405,7 @@ def test_check_encoding_fix_json_reports_fixed_files(tmp_path: Path, monkeypatch
         "bom_files": [],
         "mojibake_files": [],
         "mojibake_hits": [],
+        "unconfirmed_mojibake_hits": [],
         "stray_cr_files": [],
         "crlf_files": [],
         "fixed": ["bom.py"],
@@ -420,7 +467,7 @@ def test_check_encoding_changed_base_diffs_against_ref(
     init_git_repo(tmp_path)
     add_tracked(tmp_path, "clean.py", b"print('ok')\n")
     base = commit_all(tmp_path)
-    add_tracked(tmp_path, "bad.md", "\u7e67\n".encode("utf-8"))
+    add_tracked(tmp_path, "bad.md", f"{MOJIBAKE}\n".encode("utf-8"))
     commit_all(tmp_path)
     monkeypatch.chdir(tmp_path)
 
@@ -438,7 +485,7 @@ def test_check_encoding_fix_exits_nonzero_when_mojibake_remains(
 ) -> None:
     init_git_repo(tmp_path)
     add_tracked(tmp_path, "bom.py", b"\xef\xbb\xbfprint('ok')\n")
-    add_tracked(tmp_path, "bad.md", "\u7e67\n".encode("utf-8"))
+    add_tracked(tmp_path, "bad.md", f"{MOJIBAKE}\n".encode("utf-8"))
     monkeypatch.chdir(tmp_path)
 
     assert cli.main(["check-encoding", "--fix"]) == 1

@@ -59,6 +59,11 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         help="Allow half-width katakana in likely mojibake text scanning.",
     )
     check_encoding_parser.add_argument(
+        "--show-unconfirmed-mojibake",
+        action="store_true",
+        help="Report likely mojibake candidates that fail CP932 reverse confirmation.",
+    )
+    check_encoding_parser.add_argument(
         "--no-crlf",
         action="store_true",
         help="Disable CRLF line-ending scanning.",
@@ -129,6 +134,7 @@ def run(args) -> int:
     bom_files: list[str] = []
     mojibake_files: list[str] = []
     mojibake_hits: list[dict[str, int | str]] = []
+    unconfirmed_mojibake_hits: list[dict[str, int | str]] = []
     stray_cr_files: dict[str, list[int]] = {}
     fixed_files: list[str] = []
     crlf_files = [] if args.no_crlf else [
@@ -154,9 +160,16 @@ def run(args) -> int:
                     text,
                     include_halfwidth_katakana=not args.no_halfwidth_kana,
                 )
-                if artifacts:
+                confirmed_hits, unconfirmed_hits = _confirmed_mojibake_hits(
+                    file,
+                    text,
+                    artifacts,
+                )
+                if confirmed_hits:
                     mojibake_files.append(file)
-                    mojibake_hits.extend(_mojibake_hits(file, text, artifacts))
+                    mojibake_hits.extend(confirmed_hits)
+                if args.show_unconfirmed_mojibake:
+                    unconfirmed_mojibake_hits.extend(unconfirmed_hits)
             if not args.no_stray_cr:
                 stray_cr_lines = _stray_carriage_return_lines(content)
                 if stray_cr_lines:
@@ -169,6 +182,7 @@ def run(args) -> int:
         "bom_files": remaining_bom_files,
         "mojibake_files": mojibake_files,
         "mojibake_hits": mojibake_hits,
+        "unconfirmed_mojibake_hits": unconfirmed_mojibake_hits,
         "stray_cr_files": list(stray_cr_files),
         "crlf_files": crlf_files,
         "fixed": fixed_files,
@@ -199,6 +213,7 @@ def run(args) -> int:
                     print("Encoding check passed after fixing UTF-8 BOM files.")
             else:
                 print(f"Encoding check passed: no {checks_text} in tracked files.")
+            _print_unconfirmed_mojibake_hits(unconfirmed_mojibake_hits)
         return 0
 
     if not args.json:
@@ -227,6 +242,7 @@ def run(args) -> int:
                     file=sys.stderr,
                 )
                 print(f"    {hit['context']}", file=sys.stderr)
+                print(f"    recovers to {hit['recovered']}", file=sys.stderr)
             print(
                 "\nTip: use the reported location and code-point context to replace mojibake with the intended UTF-8 text.",
                 file=sys.stderr,
@@ -254,6 +270,7 @@ def run(args) -> int:
                 "\nTip: normalize tracked line endings with `git add --renormalize .`.",
                 file=sys.stderr,
             )
+        _print_unconfirmed_mojibake_hits(unconfirmed_mojibake_hits)
     return 1
 
 
@@ -375,26 +392,101 @@ def _stray_carriage_return_lines(content: bytes) -> list[int]:
     ]
 
 
-def _mojibake_hits(
+def _confirmed_mojibake_hits(
     file: str,
     text: str,
     artifacts: list[tuple[int, str]],
-) -> list[dict[str, int | str]]:
-    hits: list[dict[str, int | str]] = []
+) -> tuple[list[dict[str, int | str]], list[dict[str, int | str]]]:
+    confirmed_hits: list[dict[str, int | str]] = []
+    unconfirmed_hits: list[dict[str, int | str]] = []
+    checked_windows: set[tuple[int, int]] = set()
     for index, character in artifacts:
-        line = text.count("\n", 0, index) + 1
-        column = index - text.rfind("\n", 0, index)
-        context = _code_point_context(text, index, character)
-        hits.append(
-            {
-                "file": file,
-                "line": line,
-                "column": column,
-                "code_point": _code_point(character),
-                "context": context,
-            }
+        start, end = _non_ascii_window(text, index)
+        if (start, end) in checked_windows:
+            continue
+        checked_windows.add((start, end))
+        window = text[start:end]
+        recovered = _reverse_cp932(window)
+        hit = _mojibake_hit(file, text, index, character)
+        if recovered is not None and (
+            _contains_c1_control_or_private_use_character(window)
+            or _is_plausible_recovery(recovered)
+        ):
+            hit["recovered"] = _code_point_text(recovered)
+            confirmed_hits.append(hit)
+        else:
+            unconfirmed_hits.append(hit)
+    return confirmed_hits, unconfirmed_hits
+
+
+def _mojibake_hit(
+    file: str,
+    text: str,
+    index: int,
+    character: str,
+) -> dict[str, int | str]:
+    line = text.count("\n", 0, index) + 1
+    column = index - text.rfind("\n", 0, index)
+    context = _code_point_context(text, index, character)
+    return {
+        "file": file,
+        "line": line,
+        "column": column,
+        "code_point": _code_point(character),
+        "context": context,
+    }
+
+
+def _non_ascii_window(text: str, index: int) -> tuple[int, int]:
+    start = index
+    while start > 0 and text[start - 1] != "\n" and ord(text[start - 1]) > 0x7F:
+        start -= 1
+    end = index + 1
+    while end < len(text) and text[end] != "\n" and ord(text[end]) > 0x7F:
+        end += 1
+    return start, end
+
+
+def _reverse_cp932(text: str) -> str | None:
+    try:
+        return text.encode("cp932").decode("utf-8")
+    except UnicodeError:
+        return None
+
+
+def _is_plausible_recovery(text: str) -> bool:
+    return not any(
+        character.isascii() and character.isalnum() for character in text
+    )
+
+
+def _contains_c1_control_or_private_use_character(text: str) -> bool:
+    return any(
+        0x80 <= ord(character) <= 0x9F
+        or 0xE000 <= ord(character) <= 0xF8FF
+        or 0xF0000 <= ord(character) <= 0xFFFFD
+        or 0x100000 <= ord(character) <= 0x10FFFD
+        for character in text
+    )
+
+
+def _code_point_text(text: str) -> str:
+    return " ".join(_code_point(character) for character in text)
+
+
+def _print_unconfirmed_mojibake_hits(hits: list[dict[str, int | str]]) -> None:
+    if not hits:
+        return
+    print(
+        f"Encoding audit: {len(hits)} likely mojibake candidate(s) failed CP932 reverse confirmation.",
+        file=sys.stderr,
+    )
+    for hit in hits:
+        print(
+            f"  {hit['file']}:{hit['line']}:{hit['column']}: {hit['code_point']}",
+            file=sys.stderr,
         )
-    return hits
+        print(f"    {hit['context']}", file=sys.stderr)
 
 
 def _code_point_context(text: str, index: int, character: str) -> str:
