@@ -175,6 +175,112 @@ def has_encoding_artifacts(text: str, *, include_halfwidth_katakana: bool = True
     )
 
 
+# Reverse confirmation operates on a contiguous non-ASCII window, not an
+# individual character: CP932 mojibake comes from one UTF-8 byte sequence, and
+# the surrounding run supplies bytes that may complete it. C1 controls and PUA
+# characters bypass the plausibility check because they are never legitimate
+# source text. Strict UTF-8-as-CP932 decoding round trips losslessly, but real
+# lossy corruption exists: mine-py fixture text has an unrecoverable mangled
+# prefix, so callers must retain unconfirmed candidates for human review.
+def _confirmed_mojibake_hits(
+    file: str,
+    text: str,
+    artifacts: list[tuple[int, str]],
+) -> tuple[list[dict[str, int | str]], list[dict[str, int | str]]]:
+    confirmed_hits: list[dict[str, int | str]] = []
+    unconfirmed_hits: list[dict[str, int | str]] = []
+    checked_windows: set[tuple[int, int]] = set()
+    for index, character in artifacts:
+        start, end = _non_ascii_window(text, index)
+        if (start, end) in checked_windows:
+            continue
+        checked_windows.add((start, end))
+        window = text[start:end]
+        recovered = _reverse_cp932(window)
+        hit = _mojibake_hit(file, text, index, character)
+        if recovered is not None and (
+            _contains_c1_control_or_private_use_character(window)
+            or _is_plausible_recovery(recovered)
+        ):
+            hit["recovered"] = _code_point_text(recovered)
+            confirmed_hits.append(hit)
+        else:
+            unconfirmed_hits.append(hit)
+    return confirmed_hits, unconfirmed_hits
+
+
+def _mojibake_hit(
+    file: str,
+    text: str,
+    index: int,
+    character: str,
+) -> dict[str, int | str]:
+    line = text.count("\n", 0, index) + 1
+    column = index - text.rfind("\n", 0, index)
+    return {
+        "file": file,
+        "line": line,
+        "column": column,
+        "code_point": _code_point(character),
+        "context": _code_point_context(text, index, character),
+    }
+
+
+def _non_ascii_window(text: str, index: int) -> tuple[int, int]:
+    start = index
+    while start > 0 and text[start - 1] != "\n" and ord(text[start - 1]) > 0x7F:
+        start -= 1
+    end = index + 1
+    while end < len(text) and text[end] != "\n" and ord(text[end]) > 0x7F:
+        end += 1
+    return start, end
+
+
+def _reverse_cp932(text: str) -> str | None:
+    try:
+        return text.encode("cp932").decode("utf-8")
+    except UnicodeError:
+        return None
+
+
+def _is_plausible_recovery(text: str) -> bool:
+    return not any(
+        character.isascii() and character.isalnum() for character in text
+    )
+
+
+def _contains_c1_control_or_private_use_character(text: str) -> bool:
+    return any(
+        0x80 <= ord(character) <= 0x9F
+        or 0xE000 <= ord(character) <= 0xF8FF
+        or 0xF0000 <= ord(character) <= 0xFFFFD
+        or 0x100000 <= ord(character) <= 0x10FFFD
+        for character in text
+    )
+
+
+def _code_point_text(text: str) -> str:
+    return " ".join(_code_point(character) for character in text)
+
+
+def _code_point_context(text: str, index: int, character: str) -> str:
+    before = text[max(0, index - 5) : index]
+    after = text[index + 1 : index + 6]
+    return " ".join(
+        [
+            "...",
+            *(_code_point(value) for value in before),
+            f"[{_code_point(character)}]",
+            *(_code_point(value) for value in after),
+            "...",
+        ]
+    )
+
+
+def _code_point(character: str) -> str:
+    return f"U+{ord(character):04X}"
+
+
 def has_non_ascii(text: str) -> bool:
     return bool(NON_ASCII_PATTERN.search(text))
 

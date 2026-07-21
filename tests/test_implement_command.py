@@ -183,7 +183,9 @@ def test_implement_command_mojibake_gate_blocks_submit(
 
     class MojibakeRunner(FakeRunner):
         def run(self, adapter, plan_path, repo, timeout, **kwargs) -> FakeResult:
-            (repo / "code.py").write_text("comment = '\u8389'\n", encoding="utf-8", newline="\n")
+            (repo / "code.py").write_text(
+                "comment = '\u7e67\uff62\u7e5d\u4e5d\u0393'\n", encoding="utf-8", newline="\n"
+            )
             return FakeResult(status_short=" M code.py")
 
     monkeypatch.setattr("issuekit.commands.implement.AgentRunner", MojibakeRunner)
@@ -193,8 +195,87 @@ def test_implement_command_mojibake_gate_blocks_submit(
     captured = capsys.readouterr()
     assert exit_code == 1
     assert "mojibake gate blocked submit_for_review" in captured.err
-    assert "- code.py" in captured.err
+    assert "- code.py:1:12: U+7E67" in captured.err
+    assert "recovers to U+" in captured.err
     assert [call["method"] for call in client.calls] == ["claim"]
+
+
+def test_implement_command_mojibake_gate_allows_legitimate_japanese(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
+    _configure_api(tmp_path, monkeypatch, client)
+    (tmp_path / "code.py").write_text(
+        "title = '\u95be\u5024'\nvalue = 1\n", encoding="utf-8", newline="\n"
+    )
+    _init_git_repo(tmp_path)
+
+    class JapaneseRunner(FakeRunner):
+        def run(self, adapter, plan_path, repo, timeout, **kwargs) -> FakeResult:
+            (repo / "code.py").write_text(
+                "title = '\u95be\u5024'\nvalue = 2\n", encoding="utf-8", newline="\n"
+            )
+            return FakeResult(status_short=" M code.py")
+
+    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", JapaneseRunner)
+
+    assert cli.main(["implement", "1", "--agent", "codex"]) == 0
+    assert [call["method"] for call in client.calls] == ["claim", "submit"]
+
+
+def test_implement_command_mojibake_gate_blocks_unconfirmed_changed_text(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
+    _configure_api(tmp_path, monkeypatch, client)
+    (tmp_path / "code.py").write_text("value = 1\n", encoding="utf-8", newline="\n")
+    _init_git_repo(tmp_path)
+
+    class LossyRunner(FakeRunner):
+        def run(self, adapter, plan_path, repo, timeout, **kwargs) -> FakeResult:
+            (repo / "code.py").write_text(
+                "value = 1\ntitle = '\u7e5d\u30fb\u305b\u7e5d\u533b\u3044\u7e5d\u4e5d\u03931'\n",
+                encoding="utf-8",
+                newline="\n",
+            )
+            return FakeResult(status_short=" M code.py")
+
+    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", LossyRunner)
+
+    assert cli.main(["implement", "1", "--agent", "codex"]) == 1
+    captured = capsys.readouterr()
+    assert "- code.py:2:10: U+7E5D" in captured.err
+    assert "failed CP932 reverse confirmation" in captured.err
+    assert [call["method"] for call in client.calls] == ["claim"]
+
+
+def test_implement_command_mojibake_gate_ignores_unchanged_corruption(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
+    _configure_api(tmp_path, monkeypatch, client)
+    (tmp_path / "code.py").write_text(
+        "comment = '\u8389'\nvalue = 1\n", encoding="utf-8", newline="\n"
+    )
+    _init_git_repo(tmp_path)
+
+    class UnchangedCorruptionRunner(FakeRunner):
+        def run(self, adapter, plan_path, repo, timeout, **kwargs) -> FakeResult:
+            (repo / "code.py").write_text(
+                "comment = '\u8389'\nvalue = 2\n", encoding="utf-8", newline="\n"
+            )
+            return FakeResult(status_short=" M code.py")
+
+    monkeypatch.setattr(
+        "issuekit.commands.implement.AgentRunner", UnchangedCorruptionRunner
+    )
+
+    assert cli.main(["implement", "1", "--agent", "codex"]) == 0
+    assert [call["method"] for call in client.calls] == ["claim", "submit"]
 
 
 def test_implement_command_mojibake_gate_allows_configured_halfwidth_kana(

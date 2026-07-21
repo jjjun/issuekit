@@ -12,7 +12,7 @@ from typing import TextIO
 from issuekit.agents.runner import AgentResult, AgentRunner, resolve_adapter
 from issuekit.author_guard import AuthorOrchestrationContext
 from issuekit.config import IssuekitConfig
-from issuekit.core import Issue, has_encoding_artifacts
+from issuekit.core import Issue, _confirmed_mojibake_hits, find_encoding_artifacts
 from issuekit.gitutil import git_root, git_status_short, run_git
 from issuekit.prompts import render_review_feedback_prompt
 from issuekit.store import get_store
@@ -148,19 +148,23 @@ def run_and_submit(
                 err=err,
             )
         if run_config is not None and run_config.mojibake_gate:
-            mojibake_files = _mojibake_touched_files(
+            confirmed_hits, unconfirmed_hits = _mojibake_touched_hits(
                 cwd,
                 issues_dir,
                 include_halfwidth_katakana=config.gate_halfwidth_kana,
             )
-            if mojibake_files:
+            if confirmed_hits or unconfirmed_hits:
                 print(
                     "ERROR: mojibake gate blocked submit_for_review. "
-                    "Fix the following touched files before submitting:",
+                    "Fix the following changed lines before submitting:",
                     file=err,
                 )
-                for path in mojibake_files:
-                    print(f"- {path}", file=err)
+                for hit in confirmed_hits:
+                    _print_mojibake_hit(hit, err)
+                    print(f"  recovers to {hit['recovered']}", file=err)
+                for hit in unconfirmed_hits:
+                    _print_mojibake_hit(hit, err)
+                    print("  failed CP932 reverse confirmation", file=err)
                 return RunOutcome(issue=issue, result=result, exit_code=1)
 
         reviewed_issue = submit_for_review(
@@ -205,13 +209,14 @@ def review_feedback_prompt(issue_body: str) -> str | None:
     return render_review_feedback_prompt(notes)
 
 
-def _mojibake_touched_files(
+def _mojibake_touched_hits(
     repo: Path,
     issues_dir: Path,
     *,
     include_halfwidth_katakana: bool,
-) -> list[str]:
-    hits: list[str] = []
+) -> tuple[list[dict[str, int | str]], list[dict[str, int | str]]]:
+    confirmed_hits: list[dict[str, int | str]] = []
+    unconfirmed_hits: list[dict[str, int | str]] = []
     for rel_path in _touched_implementation_paths(repo, issues_dir):
         path = repo / rel_path
         if not path.exists() or not path.is_file():
@@ -219,16 +224,78 @@ def _mojibake_touched_files(
         try:
             text = path.read_bytes().decode("utf-8")
         except UnicodeDecodeError:
-            hits.append(rel_path.as_posix())
+            confirmed_hits.append(
+                {
+                    "file": rel_path.as_posix(),
+                    "line": 1,
+                    "column": 1,
+                    "code_point": "invalid UTF-8",
+                    "context": "unable to decode file as UTF-8",
+                    "recovered": "not applicable",
+                }
+            )
             continue
         # The submit gate defaults to the CLI's strict kana check, but projects
         # with generated half-width katakana can set gate_halfwidth_kana = false.
-        if has_encoding_artifacts(
+        changed_lines = _changed_line_numbers(repo, rel_path, text)
+        artifacts = [
+            (index, character)
+            for index, character in find_encoding_artifacts(
+                text,
+                include_halfwidth_katakana=include_halfwidth_katakana,
+            )
+            if text.count("\n", 0, index) + 1 in changed_lines
+        ]
+        confirmed, unconfirmed = _confirmed_mojibake_hits(
+            rel_path.as_posix(),
             text,
-            include_halfwidth_katakana=include_halfwidth_katakana,
-        ):
-            hits.append(rel_path.as_posix())
-    return hits
+            artifacts,
+        )
+        confirmed_hits.extend(confirmed)
+        unconfirmed_hits.extend(unconfirmed)
+    return confirmed_hits, unconfirmed_hits
+
+
+def _print_mojibake_hit(hit: dict[str, int | str], err: TextIO) -> None:
+    print(
+        f"- {hit['file']}:{hit['line']}:{hit['column']}: {hit['code_point']}",
+        file=err,
+    )
+    print(f"  {hit['context']}", file=err)
+
+
+def _changed_line_numbers(repo: Path, rel_path: Path, text: str) -> set[int]:
+    result = run_git(
+        ["--no-pager", "diff", "--unified=0", "HEAD", "--", rel_path.as_posix()],
+        repo,
+    )
+    if result is None or result.returncode != 0:
+        return set()
+    changed_lines = _added_line_numbers(result.stdout)
+    if changed_lines or _is_tracked_path(repo, rel_path):
+        return changed_lines
+    return set(range(1, text.count("\n") + 2))
+
+
+def _is_tracked_path(repo: Path, rel_path: Path) -> bool:
+    result = run_git(["ls-files", "--error-unmatch", "--", rel_path.as_posix()], repo)
+    return result is not None and result.returncode == 0
+
+
+def _added_line_numbers(diff: str) -> set[int]:
+    changed_lines: set[int] = set()
+    line_number: int | None = None
+    for line in diff.splitlines():
+        if line.startswith("@@"):
+            plus_range = line.split(" ")[2]
+            start = plus_range[1:].split(",", 1)[0]
+            line_number = int(start)
+        elif line_number is not None and line.startswith("+"):
+            changed_lines.add(line_number)
+            line_number += 1
+        elif line_number is not None and not line.startswith("-"):
+            line_number += 1
+    return changed_lines
 
 
 def _touched_implementation_paths(repo: Path, issues_dir: Path) -> tuple[Path, ...]:

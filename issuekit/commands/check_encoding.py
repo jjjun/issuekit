@@ -10,7 +10,7 @@ import subprocess
 import sys
 
 from issuekit.config import load_config
-from issuekit.core import find_encoding_artifacts
+from issuekit.core import _confirmed_mojibake_hits, find_encoding_artifacts
 from issuekit.gitutil import run_git
 
 
@@ -411,96 +411,6 @@ def _stray_carriage_return_lines(content: bytes) -> list[int]:
         if byte == ord("\r")
         and (index + 1 == len(content) or content[index + 1] != ord("\n"))
     ]
-
-
-# Reverse confirmation operates on a contiguous non-ASCII window, not an
-# individual character: CP932 mojibake comes from one UTF-8 byte sequence, and
-# the surrounding run supplies bytes that may complete it. C1 controls and PUA
-# characters bypass the plausibility check because they are never legitimate
-# source text. For corruption produced by strict UTF-8-as-CP932 decoding, the
-# round trip is lossless: 115548 measured two-character strings round-tripped
-# byte-exactly, with 0 lossy cases. A mangler using errors="ignore" or
-# errors="replace" can produce lossy text that this confirmation cannot recover.
-def _confirmed_mojibake_hits(
-    file: str,
-    text: str,
-    artifacts: list[tuple[int, str]],
-) -> tuple[list[dict[str, int | str]], list[dict[str, int | str]]]:
-    confirmed_hits: list[dict[str, int | str]] = []
-    unconfirmed_hits: list[dict[str, int | str]] = []
-    checked_windows: set[tuple[int, int]] = set()
-    for index, character in artifacts:
-        start, end = _non_ascii_window(text, index)
-        if (start, end) in checked_windows:
-            continue
-        checked_windows.add((start, end))
-        window = text[start:end]
-        recovered = _reverse_cp932(window)
-        hit = _mojibake_hit(file, text, index, character)
-        if recovered is not None and (
-            _contains_c1_control_or_private_use_character(window)
-            or _is_plausible_recovery(recovered)
-        ):
-            hit["recovered"] = _code_point_text(recovered)
-            confirmed_hits.append(hit)
-        else:
-            unconfirmed_hits.append(hit)
-    return confirmed_hits, unconfirmed_hits
-
-
-def _mojibake_hit(
-    file: str,
-    text: str,
-    index: int,
-    character: str,
-) -> dict[str, int | str]:
-    line = text.count("\n", 0, index) + 1
-    column = index - text.rfind("\n", 0, index)
-    context = _code_point_context(text, index, character)
-    return {
-        "file": file,
-        "line": line,
-        "column": column,
-        "code_point": _code_point(character),
-        "context": context,
-    }
-
-
-def _non_ascii_window(text: str, index: int) -> tuple[int, int]:
-    start = index
-    while start > 0 and text[start - 1] != "\n" and ord(text[start - 1]) > 0x7F:
-        start -= 1
-    end = index + 1
-    while end < len(text) and text[end] != "\n" and ord(text[end]) > 0x7F:
-        end += 1
-    return start, end
-
-
-def _reverse_cp932(text: str) -> str | None:
-    try:
-        return text.encode("cp932").decode("utf-8")
-    except UnicodeError:
-        return None
-
-
-def _is_plausible_recovery(text: str) -> bool:
-    return not any(
-        character.isascii() and character.isalnum() for character in text
-    )
-
-
-def _contains_c1_control_or_private_use_character(text: str) -> bool:
-    return any(
-        0x80 <= ord(character) <= 0x9F
-        or 0xE000 <= ord(character) <= 0xF8FF
-        or 0xF0000 <= ord(character) <= 0xFFFFD
-        or 0x100000 <= ord(character) <= 0x10FFFD
-        for character in text
-    )
-
-
-def _code_point_text(text: str) -> str:
-    return " ".join(_code_point(character) for character in text)
 
 
 def _print_unconfirmed_mojibake_hits(hits: list[dict[str, int | str]]) -> None:
