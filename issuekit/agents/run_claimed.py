@@ -148,7 +148,11 @@ def run_and_submit(
                 err=err,
             )
         if run_config is not None and run_config.mojibake_gate:
-            mojibake_files = _mojibake_touched_files(cwd, issues_dir)
+            mojibake_files = _mojibake_touched_files(
+                cwd,
+                issues_dir,
+                include_halfwidth_katakana=config.gate_halfwidth_kana,
+            )
             if mojibake_files:
                 print(
                     "ERROR: mojibake gate blocked submit_for_review. "
@@ -201,7 +205,12 @@ def review_feedback_prompt(issue_body: str) -> str | None:
     return render_review_feedback_prompt(notes)
 
 
-def _mojibake_touched_files(repo: Path, issues_dir: Path) -> list[str]:
+def _mojibake_touched_files(
+    repo: Path,
+    issues_dir: Path,
+    *,
+    include_halfwidth_katakana: bool,
+) -> list[str]:
     hits: list[str] = []
     for rel_path in _touched_implementation_paths(repo, issues_dir):
         path = repo / rel_path
@@ -212,7 +221,12 @@ def _mojibake_touched_files(repo: Path, issues_dir: Path) -> list[str]:
         except UnicodeDecodeError:
             hits.append(rel_path.as_posix())
             continue
-        if has_encoding_artifacts(text):
+        # The submit gate defaults to the CLI's strict kana check, but projects
+        # with generated half-width katakana can set gate_halfwidth_kana = false.
+        if has_encoding_artifacts(
+            text,
+            include_halfwidth_katakana=include_halfwidth_katakana,
+        ):
             hits.append(rel_path.as_posix())
     return hits
 

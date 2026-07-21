@@ -53,6 +53,16 @@ def test_load_config_reads_standalone_issuekit_toml(tmp_path: Path) -> None:
     assert config.issues_dir == "docs/issues"
 
 
+def test_load_config_reads_gate_halfwidth_kana(tmp_path: Path) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "gate_halfwidth_kana = false\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    assert load_config(tmp_path).gate_halfwidth_kana is False
+
+
 def test_load_config_reads_machine_config(tmp_path: Path, monkeypatch) -> None:
     machine_path = tmp_path / "machine.toml"
     machine_path.write_text("issues_dir = 'machine/issues'\n", encoding="utf-8")

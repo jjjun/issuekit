@@ -383,6 +383,7 @@ stages = ["planned", "todo", "implementing", "review", "changes_requested", "don
 default_reviewer = "auto"
 require_distinct_reviewer = true
 work_branch = "main"
+gate_halfwidth_kana = true
 ```
 
 Non-Python repositories can use a standalone `issuekit.toml` at the repo root
@@ -397,6 +398,7 @@ stages = ["planned", "todo", "implementing", "review", "changes_requested", "don
 default_reviewer = "auto"
 require_distinct_reviewer = true
 work_branch = "main"
+gate_halfwidth_kana = true
 ```
 
 Machine-wide defaults can be stored in `~/.config/issuekit/config.toml` on both
@@ -443,6 +445,11 @@ The guard never switches branches. Omit `work_branch` or set it to an empty
 string to disable the guard, which is the default. The config shape is intended
 to grow later to an allowed branch list or glob such as
 `allowed_branches = ["main", "release/*"]`; today it is a single branch string.
+
+The agent submit mojibake gate checks half-width katakana by default, matching
+`issuekit check-encoding`. Set `gate_halfwidth_kana = false` only when touched
+generated files legitimately contain half-width katakana; other encoding-artifact
+checks remain enabled.
 
 At startup, issuekit also reads a repo-local `.env` file from the current repo
 root and loads values such as `ISSUEKIT_API_URL`, `ISSUEKIT_API_USER`,
