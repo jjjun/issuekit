@@ -77,6 +77,14 @@ def test_encoding_artifact_detection() -> None:
     assert not core.has_encoding_artifacts("plain ascii")
 
 
+def test_encoding_artifact_generated_file_exclusions() -> None:
+    """Keep issuekit#224's deliberate generated-client exclusions."""
+    assert not core.has_encoding_artifacts("\u83f4")
+    assert not core.has_encoding_artifacts("\u873f")
+    assert not core.has_encoding_artifacts("\u9015")
+    assert not core.has_encoding_artifacts("\u95ad")
+
+
 def test_valid_issue_statuses_match_server_derived_labels() -> None:
     assert core.VALID_ISSUE_STATUSES == {
         "active",
