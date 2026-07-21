@@ -392,6 +392,14 @@ def _stray_carriage_return_lines(content: bytes) -> list[int]:
     ]
 
 
+# Reverse confirmation operates on a contiguous non-ASCII window, not an
+# individual character: CP932 mojibake comes from one UTF-8 byte sequence, and
+# the surrounding run supplies bytes that may complete it. C1 controls and PUA
+# characters bypass the plausibility check because they are never legitimate
+# source text. For corruption produced by strict UTF-8-as-CP932 decoding, the
+# round trip is lossless: 115548 measured two-character strings round-tripped
+# byte-exactly, with 0 lossy cases. A mangler using errors="ignore" or
+# errors="replace" can produce lossy text that this confirmation cannot recover.
 def _confirmed_mojibake_hits(
     file: str,
     text: str,

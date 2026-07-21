@@ -453,6 +453,11 @@ The agent submit mojibake gate checks half-width katakana by default, matching
 generated files legitimately contain half-width katakana; other encoding-artifact
 checks remain enabled.
 
+For likely mojibake, `check-encoding` has three outcomes: confirmed candidates
+are reported, unconfirmed candidates are suppressed but available through
+`--show-unconfirmed-mojibake` and `unconfirmed_mojibake_hits`, and other text is
+not a candidate. Unconfirmed means inconclusive, not proven legitimate.
+
 Set `check_encoding_exclude` to a list of POSIX-style, repo-relative glob
 patterns for generated paths that `issuekit check-encoding` should skip. The
 exclusions apply to BOM, mojibake, stray carriage-return, and CRLF checks. Use
