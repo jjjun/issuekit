@@ -66,6 +66,14 @@ def test_mojibake_detection() -> None:
     assert not core.has_mojibake("plain ascii")
 
 
+def test_encoding_artifact_detection() -> None:
+    assert core.has_encoding_artifacts("\u0080")
+    assert core.has_encoding_artifacts("\u8389")
+    assert core.has_encoding_artifacts("\uff71")
+    assert not core.has_encoding_artifacts("\uff71", include_halfwidth_katakana=False)
+    assert not core.has_encoding_artifacts("plain ascii")
+
+
 def test_valid_issue_statuses_match_server_derived_labels() -> None:
     assert core.VALID_ISSUE_STATUSES == {
         "active",

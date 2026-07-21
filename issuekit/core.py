@@ -14,6 +14,10 @@ WORKFLOW_TOKEN_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]{0,31}$")
 MOJIBAKE_PATTERN = re.compile(
     "\u7e67|\u7e3a|\u8b41|\u8373|\u87b3|\u8708|\u9ae2|\ufffd"
 )
+ENCODING_ARTIFACT_PATTERN = re.compile(
+    "[\u0080-\u009f]|\u7e67|\u7e3a|\u8b41|\u8373|\u8389|\u87b3|\u8703|\u8708|\u90e2|\u9622|\u9ae2|\ufffd"
+)
+HALFWIDTH_KATAKANA_PATTERN = re.compile("[\uff61-\uff9f]")
 NON_ASCII_PATTERN = re.compile(r"[^\x00-\x7F]")
 
 
@@ -138,6 +142,12 @@ def get_issue_heading(content: str) -> re.Match[str] | None:
 
 def has_mojibake(text: str) -> bool:
     return bool(MOJIBAKE_PATTERN.search(text))
+
+
+def has_encoding_artifacts(text: str, *, include_halfwidth_katakana: bool = True) -> bool:
+    if ENCODING_ARTIFACT_PATTERN.search(text):
+        return True
+    return include_halfwidth_katakana and bool(HALFWIDTH_KATAKANA_PATTERN.search(text))
 
 
 def has_non_ascii(text: str) -> bool:

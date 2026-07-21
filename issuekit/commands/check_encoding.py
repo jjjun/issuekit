@@ -8,7 +8,7 @@ from pathlib import Path
 import subprocess
 import sys
 
-from issuekit.core import has_mojibake
+from issuekit.core import has_encoding_artifacts
 from issuekit.gitutil import run_git
 
 
@@ -50,6 +50,11 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         "--no-mojibake",
         action="store_true",
         help="Disable likely mojibake text scanning.",
+    )
+    check_encoding_parser.add_argument(
+        "--no-halfwidth-kana",
+        action="store_true",
+        help="Allow half-width katakana in likely mojibake text scanning.",
     )
     check_encoding_parser.add_argument(
         "--no-crlf",
@@ -121,7 +126,10 @@ def run(args) -> int:
                     path.write_bytes(content[len(BOM) :])
                     content = content[len(BOM) :]
                     fixed_files.append(file)
-            if not args.no_mojibake and has_mojibake(content.decode("utf-8", errors="ignore")):
+            if not args.no_mojibake and has_encoding_artifacts(
+                content.decode("utf-8", errors="ignore"),
+                include_halfwidth_katakana=not args.no_halfwidth_kana,
+            ):
                 mojibake_files.append(file)
             if not args.no_stray_cr:
                 stray_cr_lines = _stray_carriage_return_lines(content)

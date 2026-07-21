@@ -183,7 +183,7 @@ def test_implement_command_mojibake_gate_blocks_submit(
 
     class MojibakeRunner(FakeRunner):
         def run(self, adapter, plan_path, repo, timeout, **kwargs) -> FakeResult:
-            (repo / "code.py").write_text("comment = '\u7e67'\n", encoding="utf-8", newline="\n")
+            (repo / "code.py").write_text("comment = '\u8389'\n", encoding="utf-8", newline="\n")
             return FakeResult(status_short=" M code.py")
 
     monkeypatch.setattr("issuekit.commands.implement.AgentRunner", MojibakeRunner)

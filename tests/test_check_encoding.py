@@ -105,6 +105,15 @@ def test_check_encoding_no_mojibake_toggle(tmp_path: Path, monkeypatch) -> None:
     assert cli.main(["check-encoding", "--no-mojibake"]) == 0
 
 
+def test_check_encoding_halfwidth_katakana_fails_by_default(tmp_path: Path, monkeypatch) -> None:
+    init_git_repo(tmp_path)
+    add_tracked(tmp_path, "bad.md", "\uff71\n".encode("utf-8"))
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["check-encoding"]) == 1
+    assert cli.main(["check-encoding", "--no-halfwidth-kana"]) == 0
+
+
 def test_check_encoding_crlf_blob_fails(tmp_path: Path, monkeypatch, capsys) -> None:
     init_git_repo(tmp_path)
     add_tracked(tmp_path, "bad.txt", b"one\r\ntwo\r\n")

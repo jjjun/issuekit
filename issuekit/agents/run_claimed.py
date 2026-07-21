@@ -12,7 +12,7 @@ from typing import TextIO
 from issuekit.agents.runner import AgentResult, AgentRunner, resolve_adapter
 from issuekit.author_guard import AuthorOrchestrationContext
 from issuekit.config import IssuekitConfig
-from issuekit.core import Issue, has_mojibake
+from issuekit.core import Issue, has_encoding_artifacts
 from issuekit.gitutil import git_root, git_status_short, run_git
 from issuekit.prompts import render_review_feedback_prompt
 from issuekit.store import get_store
@@ -212,7 +212,7 @@ def _mojibake_touched_files(repo: Path, issues_dir: Path) -> list[str]:
         except UnicodeDecodeError:
             hits.append(rel_path.as_posix())
             continue
-        if has_mojibake(text):
+        if has_encoding_artifacts(text):
             hits.append(rel_path.as_posix())
     return hits
 
