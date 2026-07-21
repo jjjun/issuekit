@@ -330,9 +330,18 @@ def list_crlf_files(cwd: Path, paths: list[str] | None = None) -> list[str]:
 
 
 def _git_stdout(args: list[str], cwd: Path) -> str:
-    result = run_git(args, cwd)
+    try:
+        result = run_git(args, cwd, strict=True)
+    except (OSError, subprocess.SubprocessError, UnicodeError) as exc:
+        raise RuntimeError(
+            "git command failed before producing a result "
+            f"({type(exc).__name__}: {exc}; argv={_format_git_argv(args)})"
+        ) from exc
     if result is None:
-        raise RuntimeError("git command failed before producing a result")
+        raise RuntimeError(
+            "git command failed before producing a result "
+            f"(argv={_format_git_argv(args)})"
+        )
     if result.returncode != 0:
         raise subprocess.CalledProcessError(
             result.returncode,
@@ -341,6 +350,18 @@ def _git_stdout(args: list[str], cwd: Path) -> str:
             stderr=result.stderr,
         )
     return result.stdout
+
+
+def _format_git_argv(args: list[str]) -> str:
+    argv = ["git", *args]
+    total_length = sum(len(arg) for arg in argv)
+    if len(argv) <= 8 and total_length <= 512:
+        return repr(argv)
+    preview = [arg if len(arg) <= 120 else f"{arg[:117]}..." for arg in argv[:6]]
+    return (
+        f"{preview!r} ... "
+        f"({len(argv)} arguments, {total_length} characters total)"
+    )
 
 
 def _has_source_extension(file: str) -> bool:

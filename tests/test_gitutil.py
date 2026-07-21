@@ -95,6 +95,19 @@ def test_run_git_returns_none_on_subprocess_failure(
     assert run_git(["status"], tmp_path) is None
 
 
+def test_run_git_strict_reraises_subprocess_failure(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    def fake_run(*args, **kwargs):
+        raise subprocess.TimeoutExpired(args[0], kwargs["timeout"])
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    with pytest.raises(subprocess.TimeoutExpired):
+        run_git(["status"], tmp_path, strict=True)
+
+
 def test_git_wrappers_normalize_success_and_failure(
     tmp_path: Path,
     monkeypatch,

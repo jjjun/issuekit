@@ -23,8 +23,12 @@ def run_git(
     cwd: Path | str,
     *,
     timeout: float = 30,
+    strict: bool = False,
 ) -> GitResult | None:
-    """Run git with consistent stdio, timeout, and error handling."""
+    """Run git with consistent stdio, timeout, and error handling.
+
+    Return None for execution failures unless strict is true.
+    """
     try:
         result = subprocess.run(
             ["git", *args],
@@ -37,6 +41,8 @@ def run_git(
             stdin=subprocess.DEVNULL,
         )
     except (OSError, subprocess.SubprocessError, UnicodeError):
+        if strict:
+            raise
         return None
     return GitResult(
         returncode=result.returncode,

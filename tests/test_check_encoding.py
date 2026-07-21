@@ -2,11 +2,51 @@ import json
 from pathlib import Path
 import subprocess
 
+import pytest
+
 from issuekit import cli
 from issuekit.commands import check_encoding
 
 
 MOJIBAKE = "\u7e67\uff62\u7e5d\u4e5d\u0393"
+
+
+@pytest.mark.parametrize(
+    ("failure", "expected"),
+    [
+        (OSError(206, "The filename or extension is too long"), "OSError"),
+        (subprocess.TimeoutExpired(["git", "ls-files"], 30), "TimeoutExpired"),
+    ],
+)
+def test_git_stdout_reports_git_failure_cause(
+    tmp_path: Path,
+    monkeypatch,
+    failure: BaseException,
+    expected: str,
+) -> None:
+    def fail_run_git(args, cwd, *, timeout=30, strict=False):
+        assert strict is True
+        raise failure
+
+    monkeypatch.setattr(check_encoding, "run_git", fail_run_git)
+
+    with pytest.raises(RuntimeError) as raised:
+        check_encoding._git_stdout(["ls-files", "-z"], tmp_path)
+
+    assert expected in str(raised.value)
+    assert str(failure) in str(raised.value)
+    assert "argv=['git', 'ls-files', '-z']" in str(raised.value)
+    assert raised.value.__cause__ is failure
+
+
+def test_format_git_argv_summarizes_large_commands() -> None:
+    large_pathspec = "a" * 1_000
+
+    formatted = check_encoding._format_git_argv(["ls-files", "--", large_pathspec])
+
+    assert large_pathspec not in formatted
+    assert "4 arguments" in formatted
+    assert "1013 characters total" in formatted
 
 
 def init_git_repo(path: Path) -> None:
