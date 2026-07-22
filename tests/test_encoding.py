@@ -50,7 +50,7 @@ def test_mojibake_gate_batches_changed_line_and_tracked_path_queries(
 
     def fake_run_git(args, cwd):
         calls.append(list(args))
-        if args[1] == "diff":
+        if args[3] == "diff":
             return GitResult(
                 returncode=0,
                 stdout="+++ b/changed.py\n@@ -0,0 +1 @@\n+value = 'changed'\n",
@@ -72,6 +72,8 @@ def test_mojibake_gate_batches_changed_line_and_tracked_path_queries(
     assert [hit["file"] for hit in confirmed] == ["changed.py", "new.py"]
     assert calls == [
         [
+            "-c",
+            "core.quotepath=false",
             "--no-pager",
             "diff",
             "--unified=0",
@@ -82,4 +84,48 @@ def test_mojibake_gate_batches_changed_line_and_tracked_path_queries(
             "new.py",
         ],
         ["ls-files", "-z", "--", "changed.py", "unchanged.py", "new.py"],
+    ]
+
+
+def test_added_line_numbers_ignores_deleted_file_headers() -> None:
+    diff = (
+        "diff --git a/a.txt b/a.txt\n"
+        "index 111..222 100644\n"
+        "--- a/a.txt\n"
+        "+++ b/a.txt\n"
+        "@@ -0,0 +1,1 @@\n"
+        "+hello\n"
+        "diff --git a/b.txt b/b.txt\n"
+        "deleted file mode 100644\n"
+        "index 333..000\n"
+        "--- a/b.txt\n"
+        "+++ /dev/null\n"
+        "@@ -1,2 +0,0 @@\n"
+        "-x\n"
+        "-y\n"
+    )
+
+    assert run_claimed._added_line_numbers(diff) == {Path("a.txt"): {1}}
+
+
+def test_touched_paths_uses_raw_non_ascii_status_paths(tmp_path, monkeypatch) -> None:
+    calls: list[list[str]] = []
+
+    def fake_run_git(args, cwd):
+        calls.append(list(args))
+        return GitResult(returncode=0, stdout=" M 日本語.py\n", stderr="")
+
+    monkeypatch.setattr(run_claimed, "git_root", lambda repo: tmp_path.resolve())
+    monkeypatch.setattr(run_claimed, "run_git", fake_run_git)
+
+    assert run_claimed._touched_paths(tmp_path) == (Path("日本語.py"),)
+    assert calls == [
+        [
+            "-c",
+            "core.quotepath=false",
+            "--no-pager",
+            "status",
+            "--short",
+            "--untracked-files=all",
+        ]
     ]

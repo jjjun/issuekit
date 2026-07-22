@@ -200,6 +200,31 @@ def test_implement_command_mojibake_gate_blocks_submit(
     assert [call["method"] for call in client.calls] == ["claim"]
 
 
+def test_implement_command_mojibake_gate_blocks_non_ascii_path(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
+    _configure_api(tmp_path, monkeypatch, client)
+    path = tmp_path / "日本語.py"
+    path.write_text("print('clean')\n", encoding="utf-8", newline="\n")
+    _init_git_repo(tmp_path)
+
+    class MojibakeRunner(FakeRunner):
+        def run(self, adapter, plan_path, repo, timeout, **kwargs) -> FakeResult:
+            (repo / "日本語.py").write_text(
+                "comment = '\u7e67\uff62\u7e5d\u4e5d\u0393'\n", encoding="utf-8", newline="\n"
+            )
+            return FakeResult(status_short=" M 日本語.py")
+
+    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", MojibakeRunner)
+
+    assert cli.main(["implement", "1", "--agent", "codex"]) == 1
+    assert "- 日本語.py:1:12: U+7E67" in capsys.readouterr().err
+    assert [call["method"] for call in client.calls] == ["claim"]
+
+
 def test_implement_command_mojibake_gate_allows_legitimate_japanese(
     tmp_path: Path,
     monkeypatch,

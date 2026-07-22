@@ -21,7 +21,7 @@ from issuekit.encoding import (
     newline_offsets,
     print_mojibake_hit,
 )
-from issuekit.gitutil import git_root, git_status_short, run_git
+from issuekit.gitutil import git_root, run_git
 from issuekit.prompts import render_review_feedback_prompt
 from issuekit.store import get_store
 from issuekit.workflow import submit_for_review
@@ -287,6 +287,8 @@ def _changed_line_numbers(
         return {}
     result = run_git(
         [
+            "-c",
+            "core.quotepath=false",
             "--no-pager",
             "diff",
             "--unified=0",
@@ -318,7 +320,12 @@ def _added_line_numbers(diff: str) -> dict[Path, set[int]]:
     rel_path: Path | None = None
     line_number: int | None = None
     for line in diff.splitlines():
-        if line.startswith("+++ b/"):
+        if line.startswith("diff --git "):
+            rel_path = None
+            line_number = None
+        elif line.startswith("+++ /dev/null"):
+            rel_path = None
+        elif line.startswith("+++ b/"):
             rel_path = Path(line[6:])
             changed_lines.setdefault(rel_path, set())
         elif line.startswith("@@"):
@@ -377,12 +384,22 @@ def _warn_heavy_deletions(
 def _touched_paths(repo: Path) -> tuple[Path, ...]:
     if git_root(repo) != repo.resolve():
         return ()
-    status_short = git_status_short(repo, strip=False, untracked_files="all")
-    if status_short is None:
+    result = run_git(
+        [
+            "-c",
+            "core.quotepath=false",
+            "--no-pager",
+            "status",
+            "--short",
+            "--untracked-files=all",
+        ],
+        repo,
+    )
+    if result is None or result.returncode != 0:
         return ()
 
     paths: list[Path] = []
-    for line in status_short.splitlines():
+    for line in result.stdout.splitlines():
         if len(line) < 4:
             continue
         status = line[:2]
