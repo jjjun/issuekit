@@ -267,8 +267,8 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
 
     @server.tool(
         description=(
-            "Remove a registered worker by worker.repo or legacy machine/repo/worker "
-            "id. Refuses workers that hold implementing issues unless force is true."
+            "Remove a registered worker by worker.repo or worker.repo@machine id. "
+            "Refuses workers that hold implementing issues unless force is true."
         )
     )
     async def remove_worker(

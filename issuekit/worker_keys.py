@@ -11,11 +11,6 @@ def worker_key(repo_id: str, worker_name: str) -> str:
     return f"{worker_name}.{repo_id}"
 
 
-def legacy_worker_key(machine_id: str, repo_id: str, worker_name: str) -> str:
-    """Return the legacy machine/repo/worker key format."""
-    return f"{machine_id}/{repo_id}/{worker_name}"
-
-
 def qualified_worker_key(machine_id: str, repo_id: str, worker_name: str) -> str:
     """Return the machine-qualified worker.repo@machine key format."""
     return f"{worker_name}.{repo_id}@{machine_id}"
@@ -30,8 +25,7 @@ def worker_display_from_row(row: Mapping[str, object]) -> str:
     worker_name = _worker_name(row)
     if repo_id and worker_name:
         return worker_display_from_parts(repo_id, worker_name)
-    legacy = _legacy_from_row(row)
-    return legacy or "?.?"
+    return "?.?"
 
 
 def worker_keys_from_row(row: Mapping[str, object]) -> set[str]:
@@ -43,12 +37,6 @@ def worker_keys_from_row(row: Mapping[str, object]) -> set[str]:
         keys.add(worker_key(repo_id, worker_name))
         if machine_id:
             keys.add(qualified_worker_key(machine_id, repo_id, worker_name))
-    legacy = _legacy_from_row(row)
-    if legacy:
-        keys.add(legacy)
-    row_id = _string(row.get("id"))
-    if row_id:
-        keys.add(row_id)
     return keys
 
 
@@ -56,9 +44,7 @@ def worker_keys_match(left: str, right: str) -> bool:
     """Return True when two worker keys refer to the same worker identity.
 
     Machine ids discriminate only when both keys carry the machine-qualified
-    ``@machine`` suffix. Bare ``worker.repo`` keys and legacy
-    ``machine/repo/worker`` keys stay machine-agnostic, matching the
-    pre-qualified behavior.
+    ``@machine`` suffix. Bare ``worker.repo`` keys stay machine-agnostic.
     """
     if left == right:
         return True
@@ -113,15 +99,6 @@ def _worker_name(row: Mapping[str, object]) -> str:
     return _string(row.get("worker_name") or row.get("worker_id"))
 
 
-def _legacy_from_row(row: Mapping[str, object]) -> str:
-    machine_id = _string(row.get("machine_id"))
-    repo_id = _string(row.get("repo_id"))
-    worker_name = _worker_name(row)
-    if machine_id and repo_id and worker_name:
-        return legacy_worker_key(machine_id, repo_id, worker_name)
-    return ""
-
-
 def _string(value: object) -> str:
     return "" if value is None else str(value).strip()
 
@@ -129,13 +106,6 @@ def _string(value: object) -> str:
 def _key_parts(value: str) -> _KeyParts | None:
     text = value.strip()
     if not text:
-        return None
-    if "/" in text:
-        # Legacy machine/repo/worker keys stay machine-agnostic by design:
-        # existing stored keys were never compared by machine.
-        parts = text.split("/")
-        if len(parts) == 3 and parts[1] and parts[2]:
-            return _KeyParts(worker_name=parts[2], repo_id=parts[1], machine_id=None)
         return None
     left, separator, machine_id = text.rpartition("@")
     if not separator:

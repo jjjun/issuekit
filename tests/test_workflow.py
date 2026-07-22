@@ -1196,7 +1196,7 @@ def test_approve_rejects_same_agent_same_worker_review(monkeypatch) -> None:
                 assignee="",
                 stage="review",
                 implementer="codex",
-                worker="machine/repo/checkout",
+                worker="checkout.repo@machine",
             )
         ]
     )

@@ -149,7 +149,7 @@ def test_workers_remove_deletes_by_dotted_key(
     ]
 
 
-def test_workers_remove_deletes_by_legacy_id(
+def test_workers_remove_rejects_legacy_id(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -163,14 +163,9 @@ def test_workers_remove_deletes_by_legacy_id(
     )
     _configure_api(tmp_path, monkeypatch, client)
 
-    assert cli.main(["workers", "remove", "machine/mine-py/checkout", "--json"]) == 0
+    assert cli.main(["workers", "remove", "machine/mine-py/checkout", "--json"]) == 1
 
-    payload = json.loads(capsys.readouterr().out)
-    assert payload["display"] == "checkout.mine-py"
-    assert client.calls[-1] == {
-        "method": "delete_worker",
-        "body": {"id": "checkout.mine-py"},
-    }
+    assert "Worker was not found" in capsys.readouterr().err
 
 
 def test_workers_remove_refuses_implementing_holder_without_force(
@@ -215,7 +210,7 @@ def test_workers_remove_force_deletes_implementing_holder(
                 "Held",
                 status="in_progress",
                 stage="implementing",
-                worker="machine/mine-py/checkout",
+                worker="checkout.mine-py@machine",
             )
         ]
     )

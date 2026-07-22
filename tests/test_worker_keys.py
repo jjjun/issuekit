@@ -18,11 +18,6 @@ def test_worker_keys_match_dotted_pair() -> None:
     assert not worker_keys_match("alpha.mine-py", "alpha.other")
 
 
-def test_worker_keys_match_legacy_stays_machine_agnostic() -> None:
-    assert worker_keys_match("pike3/mine-py/alpha", "main1/mine-py/alpha")
-    assert worker_keys_match("pike3/mine-py/alpha", "alpha.mine-py")
-
-
 def test_worker_keys_match_qualified_discriminates_machine() -> None:
     assert worker_keys_match("alpha.mine-py@pike3", "alpha.mine-py@pike3")
     assert not worker_keys_match("alpha.mine-py@pike3", "alpha.mine-py@main1")
@@ -71,7 +66,7 @@ def test_worker_keys_from_row_includes_qualified_key() -> None:
     keys = worker_keys_from_row(row)
     assert "alpha.mine-py" in keys
     assert "alpha.mine-py@pike3" in keys
-    assert "pike3/mine-py/alpha" in keys
+    assert keys == {"alpha.mine-py", "alpha.mine-py@pike3"}
 
 
 def test_worker_keys_from_row_without_machine_id_has_no_qualified_key() -> None:

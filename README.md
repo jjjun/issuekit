@@ -225,7 +225,7 @@ copying the steps.
 | `issuekit dev-tool reload-mcp [--json]` | Stop only running `issuekit-mcp.exe` processes; MCP clients own respawn and stdio reconnection. |
 | `issuekit add` / `issuekit register` | Register this git repo namespace and this checkout's worker (auto-derives repo and worker ids, with machine metadata, and publishes the configured API project). |
 | `issuekit workers [--repo-id <id>] [--project <name>] [--json]` | List registered workers and their repo-level roles across projects. |
-| `issuekit workers remove <worker.repo[@machine]\|machine/repo/worker> [--force] [--json]` | Remove a registered worker after checking for implementing issues. |
+| `issuekit workers remove <worker.repo[@machine]> [--force] [--json]` | Remove a registered worker after checking for implementing issues. |
 | `issuekit workers prune [--stale-after-sec <n>] [--dry-run] [--json]` | Remove stale workers that hold no implementing issue and are not targeted by directed work. |
 | `issuekit repos remove <repo> [--json]` | Remove a repo catalog entry; the API refuses entries that still have references. |
 | `issuekit add-ref <name> --path <repo> [--scope local\|workspace]` | Register an optional local project alias. |
@@ -535,10 +535,10 @@ retried with the same capped backoff used by the issue and review serve loops.
 ## Registry Maintenance
 
 Use `issuekit workers remove <worker.repo>` to delete a known stale checkout
-registration. The command accepts the current dotted key, the machine-qualified
-`worker.repo@machine` address, and the legacy `machine/repo/worker` id, prints
-the worker status, `last_seen`, and any implementing issue it found, and refuses
-to delete an implementing holder unless `--force` is passed.
+registration. The command accepts the current dotted key and the
+machine-qualified `worker.repo@machine` address, prints the worker status,
+`last_seen`, and any implementing issue it found, and refuses to delete an
+implementing holder unless `--force` is passed.
 
 Use `issuekit workers prune --dry-run` to review cleanup candidates before
 deleting anything. Prune only offers workers whose `last_seen` heartbeat is
@@ -645,9 +645,8 @@ populated, the pull-based pool never re-offers it, so no idle agent picks it
 up and the issue silently stalls.
 
 `issuekit orphans` surfaces these without out-of-band forensics. An implementer
-claim records which worker checkout (`worker.repo`, with legacy
-`machine/repo/worker` keys still recognized) holds the issue, and the worker
-registry tracks each live checkout's `last_seen` heartbeat. The
+claim records which worker checkout (`worker.repo`) holds the issue, and the
+worker registry tracks each live checkout's `last_seen` heartbeat. The
 command cross-references the two and flags an implementing issue when either:
 
 - `no_worker`: no registered worker matches the claim's worker key, so the

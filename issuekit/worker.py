@@ -24,7 +24,7 @@ from issuekit.localconfig import (
     read_local_config,
     write_local_config,
 )
-from issuekit.worker_keys import legacy_worker_key, worker_key as current_worker_key
+from issuekit.worker_keys import worker_key as current_worker_key
 
 
 WORKER_REGISTRY_ENV_VAR = "ISSUEKIT_WORKER_REGISTRY"
@@ -353,10 +353,6 @@ def _worker_registry_path(registry_path: Path | str | None) -> Path:
 
 def worker_key(identity: WorkerIdentity) -> str:
     return current_worker_key(identity.repo_id, identity.worker_name)
-
-
-def legacy_worker_identity_key(identity: WorkerIdentity) -> str:
-    return legacy_worker_key(identity.machine_id, identity.repo_id, identity.worker_name)
 
 
 def _worker_key(identity: WorkerIdentity) -> str:

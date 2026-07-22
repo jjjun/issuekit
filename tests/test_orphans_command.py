@@ -45,7 +45,7 @@ def test_orphans_flags_claim_without_live_worker(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    client = FakeIssuekitClient([_implementing(5, "machine/issuekit/dead")])
+    client = FakeIssuekitClient([_implementing(5, "dead.issuekit@machine")])
     _configure_api(tmp_path, monkeypatch, client)
 
     assert cli.main(["orphans"]) == 0
@@ -54,7 +54,7 @@ def test_orphans_flags_claim_without_live_worker(
     assert "Orphaned or stale implementing claims: 1" in out
     assert "#5" in out
     assert "no live registered worker" in out
-    assert "worker=machine/issuekit/dead" in out
+    assert "worker=dead.issuekit@machine" in out
 
 
 def test_orphans_json_shape(
@@ -62,7 +62,7 @@ def test_orphans_json_shape(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    client = FakeIssuekitClient([_implementing(5, "machine/issuekit/dead")])
+    client = FakeIssuekitClient([_implementing(5, "dead.issuekit@machine")])
     _configure_api(tmp_path, monkeypatch, client)
 
     assert cli.main(["orphans", "--json"]) == 0
@@ -74,7 +74,7 @@ def test_orphans_json_shape(
             "ref": "issuekit#5",
             "title": "Task 5",
             "assignee": "claude",
-            "worker": "machine/issuekit/dead",
+            "worker": "dead.issuekit@machine",
             "reason": "no_worker",
             "last_seen": None,
             "stale_seconds": None,
@@ -115,7 +115,7 @@ def test_orphans_flags_expired_heartbeat(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    client = FakeIssuekitClient([_implementing(6, "machine/issuekit/slow")])
+    client = FakeIssuekitClient([_implementing(6, "slow.issuekit@machine")])
     # Registered worker heartbeat is fixed at 2026-01-01, far older than "now".
     client.upsert_worker(
         machine_id="machine", repo_id="issuekit", worker_id="slow", path="/repo"
@@ -136,7 +136,7 @@ def test_orphans_healthy_worker_within_window_is_not_flagged(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    client = FakeIssuekitClient([_implementing(6, "machine/issuekit/slow")])
+    client = FakeIssuekitClient([_implementing(6, "slow.issuekit@machine")])
     client.upsert_worker(
         machine_id="machine", repo_id="issuekit", worker_id="slow", path="/repo"
     )
@@ -156,7 +156,7 @@ def test_orphans_ignores_non_implementing_and_unclaimed(
     client = FakeIssuekitClient(
         [
             api_issue(1, "Review", status="in_progress", stage="review",
-                      worker="machine/issuekit/dead"),
+                      worker="dead.issuekit@machine"),
             _implementing(2, ""),  # implementing but no recorded worker
         ]
     )

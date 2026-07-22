@@ -79,7 +79,7 @@ def _setup(monkeypatch, tmp_path: Path, *, output: str):
     )
     client.create_proposal_check(
         1,
-        target_worker="machine/target/worker",
+        target_worker="worker.target@machine",
         project="target",
     )
     client.calls.clear()
@@ -194,7 +194,7 @@ def test_duplicate_pollers_report_already_decided_from_result_guard(
         output=_check_block(verdict="reject", comment="Out of scope for this repo."),
     )
     stale_pending = client.poll_proposal_checks(
-        target_worker="machine/target/worker",
+        target_worker="worker.target@machine",
         status="pending",
     )
     client.calls.clear()
@@ -282,7 +282,7 @@ def test_cli_proposal_checks_list_prints_table_without_agent(
     assert client.calls[-1] == {
         "method": "list_proposal_checks",
         "body": {
-            "target_worker": "machine/target/worker",
+                "target_worker": "worker.target",
             "status": None,
             "page_size": 500,
         },
@@ -303,7 +303,7 @@ def test_cli_proposal_checks_list_status_json_uses_limit_offset(
     )
     client.create_proposal_check(
         1,
-        target_worker="machine/target/worker",
+        target_worker="worker.target@machine",
         project="target",
     )
     client.post_proposal_check_result(
@@ -339,7 +339,7 @@ def test_cli_proposal_checks_list_status_json_uses_limit_offset(
     assert client.calls[-1] == {
         "method": "poll_proposal_checks",
         "body": {
-            "target_worker": "machine/target/worker",
+                "target_worker": "worker.target",
             "status": "answered",
             "limit": 1,
             "offset": 0,

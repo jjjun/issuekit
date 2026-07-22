@@ -40,8 +40,8 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     remove_parser = subcommands.add_parser(
         "remove",
         help=(
-            "Remove a registered worker by worker.repo, worker.repo@machine, "
-            "or legacy machine/repo/worker id."
+            "Remove a registered worker by worker.repo or worker.repo@machine "
+            "id."
         ),
     )
     remove_parser.add_argument("address", help="Worker address to remove.")

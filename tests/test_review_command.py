@@ -247,7 +247,7 @@ def test_review_command_rejects_same_worker_self_review(
                 assignee="",
                 stage="review",
                 implementer="codex",
-                worker="machine/demo/reviewer",
+                worker="reviewer.demo@machine",
                 author="claude",
             )
         ]

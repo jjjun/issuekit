@@ -736,12 +736,10 @@ def test_config_worker_key_returns_registered_identity() -> None:
     config = IssuekitConfig(worker=WorkerIdentity("machine", "repo", "checkout"))
 
     assert config.worker_key() == "checkout.repo"
-    assert config.legacy_worker_key() == "machine/repo/checkout"
     assert config.qualified_worker_key() == "checkout.repo@machine"
     assert config.worker_lookup_keys() == (
         "checkout.repo@machine",
         "checkout.repo",
-        "machine/repo/checkout",
     )
 
 

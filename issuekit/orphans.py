@@ -1,8 +1,7 @@
 """Detect orphaned or stale implementing claims.
 
-An implementer claim records which worker checkout (worker.repo, or the legacy
-machine/repo/worker key)
-holds the issue in ``Issue.worker``. The worker registry refreshes each live
+An implementer claim records which worker checkout (worker.repo) holds the
+issue in ``Issue.worker``. The worker registry refreshes each live
 checkout's ``last_seen`` heartbeat (see ``WorkerHeartbeat``). Cross-referencing
 the two surfaces claims whose holding worker is gone or has stopped
 heartbeating, without any server-side lease: an issue stuck at

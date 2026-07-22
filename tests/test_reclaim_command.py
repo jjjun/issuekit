@@ -45,7 +45,7 @@ def test_reclaim_refuses_healthy_claim_without_force(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    client = FakeIssuekitClient([_implementing(5, "machine/issuekit/live")])
+    client = FakeIssuekitClient([_implementing(5, "live.issuekit@machine")])
     client.upsert_worker(
         machine_id="machine", repo_id="issuekit", worker_id="live", path="/repo"
     )
@@ -65,13 +65,13 @@ def test_reclaim_force_proceeds_for_healthy_claim(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    client = FakeIssuekitClient([_implementing(5, "machine/issuekit/live")])
+    client = FakeIssuekitClient([_implementing(5, "live.issuekit@machine")])
     _configure_api(tmp_path, monkeypatch, client)
 
     assert cli.main(["reclaim", "5", "--force"]) == 0
 
     assert (
-        "Reclaimed issue #5: assignee=claude worker=machine/issuekit/live -> pool"
+        "Reclaimed issue #5: assignee=claude worker=live.issuekit@machine -> pool"
         in capsys.readouterr().out
     )
     issue = client.get_issue(5)
@@ -84,7 +84,7 @@ def test_reclaim_force_proceeds_for_healthy_claim(
         {
             "method": "reclaim",
             "number": 5,
-            "body": {"expected_worker": "machine/issuekit/live", "actor": "issuekit"},
+            "body": {"expected_worker": "live.issuekit@machine", "actor": "issuekit"},
         }
     ]
 

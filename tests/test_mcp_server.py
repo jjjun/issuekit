@@ -359,7 +359,7 @@ def test_list_workers_preserves_target_worker_when_set(
     assert workers[0]["target_worker"] == "checkout.mine-py"
 
 
-def test_remove_worker_tool_deletes_by_legacy_id(
+def test_remove_worker_tool_rejects_legacy_id(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -374,17 +374,12 @@ def test_remove_worker_tool_deletes_by_legacy_id(
     monkeypatch.setattr(worker_registry, "IssuekitClient", lambda *args, **kwargs: client)
     server = create_server(tmp_path)
 
-    result = _call(
-        server,
-        "remove_worker",
-        {"address": "machine/mine-py/checkout"},
-    )
-
-    assert result["deleted"] == {"id": "checkout.mine-py", "deleted": True}
-    assert client.calls[-1] == {
-        "method": "delete_worker",
-        "body": {"id": "checkout.mine-py"},
-    }
+    with pytest.raises(Exception, match="Worker was not found"):
+        _call(
+            server,
+            "remove_worker",
+            {"address": "machine/mine-py/checkout"},
+        )
 
 
 def test_remove_worker_tool_force_allows_implementing_holder(

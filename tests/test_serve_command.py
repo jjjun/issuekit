@@ -356,7 +356,7 @@ def test_serve_proposal_checks_once_processes_pending_check(
     )
     client.create_proposal_check(
         1,
-        target_worker="machine/demo/checkout",
+        target_worker="checkout.demo@machine",
         project="demo",
     )
     client.calls.clear()
@@ -398,7 +398,6 @@ def test_serve_proposal_checks_once_processes_pending_check(
     assert [call["method"] for call in client.calls[2:-1]] == [
         "poll_proposal_checks",
         "poll_proposal_checks",
-        "poll_proposal_checks",
     ]
     assert client.calls[-1]["method"] == "post_proposal_check_result"
     captured = capsys.readouterr()
@@ -424,7 +423,6 @@ def test_serve_proposal_checks_once_idle_does_not_spawn_agent(
         "upsert_worker",
     ]
     assert [call["method"] for call in client.calls[2:]] == [
-        "poll_proposal_checks",
         "poll_proposal_checks",
         "poll_proposal_checks",
     ]
@@ -590,7 +588,7 @@ def test_serve_once_recovers_own_orphan_before_polling(
                 stage="implementing",
                 implementer="codex",
                 author="claude",
-                worker="machine/demo/checkout",
+                worker="checkout.demo@machine",
             )
         ]
     )
@@ -667,7 +665,7 @@ def test_serve_recovery_error_continues_to_poll(
                 stage="implementing",
                 implementer="codex",
                 author="claude",
-                worker="machine/demo/checkout",
+                worker="checkout.demo@machine",
             ),
             api_issue(2, "Ready", author="claude"),
         ]
@@ -699,7 +697,7 @@ def test_serve_recovered_issue_counts_toward_max_issues(
                 stage="implementing",
                 implementer="codex",
                 author="claude",
-                worker="machine/demo/checkout",
+                worker="checkout.demo@machine",
             ),
             api_issue(2, "Ready", author="claude"),
         ]
