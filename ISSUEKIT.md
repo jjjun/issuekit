@@ -22,6 +22,65 @@ that API.
 - `pytest` for the test suite; a `check-encoding` gate enforces UTF-8 without
   BOM, no CRLF, and no mojibake in tracked files.
 
+## Package layout
+
+Packages are organized by responsibility. Keep new code with the responsibility
+it serves rather than moving modules for symmetry.
+
+- `agentrun`: reusable headless coding-agent process runtime; see
+  [`issuekit/agentrun/README.md`](issuekit/agentrun/README.md) for its boundary
+  and extension path. Tests: `test_agentrun_*.py`.
+- `agents`: issuekit workflows that invoke agents, including implementation,
+  review, routing, proposal checks, and triage. Tests: the corresponding
+  `test_implement_command.py`, `test_review_command.py`, `test_router.py`,
+  `test_proposal_checks.py`, and `test_triage_author.py` files.
+- `api`: HTTP client, API resources, authentication, and token caching. Tests:
+  `test_client.py`.
+- `commands`: CLI subcommand implementations and setup helpers. Tests: the
+  command-named `test_*_command.py` files, plus `test_setup.py` and
+  `test_validate.py`.
+- `config`: TOML, environment, local-worker, reference, and project-profile
+  configuration. Tests: `test_config.py`, `test_localconfig.py`, `test_refs.py`,
+  and `test_project_profile.py`.
+- `encoding`: encoding and mojibake detection and reporting. Tests:
+  `test_encoding.py` and `test_check_encoding.py`.
+- `guards`: author-handoff, branch, claim-sync, and separation-of-duties
+  protections. Tests: `test_branch_guard.py`, `test_claim_sync.py`, and the
+  related command tests.
+- `issues`: issue dependency, display, stale-claim, and session helpers. Tests:
+  `test_orphans.py`, `test_session.py`, and the related lifecycle tests.
+- `mcp`: optional MCP server integration. Tests: `test_mcp_server.py` and
+  `test_init_mcp.py`.
+- `negotiation`: negotiation thread model, storage backends, engine, and
+  prompts. Tests: `test_negotiation.py`, `test_negotiation17_contract.py`, and
+  `test_negotiation_prompts.py`.
+- `proposals`: cross-repository proposal model and API helpers. Tests:
+  `test_proposals.py`.
+- `prompts`: agent prompt templates and structured-output contracts. Tests:
+  `test_prompts.py` and the workflow-specific prompt tests.
+- `templates`: packaged files used by project initialization. Tests:
+  `test_init.py` and `test_setup.py`.
+- `testing`: reusable in-memory test doubles for issue and proposal APIs. Tests
+  use these helpers throughout `tests/`; no separate test module owns them.
+- `workers`: worker identity, registration, and API registry helpers. Tests:
+  `test_worker.py`, `test_worker_keys.py`, and `test_workers_command.py`.
+
+`store.py` and `workflow.py` remain top-level because they are the workflow
+core shared across the tracker-facing packages. `core.py` and `gitutil.py` are
+their shared leaves, and `cli.py` is the thin top-level command dispatcher.
+These modules are deliberately not nested: moving them only for symmetry would
+blur the central workflow boundary. Reconsider their placement only when a
+specific responsibility has a clear package boundary and its callers can depend
+on that boundary instead of the shared workflow core.
+
+Dependencies point inward from entry points and workflows toward the API and
+tracker layers. `commands`, `mcp`, `agents`, and `negotiation` sit above those
+layers; `api`, `proposals`, `issues`, `guards`, `workers`, and `config` provide
+focused support around them. `encoding`, `agentrun`, and `gitutil` are leaves
+and must not import workflow state. In particular, nothing under
+`issuekit/agentrun/` may import `issuekit.config`, `issuekit.workflow`,
+`issuekit.store`, or `issuekit.proposals`.
+
 ## Public surface
 
 Every subpackage ``__init__.py`` has a module docstring and exposes its public
