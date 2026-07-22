@@ -90,6 +90,7 @@ def run_poll_loop(
     recreate_store: Callable[[], None] | None = None,
     stop_before_retry_sleep: bool = False,
     abort_failed_exit_code: int | None = None,
+    sleep_after_success: bool = False,
 ) -> int:
     """Run poll attempts until stopped, idle-once, or the success limit is reached."""
     count = 0
@@ -125,6 +126,12 @@ def run_poll_loop(
         on_success(result, count)
         if once or (max_count is not None and count >= max_count):
             return 0
+        if sleep_after_success:
+            if controller.requested:
+                break
+            controller.sleep(interval)
+            if controller.requested:
+                break
 
     on_stopped()
     return 0

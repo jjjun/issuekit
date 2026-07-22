@@ -455,6 +455,7 @@ def _serve_proposal_checks_loop(
         interval=float(args.interval),
         max_count=None,
         stop_before_retry_sleep=True,
+        sleep_after_success=True,
     )
 
 

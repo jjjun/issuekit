@@ -3,6 +3,7 @@ from pathlib import Path
 import os
 import signal
 import subprocess
+from types import SimpleNamespace
 
 from issuekit import cli
 from issuekit import proposals_api
@@ -473,6 +474,54 @@ def test_serve_proposal_checks_backs_off_after_cycle_error(
 
     assert exit_code == 0
     assert "event=proposal_checks_cycle_error" in capsys.readouterr().err
+
+
+def test_serve_proposal_checks_sleeps_between_successful_cycles(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    class Args:
+        once = False
+        interval = 7.5
+        timeout_sec = 1
+        proposal_check_limit = 50
+
+    class StopAfterSecondSleep:
+        requested = False
+
+        def __init__(self) -> None:
+            self.abort_event = serve.threading.Event()
+            self.events: list[str] = []
+            self.sleeps: list[float] = []
+
+        def sleep(self, seconds: float) -> bool:
+            self.events.append("sleep")
+            self.sleeps.append(seconds)
+            if len(self.sleeps) == 2:
+                self.requested = True
+            return self.requested
+
+    controller = StopAfterSecondSleep()
+
+    def successful_cycle(*args, **kwargs):
+        controller.events.append("poll")
+        return [SimpleNamespace(error=None, status="answered")]
+
+    monkeypatch.setattr(serve, "run_proposal_check_cycle", successful_cycle)
+
+    assert (
+        serve._serve_proposal_checks_loop(
+            Args(),
+            agent="codex",
+            config=serve.IssuekitConfig(api_url="https://mine.example"),
+            cwd=tmp_path,
+            log_path=tmp_path / "serve.log",
+            controller=controller,
+        )
+        == 0
+    )
+    assert controller.events == ["poll", "sleep", "poll", "sleep"]
+    assert controller.sleeps == [7.5, 7.5]
 
 
 def test_serve_triage_auto_adopts_before_claiming(
