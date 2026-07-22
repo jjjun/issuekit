@@ -120,6 +120,17 @@ def test_check_encoding_bom_fails(tmp_path: Path, monkeypatch, capsys) -> None:
     assert "bom.py" in capsys.readouterr().err
 
 
+def test_check_encoding_checks_docs_issues_files(tmp_path: Path, monkeypatch, capsys) -> None:
+    init_git_repo(tmp_path)
+    add_tracked(tmp_path, "docs/issues/bom.md", b"\xef\xbb\xbf# bad\n")
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = cli.main(["check-encoding"])
+
+    assert exit_code == 1
+    assert "docs/issues/bom.md" in capsys.readouterr().err
+
+
 def test_check_encoding_mojibake_fails(tmp_path: Path, monkeypatch, capsys) -> None:
     init_git_repo(tmp_path)
     add_tracked(tmp_path, "bad.md", f"first\nprefix {MOJIBAKE} suffix\n".encode("utf-8"))

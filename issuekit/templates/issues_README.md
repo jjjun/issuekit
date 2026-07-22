@@ -28,15 +28,4 @@ issuekit submit-review 123 --summary "Implemented."
 issuekit approve 123 --verification "uv run pytest"
 ```
 
-Legacy migration:
-
-```powershell
-issuekit migrate-to-api --dry-run
-issuekit migrate-to-api
-issuekit migrate-proposals-to-api --dry-run
-issuekit migrate-proposals-to-api
-```
-
-Cross-project proposals live in the configured API project inbox. After running
-`issuekit migrate-proposals-to-api` for a legacy repository, remove its old
-file-backed proposal inbox.
+Cross-project proposals live in the configured API project inbox.

@@ -126,7 +126,6 @@ def run(args) -> int:
             file
             for file in changed_files
             if _has_source_extension(file)
-            and not _is_issue_file(file)
             and not is_encoding_excluded_path(file, exclude_patterns)
         ]
         crlf_paths: list[str] | None = [
@@ -140,7 +139,6 @@ def run(args) -> int:
             file
             for file in tracked_files
             if _has_source_extension(file)
-            and not _is_issue_file(file)
             and not is_encoding_excluded_path(file, exclude_patterns)
         ]
         crlf_paths = None
@@ -391,10 +389,6 @@ def _format_git_argv(args: list[str]) -> str:
 def _has_source_extension(file: str) -> bool:
     suffix = Path(file).suffix
     return bool(suffix) and suffix[1:].lower() in SOURCE_EXTENSIONS
-
-
-def _is_issue_file(file: str) -> bool:
-    return Path(file).as_posix().startswith("docs/issues/")
 
 
 def _stray_carriage_return_lines(content: bytes) -> list[int]:

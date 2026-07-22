@@ -50,7 +50,6 @@ def test_setup_empty_repo_scaffolds_mcp_and_prints_checklist(
     assert (tmp_path / "AGENTS.md").exists()
     assert (tmp_path / "CLAUDE.md").exists()
     assert not (tmp_path / "docs" / "issues" / "incoming").exists()
-    assert cli.main(["migrate-to-api", "--dry-run"]) == 0
 
 
 def test_setup_reports_missing_and_present_mcp_json_issuekit_server(tmp_path: Path) -> None:

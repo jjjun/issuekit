@@ -8,13 +8,10 @@ from importlib import resources
 import json
 from pathlib import Path
 
-from issuekit.config import IssuekitConfig, load_config
-from issuekit.encoding import has_non_ascii
-from issuekit.legacy_markdown import read_all_issues
+from issuekit.config import load_config
 from issuekit.localconfig import ensure_gitignore_entries
 
 
-ISSUEKIT_BLOCK_HEADER = "[tool.issuekit]"
 CODEX_MCP_HEADER = "[mcp_servers.issuekit]"
 HANDOFF_HEADER = "## Handoff protocol"
 PRE_COMMIT_GUIDANCE = """Add these hooks to .pre-commit-config.yaml:
@@ -83,8 +80,6 @@ def init_repo(cwd: Path, *, force: bool = False, with_mcp: bool = False) -> Init
     _write_pre_commit(cwd, force, result)
     if with_mcp:
         _write_mcp_scaffold(cwd, force, result)
-    _handle_ascii_threshold(cwd, issues_dir, result)
-
     return result
 
 
@@ -208,50 +203,6 @@ def _write_handoff_reference(cwd: Path, path: Path, result: InitResult) -> None:
     with path.open("a", encoding="utf-8", newline="\n") as handle:
         handle.write(f"{prefix}{reference}\n")
     result.written.append(_display_path(cwd, path))
-
-
-def _handle_ascii_threshold(cwd: Path, issues_dir: Path, result: InitResult) -> None:
-    _, _, issues = read_all_issues(issues_dir)
-    legacy_non_ascii = [issue for issue in issues if has_non_ascii(issue.content)]
-    if not legacy_non_ascii:
-        return
-
-    threshold = max(issue.id or 0 for issue in issues) + 1
-    block = _issuekit_block(threshold)
-    pyproject = cwd / "pyproject.toml"
-    if not pyproject.exists():
-        result.guidance.append(f"Add this block to pyproject.toml:\n\n{block.rstrip()}")
-        return
-
-    content = pyproject.read_text(encoding="utf-8-sig")
-    if ISSUEKIT_BLOCK_HEADER in content:
-        if "ascii_id_threshold" not in _tool_issuekit_section(content):
-            result.guidance.append(
-                f"Set ascii_id_threshold = {threshold} in the existing [tool.issuekit] block."
-            )
-        return
-
-    separator = "" if content.endswith("\n") else "\n"
-    pyproject.write_text(f"{content}{separator}\n{block}", encoding="utf-8", newline="\n")
-    result.written.append("pyproject.toml")
-
-
-def _tool_issuekit_section(content: str) -> str:
-    start = content.find(ISSUEKIT_BLOCK_HEADER)
-    if start == -1:
-        return ""
-    next_section = content.find("\n[", start + len(ISSUEKIT_BLOCK_HEADER))
-    return content[start:] if next_section == -1 else content[start:next_section]
-
-
-def _issuekit_block(threshold: int) -> str:
-    defaults = IssuekitConfig()
-    return (
-        "[tool.issuekit]\n"
-        "# api_url = \"https://mine.example\"\n"
-        f"project = \"{defaults.project}\"\n"
-        f"ascii_id_threshold = {threshold}\n"
-    )
 
 
 def _template_text(template_name: str) -> str:

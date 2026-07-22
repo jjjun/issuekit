@@ -8,9 +8,6 @@ import re
 
 from issuekit.encoding.report import code_point, code_point_context, code_point_text
 
-MOJIBAKE_PATTERN = re.compile(
-    "\u7e67|\u7e3a|\u8b41|\u8373|\u87b3|\u8708|\u9ae2|\ufffd"
-)
 ENCODING_ARTIFACT_PATTERN = re.compile(
     "[\u0080-\u009f]|[\ue000-\uf8ff]|\u7e67|\u7e3a|\u8b41|\u8373|\u8389|\u87b3|\u8703|\u8708|\u8711|\u90e2|\u9622|\u9ae2|\ufffd"
 )
@@ -21,10 +18,6 @@ CP932_DOUBLE_ENCODING_LEAD_CHARACTER_PATTERN = re.compile(
 )
 HALFWIDTH_KATAKANA_PATTERN = re.compile("[\uff61-\uff9f]")
 NON_ASCII_PATTERN = re.compile(r"[^\x00-\x7F]")
-
-
-def has_mojibake(text: str) -> bool:
-    return bool(MOJIBAKE_PATTERN.search(text))
 
 
 def find_encoding_artifacts(

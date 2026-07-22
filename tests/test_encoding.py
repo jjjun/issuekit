@@ -1,12 +1,6 @@
 from issuekit import encoding
 
 
-def test_mojibake_detection() -> None:
-    assert encoding.has_mojibake("\u7e67")
-    assert encoding.has_mojibake("\ufffd")
-    assert not encoding.has_mojibake("plain ascii")
-
-
 def test_encoding_artifact_detection() -> None:
     assert encoding.has_encoding_artifacts("\u0080")
     assert encoding.has_encoding_artifacts("\u8389")

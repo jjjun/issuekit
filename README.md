@@ -205,8 +205,6 @@ copying the steps.
 |---------|---------|
 | `issuekit info [--json]` | Show API tracker status. |
 | `issuekit validate` | Check API connectivity and issue response shape. |
-| `issuekit migrate-to-api [--dry-run]` | Import legacy `docs/issues/{active,completed}` files into the API backend. |
-| `issuekit migrate-proposals-to-api [--dry-run]` | Import legacy proposal inbox files into the API backend. |
 | `issuekit complete <id> --summary "..." --verification "..." [--force]` | Complete an issue through the API; use `--force` to close an active no-op, duplicate, obsolete, or anchor issue without claim and review ceremony. |
 | `issuekit approve <id> --verification "..." [--reviewer claude]` | Approve a review-stage issue and move it to completed. |
 | `issuekit claim --assignee codex` | Claim the next active issue for an implementer. |
@@ -237,10 +235,6 @@ copying the steps.
 | `issuekit outgoing --to <project> [--id <id>] [--status <status>]` | List proposals this project sent to a target project's inbox (read-only, self-scoped). |
 | `issuekit adopt <proposal-id> [--json]` | Adopt an incoming API proposal as a local issue and print the created API issue id. |
 | `issuekit discard <proposal-id>` | Discard an incoming API proposal. |
-
-Legacy file parsing is used only by `migrate-to-api`,
-`migrate-proposals-to-api`, and the explicit filesystem issue-store escape
-hatch.
 
 ## Cross-Project Proposals
 
@@ -429,9 +423,6 @@ default_reviewer = "auto"
 require_distinct_reviewer = true
 ```
 
-Legacy `docs/issues/` files are read only by the migration commands. Runtime
-issue lifecycle commands use the API store.
-
 Use `disabled_agents` to remove an agent from claim, review, router, triage, and
 `implement --agent` candidacy without deleting its run configuration. The key is
 a deny-list; omit it or set `disabled_agents = []` to enable all configured
@@ -470,8 +461,7 @@ patterns for generated paths that `issuekit check-encoding` should skip. The
 agent submit mojibake gate also honors them for unconfirmed hits; confirmed
 mojibake remains blocked by that gate. The exclusions apply to BOM, mojibake,
 stray carriage-return, and CRLF checks. Use repeatable `--exclude PATTERN` flags
-for one-off exclusions. Legacy
-`docs/issues/` files remain excluded from source text checks as before.
+for one-off exclusions.
 
 At startup, issuekit also reads a repo-local `.env` file from the current repo
 root and loads values such as `ISSUEKIT_API_URL`, `ISSUEKIT_API_USER`,

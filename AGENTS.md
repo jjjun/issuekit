@@ -13,8 +13,6 @@ from the repo root so the MCP server resolves the repo configuration.
 ## Project notes
 
 - Implementation tasks and cross-project proposals live in the configured API project.
-- Run `issuekit migrate-proposals-to-api` once per legacy repo before deleting
-  its old `docs/issues/` tree.
 - This repo dogfoods its own issue tracker.
 - Repo-local `.env` is trusted input for `ISSUEKIT_*` keys only; sensitive API
   settings loaded from `.env` print a stderr notice.
