@@ -30,6 +30,8 @@ uv run pytest
 uv run issuekit check-encoding
 ```
 
+Run the full suite, including MCP tests, with `uv run --with mcp pytest`.
+
 Pytest uses concise progress output by default while retaining failure details
 and the final test summary. For verbose progress during interactive diagnosis,
 run `uv run pytest -o addopts= -v`.
@@ -53,8 +55,8 @@ use the normal API credential variables, such as `ISSUEKIT_API_TOKEN` or
 endpoints.
 
 Maintainers can also run the same pytest and encoding checks from GitHub
-Actions with the manual `Tests` workflow and the `Run workflow` button. These
-checks are intentionally not an automatic CI gate on push or pull request.
+Actions with the `Tests` workflow, which runs automatically on pull requests
+and pushes to `main`, or with the `Run workflow` button.
 
 On Windows, `dev-tool install-editable` installs the global `issuekit` and
 `issuekit-mcp` tool shims from this checkout in editable mode. It stops stale

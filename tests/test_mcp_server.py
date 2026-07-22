@@ -1,12 +1,16 @@
 import asyncio
 import json
+import os
 import time
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-pytest.importorskip("mcp")
+if os.environ.get("ISSUEKIT_REQUIRE_MCP") == "1":
+    import mcp
+else:
+    pytest.importorskip("mcp")
 
 from issuekit import cli
 import issuekit.proposals.api as proposals_api
