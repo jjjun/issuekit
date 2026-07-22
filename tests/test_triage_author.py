@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import hashlib
 from pathlib import Path
+import subprocess
 
 import pytest
 
@@ -74,6 +75,18 @@ def _write_skip_state(tmp_path: Path, proposal_id: int, body: str) -> None:
         encoding="utf-8",
         newline="\n",
     )
+
+
+def _init_git_repo(path: Path) -> None:
+    for args in (
+        ("init", "-q"),
+        ("config", "user.email", "test@example.com"),
+        ("config", "user.name", "Test User"),
+        ("add", "."),
+        ("commit", "-qm", "initial"),
+    ):
+        result = subprocess.run(["git", *args], cwd=path, check=False)
+        assert result.returncode == 0
 
 
 def _setup(monkeypatch, tmp_path, *, proposals, outputs, author_agent="codex", extra=""):
@@ -563,3 +576,40 @@ def test_cli_triage_once_prints_json_decisions(monkeypatch, tmp_path, capsys) ->
     assert decisions[0]["decision"] == "adopt"
     assert decisions[0]["proposal_id"] == 6
     assert client.get_proposal(6)["status"] == "adopted"
+
+
+@pytest.mark.parametrize("filename", ["code.py", "変更.py"])
+def test_triage_author_rejects_content_only_worktree_mutations(
+    monkeypatch,
+    tmp_path,
+    filename,
+) -> None:
+    _client, _runner, config, _events, log = _setup(
+        monkeypatch,
+        tmp_path,
+        proposals=[
+            {"id": 5, "origin": "mine-py#3@abc", "title": "Do a thing", "body": "Please."}
+        ],
+        outputs=[_triage_block(decision="discard", reason="Not applicable.")],
+    )
+    changed_path = tmp_path / filename
+    changed_path.write_text("value = 1\n", encoding="utf-8", newline="\n")
+    _init_git_repo(tmp_path)
+    changed_path.write_text("value = 2\n", encoding="utf-8", newline="\n")
+
+    class MutatingRunner(FakeRunner):
+        def run(self, adapter, plan_path, repo, **kwargs):
+            changed_path.write_text("value = 3\n", encoding="utf-8", newline="\n")
+            return super().run(adapter, plan_path, repo, **kwargs)
+
+    runner = MutatingRunner([_triage_block(decision="discard", reason="Not applicable.")])
+
+    decisions = run_triage_author_cycle(
+        config,
+        tmp_path,
+        runner_factory=lambda: runner,
+        log=log,
+    )
+
+    assert decisions[0].decision == "error"
+    assert decisions[0].error == "Triage agent modified the worktree for proposal #5."

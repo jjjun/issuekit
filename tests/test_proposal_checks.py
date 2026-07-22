@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import subprocess
 
 import pytest
 
@@ -63,6 +64,18 @@ def _write_config(tmp_path: Path) -> None:
 
 def _check_block(**fields: str) -> str:
     return "```proposal-check\n" + json.dumps(fields) + "\n```\n"
+
+
+def _init_git_repo(path: Path) -> None:
+    for args in (
+        ("init", "-q"),
+        ("config", "user.email", "test@example.com"),
+        ("config", "user.name", "Test User"),
+        ("add", "."),
+        ("commit", "-qm", "initial"),
+    ):
+        result = subprocess.run(["git", *args], cwd=path, check=False)
+        assert result.returncode == 0
 
 
 def _setup(monkeypatch, tmp_path: Path, *, output: str):
@@ -352,3 +365,37 @@ def test_cli_proposal_checks_list_and_once_are_mutually_exclusive(capsys) -> Non
 
     assert cli.main(["proposal-checks", "--list", "--once"]) == 2
     assert "not allowed with argument" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("filename", ["code.py", "変更.py"])
+def test_proposal_check_rejects_content_only_worktree_mutations(
+    monkeypatch,
+    tmp_path,
+    filename,
+) -> None:
+    _client, _runner, config = _setup(
+        monkeypatch,
+        tmp_path,
+        output=_check_block(verdict="reject", comment="Out of scope."),
+    )
+    changed_path = tmp_path / filename
+    changed_path.write_text("value = 1\n", encoding="utf-8", newline="\n")
+    _init_git_repo(tmp_path)
+    changed_path.write_text("value = 2\n", encoding="utf-8", newline="\n")
+
+    class MutatingRunner(FakeRunner):
+        def run(self, adapter, plan_path, repo, **kwargs):
+            changed_path.write_text("value = 3\n", encoding="utf-8", newline="\n")
+            return super().run(adapter, plan_path, repo, **kwargs)
+
+    runner = MutatingRunner([_check_block(verdict="reject", comment="Out of scope.")])
+
+    decisions = run_proposal_check_cycle(
+        config,
+        tmp_path,
+        agent="codex",
+        runner_factory=lambda: runner,
+    )
+
+    assert decisions[0].status == "error"
+    assert decisions[0].error == "Proposal-check agent modified the worktree for proposal #1."

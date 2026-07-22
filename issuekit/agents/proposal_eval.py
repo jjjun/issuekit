@@ -7,9 +7,7 @@ from pathlib import Path
 import threading
 from typing import Any, TextIO
 
-from issuekit.agents.runner import AgentResult
-from issuekit.gitutil import git_status_short
-from issuekit.prompts import parse_newest_json_block
+from issuekit.agents.readonly import run_readonly_evaluation, stdout_text
 from issuekit.workflow import WorkflowError
 
 
@@ -32,54 +30,26 @@ def run_readonly_proposal_evaluation(
     """Run an agent on a proposal prompt and reject output if the worktree changed."""
 
     proposal_id = int(proposal["id"])
-    run_dir = cwd / ".agent-runs"
-    run_dir.mkdir(exist_ok=True)
-    prompt_path = run_dir / prompt_filename
-    prompt_path.write_text(prompt_text, encoding="utf-8", newline="\n")
-    fingerprint_before = worktree_fingerprint(cwd)
-
-    result = runner_factory().run(
-        adapter,
-        prompt_path,
-        cwd,
-        timeout=float(timeout),
-        agent_name=agent,
+    run = run_readonly_evaluation(
+        agent=agent,
+        adapter=adapter,
+        cwd=cwd,
+        timeout=timeout,
+        runner_factory=runner_factory,
+        prompt_filename=prompt_filename,
+        prompt_text=prompt_text,
         prompt_override=prompt_override,
+        label=label,
+        subject=f"proposal #{proposal_id}",
         abort_event=abort_event,
     )
-    if result.timed_out:
-        raise TimeoutError(f"{label} agent timed out for proposal #{proposal_id}.")
-    if result.exit_code != 0:
+    if run.result.timed_out:
+        raise TimeoutError(f"{run.label} agent timed out for {run.subject}.")
+    if run.result.exit_code != 0:
         raise RuntimeError(
-            f"{label} agent exited {result.exit_code} for proposal #{proposal_id}."
+            f"{run.label} agent exited {run.result.exit_code} for {run.subject}."
         )
-    fingerprint_after = worktree_fingerprint(cwd)
-    if fingerprint_before != fingerprint_after:
+    if run.worktree_modified:
         print(mutation_log_message, file=err)
-        raise WorkflowError(f"{label} agent modified the worktree for proposal #{proposal_id}.")
-    return stdout_text(result)
-
-
-def worktree_fingerprint(cwd: Path) -> tuple[tuple[str, str], ...] | None:
-    status = git_status_short(cwd, strip=False, untracked_files="all")
-    if status is None:
-        return None
-    entries: list[tuple[str, str]] = []
-    for line in status.splitlines():
-        if len(line) < 4:
-            continue
-        raw_path = line[3:]
-        if " -> " in raw_path:
-            raw_path = raw_path.rsplit(" -> ", 1)[1]
-        raw_path = raw_path.strip('"')
-        path = Path(raw_path)
-        if path.parts and path.parts[0] == ".agent-runs":
-            continue
-        entries.append((line[:2], path.as_posix()))
-    return tuple(sorted(entries))
-
-
-def stdout_text(result: AgentResult) -> str:
-    if result.parsed and "stdout" in result.parsed:
-        return result.parsed["stdout"]
-    return result.stdout_path.read_text(encoding="utf-8", errors="replace")
+        raise WorkflowError(f"{run.label} agent modified the worktree for {run.subject}.")
+    return stdout_text(run.result)

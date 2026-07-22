@@ -4,12 +4,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-import hashlib
 import re
 import sys
 import threading
 from typing import TextIO
 
+from issuekit.agents.readonly import run_readonly_evaluation, stdout_text
 from issuekit.agents.runner import AgentResult, AgentRunner, resolve_adapter
 from issuekit.commands.approve import approve_issue
 from issuekit.config import IssuekitConfig
@@ -121,28 +121,24 @@ def run_review_and_decide(
             "refusing to run the reviewer agent."
         )
 
-    run_dir = cwd / ".agent-runs"
-    run_dir.mkdir(exist_ok=True)
-    review_path = run_dir / f"review-issue-{issue_id}.md"
-    review_path.write_text(
-        _render_review_prompt(issue, cwd=cwd, diff_context=diff_context),
-        encoding="utf-8",
-        newline="\n",
-    )
-    fingerprint_before = _worktree_fingerprint(cwd)
-
     runner_factory = runner_factory or AgentRunner
-    result = runner_factory().run(
-        adapter,
-        review_path,
-        cwd,
-        timeout=float(timeout),
-        agent_name=agent,
-        issue_id=issue_id,
-        follow=follow,
+    review_filename = f"review-issue-{issue_id}.md"
+    review_path = cwd / ".agent-runs" / review_filename
+    run = run_readonly_evaluation(
+        agent=agent,
+        adapter=adapter,
+        cwd=cwd,
+        timeout=timeout,
+        runner_factory=runner_factory,
+        prompt_filename=review_filename,
+        prompt_text=_render_review_prompt(issue, cwd=cwd, diff_context=diff_context),
         prompt_override=_review_prompt_pointer(review_path),
+        label="Reviewer",
+        subject=f"issue #{issue_id}",
+        run_kwargs={"issue_id": issue_id, "follow": follow},
         abort_event=abort_event,
     )
+    result = run.result
 
     if result.timed_out:
         return ReviewOutcome(issue=issue, result=result, verdict=_empty_verdict(), exit_code=124)
@@ -154,8 +150,7 @@ def run_review_and_decide(
             exit_code=result.exit_code if result.exit_code >= 0 else 1,
         )
 
-    fingerprint_after = _worktree_fingerprint(cwd)
-    if fingerprint_before != fingerprint_after:
+    if run.worktree_modified:
         print(
             "ERROR: reviewer run modified the worktree; not applying review verdict.",
             file=err,
@@ -163,7 +158,7 @@ def run_review_and_decide(
         return ReviewOutcome(issue=issue, result=result, verdict=_empty_verdict(), exit_code=1)
 
     try:
-        verdict = parse_review_output(_stdout_text(result))
+        verdict = parse_review_output(stdout_text(result))
     except ReviewParseError as exc:
         raise ReviewRunParseError(exc, result) from exc
     owned_store = None
@@ -458,41 +453,6 @@ def _git_stdout(args: list[str], cwd: Path) -> str:
 
 def _review_prompt_pointer(review_path: Path) -> str:
     return REVIEW_PROMPT.render_pointer(prompt_path=review_path)
-
-
-def _worktree_fingerprint(cwd: Path) -> tuple[tuple[str, str, str], ...] | None:
-    status = git_status_short(cwd, strip=False, untracked_files="all")
-    if status is None:
-        return None
-    entries: list[tuple[str, str, str]] = []
-    for line in status.splitlines():
-        if len(line) < 4:
-            continue
-        raw_path = line[3:]
-        if " -> " in raw_path:
-            raw_path = raw_path.rsplit(" -> ", 1)[1]
-        raw_path = raw_path.strip('"')
-        path = Path(raw_path)
-        if path.parts and path.parts[0] == ".agent-runs":
-            continue
-        digest = _file_digest(cwd / path)
-        entries.append((line[:2], path.as_posix(), digest))
-    return tuple(sorted(entries))
-
-
-def _file_digest(path: Path) -> str:
-    try:
-        if not path.exists() or not path.is_file():
-            return ""
-        return hashlib.sha256(path.read_bytes()).hexdigest()
-    except OSError:
-        return ""
-
-
-def _stdout_text(result: AgentResult) -> str:
-    if result.parsed and "stdout" in result.parsed:
-        return result.parsed["stdout"]
-    return result.stdout_path.read_text(encoding="utf-8", errors="replace")
 
 
 def _empty_verdict() -> ReviewVerdict:

@@ -67,7 +67,7 @@ def git_status_short(
     timeout: float = 30,
 ) -> str | None:
     """Return `git status --short` output, stripped, or None on failure."""
-    args = ["--no-pager", "status", "--short"]
+    args = ["-c", "core.quotepath=false", "--no-pager", "status", "--short"]
     if untracked_files is not None:
         args.append(f"--untracked-files={untracked_files}")
     result = run_git(args, cwd, timeout=timeout)

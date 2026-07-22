@@ -9,6 +9,7 @@ import sys
 import uuid
 from typing import Protocol
 
+from issuekit.agents.readonly import stdout_text
 from issuekit.agents.runner import AgentAdapter, AgentResult, AgentRunner, resolve_adapter
 from issuekit.config import IssuekitConfig
 from issuekit.core import Issue, last_nonempty_line
@@ -510,7 +511,7 @@ def _run_side_turn(
             code="agent_failed",
         )
 
-    parsed = parse_round_output(_stdout_text(result))
+    parsed = parse_round_output(stdout_text(result))
     if parsed.side != side:
         raise WorkflowError(
             f"Negotiation round {round_number} returned side {parsed.side}, expected {side}.",
@@ -759,12 +760,6 @@ def _require_issue_id(issue: Issue) -> int:
     if issue.id is None:
         raise WorkflowError(f"Created issue {issue.ref} has no id.", code="invalid_response")
     return issue.id
-
-
-def _stdout_text(result: AgentResult) -> str:
-    if result.parsed and "stdout" in result.parsed:
-        return result.parsed["stdout"]
-    return result.stdout_path.read_text(encoding="utf-8", errors="replace")
 
 
 def _run_id(result: AgentResult) -> str | None:

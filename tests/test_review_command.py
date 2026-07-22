@@ -502,10 +502,12 @@ def test_parse_review_output_names_non_ascii_field() -> None:
         )
 
 
+@pytest.mark.parametrize("filename", ["code.py", "変更.py"])
 def test_review_command_blocks_verdict_when_agent_mutates_worktree(
     tmp_path: Path,
     monkeypatch,
     capsys,
+    filename,
 ) -> None:
     client = FakeIssuekitClient(
         [
@@ -523,13 +525,14 @@ def test_review_command_blocks_verdict_when_agent_mutates_worktree(
     )
     _configure_registered_api(tmp_path, monkeypatch, client)
     (tmp_path / ".gitignore").write_text(".agent-runs/\n", encoding="utf-8", newline="\n")
-    (tmp_path / "code.py").write_text("value = 1\n", encoding="utf-8", newline="\n")
+    code_path = tmp_path / filename
+    code_path.write_text("value = 1\n", encoding="utf-8", newline="\n")
     _init_git_repo(tmp_path)
-    (tmp_path / "code.py").write_text("value = 2\n", encoding="utf-8", newline="\n")
+    code_path.write_text("value = 2\n", encoding="utf-8", newline="\n")
 
     class MutatingRunner(ApprovingRunner):
         def run(self, adapter, plan_path, repo, timeout, **kwargs) -> FakeResult:
-            (repo / "code.py").write_text("value = 3\n", encoding="utf-8", newline="\n")
+            code_path.write_text("value = 3\n", encoding="utf-8", newline="\n")
             return super().run(adapter, plan_path, repo, timeout, **kwargs)
 
     monkeypatch.setattr("issuekit.commands.review.AgentRunner", MutatingRunner)

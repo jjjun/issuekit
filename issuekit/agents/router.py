@@ -9,11 +9,11 @@ import re
 import sys
 from typing import Any, TextIO
 
+from issuekit.agents.readonly import run_readonly_evaluation, stdout_text
 from issuekit.agents.runner import AgentResult, AgentRunner, resolve_adapter
 from issuekit.config import IssuekitConfig
 from issuekit.encoding import has_non_ascii
 from issuekit.dependencies import DEPENDENCY_REF_EXPECTED, DEPENDENCY_REF_PATTERN
-from issuekit.gitutil import git_status_short
 from issuekit.prompts import ROUTER_PROMPT, RouterParseError
 from issuekit.proposals_api import api_client
 from issuekit.workflow import WorkflowError
@@ -158,44 +158,41 @@ def run_router(
     adapter = resolve_adapter(agent, config=config)
     candidates = list_candidate_profiles(config)
 
-    run_dir = cwd / ".agent-runs"
-    run_dir.mkdir(exist_ok=True)
-    prompt_path = run_dir / f"pm-request-{request_id}.md"
-    prompt_path.write_text(
-        _render_router_prompt(
+    prompt_filename = f"pm-request-{request_id}.md"
+    prompt_path = cwd / ".agent-runs" / prompt_filename
+    run = run_readonly_evaluation(
+        agent=agent,
+        adapter=adapter,
+        cwd=cwd,
+        timeout=timeout,
+        runner_factory=runner_factory,
+        prompt_filename=prompt_filename,
+        prompt_text=_render_router_prompt(
             request_text,
             qa_rounds=qa_rounds,
             candidates=candidates,
             max_targets=config.router.max_targets,
             force_final=force_final,
         ),
-        encoding="utf-8",
-        newline="\n",
-    )
-    fingerprint_before = _worktree_fingerprint(cwd)
-    result = runner_factory().run(
-        adapter,
-        prompt_path,
-        cwd,
-        timeout=float(timeout),
-        agent_name=agent,
         prompt_override=_prompt_pointer(prompt_path),
+        label="Router",
+        subject=f"request #{request_id}",
     )
+    result = run.result
     if result.timed_out:
-        raise TimeoutError(f"Router agent timed out for request #{request_id}.")
+        raise TimeoutError(f"{run.label} agent timed out for {run.subject}.")
     if result.exit_code != 0:
         raise RuntimeError(
-            f"Router agent exited {result.exit_code} for request #{request_id}."
+            f"{run.label} agent exited {result.exit_code} for {run.subject}."
         )
-    fingerprint_after = _worktree_fingerprint(cwd)
-    if fingerprint_before != fingerprint_after:
+    if run.worktree_modified:
         print(
             "ERROR: router run modified the worktree; ignoring its output.",
             file=err,
         )
-        raise WorkflowError(f"Router agent modified the worktree for request #{request_id}.")
+        raise WorkflowError(f"{run.label} agent modified the worktree for {run.subject}.")
     return parse_router_output(
-        _stdout_text(result),
+        stdout_text(result),
         candidates=candidates,
         max_targets=config.router.max_targets,
     )
@@ -344,28 +341,3 @@ def _render_qa(qa_rounds: Sequence[Mapping[str, str]]) -> str:
 
 def _prompt_pointer(prompt_path: Path) -> str:
     return ROUTER_PROMPT.render_pointer(prompt_path=prompt_path)
-
-
-def _worktree_fingerprint(cwd: Path) -> tuple[tuple[str, str], ...] | None:
-    status = git_status_short(cwd, strip=False, untracked_files="all")
-    if status is None:
-        return None
-    entries: list[tuple[str, str]] = []
-    for line in status.splitlines():
-        if len(line) < 4:
-            continue
-        raw_path = line[3:]
-        if " -> " in raw_path:
-            raw_path = raw_path.rsplit(" -> ", 1)[1]
-        raw_path = raw_path.strip('"')
-        path = Path(raw_path)
-        if path.parts and path.parts[0] == ".agent-runs":
-            continue
-        entries.append((line[:2], path.as_posix()))
-    return tuple(sorted(entries))
-
-
-def _stdout_text(result: AgentResult) -> str:
-    if result.parsed and "stdout" in result.parsed:
-        return result.parsed["stdout"]
-    return result.stdout_path.read_text(encoding="utf-8", errors="replace")

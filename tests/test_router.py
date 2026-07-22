@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import subprocess
 
 import pytest
 
@@ -14,6 +15,7 @@ from issuekit.agents.router import RouterParseError, parse_router_output
 from issuekit.config import RouterPolicy, load_config
 from issuekit.proposals import ProposalError
 from issuekit.testing import FakeIssuekitClient
+from issuekit.workflow import WorkflowError
 
 
 class FakeRunner:
@@ -108,6 +110,18 @@ def _write_request_state(tmp_path: Path, state: dict) -> None:
     state_path = tmp_path / ".agent-runs" / "pm-requests.json"
     state_path.parent.mkdir()
     state_path.write_text(json.dumps(state, indent=2), encoding="utf-8", newline="\n")
+
+
+def _init_git_repo(path: Path) -> None:
+    for args in (
+        ("init", "-q"),
+        ("config", "user.email", "test@example.com"),
+        ("config", "user.name", "Test User"),
+        ("add", "."),
+        ("commit", "-qm", "initial"),
+    ):
+        result = subprocess.run(["git", *args], cwd=path, check=False)
+        assert result.returncode == 0
 
 
 def test_load_config_reads_router_policy(tmp_path: Path) -> None:
@@ -825,3 +839,33 @@ def test_request_requires_router_agent(monkeypatch, tmp_path, capsys) -> None:
 
     assert "[tool.issuekit.router] agent" in capsys.readouterr().err
     assert not (tmp_path / ".agent-runs").exists()
+
+
+@pytest.mark.parametrize("filename", ["code.py", "変更.py"])
+def test_router_rejects_content_only_worktree_mutations(monkeypatch, tmp_path, filename) -> None:
+    _clients, _runner = _setup(
+        monkeypatch,
+        tmp_path,
+        [_route_block({"decision": "reject", "reason": "Not applicable."})],
+    )
+    changed_path = tmp_path / filename
+    changed_path.write_text("value = 1\n", encoding="utf-8", newline="\n")
+    _init_git_repo(tmp_path)
+    changed_path.write_text("value = 2\n", encoding="utf-8", newline="\n")
+
+    class MutatingRunner(FakeRunner):
+        def run(self, adapter, plan_path, repo, **kwargs):
+            changed_path.write_text("value = 3\n", encoding="utf-8", newline="\n")
+            return super().run(adapter, plan_path, repo, **kwargs)
+
+    config = load_config(tmp_path)
+    runner = MutatingRunner([_route_block({"decision": "reject", "reason": "No."})])
+
+    with pytest.raises(WorkflowError, match="Router agent modified the worktree"):
+        router.run_router(
+            config,
+            tmp_path,
+            request_id=1,
+            request_text="Route this.",
+            runner_factory=lambda: runner,
+        )

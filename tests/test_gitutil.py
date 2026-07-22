@@ -113,7 +113,7 @@ def test_git_wrappers_normalize_success_and_failure(
     monkeypatch,
 ) -> None:
     responses = {
-        ("--no-pager", "status", "--short"): subprocess.CompletedProcess(
+        ("-c", "core.quotepath=false", "--no-pager", "status", "--short"): subprocess.CompletedProcess(
             ["git"], 0, stdout=" M a.py\n?? b.py\n", stderr=""
         ),
         ("rev-parse", "--abbrev-ref", "HEAD"): subprocess.CompletedProcess(
