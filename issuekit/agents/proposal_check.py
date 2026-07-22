@@ -21,7 +21,6 @@ from issuekit.encoding import has_non_ascii
 from issuekit.prompts import PROPOSAL_CHECK_PROMPT, ProposalCheckParseError
 from issuekit.proposals.api import ProposalError, adopt_proposal_with_append, api_client
 from issuekit.workflow import WorkflowError
-PROPOSAL_CHECK_BLOCK_LANGUAGE = PROPOSAL_CHECK_PROMPT.block_language
 PROPOSAL_CHECK_VERDICTS = {"approve", "reject", "revise"}
 PROPOSAL_CHECK_COMMENT_MAX = 100000
 ADOPTED_ISSUE_REF_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]{0,31}#[1-9][0-9]*$")

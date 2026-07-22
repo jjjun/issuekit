@@ -1,47 +1,3 @@
-from pathlib import Path
-
-
-def write_issue(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8", newline="\n")
-
-
-def issue_text(
-    issue_id: int,
-    title: str,
-    *,
-    status: str = "active",
-    priority: str = "medium",
-    created: str = "2026-01-01",
-    completed: str = "",
-    assignee: str = "",
-    stage: str = "",
-    implementer: str = "",
-    author: str = "",
-) -> str:
-    workflow_lines = ""
-    if assignee:
-        workflow_lines += f"assignee: {assignee}\n"
-    if stage:
-        workflow_lines += f"stage: {stage}\n"
-    if implementer:
-        workflow_lines += f"implementer: {implementer}\n"
-    if author:
-        workflow_lines += f"author: {author}\n"
-    return (
-        "---\n"
-        f"id: {issue_id}\n"
-        f"status: {status}\n"
-        f"priority: {priority}\n"
-        f"created: {created}\n"
-        f"completed: {completed}\n"
-        f"{workflow_lines}"
-        f"title: {title}\n"
-        "---\n\n"
-        f"# Issue #{issue_id}: {title}\n"
-    )
-
-
 def api_issue(
     issue_id: int,
     title: str,
@@ -85,19 +41,3 @@ def api_issue(
     if dependencies is not None:
         issue["dependencies"] = dependencies
     return issue
-
-
-def make_issue_tree(tmp_path: Path) -> Path:
-    issues_dir = tmp_path / "docs" / "issues"
-    write_issue(issues_dir / "active" / "001_first.md", issue_text(1, "First", priority="high"))
-    write_issue(
-        issues_dir / "completed" / "002_done.md",
-        issue_text(2, "Done", status="completed", priority="low", completed="2026-01-02"),
-    )
-    return issues_dir
-
-
-def write_indexes(issues_dir: Path) -> None:
-    indexes_dir = issues_dir / "indexes"
-    indexes_dir.mkdir(parents=True, exist_ok=True)
-    (indexes_dir / "active.md").write_text("", encoding="utf-8", newline="\n")

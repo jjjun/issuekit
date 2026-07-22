@@ -49,7 +49,6 @@ from issuekit.proposals.api import (
 from issuekit.workflow import WorkflowError
 
 
-TRIAGE_BLOCK_LANGUAGE = TRIAGE_PROMPT.block_language
 _DECISIONS = {"adopt", "reply", "discard"}
 _DECISION_FIELD = {
     "adopt": "spec_markdown",

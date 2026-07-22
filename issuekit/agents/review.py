@@ -22,7 +22,6 @@ from issuekit.store import get_store
 from issuekit.workflow import WorkflowError, ensure_assigned_reviewer, request_changes
 
 
-REVIEW_BLOCK_LANGUAGE = REVIEW_PROMPT.block_language
 REVIEW_OUTPUT_KEYS = REVIEW_PROMPT.required_keys
 _REVIEW_VERDICTS = {"approve", "request-changes"}
 _MAX_DIFF_CHARS = 60000

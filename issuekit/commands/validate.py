@@ -7,7 +7,7 @@ from pathlib import Path
 import sys
 
 from issuekit.config import load_config
-from issuekit.store import get_store
+from issuekit.store import ApiStore, get_store
 from issuekit.workflow import WorkflowError
 
 
@@ -33,15 +33,8 @@ def run(_args) -> int:
     return 0
 
 
-def _validate_health(store: object) -> None:
-    client = getattr(store, "client", None)
-    health = getattr(client, "health", None)
-    if not callable(health):
-        raise WorkflowError(
-            "API client does not expose the health endpoint contract.",
-            code="server_schema_drift",
-        )
-    payload = health()
+def _validate_health(store: ApiStore) -> None:
+    payload = store.client.health()
     if not isinstance(payload, dict):
         raise WorkflowError(
             "Health response was not a JSON object.",

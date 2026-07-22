@@ -141,10 +141,7 @@ class ApiStore:
         status: str | None = None,
         include_completed: bool = False,
     ) -> int:
-        count = getattr(self.client, "count_issues", None)
-        if count is not None:
-            return int(count(status=status, include_completed=include_completed))
-        return len(self.client.list_all_issues(status=status, include_completed=include_completed))
+        return int(self.client.count_issues(status=status, include_completed=include_completed))
 
     def latest_issue_id(
         self,

@@ -18,7 +18,6 @@ from issuekit.issues.dependencies import DEPENDENCY_REF_EXPECTED, DEPENDENCY_REF
 from issuekit.prompts import ROUTER_PROMPT, RouterParseError
 from issuekit.proposals.api import api_client
 from issuekit.workflow import WorkflowError
-ROUTE_BLOCK_LANGUAGE = ROUTER_PROMPT.block_language
 _DECISIONS = {"route", "clarify", "reject"}
 _TARGET_PLACEHOLDER_PATTERN = re.compile(r"^target:(?P<index>[0-9]+)$")
 

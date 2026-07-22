@@ -14,7 +14,6 @@ from issuekit.prompts import (
 )
 
 
-NEGOTIATION_BLOCK_LANGUAGE = NEGOTIATION_ROUND_PROMPT.block_language
 NEGOTIATION_OUTPUT_KEYS = NEGOTIATION_ROUND_PROMPT.required_keys
 
 

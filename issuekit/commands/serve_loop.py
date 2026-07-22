@@ -295,7 +295,7 @@ def recover_orphaned_issues(
                 if issue.id not in seen:
                     seen.add(issue.id)
                     issues.append(issue)
-    except (AttributeError, RuntimeError, TimeoutError, WorkflowError, ValueError) as exc:
+    except (RuntimeError, TimeoutError, WorkflowError, ValueError) as exc:
         log_event(sys.stderr, log_path, "recovery_error", worker=me, error=str(exc))
         if should_recreate_store(exc):
             store = recreate_store(store, config)
