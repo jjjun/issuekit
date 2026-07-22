@@ -247,7 +247,7 @@ def test_list_proposal_checks_tool_returns_raw_checks(
     )
     client.create_proposal_check(
         1,
-        target_worker="machine/demo/worker",
+        target_worker="worker.demo@machine",
         project="demo",
     )
     client.post_proposal_check_result(
@@ -303,15 +303,6 @@ def test_list_proposal_checks_tool_returns_raw_checks(
                 "offset": 0,
             },
         },
-        {
-            "method": "poll_proposal_checks",
-            "body": {
-                "target_worker": "machine/demo/worker",
-                "status": "answered",
-                "limit": 5,
-                "offset": 0,
-            },
-        }
     ]
 
 
