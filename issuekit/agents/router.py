@@ -9,7 +9,7 @@ import re
 import sys
 from typing import Any, TextIO
 
-from issuekit.agents.readonly import run_readonly_evaluation, stdout_text
+from issuekit.agents.readonly import require_clean_run, run_readonly_evaluation
 from issuekit.agents.registry import resolve_adapter
 from issuekit.agentrun import AgentResult, AgentRunner
 from issuekit.config import IssuekitConfig
@@ -179,21 +179,12 @@ def run_router(
         label="Router",
         subject=f"request #{request_id}",
     )
-    result = run.result
-    if result.timed_out:
-        raise TimeoutError(f"{run.label} agent timed out for {run.subject}.")
-    if result.exit_code != 0:
-        raise RuntimeError(
-            f"{run.label} agent exited {result.exit_code} for {run.subject}."
-        )
-    if run.worktree_modified:
-        print(
-            "ERROR: router run modified the worktree; ignoring its output.",
-            file=err,
-        )
-        raise WorkflowError(f"{run.label} agent modified the worktree for {run.subject}.")
     return parse_router_output(
-        stdout_text(result),
+        require_clean_run(
+            run,
+            err=err,
+            mutation_log_message="ERROR: router run modified the worktree; ignoring its output.",
+        ),
         candidates=candidates,
         max_targets=config.router.max_targets,
     )

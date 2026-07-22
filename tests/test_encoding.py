@@ -109,23 +109,14 @@ def test_added_line_numbers_ignores_deleted_file_headers() -> None:
 
 
 def test_touched_paths_uses_raw_non_ascii_status_paths(tmp_path, monkeypatch) -> None:
-    calls: list[list[str]] = []
+    calls: list[tuple[Path, bool, str]] = []
 
-    def fake_run_git(args, cwd):
-        calls.append(list(args))
-        return GitResult(returncode=0, stdout=" M 日本語.py\n", stderr="")
+    def fake_git_status_short(cwd, *, strip, untracked_files):
+        calls.append((cwd, strip, untracked_files))
+        return " M 日本語.py\n"
 
     monkeypatch.setattr(run_claimed, "git_root", lambda repo: tmp_path.resolve())
-    monkeypatch.setattr(run_claimed, "run_git", fake_run_git)
+    monkeypatch.setattr(run_claimed, "git_status_short", fake_git_status_short)
 
     assert run_claimed._touched_paths(tmp_path) == (Path("日本語.py"),)
-    assert calls == [
-        [
-            "-c",
-            "core.quotepath=false",
-            "--no-pager",
-            "status",
-            "--short",
-            "--untracked-files=all",
-        ]
-    ]
+    assert calls == [(tmp_path, False, "all")]

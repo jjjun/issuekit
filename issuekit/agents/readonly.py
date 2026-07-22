@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 from dataclasses import dataclass
 import hashlib
 from pathlib import Path
 import threading
-from typing import Any
+from typing import TextIO
 
 from issuekit.agentrun import AgentResult
 from issuekit.gitutil import git_status_short
+from issuekit.workflow import WorkflowError
 
 
 @dataclass(frozen=True)
@@ -35,7 +35,8 @@ def run_readonly_evaluation(
     prompt_override: str,
     label: str,
     subject: str,
-    run_kwargs: Mapping[str, Any] | None = None,
+    issue_id: int | None = None,
+    follow: bool = False,
     abort_event: threading.Event | None = None,
 ) -> ReadonlyAgentRun:
     """Run an agent from a prompt file and record whether it changed the worktree."""
@@ -53,8 +54,9 @@ def run_readonly_evaluation(
         timeout=float(timeout),
         agent_name=agent,
         prompt_override=prompt_override,
+        issue_id=issue_id,
+        follow=follow,
         abort_event=abort_event,
-        **(run_kwargs or {}),
     )
     fingerprint_after = worktree_fingerprint(cwd)
     return ReadonlyAgentRun(
@@ -63,6 +65,26 @@ def run_readonly_evaluation(
         label=label,
         subject=subject,
     )
+
+
+def require_clean_run(
+    run: ReadonlyAgentRun,
+    *,
+    err: TextIO,
+    mutation_log_message: str,
+) -> str:
+    """Return agent output after enforcing read-only execution requirements."""
+
+    if run.result.timed_out:
+        raise TimeoutError(f"{run.label} agent timed out for {run.subject}.")
+    if run.result.exit_code != 0:
+        raise RuntimeError(
+            f"{run.label} agent exited {run.result.exit_code} for {run.subject}."
+        )
+    if run.worktree_modified:
+        print(mutation_log_message, file=err)
+        raise WorkflowError(f"{run.label} agent modified the worktree for {run.subject}.")
+    return stdout_text(run.result)
 
 
 def worktree_fingerprint(cwd: Path) -> tuple[tuple[str, str, str], ...] | None:

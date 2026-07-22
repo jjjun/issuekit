@@ -22,7 +22,7 @@ from issuekit.encoding import (
     newline_offsets,
     print_mojibake_hit,
 )
-from issuekit.gitutil import git_root, run_git
+from issuekit.gitutil import git_root, git_status_short, run_git
 from issuekit.prompts import render_review_feedback_prompt
 from issuekit.store import get_store
 from issuekit.workflow import submit_for_review
@@ -408,22 +408,12 @@ def _warn_heavy_deletions(
 def _touched_paths(repo: Path) -> tuple[Path, ...]:
     if git_root(repo) != repo.resolve():
         return ()
-    result = run_git(
-        [
-            "-c",
-            "core.quotepath=false",
-            "--no-pager",
-            "status",
-            "--short",
-            "--untracked-files=all",
-        ],
-        repo,
-    )
-    if result is None or result.returncode != 0:
+    status_output = git_status_short(repo, strip=False, untracked_files="all")
+    if status_output is None:
         return ()
 
     paths: list[Path] = []
-    for line in result.stdout.splitlines():
+    for line in status_output.splitlines():
         if len(line) < 4:
             continue
         status = line[:2]

@@ -136,7 +136,8 @@ def run_review_and_decide(
         prompt_override=_review_prompt_pointer(review_path),
         label="Reviewer",
         subject=f"issue #{issue_id}",
-        run_kwargs={"issue_id": issue_id, "follow": follow},
+        issue_id=issue_id,
+        follow=follow,
         abort_event=abort_event,
     )
     result = run.result

@@ -7,8 +7,7 @@ from pathlib import Path
 import threading
 from typing import Any, TextIO
 
-from issuekit.agents.readonly import run_readonly_evaluation, stdout_text
-from issuekit.workflow import WorkflowError
+from issuekit.agents.readonly import require_clean_run, run_readonly_evaluation
 
 
 def run_readonly_proposal_evaluation(
@@ -43,13 +42,8 @@ def run_readonly_proposal_evaluation(
         subject=f"proposal #{proposal_id}",
         abort_event=abort_event,
     )
-    if run.result.timed_out:
-        raise TimeoutError(f"{run.label} agent timed out for {run.subject}.")
-    if run.result.exit_code != 0:
-        raise RuntimeError(
-            f"{run.label} agent exited {run.result.exit_code} for {run.subject}."
-        )
-    if run.worktree_modified:
-        print(mutation_log_message, file=err)
-        raise WorkflowError(f"{run.label} agent modified the worktree for {run.subject}.")
-    return stdout_text(run.result)
+    return require_clean_run(
+        run,
+        err=err,
+        mutation_log_message=mutation_log_message,
+    )
