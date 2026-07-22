@@ -15,7 +15,7 @@ from issuekit.agents.proposal_eval import (
 )
 from issuekit.agents.runner import AgentRunner, resolve_adapter
 from issuekit.config import IssuekitConfig
-from issuekit.core import has_non_ascii
+from issuekit.encoding import has_non_ascii
 from issuekit.prompts import PROPOSAL_CHECK_PROMPT, ProposalCheckParseError
 from issuekit.proposals_api import ProposalError, adopt_proposal_with_append, api_client
 from issuekit.workflow import WorkflowError

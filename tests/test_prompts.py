@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from issuekit.core import ASCII_ONLY_HINT
+from issuekit.encoding import ASCII_ONLY_HINT
 from issuekit.prompts import (
     PROMPT_SPECS,
     ROUTER_PROMPT,

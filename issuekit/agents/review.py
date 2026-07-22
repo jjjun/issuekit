@@ -13,7 +13,8 @@ from typing import TextIO
 from issuekit.agents.runner import AgentResult, AgentRunner, resolve_adapter
 from issuekit.commands.approve import approve_issue
 from issuekit.config import IssuekitConfig
-from issuekit.core import ASCII_ONLY_HINT, Issue, has_non_ascii
+from issuekit.core import Issue
+from issuekit.encoding import ASCII_ONLY_HINT, has_non_ascii
 from issuekit.gitutil import git_status_short, run_git
 from issuekit.prompts import REVIEW_PROMPT, ReviewParseError
 from issuekit.store import get_store

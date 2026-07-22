@@ -6,7 +6,8 @@ from dataclasses import dataclass
 from pathlib import Path
 import re
 
-from issuekit.core import get_issue_heading, has_mojibake
+from issuekit.core import get_issue_heading
+from issuekit.encoding import has_mojibake
 
 
 MANAGED_FRONTMATTER_KEYS = {

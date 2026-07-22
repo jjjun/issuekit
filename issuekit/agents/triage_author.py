@@ -34,7 +34,7 @@ from issuekit.agents.triage_state import (
     _state_path,
 )
 from issuekit.config import IssuekitConfig
-from issuekit.core import has_non_ascii
+from issuekit.encoding import has_non_ascii
 from issuekit.prompts import TRIAGE_PROMPT, TriageAuthorParseError
 from issuekit.proposals import origin_destination
 from issuekit.proposals_api import (

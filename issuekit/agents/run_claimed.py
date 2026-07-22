@@ -12,11 +12,12 @@ from typing import TextIO
 from issuekit.agents.runner import AgentResult, AgentRunner, resolve_adapter
 from issuekit.author_guard import AuthorOrchestrationContext
 from issuekit.config import IssuekitConfig
-from issuekit.core import (
-    Issue,
-    _confirmed_mojibake_hits,
+from issuekit.core import Issue
+from issuekit.encoding import (
+    confirmed_mojibake_hits,
     find_encoding_artifacts,
     is_encoding_excluded_path,
+    print_mojibake_hit,
 )
 from issuekit.gitutil import git_root, git_status_short, run_git
 from issuekit.prompts import render_review_feedback_prompt
@@ -166,10 +167,10 @@ def run_and_submit(
                     file=err,
                 )
                 for hit in confirmed_hits:
-                    _print_mojibake_hit(hit, err)
+                    print_mojibake_hit(hit, err, prefix="- ", context_prefix="  ")
                     print(f"  recovers to {hit['recovered']}", file=err)
                 for hit in unconfirmed_hits:
-                    _print_mojibake_hit(hit, err)
+                    print_mojibake_hit(hit, err, prefix="- ", context_prefix="  ")
                     print("  failed CP932 reverse confirmation", file=err)
                 if unconfirmed_hits:
                     print(
@@ -259,7 +260,7 @@ def _mojibake_touched_hits(
             )
             if text.count("\n", 0, index) + 1 in changed_lines
         ]
-        confirmed, unconfirmed = _confirmed_mojibake_hits(
+        confirmed, unconfirmed = confirmed_mojibake_hits(
             rel_path.as_posix(),
             text,
             artifacts,
@@ -268,14 +269,6 @@ def _mojibake_touched_hits(
         if not is_encoding_excluded_path(rel_path.as_posix(), exclude_patterns):
             unconfirmed_hits.extend(unconfirmed)
     return confirmed_hits, unconfirmed_hits
-
-
-def _print_mojibake_hit(hit: dict[str, int | str], err: TextIO) -> None:
-    print(
-        f"- {hit['file']}:{hit['line']}:{hit['column']}: {hit['code_point']}",
-        file=err,
-    )
-    print(f"  {hit['context']}", file=err)
 
 
 def _changed_line_numbers(repo: Path, rel_path: Path, text: str) -> set[int]:

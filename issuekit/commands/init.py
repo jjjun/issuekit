@@ -9,7 +9,7 @@ import json
 from pathlib import Path
 
 from issuekit.config import IssuekitConfig, load_config
-from issuekit.core import has_non_ascii
+from issuekit.encoding import has_non_ascii
 from issuekit.legacy_markdown import read_all_issues
 from issuekit.localconfig import ensure_gitignore_entries
 

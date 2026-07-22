@@ -11,7 +11,7 @@ from string import Template
 from types import MappingProxyType
 from typing import TypeVar
 
-from issuekit.core import has_non_ascii
+from issuekit.encoding import has_non_ascii
 
 
 ParseErrorT = TypeVar("ParseErrorT", bound=RuntimeError)

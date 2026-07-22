@@ -9,10 +9,11 @@ import subprocess
 import sys
 
 from issuekit.config import load_config
-from issuekit.core import (
-    _confirmed_mojibake_hits,
+from issuekit.encoding import (
+    confirmed_mojibake_hits,
     find_encoding_artifacts,
     is_encoding_excluded_path,
+    print_mojibake_hit,
 )
 from issuekit.gitutil import run_git
 
@@ -173,7 +174,7 @@ def run(args) -> int:
                     text,
                     include_halfwidth_katakana=not args.no_halfwidth_kana,
                 )
-                confirmed_hits, unconfirmed_hits = _confirmed_mojibake_hits(
+                confirmed_hits, unconfirmed_hits = confirmed_mojibake_hits(
                     file,
                     text,
                     artifacts,
@@ -256,11 +257,12 @@ def run(args) -> int:
                 file=sys.stderr,
             )
             for hit in mojibake_hits:
-                print(
-                    f"  {hit['file']}:{hit['line']}:{hit['column']}: {hit['code_point']}",
-                    file=sys.stderr,
+                print_mojibake_hit(
+                    hit,
+                    sys.stderr,
+                    prefix="  ",
+                    context_prefix="    ",
                 )
-                print(f"    {hit['context']}", file=sys.stderr)
                 print(f"    recovers to {hit['recovered']}", file=sys.stderr)
             print(
                 "\nTip: use the reported location and code-point context to replace mojibake with the intended UTF-8 text.",
@@ -427,29 +429,12 @@ def _print_unconfirmed_mojibake_hits(
         file=sys.stderr,
     )
     for hit in hits:
-        print(
-            f"  {hit['file']}:{hit['line']}:{hit['column']}: {hit['code_point']}",
-            file=sys.stderr,
+        print_mojibake_hit(
+            hit,
+            sys.stderr,
+            prefix="  ",
+            context_prefix="    ",
         )
-        print(f"    {hit['context']}", file=sys.stderr)
-
-
-def _code_point_context(text: str, index: int, character: str) -> str:
-    before = text[max(0, index - 5) : index]
-    after = text[index + 1 : index + 6]
-    return " ".join(
-        [
-            "...",
-            *(_code_point(value) for value in before),
-            f"[{_code_point(character)}]",
-            *(_code_point(value) for value in after),
-            "...",
-        ]
-    )
-
-
-def _code_point(character: str) -> str:
-    return f"U+{ord(character):04X}"
 
 
 def _join_checks(checks: list[str]) -> str:

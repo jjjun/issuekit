@@ -6,7 +6,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from issuekit.core import has_non_ascii
+from issuekit.encoding import has_non_ascii
 from issuekit.negotiation import NegotiationEntry, Verdict
 from issuekit.prompts import (
     NEGOTIATION_RESUMED_ROUND_PROMPT,

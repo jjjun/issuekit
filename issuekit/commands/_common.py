@@ -9,7 +9,7 @@ import sys
 from typing import TypeVar
 
 from issuekit.config import IssuekitConfig, has_local_project_context, load_config
-from issuekit.core import ASCII_ONLY_HINT, has_non_ascii
+from issuekit.encoding import ASCII_ONLY_HINT, has_non_ascii
 from issuekit.core import is_valid_workflow_token
 from issuekit.workflow import WorkflowError
 

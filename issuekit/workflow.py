@@ -15,12 +15,11 @@ from issuekit.branch_guard import enforce_work_branch
 from issuekit.claim_sync import enforce_claim_sync
 from issuekit.config import IssuekitConfig
 from issuekit.core import (
-    ASCII_ONLY_HINT,
     Issue,
     VALID_ISSUE_PRIORITIES,
-    has_non_ascii,
     is_valid_workflow_token,
 )
+from issuekit.encoding import ASCII_ONLY_HINT, has_non_ascii
 from issuekit.gitutil import git_current_branch
 from issuekit.session import current_session_token, validate_session_token
 from issuekit.worker_keys import worker_keys_match

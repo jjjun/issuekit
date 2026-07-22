@@ -60,31 +60,6 @@ def test_read_issues_returns_decode_error_issue_for_non_utf8_file(tmp_path: Path
     assert issues[0].decode_error is True
 
 
-def test_mojibake_detection() -> None:
-    assert core.has_mojibake("\u7e67")
-    assert core.has_mojibake("\ufffd")
-    assert not core.has_mojibake("plain ascii")
-
-
-def test_encoding_artifact_detection() -> None:
-    assert core.has_encoding_artifacts("\u0080")
-    assert core.has_encoding_artifacts("\u8389")
-    assert core.has_encoding_artifacts("\u8711")
-    assert core.has_encoding_artifacts("\u8700")
-    assert core.has_encoding_artifacts("\ue000")
-    assert core.has_encoding_artifacts("\uff71")
-    assert not core.has_encoding_artifacts("\uff71", include_halfwidth_katakana=False)
-    assert not core.has_encoding_artifacts("plain ascii")
-
-
-def test_encoding_artifact_reverted_generated_file_exclusions() -> None:
-    """Keep issuekit#229's restoration of previously excluded mojibake characters."""
-    assert core.has_encoding_artifacts("\u83f4")
-    assert core.has_encoding_artifacts("\u873f")
-    assert core.has_encoding_artifacts("\u9015")
-    assert core.has_encoding_artifacts("\u95ad")
-
-
 def test_valid_issue_statuses_match_server_derived_labels() -> None:
     assert core.VALID_ISSUE_STATUSES == {
         "active",

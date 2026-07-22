@@ -11,7 +11,7 @@ from typing import Any, TextIO
 
 from issuekit.agents.runner import AgentResult, AgentRunner, resolve_adapter
 from issuekit.config import IssuekitConfig
-from issuekit.core import has_non_ascii
+from issuekit.encoding import has_non_ascii
 from issuekit.dependencies import DEPENDENCY_REF_EXPECTED, DEPENDENCY_REF_PATTERN
 from issuekit.gitutil import git_status_short
 from issuekit.prompts import ROUTER_PROMPT, RouterParseError
