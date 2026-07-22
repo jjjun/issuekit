@@ -11,15 +11,10 @@ import threading
 
 from issuekit.api import IssuekitClient, JsonDict
 from issuekit.config import IssuekitConfig
-from issuekit.core import Issue
+from issuekit.core import Issue, worker_display_from_row, worker_keys_from_row, worker_keys_match
 from issuekit.config.project_profile import load_project_profile
 from issuekit.store import get_store
 from issuekit.workers.identity import canonical_git_origin_url
-from issuekit.workers.keys import (
-    worker_display_from_row,
-    worker_keys_from_row,
-    worker_keys_match,
-)
 from issuekit.workflow import WorkflowError
 
 

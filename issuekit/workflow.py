@@ -18,11 +18,11 @@ from issuekit.core import (
     Issue,
     VALID_ISSUE_PRIORITIES,
     is_valid_workflow_token,
+    worker_keys_match,
 )
 from issuekit.encoding import ASCII_ONLY_HINT, has_non_ascii
 from issuekit.gitutil import git_current_branch
 from issuekit.issues.session import current_session_token, validate_session_token
-from issuekit.workers.keys import worker_keys_match
 
 
 AUTO_REVIEWER = "auto"

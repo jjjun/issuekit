@@ -22,7 +22,7 @@ from issuekit.commands.edit import edit_issue
 from issuekit.commands.readdress import readdress_result_dict
 from issuekit.commands.reclaim import reclaim_result_dict
 from issuekit.config import IssuekitConfig, load_config, resolve_machine_config_path
-from issuekit.core import issue_dict
+from issuekit.core import issue_dict, worker_display_from_row
 from issuekit.gitutil import git_root
 from issuekit.config.local import LocalConfigError, load_toml, read_local_config
 from issuekit.issues.orphans import (
@@ -43,7 +43,6 @@ from issuekit.issues.session import new_session_token
 from issuekit.store import get_store
 from issuekit.api.token_cache import _read_cached_token
 from issuekit.workers.registry import list_api_workers, remove_api_repo, remove_api_worker
-from issuekit.workers.keys import worker_display_from_row
 from issuekit.workflow import (
     claim_next,
     find_for,

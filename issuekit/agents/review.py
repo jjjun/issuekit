@@ -14,13 +14,12 @@ from issuekit.agents.registry import resolve_adapter
 from issuekit.agentrun import AgentResult, AgentRunner
 from issuekit.commands.approve import approve_issue
 from issuekit.config import IssuekitConfig
-from issuekit.core import Issue
+from issuekit.core import Issue, worker_keys_match
 from issuekit.encoding import ASCII_ONLY_HINT, has_non_ascii
 from issuekit.gitutil import git_status_short, run_git
 from issuekit.prompts import REVIEW_PROMPT, ReviewParseError
 from issuekit.store import get_store
 from issuekit.workflow import WorkflowError, ensure_assigned_reviewer, request_changes
-from issuekit.workers.keys import worker_keys_match
 
 
 REVIEW_BLOCK_LANGUAGE = REVIEW_PROMPT.block_language

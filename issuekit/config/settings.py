@@ -11,12 +11,13 @@ from issuekit.core import (
     is_valid_workflow_token,
     optional_int,
     optional_str,
+    qualified_worker_key,
+    worker_key,
 )
 from issuekit.agentrun.config import AgentRunConfig
 from issuekit.encoding import has_non_ascii
 from .dotenv import load_dotenv
 from .local import LocalConfigError, load_toml, read_local_config
-from issuekit.workers.keys import qualified_worker_key, worker_key
 
 
 _SENTINEL = object()

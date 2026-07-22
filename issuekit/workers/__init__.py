@@ -1,1 +1,62 @@
-# Intentionally empty: importing worker modules here creates a config import cycle.
+"""Worker registration and API registry helpers."""
+
+from .identity import (
+    WorkerRegistration,
+    WorkerRegistrationError,
+    canonical_git_origin_url,
+    canonicalize_remote_url,
+    load_local_worker,
+    parse_repo_id_from_remote,
+    register_worker,
+    save_local_worker,
+)
+from .registry import (
+    RepoRemovalResult,
+    WorkerClaim,
+    WorkerHeartbeat,
+    WorkerListingError,
+    WorkerPruneCandidate,
+    WorkerPruneResult,
+    WorkerRegistryConflict,
+    WorkerRemovalError,
+    WorkerRemovalResult,
+    list_api_workers,
+    list_worker_claims,
+    post_worker_registration,
+    prune_api_workers,
+    remove_api_repo,
+    remove_api_worker,
+    resolve_api_worker,
+    try_post_worker_registration,
+    worker_claim_dict,
+)
+
+
+__all__ = [
+    "RepoRemovalResult",
+    "WorkerClaim",
+    "WorkerHeartbeat",
+    "WorkerListingError",
+    "WorkerPruneCandidate",
+    "WorkerPruneResult",
+    "WorkerRegistration",
+    "WorkerRegistrationError",
+    "WorkerRegistryConflict",
+    "WorkerRemovalError",
+    "WorkerRemovalResult",
+    "canonical_git_origin_url",
+    "canonicalize_remote_url",
+    "list_api_workers",
+    "list_worker_claims",
+    "load_local_worker",
+    "parse_repo_id_from_remote",
+    "post_worker_registration",
+    "prune_api_workers",
+    "register_worker",
+    "remove_api_repo",
+    "remove_api_worker",
+    "resolve_api_worker",
+    "save_local_worker",
+    "try_post_worker_registration",
+    "worker_claim_dict",
+]

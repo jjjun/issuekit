@@ -8,8 +8,7 @@ from pathlib import Path
 
 from issuekit.commands._common import run_command
 from issuekit.config import load_config
-from issuekit.core import issue_dict
-from issuekit.workers.keys import worker_display_from_row
+from issuekit.core import issue_dict, worker_display_from_row
 from issuekit.workflow import WorkflowError
 from issuekit.workers.registry import (
     WorkerListingError,

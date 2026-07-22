@@ -5,9 +5,8 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any
 
-from issuekit.core import _drop_none
+from issuekit.core import _drop_none, directed_target_matches, worker_keys_match
 from issuekit.workflow import WorkflowError
-from issuekit.workers.keys import directed_target_matches, worker_keys_match
 
 
 JsonDict = dict[str, Any]

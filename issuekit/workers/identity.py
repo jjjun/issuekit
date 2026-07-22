@@ -12,7 +12,7 @@ from urllib.parse import urlparse
 from urllib.parse import urlsplit, urlunsplit
 
 from issuekit.config import WorkerIdentity
-from issuekit.core import is_valid_workflow_token
+from issuekit.core import is_valid_workflow_token, worker_key as current_worker_key
 from issuekit.gitutil import git_origin_url as _git_origin_url
 from issuekit.gitutil import git_root
 from issuekit.config.local import (
@@ -24,7 +24,6 @@ from issuekit.config.local import (
     read_local_config,
     write_local_config,
 )
-from issuekit.workers.keys import worker_key as current_worker_key
 
 
 WORKER_REGISTRY_ENV_VAR = "ISSUEKIT_WORKER_REGISTRY"
