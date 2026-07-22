@@ -13,7 +13,7 @@ from issuekit.agents.proposal_check import (
     list_worker_proposal_checks,
     run_proposal_check_cycle,
 )
-from issuekit.agents.runner import AgentRunner
+from issuekit.agentrun import AgentRunner
 from issuekit.commands._common import run_command
 from issuekit.config import IssuekitConfig, load_config
 from issuekit.proposals import ProposalError

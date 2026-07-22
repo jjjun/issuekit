@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 import sys
 
-from issuekit.agents.runner import AgentRunner
+from issuekit.agentrun import AgentRunner
 from issuekit.agents.triage_author import (
     TriageAuthorParseError,
     TriageDecision,

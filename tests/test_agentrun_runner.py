@@ -8,9 +8,9 @@ from pathlib import Path
 
 import pytest
 
-from issuekit.agents.adapters.kimi import KimiAdapter
+from issuekit.agentrun.adapters.kimi import KimiAdapter
 from issuekit.agents.registry import resolve_adapter
-from issuekit.agents.runner import AgentAdapter, AgentResult, AgentRunner, ConfigAgentAdapter
+from issuekit.agentrun import AgentAdapter, AgentResult, AgentRunner, ConfigAgentAdapter
 from issuekit.config import AgentRunConfig, IssuekitConfig
 
 
@@ -552,7 +552,7 @@ def test_kimi_adapter_parse_output_extracts_resume_id_from_stderr() -> None:
 
 
 def test_kimi_adapter_resolve_binary_raises_when_not_found(monkeypatch, tmp_path: Path) -> None:
-    monkeypatch.setattr("issuekit.agents.runner.shutil.which", lambda _cmd: None)
+    monkeypatch.setattr("issuekit.agentrun.adapter.shutil.which", lambda _cmd: None)
     monkeypatch.setattr("os.path.expanduser", lambda p: str(p).replace("~", str(tmp_path)))
     adapter = resolve_adapter("kimi")
     with pytest.raises(RuntimeError, match="not found"):
@@ -582,7 +582,7 @@ def test_runner_status_gains_last_log_fields_during_run(tmp_path: Path) -> None:
 
 
 def test_runner_writer_survives_a_failing_tick(tmp_path: Path, monkeypatch) -> None:
-    from issuekit.agents.runner import _RunWatcher
+    from issuekit.agentrun.runner import _RunWatcher
 
     real_tick = _RunWatcher._tick
     state = {"failed_once": False}

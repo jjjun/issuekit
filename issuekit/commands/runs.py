@@ -8,7 +8,7 @@ from datetime import datetime
 from pathlib import Path
 import sys
 
-from issuekit.agents.status import RunStatus, find_status, is_stale, list_statuses
+from issuekit.agentrun.status import RunStatus, find_status, is_stale, list_statuses
 
 
 TAIL_LINES = 40

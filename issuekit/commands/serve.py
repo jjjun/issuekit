@@ -15,7 +15,7 @@ from issuekit.agents.proposal_check import (
     ProposalCheckParseError,
     run_proposal_check_cycle,
 )
-from issuekit.agents.runner import AgentRunner
+from issuekit.agentrun import AgentRunner
 from issuekit.agents.triage_author import run_triage_author_cycle
 from issuekit.config import IssuekitConfig, load_config
 from issuekit.commands.serve_loop import (

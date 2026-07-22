@@ -11,7 +11,7 @@ from typing import TextIO
 
 from issuekit.agents.readonly import run_readonly_evaluation, stdout_text
 from issuekit.agents.registry import resolve_adapter
-from issuekit.agents.runner import AgentResult, AgentRunner
+from issuekit.agentrun import AgentResult, AgentRunner
 from issuekit.commands.approve import approve_issue
 from issuekit.config import IssuekitConfig
 from issuekit.core import Issue

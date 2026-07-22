@@ -4,7 +4,7 @@ from datetime import datetime
 from pathlib import Path
 
 from issuekit import cli
-from issuekit.agents.status import RunStatus, status_path, write_status
+from issuekit.agentrun.status import RunStatus, status_path, write_status
 
 
 def test_runs_lists_newest_first(tmp_path: Path, monkeypatch, capsys) -> None:
@@ -183,7 +183,7 @@ def test_runs_marks_stale_running_in_table_but_not_json(
 ) -> None:
     from datetime import datetime, timedelta
 
-    from issuekit.agents.status import STALE_AFTER_SEC
+    from issuekit.agentrun.status import STALE_AFTER_SEC
 
     run_dir = tmp_path / ".agent-runs"
     old = (datetime.now() - timedelta(seconds=STALE_AFTER_SEC + 30)).replace(

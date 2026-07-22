@@ -11,7 +11,7 @@ import pytest
 
 from issuekit import proposals_api
 from issuekit.agents import triage_author
-from issuekit.agents.runner import AgentResult
+from issuekit.agentrun import AgentResult
 from issuekit.agents.triage_author import (
     TriageAuthorParseError,
     parse_triage_output,

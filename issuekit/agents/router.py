@@ -11,7 +11,7 @@ from typing import Any, TextIO
 
 from issuekit.agents.readonly import run_readonly_evaluation, stdout_text
 from issuekit.agents.registry import resolve_adapter
-from issuekit.agents.runner import AgentResult, AgentRunner
+from issuekit.agentrun import AgentResult, AgentRunner
 from issuekit.config import IssuekitConfig
 from issuekit.encoding import has_non_ascii
 from issuekit.dependencies import DEPENDENCY_REF_EXPECTED, DEPENDENCY_REF_PATTERN

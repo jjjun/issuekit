@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from issuekit import cli
-from issuekit.agents.runner import AgentResult
+from issuekit.agentrun import AgentResult
 from issuekit.commands.negotiate import (
     MockIssueCreator,
     _entry_origin,

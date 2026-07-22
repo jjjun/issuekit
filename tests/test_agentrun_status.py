@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from issuekit.agents import status as status_mod
-from issuekit.agents.status import (
+from issuekit.agentrun import status as status_mod
+from issuekit.agentrun.status import (
     STALE_AFTER_SEC,
     RunStatus,
     is_stale,

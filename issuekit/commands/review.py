@@ -12,7 +12,7 @@ from issuekit.agents.review import (
     ReviewRunParseError,
     run_review_and_decide,
 )
-from issuekit.agents.runner import AgentResult, AgentRunner
+from issuekit.agentrun import AgentResult, AgentRunner
 from issuekit.commands._common import run_command
 from issuekit.config import load_config
 from issuekit.core import Issue, parse_issue_id_arg

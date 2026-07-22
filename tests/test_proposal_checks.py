@@ -15,7 +15,7 @@ from issuekit.agents.proposal_check import (
     parse_proposal_check_output,
     run_proposal_check_cycle,
 )
-from issuekit.agents.runner import AgentResult
+from issuekit.agentrun import AgentResult
 from issuekit.config import load_config
 from issuekit.testing import FakeIssuekitClient
 

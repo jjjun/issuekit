@@ -2,9 +2,9 @@ from pathlib import Path
 
 import pytest
 
-from issuekit.agents.adapters.kimi import KimiAdapter
+from issuekit.agentrun.adapters.kimi import KimiAdapter
 from issuekit.agents.registry import resolve_adapter
-from issuekit.agents.runner import ConfigAgentAdapter
+from issuekit.agentrun import ConfigAgentAdapter
 from issuekit.config import AgentRunConfig, IssuekitConfig, load_config
 
 
@@ -227,7 +227,7 @@ def test_config_agent_adapter_resolve_binary_uses_path(monkeypatch, tmp_path: Pa
     fake_bin = tmp_path / "fake-agent"
     fake_bin.write_text("#!/bin/sh\necho ok")
     monkeypatch.setattr(
-        "issuekit.agents.runner.shutil.which", lambda _cmd: str(fake_bin)
+        "issuekit.agentrun.adapter.shutil.which", lambda _cmd: str(fake_bin)
     )
 
     class FakeAdapter(ConfigAgentAdapter):

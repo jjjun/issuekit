@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from issuekit.agents.runner import ConfigAgentAdapter
-from issuekit.agents.run_config import AgentRunConfig
+from issuekit.agentrun.config import AgentRunConfig
+from issuekit.agentrun.adapter import ConfigAgentAdapter
 
 
 class KimiAdapter(ConfigAgentAdapter):

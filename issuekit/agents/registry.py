@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from issuekit.agents.runner import AgentAdapter, build_adapter
+from issuekit.agentrun.adapter import AgentAdapter, build_adapter
 from issuekit.config import IssuekitConfig
 
 

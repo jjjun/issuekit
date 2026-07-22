@@ -12,7 +12,7 @@ from issuekit.core import (
     optional_int,
     optional_str,
 )
-from issuekit.agents.run_config import AgentRunConfig
+from issuekit.agentrun.config import AgentRunConfig
 from issuekit.encoding import has_non_ascii
 from issuekit.dotenv import load_dotenv
 from issuekit.localconfig import LocalConfigError, load_toml, read_local_config

@@ -11,7 +11,7 @@ from issuekit.agents.run_claimed import (
     review_feedback_prompt,
     run_and_submit,
 )
-from issuekit.agents.runner import AgentResult, AgentRunner
+from issuekit.agentrun import AgentResult, AgentRunner
 from issuekit.author_guard import AuthorOrchestrationContext, read_author_guard
 from issuekit.commands._common import run_command
 from issuekit.config import load_config

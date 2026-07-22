@@ -10,7 +10,7 @@ import pytest
 
 from issuekit import cli, proposals_api
 from issuekit.agents import router
-from issuekit.agents.runner import AgentResult
+from issuekit.agentrun import AgentResult
 from issuekit.agents.router import RouterParseError, parse_router_output
 from issuekit.config import RouterPolicy, load_config
 from issuekit.proposals import ProposalError

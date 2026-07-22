@@ -10,7 +10,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
 
-from issuekit.core import optional_float, optional_int, optional_str
+from issuekit.agentrun._coerce import optional_float, optional_int, optional_str
 
 
 RunStatusValue = Literal["running", "completed", "failed", "timed_out"]

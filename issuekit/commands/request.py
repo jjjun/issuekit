@@ -10,7 +10,7 @@ import re
 import sys
 from typing import Any
 
-from issuekit.agents.runner import AgentRunner
+from issuekit.agentrun import AgentRunner
 from issuekit.agents.router import (
     RouterDecision,
     RouterParseError,

@@ -14,7 +14,7 @@ from issuekit.agents.proposal_eval import (
     run_readonly_proposal_evaluation,
 )
 from issuekit.agents.registry import resolve_adapter
-from issuekit.agents.runner import AgentRunner
+from issuekit.agentrun import AgentRunner
 from issuekit.config import IssuekitConfig
 from issuekit.encoding import has_non_ascii
 from issuekit.prompts import PROPOSAL_CHECK_PROMPT, ProposalCheckParseError

@@ -10,7 +10,7 @@ import threading
 from typing import TextIO
 
 from issuekit.agents.registry import resolve_adapter
-from issuekit.agents.runner import AgentResult, AgentRunner
+from issuekit.agentrun import AgentResult, AgentRunner
 from issuekit.author_guard import AuthorOrchestrationContext
 from issuekit.config import IssuekitConfig
 from issuekit.core import Issue

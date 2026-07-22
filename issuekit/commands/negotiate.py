@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 import sys
 
-from issuekit.agents.runner import AgentRunner
+from issuekit.agentrun import AgentRunner
 from issuekit.commands._common import run_command
 from issuekit.config import load_config
 from issuekit.core import parse_issue_id_arg

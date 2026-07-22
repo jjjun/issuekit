@@ -9,7 +9,7 @@ from pathlib import Path
 import threading
 from typing import Any
 
-from issuekit.agents.runner import AgentResult
+from issuekit.agentrun import AgentResult
 from issuekit.gitutil import git_status_short
 
 
