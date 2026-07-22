@@ -101,3 +101,12 @@ def test_documented_issuekit_module_references_reject_missing_modules(tmp_path: 
     assert _invalid_module_references((documentation_file,), root / "issuekit") == [
         f"{documentation_file}: `issuekit.client_resources` does not exist"
     ]
+
+
+def test_tests_workflow_is_manual_only() -> None:
+    root = Path(__file__).parents[1]
+    workflow = (root / ".github/workflows/tests.yml").read_text(encoding="utf-8")
+    trigger_start = workflow.index("on:\n") + len("on:\n")
+    trigger_end = workflow.index("\npermissions:", trigger_start)
+
+    assert workflow[trigger_start:trigger_end] == "  workflow_dispatch:\n"

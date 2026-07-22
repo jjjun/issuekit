@@ -55,8 +55,7 @@ use the normal API credential variables, such as `ISSUEKIT_API_TOKEN` or
 endpoints.
 
 Maintainers can also run the same pytest and encoding checks from GitHub
-Actions with the `Tests` workflow, which runs automatically on pull requests
-and pushes to `main`, or with the `Run workflow` button.
+Actions with the manual `Tests` workflow using the `Run workflow` button.
 
 On Windows, `dev-tool install-editable` installs the global `issuekit` and
 `issuekit-mcp` tool shims from this checkout in editable mode. It stops stale
