@@ -25,7 +25,11 @@ from issuekit.config import IssuekitConfig, load_config, resolve_machine_config_
 from issuekit.core import issue_dict
 from issuekit.gitutil import git_root
 from issuekit.localconfig import LocalConfigError, load_toml, read_local_config
-from issuekit.orphans import DEFAULT_STALE_AFTER_SEC, list_stale_claims, stale_claim_dict
+from issuekit.issues.orphans import (
+    DEFAULT_STALE_AFTER_SEC,
+    list_stale_claims,
+    stale_claim_dict,
+)
 from issuekit.prompts.protocol import render_protocol, render_server_instructions
 from issuekit.proposals_api import (
     adopt_proposal_with_append,
@@ -35,7 +39,7 @@ from issuekit.proposals_api import (
     proposal_id_arg,
     send_proposal,
 )
-from issuekit.session import new_session_token
+from issuekit.issues.session import new_session_token
 from issuekit.store import get_store
 from issuekit.api.token_cache import _read_cached_token
 from issuekit.workers.registry import list_api_workers, remove_api_repo, remove_api_worker

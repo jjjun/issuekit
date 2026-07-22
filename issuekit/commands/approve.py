@@ -12,7 +12,7 @@ from issuekit.core import (
     is_valid_workflow_token,
     parse_issue_id_arg,
 )
-from issuekit.session import current_session_token, validate_session_token
+from issuekit.issues.session import current_session_token, validate_session_token
 from issuekit.workflow import (
     WorkflowError,
     ensure_assigned_reviewer,

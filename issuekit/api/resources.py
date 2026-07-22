@@ -8,7 +8,7 @@ from urllib.parse import quote
 
 from .base import JsonDict, _ensure_dict, _profile_rows, _worker_rows
 from issuekit.core import _drop_none
-from issuekit.session import validate_session_token
+from issuekit.issues.session import validate_session_token
 from issuekit.workflow import WorkflowError
 
 

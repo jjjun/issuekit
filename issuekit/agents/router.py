@@ -14,7 +14,7 @@ from issuekit.agents.registry import resolve_adapter
 from issuekit.agentrun import AgentResult, AgentRunner
 from issuekit.config import IssuekitConfig
 from issuekit.encoding import has_non_ascii
-from issuekit.dependencies import DEPENDENCY_REF_EXPECTED, DEPENDENCY_REF_PATTERN
+from issuekit.issues.dependencies import DEPENDENCY_REF_EXPECTED, DEPENDENCY_REF_PATTERN
 from issuekit.prompts import ROUTER_PROMPT, RouterParseError
 from issuekit.proposals_api import api_client
 from issuekit.workflow import WorkflowError

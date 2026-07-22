@@ -8,7 +8,7 @@ from pathlib import Path
 
 from issuekit.commands._common import run_command
 from issuekit.config import load_config
-from issuekit.orphans import (
+from issuekit.issues.orphans import (
     DEFAULT_STALE_AFTER_SEC,
     DIRECTED_EXPIRED_HEARTBEAT,
     DIRECTED_NO_WORKER,

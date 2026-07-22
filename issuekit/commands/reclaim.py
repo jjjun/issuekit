@@ -9,7 +9,7 @@ from pathlib import Path
 from issuekit.commands._common import run_command
 from issuekit.config import load_config
 from issuekit.core import issue_dict
-from issuekit.orphans import DEFAULT_STALE_AFTER_SEC
+from issuekit.issues.orphans import DEFAULT_STALE_AFTER_SEC
 from issuekit.workers.registry import WorkerListingError
 from issuekit.workflow import ReclaimResult, WorkflowError, reclaim_issue
 

@@ -16,7 +16,7 @@ from issuekit.guards.author import AuthorOrchestrationContext, read_author_guard
 from issuekit.commands._common import run_command
 from issuekit.config import load_config
 from issuekit.core import Issue, parse_issue_id_arg
-from issuekit.session import new_session_token
+from issuekit.issues.session import new_session_token
 from issuekit.store import get_store
 from issuekit.workflow import WorkflowError, claim_issue
 

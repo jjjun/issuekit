@@ -28,7 +28,7 @@ from issuekit.refs import (
     add_workspace_ref,
     list_effective_refs,
 )
-from issuekit.session import resolved_or_new_session_token
+from issuekit.issues.session import resolved_or_new_session_token
 from issuekit.workflow import WorkflowError
 
 

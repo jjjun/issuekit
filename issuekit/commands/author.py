@@ -27,9 +27,9 @@ from issuekit.core import (
     issue_dict,
     is_valid_workflow_token,
 )
-from issuekit.dependencies import bare_ref_collision_warnings, dependency_refs
+from issuekit.issues.dependencies import bare_ref_collision_warnings, dependency_refs
 from issuekit.refs import RefError, current_repo_ref, list_effective_refs
-from issuekit.session import resolved_or_new_session_token
+from issuekit.issues.session import resolved_or_new_session_token
 from issuekit.workflow import WorkflowError
 
 

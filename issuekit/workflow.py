@@ -21,7 +21,7 @@ from issuekit.core import (
 )
 from issuekit.encoding import ASCII_ONLY_HINT, has_non_ascii
 from issuekit.gitutil import git_current_branch
-from issuekit.session import current_session_token, validate_session_token
+from issuekit.issues.session import current_session_token, validate_session_token
 from issuekit.workers.keys import worker_keys_match
 
 
@@ -206,7 +206,7 @@ def reclaim_issue(
 
         claim = None
         if not force:
-            from issuekit.orphans import DEFAULT_STALE_AFTER_SEC, list_stale_claims
+            from issuekit.issues.orphans import DEFAULT_STALE_AFTER_SEC, list_stale_claims
 
             claims = list_stale_claims(
                 config,

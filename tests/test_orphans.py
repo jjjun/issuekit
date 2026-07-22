@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
 from issuekit.core import Issue
-from issuekit.orphans import (
+from issuekit.issues.orphans import (
     DEFAULT_STALE_AFTER_SEC,
     DIRECTED_NO_WORKER,
     EXPIRED_HEARTBEAT,

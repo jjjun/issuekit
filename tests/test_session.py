@@ -1,4 +1,4 @@
-from issuekit.session import resolved_or_new_session_token
+from issuekit.issues.session import resolved_or_new_session_token
 
 
 def test_resolved_or_new_session_token_uses_configured_session() -> None:

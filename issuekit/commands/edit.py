@@ -10,7 +10,7 @@ from pathlib import Path
 from issuekit.commands._common import active_issue_not_found, require_ascii, run_command
 from issuekit.config import IssuekitConfig, load_config
 from issuekit.core import Issue, VALID_ISSUE_PRIORITIES, issue_dict, parse_issue_id_arg
-from issuekit.dependencies import dependency_refs
+from issuekit.issues.dependencies import dependency_refs
 from issuekit.workflow import WorkflowError
 
 
