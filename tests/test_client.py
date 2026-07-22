@@ -1196,33 +1196,6 @@ def test_client_delete_repo_uses_top_level_repo_endpoint() -> None:
 
     assert client.delete_repo("mine-py") == {"repo_key": "mine-py", "deleted": True}
 
-
-def test_client_import_issues_posts_wrapped_issues_body() -> None:
-    items = [
-        {
-            "id": 73,
-            "title": "Fix API import",
-            "status": "in_progress",
-            "priority": "high",
-        }
-    ]
-    imported = [{"id": 73, "title": "Fix API import", "stage": "done"}]
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        assert request.method == "POST"
-        assert request.url.path == "/api/issues/issuekit/issues/import"
-        assert json.loads(request.content) == {"issues": items}
-        return httpx.Response(200, json=imported)
-
-    client = IssuekitClient(
-        "https://mine.example",
-        token="static-token",
-        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
-    )
-
-    assert client.import_issues(items) == imported
-
-
 def test_client_create_proposal_accepts_dedup_200_response() -> None:
     response = {
         "id": 3,
@@ -1639,37 +1612,6 @@ def test_client_proposal_check_paths_and_payloads() -> None:
         ),
     ]
 
-
-def test_client_import_proposals_posts_wrapped_body() -> None:
-    items = [
-        {
-            "origin": "source#1@abc123",
-            "reply_to": None,
-            "created": None,
-            "title": "Imported",
-            "body": "Body",
-            "status": "pending",
-            "adopted_issue_number": None,
-        }
-    ]
-    imported = [{"id": 8, **items[0]}]
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        assert request.method == "POST"
-        assert request.url.path == "/api/issues/target/proposals/import"
-        assert json.loads(request.content) == {"proposals": items}
-        return httpx.Response(200, json=imported)
-
-    client = IssuekitClient(
-        "https://mine.example",
-        project="target",
-        token="static-token",
-        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
-    )
-
-    assert client.import_proposals(items) == imported
-
-
 def test_client_proposal_errors_use_server_code_and_message() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(404, json={"code": "not_found", "message": "missing proposal"})
@@ -2050,28 +1992,6 @@ def test_fake_issuekit_client_round_trips_proposal_lifecycle() -> None:
     assert client.get_proposal(created["id"])["status"] == "adopted"
     assert discarded["status"] == "discarded"
     assert client.list_proposals(status="pending") == []
-
-
-def test_fake_issuekit_client_import_proposals_is_idempotent() -> None:
-    client = FakeIssuekitClient()
-    proposals = [
-        {
-            "origin": "source#1@abc123",
-            "title": "Imported",
-            "body": "Body",
-            "status": "pending",
-            "created": None,
-            "reply_to": None,
-            "adopted_issue_number": None,
-        }
-    ]
-
-    first = client.import_proposals(proposals)
-    second = client.import_proposals(proposals)
-
-    assert first == second
-    assert len(client.list_proposals(status="pending")) == 1
-
 
 def _jwt(*, exp: float, subject: str = "svc") -> str:
     header = _b64({"alg": "none", "typ": "JWT"})

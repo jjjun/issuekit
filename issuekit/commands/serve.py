@@ -4,13 +4,11 @@ from __future__ import annotations
 
 import argparse
 from contextlib import contextmanager
-from dataclasses import dataclass
 import os
 from pathlib import Path
 import signal
 import subprocess
 import sys
-import threading
 from typing import Iterator
 
 from issuekit.agents.proposal_check import (
@@ -343,7 +341,6 @@ def _serve_loop(
             backoff,
             poll=poll,
             on_idle=lambda attempt: _log(sys.stderr, log_path, "idle", attempt=attempt),
-            on_error=lambda _result, _attempt, _backoff: None,
             on_success=lambda poll_result, count: _log_submitted(
                 log_path, poll_result.value, count
             ),
@@ -448,7 +445,6 @@ def _serve_proposal_checks_loop(
         on_idle=lambda attempt: _log(
             sys.stderr, log_path, "proposal_checks_idle", attempt=attempt
         ),
-        on_error=lambda _result, _attempt, _backoff: None,
         on_success=lambda _result, _count: None,
         on_stopped=lambda: _log(sys.stderr, log_path, "stopped"),
         once=args.once,
@@ -512,7 +508,6 @@ def _serve_review_loop(
             on_idle=lambda attempt: _log(
                 sys.stderr, log_path, "review_idle", attempt=attempt
             ),
-            on_error=lambda _result, _attempt, _backoff: None,
             on_success=lambda result, count: _log_reviewed(log_path, result.value, count),
             on_stopped=lambda: _log(sys.stderr, log_path, "stopped"),
             once=args.once,

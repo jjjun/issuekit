@@ -5,16 +5,6 @@ import pytest
 from issuekit import core
 from issuekit.config import IssuekitConfig, load_config
 
-
-def test_valid_issue_statuses_match_server_derived_labels() -> None:
-    assert core.VALID_ISSUE_STATUSES == {
-        "active",
-        "planned",
-        "in_progress",
-        "completed",
-    }
-
-
 def test_load_config_reads_tool_issuekit(tmp_path: Path) -> None:
     (tmp_path / "pyproject.toml").write_text(
         "[tool.issuekit]\nascii_id_threshold = 100\nissues_dir = 'custom/issues'\n",

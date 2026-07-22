@@ -393,15 +393,6 @@ class FakeIssueSurface:
             issue["assignee"] = ""
             return deepcopy(issue)
 
-    def import_issues(self, issues: list[JsonDict] | JsonDict) -> JsonDict | list[JsonDict]:
-        raw_issues = issues.get("issues", []) if isinstance(issues, dict) else issues
-        if not isinstance(raw_issues, list):
-            raise WorkflowError("Import payload must be a list of issues.", code="invalid_value")
-        with self._lock:
-            self._record("import_issues", body={"issues": deepcopy(raw_issues)})
-            imported = [self._store_issue(issue) for issue in raw_issues]
-            return deepcopy(imported)
-
     def upsert_repo(
         self,
         *,

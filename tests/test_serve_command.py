@@ -3,6 +3,7 @@ from pathlib import Path
 import os
 import signal
 import subprocess
+import threading
 from types import SimpleNamespace
 
 from issuekit import cli
@@ -450,7 +451,7 @@ def test_serve_proposal_checks_backs_off_after_cycle_error(
         requested = False
 
         def __init__(self) -> None:
-            self.abort_event = serve.threading.Event()
+            self.abort_event = threading.Event()
 
         def sleep(self, seconds: float) -> bool:
             self.requested = True
@@ -490,7 +491,7 @@ def test_serve_proposal_checks_sleeps_between_successful_cycles(
         requested = False
 
         def __init__(self) -> None:
-            self.abort_event = serve.threading.Event()
+            self.abort_event = threading.Event()
             self.events: list[str] = []
             self.sleeps: list[float] = []
 
@@ -901,7 +902,7 @@ def test_serve_loop_reuses_store_across_idle_polls(monkeypatch, tmp_path: Path) 
 
         def __init__(self) -> None:
             self.sleep_count = 0
-            self.abort_event = serve.threading.Event()
+            self.abort_event = threading.Event()
 
         def sleep(self, seconds: float) -> bool:
             self.sleep_count += 1
@@ -968,7 +969,7 @@ def test_serve_loop_claim_ignores_author_guard_outside_configured_cwd(
         requested = False
 
         def __init__(self) -> None:
-            self.abort_event = serve.threading.Event()
+            self.abort_event = threading.Event()
 
         def sleep(self, seconds: float) -> bool:
             return True

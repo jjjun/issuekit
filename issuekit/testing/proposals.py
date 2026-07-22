@@ -429,22 +429,6 @@ class FakeProposalSurface:
             proposal["updated"] = date.today().isoformat()
             return deepcopy(proposal)
 
-    def import_proposals(self, proposals: list[JsonDict] | JsonDict) -> list[JsonDict]:
-        raw_proposals = proposals.get("proposals", []) if isinstance(proposals, dict) else proposals
-        if not isinstance(raw_proposals, list):
-            raise WorkflowError("Proposal import payload must be a list of proposals.", code="invalid_value")
-        with self._lock:
-            self._record("import_proposals", body={"proposals": deepcopy(raw_proposals)})
-            imported: list[JsonDict] = []
-            for proposal in raw_proposals:
-                existing = self._find_imported_proposal(proposal)
-                if existing is None:
-                    existing = self._store_proposal(proposal, allocate=True)
-                else:
-                    existing.update(deepcopy(proposal))
-                imported.append(existing)
-            return deepcopy(imported)
-
     def _find_proposal(self, proposal_id: int) -> JsonDict:
         proposal = self._proposals.get(proposal_id)
         if proposal is None:
@@ -462,14 +446,6 @@ class FakeProposalSurface:
         if thread is None:
             raise WorkflowError(f"Proposal thread {thread_id} was not found.", code="not_found")
         return thread
-
-    def _find_imported_proposal(self, proposal: JsonDict) -> JsonDict | None:
-        origin = proposal.get("origin")
-        status = proposal.get("status")
-        for stored in sorted(self._proposals.values(), key=lambda item: int(item["id"])):
-            if stored.get("origin") == origin and stored.get("status") == status:
-                return stored
-        return None
 
     def _store_proposal(self, proposal: JsonDict, *, allocate: bool = False) -> JsonDict:
         stored = deepcopy(proposal)

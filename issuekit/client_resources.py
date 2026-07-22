@@ -348,14 +348,6 @@ class _IssueResourceMixin:
         )
         return _ensure_dict(payload, "Complete response")
 
-    def import_issues(self, issues: list[Mapping[str, Any]] | Mapping[str, Any]) -> JsonDict | list[JsonDict]:
-        items = [dict(issue) for issue in issues] if isinstance(issues, list) else [dict(issues)]
-        payload = self._request("POST", "/import", json={"issues": items})
-        if not isinstance(payload, (dict, list)):
-            raise WorkflowError("Import response was not JSON data.", code="invalid_response")
-        return payload
-
-
 class _WorkerResourceMixin:
     def upsert_repo(
         self,
@@ -731,14 +723,6 @@ class _ProposalResourceMixin:
     def discard_proposal(self, proposal_id: int) -> JsonDict:
         payload = self._request("POST", f"/{proposal_id}/discard", collection="proposals")
         return _ensure_dict(payload, "Discard proposal response")
-
-    def import_proposals(self, proposals: list[Mapping[str, Any]] | Mapping[str, Any]) -> list[JsonDict]:
-        items = [dict(proposal) for proposal in proposals] if isinstance(proposals, list) else [dict(proposals)]
-        payload = self._request("POST", "/import", collection="proposals", json={"proposals": items})
-        if not isinstance(payload, list):
-            raise WorkflowError("Proposal import response was not a JSON array.", code="invalid_response")
-        return [_ensure_dict(item, "Proposal import response item") for item in payload]
-
 
 def _validated_session(session: str | None) -> str | None:
     return None if session is None else validate_session_token(session)

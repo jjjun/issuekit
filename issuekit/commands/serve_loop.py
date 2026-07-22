@@ -81,7 +81,6 @@ def run_poll_loop(
     *,
     poll: Callable[[int, float], PollResult],
     on_idle: Callable[[int], None],
-    on_error: Callable[[PollResult, int, float], None],
     on_success: Callable[[PollResult, int], None],
     on_stopped: Callable[[], None],
     once: bool,
@@ -109,7 +108,6 @@ def run_poll_loop(
             continue
 
         if result.status in {"error", "failed"}:
-            on_error(result, attempt, backoff.current)
             if once:
                 return result.exit_code
             if result.status == "failed" and abort_failed_exit_code is not None:
