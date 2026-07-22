@@ -7,6 +7,7 @@ import pytest
 from issuekit import cli
 from issuekit import store as store_module
 from issuekit.agents import review as review_agent
+from issuekit.agentrun import AgentPrompt
 from issuekit.core import Issue
 from issuekit.testing import FakeIssuekitClient
 
@@ -26,12 +27,12 @@ class FakeResult:
 
 
 class ApprovingRunner:
-    calls: list[tuple[Path, Path, float, str | None, int | None, str | None]] = []
+    calls: list[tuple[AgentPrompt, Path, float, str | None, int | None]] = []
 
     def run(
         self,
         adapter,
-        plan_path: Path,
+        prompt: AgentPrompt,
         repo: Path,
         timeout: float,
         agent_name: str | None = None,
@@ -41,12 +42,11 @@ class ApprovingRunner:
     ) -> FakeResult:
         self.calls.append(
             (
-                plan_path,
+                prompt,
                 repo,
                 timeout,
                 agent_name,
                 issue_id,
-                kwargs.get("prompt_override"),
             )
         )
         return FakeResult(
@@ -167,9 +167,9 @@ def test_review_command_approves_with_distinct_worker_identity(
     captured = capsys.readouterr()
     assert exit_code == 0
     assert len(ApprovingRunner.calls) == 1
-    plan_path, repo, timeout, agent_name, issue_id, prompt_override = ApprovingRunner.calls[0]
-    assert plan_path == tmp_path / ".agent-runs" / "review-issue-1.md"
-    prompt_text = plan_path.read_text(encoding="utf-8")
+    prompt, repo, timeout, agent_name, issue_id = ApprovingRunner.calls[0]
+    assert prompt.path == tmp_path / ".agent-runs" / "review-issue-1.md"
+    prompt_text = prompt.body
     assert "Review issue demo#1" in prompt_text
     assert "Review correctness, tests, readability, maintainability" in prompt_text
     assert "Request changes for gratuitous obfuscation" in prompt_text
@@ -178,7 +178,7 @@ def test_review_command_approves_with_distinct_worker_identity(
     assert timeout == 9
     assert agent_name == "codex"
     assert issue_id == 1
-    assert "fenced review block" in (prompt_override or "")
+    assert "fenced review block" in prompt.pointer
     assert "review_decision verdict=approve" in captured.out
     assert client.get_issue(1)["status"] == "completed"
     assert client.calls[-1] == {
@@ -434,9 +434,7 @@ def test_review_command_allows_handoff_evidence_without_local_diff(
     captured = capsys.readouterr()
     assert exit_code == 0
     assert len(ApprovingRunner.calls) == 1
-    prompt_text = (tmp_path / ".agent-runs" / "review-issue-1.md").read_text(
-        encoding="utf-8"
-    )
+    prompt_text = ApprovingRunner.calls[0][0].body
     assert "Review the submitted handoff evidence against the issue." in prompt_text
     assert "No local implementation diff is available in this checkout." in prompt_text
     assert "Handoff summary: Restarted the service on host a." in prompt_text

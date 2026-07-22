@@ -23,8 +23,8 @@ class FakeRunner:
         self._outputs = list(outputs)
         self.calls: list[dict] = []
 
-    def run(self, adapter, plan_path, repo, **kwargs) -> AgentResult:
-        self.calls.append({"plan_path": plan_path, "repo": repo, **kwargs})
+    def run(self, adapter, prompt, repo, **kwargs) -> AgentResult:
+        self.calls.append({"prompt": prompt, "repo": repo, **kwargs})
         text = self._outputs.pop(0) if self._outputs else ""
         return AgentResult(
             exit_code=0,
@@ -502,11 +502,11 @@ def test_request_filters_stale_and_own_project_profiles_from_prompt(
 
     assert cli.main(["request", "Where does this go?"]) == 0
     capsys.readouterr()
-    prompt = runner.calls[0]["plan_path"].read_text(encoding="utf-8")
+    prompt = runner.calls[0]["prompt"]
 
-    assert "## Project: api" in prompt
-    assert "## Project: pm" not in prompt
-    assert "## Project: old" not in prompt
+    assert "## Project: api" in prompt.body
+    assert "## Project: pm" not in prompt.body
+    assert "## Project: old" not in prompt.body
 
 
 def test_request_clarify_answer_round_cap_turns_second_clarify_into_reject(

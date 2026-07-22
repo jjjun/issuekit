@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from issuekit import cli
-from issuekit.agentrun import AgentResult
+from issuekit.agentrun import AgentPrompt, AgentResult
 from issuekit.commands.negotiate import (
     MockIssueCreator,
     _entry_origin,
@@ -69,7 +69,7 @@ class CannedRunner:
     def run(
         self,
         adapter,
-        plan_path: Path,
+        prompt: AgentPrompt,
         repo: Path,
         timeout: float,
         agent_name: str | None = None,
@@ -79,12 +79,11 @@ class CannedRunner:
         index = len(self.calls)
         self.calls.append(
             {
-                "plan_path": plan_path,
+                "prompt": prompt,
                 "repo": repo,
                 "timeout": timeout,
                 "agent_name": agent_name,
                 "issue_id": issue_id,
-                "prompt_override": kwargs.get("prompt_override"),
                 "session_id": kwargs.get("session_id"),
             }
         )
@@ -101,9 +100,9 @@ class CannedRunner:
 
 
 def _call_plan_text(runner: CannedRunner, index: int) -> str:
-    plan_path = runner.calls[index]["plan_path"]
-    assert isinstance(plan_path, Path)
-    return plan_path.read_text(encoding="utf-8")
+    prompt = runner.calls[index]["prompt"]
+    assert isinstance(prompt, AgentPrompt)
+    return prompt.body
 
 
 def test_negotiate_converges_when_both_sides_agree_on_same_contract(tmp_path) -> None:
@@ -140,7 +139,9 @@ def test_negotiate_converges_when_both_sides_agree_on_same_contract(tmp_path) ->
     ]
     assert runner.calls[0]["agent_name"] == "codex"
     assert runner.calls[1]["agent_name"] == "claude"
-    assert "Read the negotiation round prompt at:" in str(runner.calls[0]["prompt_override"])
+    prompt = runner.calls[0]["prompt"]
+    assert isinstance(prompt, AgentPrompt)
+    assert "Read the negotiation round prompt at:" in prompt.pointer
     assert "Perspective: you represent the frontend side." in _call_plan_text(runner, 0)
 
 
@@ -224,7 +225,7 @@ def test_negotiate_failure_includes_round_session_and_log_reason(tmp_path) -> No
         def run(
             self,
             adapter,
-            plan_path: Path,
+            prompt: AgentPrompt,
             repo: Path,
             timeout: float,
             agent_name: str | None = None,
@@ -233,12 +234,11 @@ def test_negotiate_failure_includes_round_session_and_log_reason(tmp_path) -> No
         ) -> AgentResult:
             self.calls.append(
                 {
-                    "plan_path": plan_path,
+                    "prompt": prompt,
                     "repo": repo,
                     "timeout": timeout,
                     "agent_name": agent_name,
                     "issue_id": issue_id,
-                    "prompt_override": kwargs.get("prompt_override"),
                     "session_id": kwargs.get("session_id"),
                 }
             )
@@ -302,15 +302,14 @@ def test_negotiate_passes_single_line_pointer_prompt_and_writes_full_plan(tmp_pa
         runner=runner,
     )
 
-    prompt_override = str(runner.calls[0]["prompt_override"])
-    plan_path = runner.calls[0]["plan_path"]
-    assert isinstance(plan_path, Path)
-    assert "\n" not in prompt_override
-    assert str(plan_path) in prompt_override
-    assert "Read the negotiation round prompt at:" in prompt_override
-    assert "Do not implement code; do not modify the tracker." in prompt_override
+    prompt = runner.calls[0]["prompt"]
+    assert isinstance(prompt, AgentPrompt)
+    assert "\n" not in prompt.pointer
+    assert str(prompt.path) in prompt.pointer
+    assert "Read the negotiation round prompt at:" in prompt.pointer
+    assert "Do not implement code; do not modify the tracker." in prompt.pointer
 
-    plan_text = plan_path.read_text(encoding="utf-8")
+    plan_text = prompt.body
     assert "You are participating in an issuekit cross-repo design negotiation." in plan_text
     assert "Perspective: you represent the frontend side." in plan_text
     assert "Compact thread so far:" in plan_text

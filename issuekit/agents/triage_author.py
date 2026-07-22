@@ -25,6 +25,7 @@ from typing import Any, TextIO
 from issuekit.agents.proposal_eval import (
     run_readonly_proposal_evaluation,
 )
+from issuekit.agents.readonly import prompt_from_spec
 from issuekit.agents.registry import resolve_adapter
 from issuekit.agentrun import AgentRunner
 from issuekit.agents.triage_state import (
@@ -231,7 +232,6 @@ def _evaluate_proposal(
     err: TextIO,
 ) -> dict[str, str]:
     proposal_id = int(proposal["id"])
-    prompt_path = cwd / ".agent-runs" / f"triage-proposal-{proposal_id}.md"
     stdout = run_readonly_proposal_evaluation(
         proposal,
         agent=agent,
@@ -240,9 +240,12 @@ def _evaluate_proposal(
         timeout=timeout,
         runner_factory=runner_factory,
         err=err,
-        prompt_filename=prompt_path.name,
-        prompt_text=_render_triage_prompt(proposal),
-        prompt_override=_prompt_pointer(prompt_path),
+        prompt=prompt_from_spec(
+            TRIAGE_PROMPT,
+            cwd=cwd,
+            filename=f"triage-proposal-{proposal_id}.md",
+            body=_render_triage_prompt(proposal),
+        ),
         label="Triage",
         mutation_log_message=(
             "ERROR: triage-author run modified the worktree; ignoring its output."
@@ -437,8 +440,6 @@ def _render_triage_prompt(proposal: Mapping[str, Any]) -> str:
     )
 
 
-def _prompt_pointer(prompt_path: Path) -> str:
-    return TRIAGE_PROMPT.render_pointer(prompt_path=prompt_path)
 
 
 def _skip_replied(

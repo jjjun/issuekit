@@ -8,6 +8,7 @@ import threading
 from typing import Any, TextIO
 
 from issuekit.agents.readonly import require_clean_run, run_readonly_evaluation
+from issuekit.agentrun import AgentPrompt
 
 
 def run_readonly_proposal_evaluation(
@@ -19,9 +20,7 @@ def run_readonly_proposal_evaluation(
     timeout: float,
     runner_factory,
     err: TextIO,
-    prompt_filename: str,
-    prompt_text: str,
-    prompt_override: str,
+    prompt: AgentPrompt,
     label: str,
     mutation_log_message: str,
     abort_event: threading.Event | None = None,
@@ -35,9 +34,7 @@ def run_readonly_proposal_evaluation(
         cwd=cwd,
         timeout=timeout,
         runner_factory=runner_factory,
-        prompt_filename=prompt_filename,
-        prompt_text=prompt_text,
-        prompt_override=prompt_override,
+        prompt=prompt,
         label=label,
         subject=f"proposal #{proposal_id}",
         abort_event=abort_event,

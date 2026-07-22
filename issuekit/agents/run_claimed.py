@@ -10,7 +10,7 @@ import threading
 from typing import TextIO
 
 from issuekit.agents.registry import resolve_adapter
-from issuekit.agentrun import AgentResult, AgentRunner
+from issuekit.agentrun import AgentPrompt, AgentResult, AgentRunner
 from issuekit.author_guard import AuthorOrchestrationContext
 from issuekit.config import IssuekitConfig
 from issuekit.core import Issue
@@ -102,20 +102,22 @@ def run_and_submit(
         reasoning_effort=reasoning_effort,
     )
     run_dir = cwd / ".agent-runs"
-    run_dir.mkdir(exist_ok=True)
     plan_path = run_dir / f"issue-{issue_id}.md"
-    plan_path.write_text(issue.body, encoding="utf-8", newline="\n")
+    prompt = AgentPrompt(
+        path=plan_path,
+        body=issue.body,
+        pointer=implementation_prompt(plan_path),
+    )
     runner_factory = runner_factory or AgentRunner
     result = runner_factory().run(
         adapter,
-        plan_path,
+        prompt,
         cwd,
         timeout=float(timeout),
         agent_name=agent,
         issue_id=issue_id,
         follow=follow,
         prompt_suffix=prompt_suffix,
-        prompt_override=implementation_prompt(plan_path),
         run_dir=run_dir,
         abort_event=abort_event,
         issuekit_session=session,

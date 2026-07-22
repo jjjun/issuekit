@@ -262,9 +262,9 @@ def test_serve_once_claims_runs_and_submits(
 
     assert exit_code == 0
     assert len(FakeRunner.calls) == 1
-    plan_path, repo, timeout, agent_name, issue_id, prompt_suffix = FakeRunner.calls[0]
-    assert plan_path == tmp_path / ".agent-runs" / "issue-1.md"
-    assert plan_path.read_text(encoding="utf-8") == "# Issue #1: First\n"
+    prompt, repo, timeout, agent_name, issue_id, prompt_suffix = FakeRunner.calls[0]
+    assert prompt.path == tmp_path / ".agent-runs" / "issue-1.md"
+    assert prompt.body == "# Issue #1: First\n"
     assert repo == tmp_path
     assert timeout == 7
     assert agent_name == "codex"

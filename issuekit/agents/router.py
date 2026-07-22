@@ -9,7 +9,7 @@ import re
 import sys
 from typing import Any, TextIO
 
-from issuekit.agents.readonly import require_clean_run, run_readonly_evaluation
+from issuekit.agents.readonly import prompt_from_spec, require_clean_run, run_readonly_evaluation
 from issuekit.agents.registry import resolve_adapter
 from issuekit.agentrun import AgentResult, AgentRunner
 from issuekit.config import IssuekitConfig
@@ -18,8 +18,6 @@ from issuekit.dependencies import DEPENDENCY_REF_EXPECTED, DEPENDENCY_REF_PATTER
 from issuekit.prompts import ROUTER_PROMPT, RouterParseError
 from issuekit.proposals_api import api_client
 from issuekit.workflow import WorkflowError
-
-
 ROUTE_BLOCK_LANGUAGE = ROUTER_PROMPT.block_language
 _DECISIONS = {"route", "clarify", "reject"}
 _TARGET_PLACEHOLDER_PATTERN = re.compile(r"^target:(?P<index>[0-9]+)$")
@@ -160,22 +158,24 @@ def run_router(
     candidates = list_candidate_profiles(config)
 
     prompt_filename = f"pm-request-{request_id}.md"
-    prompt_path = cwd / ".agent-runs" / prompt_filename
     run = run_readonly_evaluation(
         agent=agent,
         adapter=adapter,
         cwd=cwd,
         timeout=timeout,
         runner_factory=runner_factory,
-        prompt_filename=prompt_filename,
-        prompt_text=_render_router_prompt(
-            request_text,
-            qa_rounds=qa_rounds,
-            candidates=candidates,
-            max_targets=config.router.max_targets,
-            force_final=force_final,
+        prompt=prompt_from_spec(
+            ROUTER_PROMPT,
+            cwd=cwd,
+            filename=prompt_filename,
+            body=_render_router_prompt(
+                request_text,
+                qa_rounds=qa_rounds,
+                candidates=candidates,
+                max_targets=config.router.max_targets,
+                force_final=force_final,
+            ),
         ),
-        prompt_override=_prompt_pointer(prompt_path),
         label="Router",
         subject=f"request #{request_id}",
     )
@@ -329,7 +329,3 @@ def _render_qa(qa_rounds: Sequence[Mapping[str, str]]) -> str:
         lines.append(f"{index}. Q: {question}")
         lines.append(f"   A: {answer}")
     return "\n".join(lines)
-
-
-def _prompt_pointer(prompt_path: Path) -> str:
-    return ROUTER_PROMPT.render_pointer(prompt_path=prompt_path)

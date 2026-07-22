@@ -9,7 +9,7 @@ import sys
 import threading
 from typing import TextIO
 
-from issuekit.agents.readonly import run_readonly_evaluation, stdout_text
+from issuekit.agents.readonly import prompt_from_spec, run_readonly_evaluation, stdout_text
 from issuekit.agents.registry import resolve_adapter
 from issuekit.agentrun import AgentResult, AgentRunner
 from issuekit.commands.approve import approve_issue
@@ -124,16 +124,18 @@ def run_review_and_decide(
 
     runner_factory = runner_factory or AgentRunner
     review_filename = f"review-issue-{issue_id}.md"
-    review_path = cwd / ".agent-runs" / review_filename
     run = run_readonly_evaluation(
         agent=agent,
         adapter=adapter,
         cwd=cwd,
         timeout=timeout,
         runner_factory=runner_factory,
-        prompt_filename=review_filename,
-        prompt_text=_render_review_prompt(issue, cwd=cwd, diff_context=diff_context),
-        prompt_override=_review_prompt_pointer(review_path),
+        prompt=prompt_from_spec(
+            REVIEW_PROMPT,
+            cwd=cwd,
+            filename=review_filename,
+            body=_render_review_prompt(issue, cwd=cwd, diff_context=diff_context),
+        ),
         label="Reviewer",
         subject=f"issue #{issue_id}",
         issue_id=issue_id,
@@ -451,10 +453,6 @@ def _git_stdout(args: list[str], cwd: Path) -> str:
     if result is None or result.returncode != 0:
         return ""
     return result.stdout
-
-
-def _review_prompt_pointer(review_path: Path) -> str:
-    return REVIEW_PROMPT.render_pointer(prompt_path=review_path)
 
 
 def _empty_verdict() -> ReviewVerdict:

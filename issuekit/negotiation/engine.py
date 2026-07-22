@@ -11,7 +11,7 @@ from typing import Protocol
 
 from issuekit.agents.readonly import stdout_text
 from issuekit.agents.registry import resolve_adapter
-from issuekit.agentrun import AgentAdapter, AgentResult, AgentRunner
+from issuekit.agentrun import AgentAdapter, AgentPrompt, AgentResult, AgentRunner
 from issuekit.config import IssuekitConfig
 from issuekit.core import Issue, last_nonempty_line
 from issuekit.negotiation.model import (
@@ -473,21 +473,24 @@ def _run_side_turn(
         thread=thread,
         resolved_contract=_latest_contract(thread),
     )
-    plan_path = _write_round_prompt(
-        cwd,
-        issue_id=issue.id,
-        round_number=round_number,
-        side=side,
-        prompt=prompt,
+    issue_token = str(issue.id) if issue.id is not None else "unknown"
+    plan_path = (
+        cwd
+        / ".agent-runs"
+        / f"negotiate-issue-{issue_token}-round-{round_number}-{side}.md"
+    )
+    agent_prompt = AgentPrompt(
+        path=plan_path,
+        body=prompt,
+        pointer=render_negotiation_round_pointer(plan_path),
     )
     result = runner.run(
         adapter,
-        plan_path,
+        agent_prompt,
         cwd,
         timeout=float(timeout),
         agent_name=agent,
         issue_id=issue.id,
-        prompt_override=_round_prompt_pointer(plan_path),
         session_id=session_id,
     )
     run_id = _run_id(result)
@@ -552,26 +555,6 @@ def _failure_reason(result: AgentResult) -> str | None:
         if line:
             return line
     return None
-
-
-def _write_round_prompt(
-    cwd: Path,
-    *,
-    issue_id: int | None,
-    round_number: int,
-    side: str,
-    prompt: str,
-) -> Path:
-    run_dir = cwd / ".agent-runs"
-    run_dir.mkdir(exist_ok=True)
-    issue_token = str(issue_id) if issue_id is not None else "unknown"
-    path = run_dir / f"negotiate-issue-{issue_token}-round-{round_number}-{side}.md"
-    path.write_text(prompt, encoding="utf-8", newline="\n")
-    return path
-
-
-def _round_prompt_pointer(plan_path: Path) -> str:
-    return render_negotiation_round_pointer(plan_path)
 
 
 def _evaluate_convergence(thread: list[NegotiationEntry]) -> str:

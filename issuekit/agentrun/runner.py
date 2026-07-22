@@ -40,6 +40,13 @@ class AgentResult:
     status_path: Path | None = None
 
 
+@dataclass(frozen=True)
+class AgentPrompt:
+    """Prompt content, its on-disk location, and the launch instruction."""
+
+    path: Path
+    body: str
+    pointer: str
 
 class _RunWatcher:
     """Background watcher that updates status JSON and optionally emits a heartbeat."""
@@ -129,32 +136,30 @@ class AgentRunner:
     def run(
         self,
         adapter: AgentAdapter,
-        plan_path: Path,
+        prompt: AgentPrompt,
         repo: Path,
         timeout: float = 600.0,
         agent_name: str | None = None,
         issue_id: int | None = None,
         follow: bool = False,
         prompt_suffix: str | None = None,
-        prompt_override: str | None = None,
         run_dir: Path | None = None,
         abort_event: threading.Event | None = None,
         session_id: str | None = None,
         issuekit_session: str | None = None,
     ) -> AgentResult:
-        plan_path = plan_path.resolve()
+        plan_path = prompt.path.resolve()
         repo = repo.resolve()
-        if not plan_path.exists():
-            raise FileNotFoundError(f"Plan file not found: {plan_path}")
         if not repo.exists():
             raise FileNotFoundError(f"Repo directory not found: {repo}")
 
         binary = adapter.resolve_binary()
-        prompt = prompt_override or f"Read and carry out the plan at: {plan_path}"
         if prompt_suffix:
-            prompt = f"{prompt}\n\n{prompt_suffix}"
+            prompt_text = f"{prompt.pointer}\n\n{prompt_suffix}"
+        else:
+            prompt_text = prompt.pointer
         argv = [str(binary)] + adapter.build_argv(
-            prompt,
+            prompt_text,
             plan_path,
             session_id=session_id,
         )
@@ -167,6 +172,8 @@ class AgentRunner:
                 ".agent-runs/ is gitignored run-log storage and is not normally committed.",
                 file=sys.stderr,
             )
+        plan_path.parent.mkdir(parents=True, exist_ok=True)
+        plan_path.write_text(prompt.body, encoding="utf-8", newline="\n")
         run_id, reservation_path = self._reserve_run_id(run_dir)
         stdout_path = run_dir / f"{run_id}.out.log"
         agent_log_path = run_dir / f"{run_id}.agent.log"

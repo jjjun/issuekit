@@ -102,9 +102,9 @@ def test_implement_command_materializes_api_issue_and_submits_review(
     captured = capsys.readouterr()
     assert exit_code == 0
     assert len(FakeRunner.calls) == 1
-    _, plan_path, repo, timeout, agent_name, issue_id, prompt_suffix = FakeRunner.calls[0]
-    assert plan_path == tmp_path / ".agent-runs" / "issue-1.md"
-    assert plan_path.read_text(encoding="utf-8") == "# Issue #1: First\n"
+    _, prompt, repo, timeout, agent_name, issue_id, prompt_suffix = FakeRunner.calls[0]
+    assert prompt.path == tmp_path / ".agent-runs" / "issue-1.md"
+    assert prompt.body == "# Issue #1: First\n"
     assert repo == tmp_path
     assert timeout == 12
     assert agent_name == "kimi"

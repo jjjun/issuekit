@@ -10,7 +10,7 @@ import pytest
 
 from issuekit.agentrun.adapters.kimi import KimiAdapter
 from issuekit.agents.registry import resolve_adapter
-from issuekit.agentrun import AgentAdapter, AgentResult, AgentRunner, ConfigAgentAdapter
+from issuekit.agentrun import AgentAdapter, AgentPrompt, AgentResult, AgentRunner, ConfigAgentAdapter
 from issuekit.config import AgentRunConfig, IssuekitConfig
 
 
@@ -35,6 +35,10 @@ class FakeAdapter(AgentAdapter):
         return {}
 
 
+def agent_prompt(path: Path) -> AgentPrompt:
+    return AgentPrompt(path=path, body="plan", pointer="")
+
+
 def test_runner_captures_stdout_stderr_and_returns_result(tmp_path: Path) -> None:
     script = tmp_path / "script.py"
     script.write_text("import sys; print('hello out'); print('hello err', file=sys.stderr)")
@@ -46,7 +50,7 @@ def test_runner_captures_stdout_stderr_and_returns_result(tmp_path: Path) -> Non
 
     adapter = FakeAdapter([sys.executable, str(script)])
     runner = AgentRunner()
-    result = runner.run(adapter, plan, repo, timeout=10.0)
+    result = runner.run(adapter, agent_prompt(plan), repo, timeout=10.0)
 
     assert result.timed_out is False
     assert result.exit_code == 0
@@ -75,7 +79,7 @@ def test_runner_uses_explicit_run_directory(tmp_path: Path) -> None:
 
     result = AgentRunner().run(
         FakeAdapter([sys.executable, str(script)]),
-        plan,
+        agent_prompt(plan),
         repo,
         timeout=10.0,
         run_dir=run_dir,
@@ -85,7 +89,7 @@ def test_runner_uses_explicit_run_directory(tmp_path: Path) -> None:
     assert result.agent_log_path.parent == run_dir
 
 
-def test_runner_uses_caller_prompt_override(
+def test_runner_uses_caller_prompt(
     tmp_path: Path,
 ) -> None:
     class PromptCaptureAdapter(FakeAdapter):
@@ -103,7 +107,6 @@ def test_runner_uses_caller_prompt_override(
     script = tmp_path / "script.py"
     script.write_text("pass")
     plan = tmp_path / "plan.md"
-    plan.write_text("plan")
     repo = tmp_path / "repo"
     repo.mkdir()
     (repo / ".git").mkdir()
@@ -111,10 +114,9 @@ def test_runner_uses_caller_prompt_override(
     adapter = PromptCaptureAdapter([sys.executable, str(script)])
     AgentRunner().run(
         adapter,
-        plan,
+        AgentPrompt(path=plan, body="plan", pointer="Caller-owned prompt."),
         repo,
         timeout=10.0,
-        prompt_override="Caller-owned prompt.",
     )
 
     assert adapter.prompt == "Caller-owned prompt."
@@ -149,7 +151,7 @@ def test_runner_passes_session_id_through_to_argv(tmp_path: Path) -> None:
     adapter = ConfigAgentAdapter("python-agent", dict(config.agents)["python-agent"])
     result = AgentRunner().run(
         adapter,
-        plan,
+        agent_prompt(plan),
         repo,
         timeout=10.0,
         session_id="123e4567-e89b-12d3-a456-426614174000",
@@ -175,7 +177,7 @@ def test_runner_replaces_invalid_log_bytes_before_parsing(tmp_path: Path) -> Non
     (repo / ".git").mkdir()
 
     adapter = ParsingAdapter([sys.executable, str(script)])
-    result = AgentRunner().run(adapter, plan, repo, timeout=10.0)
+    result = AgentRunner().run(adapter, agent_prompt(plan), repo, timeout=10.0)
 
     assert result.parsed is not None
     assert "valid\ufffdtext" in result.parsed["stdout"]
@@ -211,7 +213,7 @@ def test_runner_status_is_running_while_process_is_active(tmp_path: Path) -> Non
     adapter = FakeAdapter([sys.executable, str(script), str(repo)])
     result = AgentRunner().run(
         adapter,
-        plan,
+        agent_prompt(plan),
         repo,
         timeout=10.0,
         agent_name="codex",
@@ -240,7 +242,7 @@ def test_runner_uses_devnull_stdin_and_does_not_hang(tmp_path: Path) -> None:
 
     adapter = FakeAdapter([sys.executable, str(script)])
     runner = AgentRunner()
-    result = runner.run(adapter, plan, repo, timeout=10.0)
+    result = runner.run(adapter, agent_prompt(plan), repo, timeout=10.0)
 
     assert result.timed_out is False
     assert result.exit_code == 0
@@ -259,7 +261,7 @@ def test_runner_kills_on_timeout(tmp_path: Path) -> None:
     adapter = FakeAdapter([sys.executable, str(script)])
     runner = AgentRunner()
     start = time.monotonic()
-    result = runner.run(adapter, plan, repo, timeout=0.5)
+    result = runner.run(adapter, agent_prompt(plan), repo, timeout=0.5)
     elapsed = time.monotonic() - start
 
     assert result.timed_out is True
@@ -280,7 +282,7 @@ def test_runner_status_is_failed_for_nonzero_exit(tmp_path: Path) -> None:
     (repo / ".git").mkdir()
 
     adapter = FakeAdapter([sys.executable, str(script)])
-    result = AgentRunner().run(adapter, plan, repo, timeout=10.0)
+    result = AgentRunner().run(adapter, agent_prompt(plan), repo, timeout=10.0)
 
     assert result.exit_code == 7
     assert result.status_path is not None
@@ -302,20 +304,22 @@ def test_runner_git_status_short(tmp_path: Path) -> None:
 
     adapter = FakeAdapter([sys.executable, str(script), str(repo)])
     runner = AgentRunner()
-    result = runner.run(adapter, plan, repo, timeout=10.0)
+    result = runner.run(adapter, agent_prompt(plan), repo, timeout=10.0)
 
     assert result.timed_out is False
     assert result.status_short is not None
     assert "new.txt" in result.status_short
 
 
-def test_runner_missing_plan_raises(tmp_path: Path) -> None:
+def test_runner_writes_prompt_file_when_it_does_not_exist(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
+    plan = tmp_path / "nosuch.md"
     adapter = FakeAdapter([sys.executable, "-c", "pass"])
     runner = AgentRunner()
-    with pytest.raises(FileNotFoundError, match="Plan file not found"):
-        runner.run(adapter, tmp_path / "nosuch.md", repo)
+    runner.run(adapter, agent_prompt(plan), repo)
+
+    assert plan.read_text(encoding="utf-8") == "plan"
 
 
 def test_runner_missing_repo_raises(tmp_path: Path) -> None:
@@ -324,7 +328,7 @@ def test_runner_missing_repo_raises(tmp_path: Path) -> None:
     adapter = FakeAdapter([sys.executable, "-c", "pass"])
     runner = AgentRunner()
     with pytest.raises(FileNotFoundError, match="Repo directory not found"):
-        runner.run(adapter, plan, tmp_path / "nosuch")
+        runner.run(adapter, agent_prompt(plan), tmp_path / "nosuch")
 
 
 def test_kimi_adapter_argv_contains_p_and_never_auto() -> None:
@@ -572,7 +576,7 @@ def test_runner_status_gains_last_log_fields_during_run(tmp_path: Path) -> None:
     (repo / ".git").mkdir()
 
     adapter = FakeAdapter([sys.executable, str(script)])
-    result = AgentRunner().run(adapter, plan, repo, timeout=10.0)
+    result = AgentRunner().run(adapter, agent_prompt(plan), repo, timeout=10.0)
 
     assert result.status_path is not None
     final_status = json.loads(result.status_path.read_text(encoding="utf-8"))
@@ -604,7 +608,7 @@ def test_runner_writer_survives_a_failing_tick(tmp_path: Path, monkeypatch) -> N
     (repo / ".git").mkdir()
 
     adapter = FakeAdapter([sys.executable, str(script)])
-    result = AgentRunner().run(adapter, plan, repo, timeout=10.0)
+    result = AgentRunner().run(adapter, agent_prompt(plan), repo, timeout=10.0)
 
     # The first tick raised, but the loop kept going and the run completed normally.
     assert state["failed_once"] is True
@@ -627,7 +631,7 @@ def test_runner_prints_agent_runs_note_when_dir_is_created(
     (repo / ".git").mkdir()
 
     adapter = FakeAdapter([sys.executable, str(script)])
-    AgentRunner().run(adapter, plan, repo, timeout=10.0)
+    AgentRunner().run(adapter, agent_prompt(plan), repo, timeout=10.0)
 
     captured = capsys.readouterr()
     assert ".agent-runs/ is gitignored run-log storage" in captured.err
@@ -646,7 +650,7 @@ def test_runner_does_not_print_agent_runs_note_when_dir_already_exists(
     (repo / ".agent-runs").mkdir()
 
     adapter = FakeAdapter([sys.executable, str(script)])
-    AgentRunner().run(adapter, plan, repo, timeout=10.0)
+    AgentRunner().run(adapter, agent_prompt(plan), repo, timeout=10.0)
 
     captured = capsys.readouterr()
     assert ".agent-runs/ is gitignored run-log storage" not in captured.err
@@ -666,7 +670,7 @@ def test_runner_heartbeat_suppressed_when_stderr_not_tty(
     monkeypatch.setattr("sys.stderr.isatty", lambda: False)
 
     adapter = FakeAdapter([sys.executable, str(script)])
-    AgentRunner().run(adapter, plan, repo, timeout=10.0)
+    AgentRunner().run(adapter, agent_prompt(plan), repo, timeout=10.0)
 
     captured = capsys.readouterr()
     assert "running run=" not in captured.err
@@ -686,7 +690,7 @@ def test_runner_heartbeat_emitted_when_follow_is_set(
     monkeypatch.setattr("sys.stderr.isatty", lambda: False)
 
     adapter = FakeAdapter([sys.executable, str(script)])
-    AgentRunner().run(adapter, plan, repo, timeout=10.0, follow=True)
+    AgentRunner().run(adapter, agent_prompt(plan), repo, timeout=10.0, follow=True)
 
     captured = capsys.readouterr()
     assert "running run=" in captured.err

@@ -8,8 +8,9 @@ from pathlib import Path
 import threading
 from typing import TextIO
 
-from issuekit.agentrun import AgentResult
+from issuekit.agentrun import AgentPrompt, AgentResult
 from issuekit.gitutil import git_status_short
+from issuekit.prompts import PromptSpec
 from issuekit.workflow import WorkflowError
 
 
@@ -23,6 +24,24 @@ class ReadonlyAgentRun:
     subject: str
 
 
+def prompt_from_spec(
+    spec: PromptSpec,
+    *,
+    cwd: Path,
+    filename: str,
+    body: str | None = None,
+    **context: object,
+) -> AgentPrompt:
+    """Build a runtime prompt from a prompt spec and render context."""
+
+    path = cwd / ".agent-runs" / filename
+    return AgentPrompt(
+        path=path,
+        body=spec.render(**context) if body is None else body,
+        pointer=spec.render_pointer(prompt_path=path),
+    )
+
+
 def run_readonly_evaluation(
     *,
     agent: str,
@@ -30,9 +49,7 @@ def run_readonly_evaluation(
     cwd: Path,
     timeout: float,
     runner_factory,
-    prompt_filename: str,
-    prompt_text: str,
-    prompt_override: str,
+    prompt: AgentPrompt,
     label: str,
     subject: str,
     issue_id: int | None = None,
@@ -41,19 +58,14 @@ def run_readonly_evaluation(
 ) -> ReadonlyAgentRun:
     """Run an agent from a prompt file and record whether it changed the worktree."""
 
-    run_dir = cwd / ".agent-runs"
-    run_dir.mkdir(exist_ok=True)
-    prompt_path = run_dir / prompt_filename
-    prompt_path.write_text(prompt_text, encoding="utf-8", newline="\n")
     fingerprint_before = worktree_fingerprint(cwd)
 
     result = runner_factory().run(
         adapter,
-        prompt_path,
+        prompt,
         cwd,
         timeout=float(timeout),
         agent_name=agent,
-        prompt_override=prompt_override,
         issue_id=issue_id,
         follow=follow,
         abort_event=abort_event,

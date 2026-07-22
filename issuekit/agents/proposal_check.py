@@ -13,6 +13,7 @@ from typing import Any, TextIO
 from issuekit.agents.proposal_eval import (
     run_readonly_proposal_evaluation,
 )
+from issuekit.agents.readonly import prompt_from_spec
 from issuekit.agents.registry import resolve_adapter
 from issuekit.agentrun import AgentRunner
 from issuekit.config import IssuekitConfig
@@ -20,8 +21,6 @@ from issuekit.encoding import has_non_ascii
 from issuekit.prompts import PROPOSAL_CHECK_PROMPT, ProposalCheckParseError
 from issuekit.proposals_api import ProposalError, adopt_proposal_with_append, api_client
 from issuekit.workflow import WorkflowError
-
-
 PROPOSAL_CHECK_BLOCK_LANGUAGE = PROPOSAL_CHECK_PROMPT.block_language
 PROPOSAL_CHECK_VERDICTS = {"approve", "reject", "revise"}
 PROPOSAL_CHECK_COMMENT_MAX = 100000
@@ -319,7 +318,6 @@ def _evaluate_check(
 ) -> dict[str, str]:
     check_id = int(check["id"])
     proposal_id = int(check["proposal_id"])
-    prompt_path = cwd / ".agent-runs" / f"proposal-check-{check_id}.md"
     stdout = run_readonly_proposal_evaluation(
         proposal,
         agent=agent,
@@ -328,9 +326,12 @@ def _evaluate_check(
         timeout=timeout,
         runner_factory=runner_factory,
         err=err,
-        prompt_filename=prompt_path.name,
-        prompt_text=_render_check_prompt(check, proposal),
-        prompt_override=_prompt_pointer(prompt_path),
+        prompt=prompt_from_spec(
+            PROPOSAL_CHECK_PROMPT,
+            cwd=cwd,
+            filename=f"proposal-check-{check_id}.md",
+            body=_render_check_prompt(check, proposal),
+        ),
         label="Proposal-check",
         mutation_log_message=(
             "ERROR: proposal-check run modified the worktree; ignoring its output."
@@ -391,7 +392,3 @@ def _render_check_prompt(
         depends_on=depends_text,
         proposal_body=proposal.get("body", ""),
     )
-
-
-def _prompt_pointer(prompt_path: Path) -> str:
-    return PROPOSAL_CHECK_PROMPT.render_pointer(prompt_path=prompt_path)
