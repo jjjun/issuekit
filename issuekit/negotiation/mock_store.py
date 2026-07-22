@@ -16,11 +16,11 @@ from issuekit.negotiation.model import (
     NegotiationThreadSummary,
     ThreadStatus,
     Verdict,
-    _coerce_status,
-    _coerce_verdict,
-    _latest_agree_contract,
+    coerce_status,
+    coerce_verdict,
+    latest_agree_contract,
     validate_contract,
-    _validate_entry_input,
+    validate_entry_input,
 )
 from issuekit.workflow import WorkflowError
 
@@ -48,7 +48,7 @@ class MockNegotiationStore:
         origin: str,
         contract: str | None = None,
     ) -> NegotiationEntry:
-        _validate_entry_input(side, verdict)
+        validate_entry_input(side, verdict)
         validate_contract(contract)
         thread_id = str(self._next_thread_id)
         self._next_thread_id += 1
@@ -80,7 +80,7 @@ class MockNegotiationStore:
         contract: str | None = None,
     ) -> NegotiationEntry:
         self._ensure_thread(thread_id)
-        _validate_entry_input(side, verdict)
+        validate_entry_input(side, verdict)
         validate_contract(contract)
         self._ensure_negotiating(thread_id)
         self._ensure_unique_origin(thread_id, origin)
@@ -109,7 +109,7 @@ class MockNegotiationStore:
         )
 
     def list_threads(self, *, status: ThreadStatus | None = None) -> list[NegotiationThreadSummary]:
-        requested_status = _coerce_status(status) if status is not None else None
+        requested_status = coerce_status(status) if status is not None else None
         summaries = [
             NegotiationThreadSummary(
                 thread_id=thread_id,
@@ -131,7 +131,7 @@ class MockNegotiationStore:
         agreed_contract: str | None = None,
     ) -> None:
         self._ensure_thread(thread_id)
-        next_status = _coerce_status(status)
+        next_status = coerce_status(status)
         validate_contract(agreed_contract)
         current_status = self._statuses[thread_id]
         if current_status is not ThreadStatus.negotiating:
@@ -140,7 +140,7 @@ class MockNegotiationStore:
                 code="invalid_transition",
             )
         if next_status is ThreadStatus.agreed:
-            self._agreed_contracts[thread_id] = agreed_contract or _latest_agree_contract(
+            self._agreed_contracts[thread_id] = agreed_contract or latest_agree_contract(
                 self._threads[thread_id]
             )
         elif agreed_contract is not None:
@@ -245,7 +245,7 @@ class MockNegotiationStore:
         if not isinstance(raw_statuses, dict):
             raise WorkflowError("Negotiation persistence statuses was not a JSON object.")
         self._statuses = {
-            str(thread_id): _coerce_status(status)
+            str(thread_id): coerce_status(status)
             for thread_id, status in raw_statuses.items()
             if str(thread_id) in self._threads
         }
@@ -305,7 +305,7 @@ def _entry_from_json(raw: Any) -> NegotiationEntry:
     return NegotiationEntry(
         thread_id=str(raw.get("thread_id", "")),
         side=str(raw.get("side", "")),
-        verdict=_coerce_verdict(raw.get("verdict")),
+        verdict=coerce_verdict(raw.get("verdict")),
         contract=raw.get("contract") if raw.get("contract") is not None else None,
         title=str(raw.get("title", "")),
         body=str(raw.get("body", "")),

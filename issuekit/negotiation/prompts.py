@@ -104,7 +104,7 @@ def _optional_string(value: object, key: str) -> str | None:
     return value
 
 
-def _backend_issue_body(
+def backend_issue_body(
     *,
     thread_id: str,
     origin_issue_ref: str | None,
@@ -143,7 +143,7 @@ def _backend_issue_body(
     return "\n".join(lines)
 
 
-def _frontend_issue_body(
+def frontend_issue_body(
     *,
     thread_id: str,
     origin_issue_ref: str | None,

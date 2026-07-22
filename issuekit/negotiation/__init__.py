@@ -5,9 +5,9 @@ from __future__ import annotations
 from issuekit.config import IssuekitConfig
 from issuekit.negotiation.api_store import (
     ApiNegotiationStore,
-    _entry_from_api,
-    _issue_refs_from_api,
-    _thread_summary_from_api,
+    entry_from_api,
+    issue_refs_from_api,
+    thread_summary_from_api,
 )
 from issuekit.negotiation.mock_store import MockNegotiationStore
 from issuekit.negotiation.model import (
@@ -19,7 +19,7 @@ from issuekit.negotiation.model import (
     NegotiationThreadSummary,
     ThreadStatus,
     Verdict,
-    _latest_agree_contract,
+    latest_agree_contract,
 )
 from issuekit.workflow import WorkflowError
 

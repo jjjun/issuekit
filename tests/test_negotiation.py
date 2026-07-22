@@ -8,7 +8,7 @@ from issuekit.negotiation import (
     NegotiationIssueRefs,
     ThreadStatus,
     Verdict,
-    _entry_from_api,
+    entry_from_api,
     get_negotiation_store,
 )
 from issuekit.testing import FakeIssuekitClient
@@ -286,16 +286,16 @@ def test_entry_from_api_selects_created_timestamp_fallbacks() -> None:
         "origin": "frontend#1",
     }
 
-    created_at_entry = _entry_from_api(
+    created_at_entry = entry_from_api(
         {**raw, "created_at": "2026-07-02T10:00:00Z", "created": "2026-07-02"}
     )
-    created_entry = _entry_from_api(
+    created_entry = entry_from_api(
         {**raw, "created_at": None, "created": "2026-07-02"}
     )
 
     assert created_at_entry.created == "2026-07-02T10:00:00Z"
     assert created_entry.created == "2026-07-02"
-    assert _entry_from_api(raw).created == ""
+    assert entry_from_api(raw).created == ""
 
 
 def test_mock_store_rejects_invalid_verdict(tmp_path) -> None:

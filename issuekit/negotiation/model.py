@@ -44,7 +44,7 @@ class NegotiationEntry:
             raise ValueError("thread_id is required")
         if not self.side or not is_valid_workflow_token(self.side):
             raise ValueError(f"Invalid side token: {self.side}")
-        object.__setattr__(self, "verdict", _coerce_verdict(self.verdict))
+        object.__setattr__(self, "verdict", coerce_verdict(self.verdict))
 
 
 @dataclass(frozen=True)
@@ -128,17 +128,17 @@ class NegotiationStore(Protocol):
         """Record implementation issue refs for a finalized thread."""
 
 
-def _coerce_verdict(value: object) -> Verdict:
+def coerce_verdict(value: object) -> Verdict:
     try:
         return value if isinstance(value, Verdict) else Verdict(str(value))
     except ValueError as exc:
         raise ValueError(f"Invalid verdict: {value}") from exc
 
 
-def _validate_entry_input(side: str, verdict: object) -> None:
+def validate_entry_input(side: str, verdict: object) -> None:
     if not side or not is_valid_workflow_token(side):
         raise ValueError(f"Invalid side token: {side}")
-    _coerce_verdict(verdict)
+    coerce_verdict(verdict)
 
 
 def validate_contract(contract: str | None) -> None:
@@ -149,14 +149,14 @@ def validate_contract(contract: str | None) -> None:
         )
 
 
-def _coerce_status(value: object) -> ThreadStatus:
+def coerce_status(value: object) -> ThreadStatus:
     try:
         return value if isinstance(value, ThreadStatus) else ThreadStatus(str(value))
     except ValueError as exc:
         raise ValueError(f"Invalid thread status: {value}") from exc
 
 
-def _latest_agree_contract(entries: list[NegotiationEntry]) -> str | None:
+def latest_agree_contract(entries: list[NegotiationEntry]) -> str | None:
     for entry in reversed(entries):
         if entry.verdict is Verdict.agree and entry.contract is not None:
             return entry.contract

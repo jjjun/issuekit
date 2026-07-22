@@ -23,7 +23,7 @@ BACKOFF_MAX_SEC = 60.0
 
 
 @dataclass
-class _Backoff:
+class Backoff:
     current: float = BACKOFF_INITIAL_SEC
 
     def step(self) -> None:
@@ -77,7 +77,7 @@ class PollResult:
 
 def run_poll_loop(
     controller: ShutdownController,
-    backoff: _Backoff,
+    backoff: Backoff,
     *,
     poll: Callable[[int, float], PollResult],
     on_idle: Callable[[int], None],
@@ -277,7 +277,7 @@ def recover_orphaned_issues(
     log_path: Path,
     controller: ShutdownController,
     submitted_count: int,
-    backoff: _Backoff,
+    backoff: Backoff,
     store,
     log_submitted: Callable[[Path, Issue | None, int], None],
 ) -> tuple[int, int | None, object]:

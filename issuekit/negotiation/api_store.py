@@ -13,11 +13,11 @@ from issuekit.negotiation.model import (
     NegotiationThreadSummary,
     ThreadStatus,
     Verdict,
-    _coerce_status,
-    _coerce_verdict,
-    _latest_agree_contract,
+    coerce_status,
+    coerce_verdict,
+    latest_agree_contract,
     validate_contract,
-    _validate_entry_input,
+    validate_entry_input,
 )
 from issuekit.workflow import WorkflowError
 
@@ -47,7 +47,7 @@ class ApiNegotiationStore:
         origin: str,
         contract: str | None = None,
     ) -> NegotiationEntry:
-        _validate_entry_input(side, verdict)
+        validate_entry_input(side, verdict)
         validate_contract(contract)
         try:
             proposal = self.client.create_proposal(
@@ -55,17 +55,17 @@ class ApiNegotiationStore:
                 title=title,
                 body=body,
                 side=side,
-                verdict=_coerce_verdict(verdict).value,
+                verdict=coerce_verdict(verdict).value,
                 contract=contract,
             )
         except WorkflowError as exc:
             raise _with_negotiation_context(exc, origin, self.config.project) from exc
-        entry = _entry_from_api(proposal)
+        entry = entry_from_api(proposal)
         _ensure_idempotent_entry(
             entry,
             origin=origin,
             side=side,
-            verdict=_coerce_verdict(verdict),
+            verdict=coerce_verdict(verdict),
             title=title,
             body=body,
             contract=contract,
@@ -84,7 +84,7 @@ class ApiNegotiationStore:
         origin: str,
         contract: str | None = None,
     ) -> NegotiationEntry:
-        _validate_entry_input(side, verdict)
+        validate_entry_input(side, verdict)
         validate_contract(contract)
         entries = self.get_thread(thread_id)
         if not entries:
@@ -105,12 +105,12 @@ class ApiNegotiationStore:
                 title=title,
                 body=body,
                 side=side,
-                verdict=_coerce_verdict(verdict).value,
+                verdict=coerce_verdict(verdict).value,
                 contract=contract,
             )
         except WorkflowError as exc:
             raise _with_negotiation_context(exc, origin, self.config.project) from exc
-        return _entry_from_api(proposal)
+        return entry_from_api(proposal)
 
     def get_thread(self, thread_id: str) -> list[NegotiationEntry]:
         payload = self.client.get_thread(_api_thread_id(thread_id))
@@ -121,7 +121,7 @@ class ApiNegotiationStore:
                 code="invalid_response",
             )
         return sorted(
-            [_entry_from_api(item) for item in items],
+            [entry_from_api(item) for item in items],
             key=lambda entry: (
                 entry.id is None,
                 entry.id if entry.id is not None else 0,
@@ -130,9 +130,9 @@ class ApiNegotiationStore:
         )
 
     def list_threads(self, *, status: ThreadStatus | None = None) -> list[NegotiationThreadSummary]:
-        requested_status = _coerce_status(status).value if status is not None else None
+        requested_status = coerce_status(status).value if status is not None else None
         return [
-            _thread_summary_from_api(thread)
+            thread_summary_from_api(thread)
             for thread in self.client.list_threads(status=requested_status)
         ]
 
@@ -144,9 +144,9 @@ class ApiNegotiationStore:
         agreed_contract: str | None = None,
     ) -> None:
         validate_contract(agreed_contract)
-        next_status = _coerce_status(status)
+        next_status = coerce_status(status)
         if next_status is ThreadStatus.agreed and agreed_contract is None:
-            agreed_contract = _latest_agree_contract(self.get_thread(thread_id))
+            agreed_contract = latest_agree_contract(self.get_thread(thread_id))
         self.client.patch_thread(
             _api_thread_id(thread_id),
             status=next_status.value,
@@ -169,7 +169,7 @@ class ApiNegotiationStore:
 
     def get_issue_refs(self, thread_id: str) -> NegotiationIssueRefs | None:
         payload = self.client.get_thread(_api_thread_id(thread_id))
-        return _issue_refs_from_api(payload, require_supported=True)
+        return issue_refs_from_api(payload, require_supported=True)
 
     def set_issue_refs(self, thread_id: str, refs: NegotiationIssueRefs) -> None:
         payload = self.client.patch_thread(
@@ -177,7 +177,7 @@ class ApiNegotiationStore:
             backend_issue_ref=refs.backend_issue_ref,
             frontend_issue_ref=refs.frontend_issue_ref,
         )
-        stored_refs = _issue_refs_from_api(payload, require_supported=True)
+        stored_refs = issue_refs_from_api(payload, require_supported=True)
         if stored_refs != refs:
             raise WorkflowError(
                 "Proposal thread response did not confirm the requested issue refs.",
@@ -241,7 +241,7 @@ def _api_thread_id(thread_id: str) -> int:
         ) from exc
 
 
-def _entry_from_api(raw: Any) -> NegotiationEntry:
+def entry_from_api(raw: Any) -> NegotiationEntry:
     if not isinstance(raw, dict):
         raise WorkflowError("Proposal response was not a JSON object.", code="invalid_response")
     try:
@@ -284,7 +284,7 @@ def _entry_from_api(raw: Any) -> NegotiationEntry:
         raise WorkflowError(str(exc), code="invalid_response") from exc
 
 
-def _issue_refs_from_api(
+def issue_refs_from_api(
     raw: Any,
     *,
     require_supported: bool = False,
@@ -327,7 +327,7 @@ def _issue_refs_from_api(
         raise WorkflowError(str(exc), code="invalid_response") from exc
 
 
-def _thread_summary_from_api(raw: Any) -> NegotiationThreadSummary:
+def thread_summary_from_api(raw: Any) -> NegotiationThreadSummary:
     if not isinstance(raw, dict):
         raise WorkflowError("Proposal thread response was not a JSON object.", code="invalid_response")
     try:
@@ -354,7 +354,7 @@ def _thread_summary_from_api(raw: Any) -> NegotiationThreadSummary:
         thread_id=str(thread_id),
         status=status,
         agreed_contract=contract,
-        issue_refs=_issue_refs_from_api(raw),
+        issue_refs=issue_refs_from_api(raw),
         updated=updated,
     )
 
@@ -363,6 +363,6 @@ def _status_from_api(raw: Any) -> ThreadStatus:
     if not isinstance(raw, dict):
         raise WorkflowError("Proposal thread response was not a JSON object.", code="invalid_response")
     try:
-        return _coerce_status(raw.get("status"))
+        return coerce_status(raw.get("status"))
     except ValueError as exc:
         raise WorkflowError(str(exc), code="invalid_response") from exc

@@ -19,7 +19,7 @@ from issuekit.agentrun import AgentRunner
 from issuekit.agents.triage_author import run_triage_author_cycle
 from issuekit.config import IssuekitConfig, load_config
 from issuekit.commands.serve_loop import (
-    _Backoff,
+    Backoff,
     BACKOFF_INITIAL_SEC,
     BACKOFF_MAX_SEC,
     PollResult,
@@ -240,7 +240,7 @@ def _serve_loop(
                 store=review_store,
             )
 
-        backoff = _Backoff()
+        backoff = Backoff()
         recovery_store = get_store(config) if config.api_url else None
         submitted_count, exit_code, recovery_store = _recover_orphaned_issues(
             args,
@@ -365,7 +365,7 @@ def _serve_proposal_checks_loop(
     log_path: Path,
     controller: ShutdownController,
 ) -> int:
-    backoff = _Backoff()
+    backoff = Backoff()
     answered_count = 0
 
     def poll(attempt: int, backoff_seconds: float):
@@ -465,7 +465,7 @@ def _serve_review_loop(
     controller: ShutdownController,
     store,
 ) -> int:
-    backoff = _Backoff()
+    backoff = Backoff()
     try:
         def poll(attempt: int, backoff_seconds: float):
             try:

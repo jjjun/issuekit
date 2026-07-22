@@ -14,14 +14,14 @@ run logs and status JSON.
 `issuekit/agents/` contains the issuekit workflows that use an agent:
 `run_claimed`, `review`, `proposal_check`, `triage_author`, and `router`, plus
 the shared `readonly` helper. These workflows own tracker state and import
-`workflow`, `store`, and `proposals_api` as needed.
+`workflow`, `store`, and `proposals` as needed.
 
 `issuekit/agents/registry.py` is the seam between the layers. It is the only
 place that reads `IssuekitConfig` to produce an `AgentRunConfig` for the
 runtime.
 
 Nothing under `issuekit/agentrun/` may import `issuekit.config`,
-`issuekit.workflow`, `issuekit.store`, or `issuekit.proposals_api`. The runtime
+`issuekit.workflow`, `issuekit.store`, or `issuekit.proposals`. The runtime
 has its own `_coerce.py` and `git.py` because it needs a few helper functions
 without taking dependencies on `issuekit.core` and `issuekit.gitutil`.
 

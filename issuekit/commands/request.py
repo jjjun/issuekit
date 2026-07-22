@@ -21,10 +21,10 @@ from issuekit.commands._common import run_command
 from issuekit.commands.request_output import print_payload, print_status_record
 from issuekit.commands.request_state import (
     STATE_FILENAME,
-    _load_state,
-    _now,
-    _save_state,
-    _state_path,
+    load_state,
+    now,
+    save_state,
+    state_path,
 )
 from issuekit.config import IssuekitConfig, load_config
 from issuekit.gitutil import git_short_head
@@ -180,7 +180,7 @@ def _run_link(
     proposal_ref: str,
     json_output: bool,
 ) -> int:
-    state = _load_state(cwd)
+    state = load_state(cwd)
     record = state.get(str(request_id))
     if not isinstance(record, dict):
         raise ValueError(f"PM request {request_id} was not found.")
@@ -233,15 +233,15 @@ def _run_link(
         {
             "proposal_ref": ref,
             "proposal_id": proposal_id,
-            "linked_at": _now(),
+            "linked_at": now(),
             "status": str(proposal.get("status") or "linked"),
         }
     )
     targets[target_index] = updated
     record["targets"] = targets
-    record["updated_at"] = _now()
+    record["updated_at"] = now()
     state[str(request_id)] = record
-    _save_state(cwd, state)
+    save_state(cwd, state)
 
     payload = {
         "request_id": request_id,
@@ -263,7 +263,7 @@ def _run_new_request(
     timeout: float,
 ) -> int:
     _require_router_config(config)
-    state = _load_state(cwd)
+    state = load_state(cwd)
     request_id, record = _find_or_create_request(state, request_text)
     decision = run_router(
         config,
@@ -300,7 +300,7 @@ def _run_answer(
     dry_run: bool,
     timeout: float,
 ) -> int:
-    state = _load_state(cwd)
+    state = load_state(cwd)
     record = state.get(str(request_id))
     if not isinstance(record, dict):
         raise ValueError(f"PM request {request_id} was not found.")
@@ -373,8 +373,8 @@ def _run_pre_routing_answer(
     if not dry_run:
         record["qa"] = qa
         record.pop("pending_question", None)
-        record["updated_at"] = _now()
-        _save_state(cwd, state)
+        record["updated_at"] = now()
+        save_state(cwd, state)
     decision = run_router(
         config,
         cwd,
@@ -481,15 +481,15 @@ def _run_target_reply_answer(
             "proposal_ref": proposal_ref,
             "dependency_ref": dependency_ref,
             "proposal_id": sent.get("id"),
-            "sent_at": _now(),
+            "sent_at": now(),
             "clarifications": clarifications,
         }
     )
     targets[target_index] = updated
     record["targets"] = targets
-    record["updated_at"] = _now()
+    record["updated_at"] = now()
     state[str(request_id)] = record
-    _save_state(cwd, state)
+    save_state(cwd, state)
 
     with proposals_api.api_client(config) as client:
         client.discard_proposal(int(pending_question["reply_proposal_id"]))
@@ -535,9 +535,9 @@ def _handle_decision(
     if decision.decision == "clarify":
         record["decision"] = "clarify"
         record["pending_question"] = decision.question
-        record["updated_at"] = _now()
+        record["updated_at"] = now()
         state[str(request_id)] = record
-        _save_state(cwd, state)
+        save_state(cwd, state)
         payload = {
             "request_id": request_id,
             "decision": "clarify",
@@ -550,9 +550,9 @@ def _handle_decision(
         record["decision"] = "reject"
         record["reason"] = decision.reason
         record.pop("pending_question", None)
-        record["updated_at"] = _now()
+        record["updated_at"] = now()
         state[str(request_id)] = record
-        _save_state(cwd, state)
+        save_state(cwd, state)
         payload = {
             "request_id": request_id,
             "decision": "reject",
@@ -593,9 +593,9 @@ def _send_route_targets(
         target = targets[len(existing_targets)]
         existing_targets.append(_target_state(target))
     record["targets"] = existing_targets
-    record["updated_at"] = _now()
+    record["updated_at"] = now()
     state[str(request_id)] = record
-    _save_state(cwd, state)
+    save_state(cwd, state)
 
     refs_by_index: dict[int, str] = {}
     output: list[dict[str, Any]] = []
@@ -620,7 +620,7 @@ def _send_route_targets(
         )
         sent = proposals_api.send_proposal(config, proposal)
         if sent.get("payload_mismatch"):
-            _save_state(cwd, state)
+            save_state(cwd, state)
             raise ProposalError(str(sent.get("warning") or "Proposal payload mismatch."))
         proposal_ref = f"{target.project}#{sent.get('id')}"
         dependency_ref = str(sent.get("dependency_ref") or proposal_ref)
@@ -631,13 +631,13 @@ def _send_route_targets(
                 "proposal_ref": proposal_ref,
                 "dependency_ref": dependency_ref,
                 "proposal_id": sent.get("id"),
-                "sent_at": _now(),
+                "sent_at": now(),
             }
         )
         existing_targets[index] = updated
         record["targets"] = existing_targets
-        record["updated_at"] = _now()
-        _save_state(cwd, state)
+        record["updated_at"] = now()
+        save_state(cwd, state)
         output.append(dict(updated))
     return output
 
@@ -648,7 +648,7 @@ def _run_inbox(
     *,
     json_output: bool,
 ) -> int:
-    state = _load_state(cwd)
+    state = load_state(cwd)
     payload = _inbox_questions(config, state)
     if json_output:
         print(json.dumps(payload, indent=2))
@@ -679,7 +679,7 @@ def _run_status(
     request_id_arg: str,
     json_output: bool,
 ) -> int:
-    state = _load_state(cwd)
+    state = load_state(cwd)
     if request_id_arg == "all":
         records = [
             (int(key), value)
@@ -840,8 +840,8 @@ def _find_or_create_request(
         "qa": [],
         "targets": [],
         "decision": "",
-        "created_at": _now(),
-        "updated_at": _now(),
+        "created_at": now(),
+        "updated_at": now(),
     }
     state[str(request_id)] = record
     return request_id, record

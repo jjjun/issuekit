@@ -24,8 +24,8 @@ from issuekit.negotiation.model import (
 from issuekit.negotiation.prompts import (
     NegotiationParseError,
     ParsedRound,
-    _backend_issue_body,
-    _frontend_issue_body,
+    backend_issue_body,
+    frontend_issue_body,
     parse_round_output,
     render_round_prompt,
 )
@@ -124,7 +124,7 @@ class NegotiationThreadInspection:
                 }
                 for entry in self.entries
             ],
-            "finalize_refusal": _finalize_refusal_reason(self.status, list(self.entries)),
+            "finalize_refusal": finalize_refusal_reason(self.status, list(self.entries)),
         }
 
 
@@ -239,7 +239,7 @@ def finalize_negotiation(
     if status is not ThreadStatus.agreed:
         raise WorkflowError(
             f"Negotiation thread {thread_id} is {status.value}, not agreed: "
-            f"{_finalize_refusal_reason(status, thread)}",
+            f"{finalize_refusal_reason(status, thread)}",
             code="invalid_transition",
         )
 
@@ -259,7 +259,7 @@ def finalize_negotiation(
             code="invalid_transition",
         )
 
-    origin_issue_ref = _origin_issue_ref(thread)
+    origin_issue_ref = origin_issue_ref_from_thread(thread)
     frontend_project = config.project
     frontend_title = f"Integrate agreed contract from negotiation {thread_id}"
     backend_title = f"Implement agreed contract from negotiation {thread_id}"
@@ -267,7 +267,7 @@ def finalize_negotiation(
     frontend = issue_creator.create_issue(
         project=frontend_project,
         title=frontend_title,
-        body=_frontend_issue_body(
+        body=frontend_issue_body(
             thread_id=thread_id,
             origin_issue_ref=origin_issue_ref,
             backend_issue_ref="pending",
@@ -279,7 +279,7 @@ def finalize_negotiation(
     backend = issue_creator.create_issue(
         project=to_project,
         title=backend_title,
-        body=_backend_issue_body(
+        body=backend_issue_body(
             thread_id=thread_id,
             origin_issue_ref=origin_issue_ref,
             frontend_issue_ref=frontend.ref,
@@ -291,7 +291,7 @@ def finalize_negotiation(
     issue_creator.update_issue_body(
         project=frontend_project,
         issue_id=_require_issue_id(frontend),
-        body=_frontend_issue_body(
+        body=frontend_issue_body(
             thread_id=thread_id,
             origin_issue_ref=origin_issue_ref,
             backend_issue_ref=backend.ref,
@@ -372,7 +372,7 @@ def run_negotiation(
             verdict=first.parsed.verdict,
             title=_entry_title(FRONTEND_SIDE, first.parsed),
             body=first.parsed.notes,
-            origin=_entry_origin(issue, config=config, side=FRONTEND_SIDE, round_number=1),
+            origin=entry_origin(issue, config=config, side=FRONTEND_SIDE, round_number=1),
             contract=first.parsed.contract,
         )
         run_records.append(first.run)
@@ -413,7 +413,7 @@ def run_negotiation(
             verdict=turn.parsed.verdict,
             title=_entry_title(side, turn.parsed),
             body=turn.parsed.notes,
-            origin=_entry_origin(issue, config=config, side=side, round_number=round_number),
+            origin=entry_origin(issue, config=config, side=side, round_number=round_number),
             contract=turn.parsed.contract,
         )
         run_records.append(turn.run)
@@ -695,7 +695,7 @@ def _latest_contract(thread: list[NegotiationEntry]) -> str | None:
     return None
 
 
-def _finalize_refusal_reason(status: ThreadStatus, thread: list[NegotiationEntry]) -> str | None:
+def finalize_refusal_reason(status: ThreadStatus, thread: list[NegotiationEntry]) -> str | None:
     if status is ThreadStatus.agreed:
         return None
     if status is ThreadStatus.blocked:
@@ -722,7 +722,7 @@ def _entry_title(side: str, parsed: ParsedRound) -> str:
     return f"{side} {parsed.verdict.value}"
 
 
-def _entry_origin(
+def entry_origin(
     issue: Issue,
     *,
     config: IssuekitConfig,
@@ -733,7 +733,7 @@ def _entry_origin(
     return f"{config.project}#{issue_id}@{side}:round-{round_number}"
 
 
-def _origin_issue_ref(thread: list[NegotiationEntry]) -> str | None:
+def origin_issue_ref_from_thread(thread: list[NegotiationEntry]) -> str | None:
     if not thread:
         return None
     origin = thread[0].origin.split("@", 1)[0].strip()

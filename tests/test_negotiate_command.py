@@ -8,8 +8,8 @@ from issuekit import cli
 from issuekit.agentrun import AgentPrompt, AgentResult
 from issuekit.commands.negotiate import (
     MockIssueCreator,
-    _entry_origin,
-    _origin_issue_ref,
+    entry_origin,
+    origin_issue_ref_from_thread,
     finalize_negotiation,
     inspect_thread,
     run_negotiation,
@@ -440,7 +440,7 @@ def test_negotiate_resumes_open_thread_for_same_origin_issue(tmp_path) -> None:
 
 
 def test_entry_origin_matches_api_proposal_origin_contract() -> None:
-    origin = _entry_origin(
+    origin = entry_origin(
         _issue(),
         config=IssuekitConfig(project="frontend"),
         side="frontend",
@@ -462,7 +462,7 @@ def test_origin_issue_ref_extracts_issue_ref_from_entry_origin() -> None:
         contract="GET /items 200",
     )
 
-    assert _origin_issue_ref(store.get_thread(first.thread_id)) == "frontend#108"
+    assert origin_issue_ref_from_thread(store.get_thread(first.thread_id)) == "frontend#108"
 
 
 def _agreed_store(contract: str = "GET /items 200") -> tuple[MockNegotiationStore, str]:

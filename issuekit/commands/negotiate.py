@@ -24,9 +24,9 @@ from issuekit.negotiation.engine import (
     NegotiationFinalizationResult,
     NegotiationResult,
     NegotiationThreadInspection,
-    _entry_origin,
-    _finalize_refusal_reason,
-    _origin_issue_ref,
+    entry_origin,
+    finalize_refusal_reason,
+    origin_issue_ref_from_thread,
     finalize_negotiation,
     inspect_thread,
     run_negotiation,
@@ -291,7 +291,7 @@ def _print_human_thread_inspection(inspection: NegotiationThreadInspection) -> N
     if inspection.final_contract:
         print("final_contract:")
         print(inspection.final_contract)
-    refusal = _finalize_refusal_reason(inspection.status, list(inspection.entries))
+    refusal = finalize_refusal_reason(inspection.status, list(inspection.entries))
     if refusal:
         print(f"finalize_refusal={refusal}")
     for entry in inspection.entries:
