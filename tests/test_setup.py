@@ -7,11 +7,12 @@ from issuekit.guards.author import create_author_guard
 from issuekit.config import IssuekitConfig
 from issuekit.commands.init import init_repo
 from issuekit.commands import setup
+from issuekit.commands.setup import command
 
 
 def _force_mcp_available(monkeypatch) -> None:
-    monkeypatch.setattr(setup.shutil, "which", lambda _name: "C:/tools/issuekit-mcp.exe")
-    monkeypatch.setattr(setup, "import_module", lambda _name: object())
+    monkeypatch.setattr(command.shutil, "which", lambda _name: "C:/tools/issuekit-mcp.exe")
+    monkeypatch.setattr(command, "import_module", lambda _name: object())
 
 
 def _diagnostic_status(diagnostics: list[setup.Diagnostic], label: str) -> str:
@@ -326,12 +327,12 @@ def test_setup_check_json_blocked_repo_reports_manual_action_without_writing(
 
 
 def test_setup_reports_missing_mcp_extra(monkeypatch) -> None:
-    monkeypatch.setattr(setup.shutil, "which", lambda _name: None)
+    monkeypatch.setattr(command.shutil, "which", lambda _name: None)
 
     def fail_import(_name: str):
         raise ModuleNotFoundError("No module named 'mcp'")
 
-    monkeypatch.setattr(setup, "import_module", fail_import)
+    monkeypatch.setattr(command, "import_module", fail_import)
 
     diagnostics = setup.collect_diagnostics(Path.cwd())
 
