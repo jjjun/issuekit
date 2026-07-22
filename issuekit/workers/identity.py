@@ -24,7 +24,7 @@ from issuekit.localconfig import (
     read_local_config,
     write_local_config,
 )
-from issuekit.worker_keys import worker_key as current_worker_key
+from issuekit.workers.keys import worker_key as current_worker_key
 
 
 WORKER_REGISTRY_ENV_VAR = "ISSUEKIT_WORKER_REGISTRY"

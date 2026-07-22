@@ -16,7 +16,7 @@ from issuekit.agentrun.config import AgentRunConfig
 from issuekit.encoding import has_non_ascii
 from issuekit.dotenv import load_dotenv
 from issuekit.localconfig import LocalConfigError, load_toml, read_local_config
-from issuekit.worker_keys import qualified_worker_key, worker_key
+from issuekit.workers.keys import qualified_worker_key, worker_key
 
 
 _SENTINEL = object()

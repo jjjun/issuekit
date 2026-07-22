@@ -9,7 +9,7 @@ from types import SimpleNamespace
 from issuekit import cli
 from issuekit import proposals_api
 from issuekit import store as store_module
-from issuekit import worker_registry
+from issuekit.workers import registry as worker_registry
 from issuekit.commands import serve
 from issuekit.testing import FakeIssuekitClient
 from issuekit.workflow import WorkflowError

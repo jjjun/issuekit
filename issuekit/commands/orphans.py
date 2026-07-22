@@ -17,7 +17,7 @@ from issuekit.orphans import (
     list_stale_claims,
     stale_claim_dict,
 )
-from issuekit.worker_registry import WorkerListingError
+from issuekit.workers.registry import WorkerListingError
 from issuekit.workflow import WorkflowError
 
 

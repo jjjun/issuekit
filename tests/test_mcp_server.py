@@ -12,7 +12,7 @@ from issuekit import cli
 from issuekit import proposals_api
 from issuekit import store as store_module
 from issuekit.api import token_cache as token_cache_module
-from issuekit import worker_registry
+from issuekit.workers import registry as worker_registry
 from issuekit.agents.proposal_check import ProposalCheckDecision
 from issuekit.config import load_config
 from issuekit.mcp import server as mcp_server

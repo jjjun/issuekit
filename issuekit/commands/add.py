@@ -9,8 +9,8 @@ import sys
 
 from issuekit.config import load_config
 from issuekit.core import is_valid_workflow_token
-from issuekit.worker import WorkerRegistrationError, register_worker
-from issuekit.worker_registry import try_post_worker_registration
+from issuekit.workers.identity import WorkerRegistrationError, register_worker
+from issuekit.workers.registry import try_post_worker_registration
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:

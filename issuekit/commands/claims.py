@@ -8,7 +8,7 @@ from pathlib import Path
 
 from issuekit.commands._common import run_command
 from issuekit.config import load_config
-from issuekit.worker_registry import (
+from issuekit.workers.registry import (
     WorkerClaim,
     WorkerListingError,
     list_worker_claims,

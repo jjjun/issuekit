@@ -1,6 +1,6 @@
 """Tests for worker identity key helpers."""
 
-from issuekit.worker_keys import (
+from issuekit.workers.keys import (
     directed_target_matches,
     qualified_worker_key,
     worker_keys_from_row,

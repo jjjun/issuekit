@@ -22,7 +22,7 @@ from issuekit.core import (
 from issuekit.encoding import ASCII_ONLY_HINT, has_non_ascii
 from issuekit.gitutil import git_current_branch
 from issuekit.session import current_session_token, validate_session_token
-from issuekit.worker_keys import worker_keys_match
+from issuekit.workers.keys import worker_keys_match
 
 
 AUTO_REVIEWER = "auto"

@@ -22,8 +22,8 @@ from datetime import datetime, timezone
 from issuekit.config import IssuekitConfig
 from issuekit.core import Issue
 from issuekit.store import get_store
-from issuekit.worker_keys import worker_keys_from_row, worker_keys_match
-from issuekit.worker_registry import list_api_workers
+from issuekit.workers.keys import worker_keys_from_row, worker_keys_match
+from issuekit.workers.registry import list_api_workers
 
 # The worker heartbeat posts every WORKER_HEARTBEAT_INTERVAL_SEC (60s). Wait for
 # several missed beats before flagging so a healthy but briefly-delayed worker

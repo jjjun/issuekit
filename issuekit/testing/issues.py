@@ -7,7 +7,7 @@ from typing import Any
 
 from issuekit.core import _drop_none
 from issuekit.workflow import WorkflowError
-from issuekit.worker_keys import directed_target_matches, worker_keys_match
+from issuekit.workers.keys import directed_target_matches, worker_keys_match
 
 
 JsonDict = dict[str, Any]

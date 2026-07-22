@@ -20,7 +20,7 @@ from issuekit.gitutil import git_status_short, run_git
 from issuekit.prompts import REVIEW_PROMPT, ReviewParseError
 from issuekit.store import get_store
 from issuekit.workflow import WorkflowError, ensure_assigned_reviewer, request_changes
-from issuekit.worker_keys import worker_keys_match
+from issuekit.workers.keys import worker_keys_match
 
 
 REVIEW_BLOCK_LANGUAGE = REVIEW_PROMPT.block_language
