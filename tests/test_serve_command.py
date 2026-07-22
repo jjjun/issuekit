@@ -628,7 +628,16 @@ def test_serve_once_recovers_own_orphan_before_polling(
     monkeypatch,
     capsys,
 ) -> None:
-    client = FakeIssuekitClient(
+    class RecordingClient(FakeIssuekitClient):
+        def __init__(self, *args, **kwargs) -> None:
+            super().__init__(*args, **kwargs)
+            self.list_calls: list[dict[str, object]] = []
+
+        def list_all_issues(self, **kwargs):
+            self.list_calls.append(kwargs)
+            return super().list_all_issues(**kwargs)
+
+    client = RecordingClient(
         [
             api_issue(
                 1,
@@ -649,6 +658,14 @@ def test_serve_once_recovers_own_orphan_before_polling(
     exit_code = cli.main(["serve", "--agent", "codex", "--once"])
 
     assert exit_code == 0
+    assert client.list_calls == [
+        {
+            "status": None,
+            "assignee": None,
+            "stage": "implementing",
+            "include_completed": False,
+        }
+    ]
     assert [call["method"] for call in client.calls] == ["upsert_repo", "upsert_worker", "submit"]
     assert [call[4] for call in FakeRunner.calls] == [1]
     captured = capsys.readouterr()

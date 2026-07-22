@@ -273,7 +273,7 @@ def test_api_store_maps_wrapped_issue_warnings_list() -> None:
     assert issue.metadata["warning"] == issue.warning
 
 
-def test_api_store_finds_implementing_issues_for_worker() -> None:
+def test_api_store_finds_implementing_issues_for_workers() -> None:
     client = FakeIssuekitClient(
         [
             api_issue(
@@ -301,9 +301,11 @@ def test_api_store_finds_implementing_issues_for_worker() -> None:
     )
     store = ApiStore(IssuekitConfig(api_url="https://mine.example"), client=client)
 
-    issues = store.find_implementing_for_worker("machine/demo/checkout")
+    issues = store.find_implementing_for_workers(
+        ["machine/demo/checkout", "machine/demo/other"]
+    )
 
-    assert [issue.id for issue in issues] == [1]
+    assert [issue.id for issue in issues] == [1, 2]
 
 
 def test_api_store_partitions_and_filters_active_issues() -> None:

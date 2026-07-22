@@ -85,8 +85,8 @@ class IssueStore(Protocol):
     def find_for(self, assignee: str | None = None, stage: str | None = None) -> list[Issue]:
         """Find active issues matching workflow fields."""
 
-    def find_implementing_for_worker(self, worker: str) -> list[Issue]:
-        """Find in-progress implementation issues held by a worker."""
+    def find_implementing_for_workers(self, workers: Sequence[str]) -> list[Issue]:
+        """Find in-progress implementation issues held by any worker."""
 
     def readdress_issue(
         self,
@@ -164,9 +164,16 @@ class ApiStore:
         )
         return max((int(item.get("id", 0)) for item in items), default=0)
 
-    def find_implementing_for_worker(self, worker: str) -> list[Issue]:
+    def find_implementing_for_workers(self, workers: Sequence[str]) -> list[Issue]:
         issues = self._list_issues(stage="implementing")
-        return [issue for issue in issues if issue.worker == worker]
+        worker_keys = set(workers)
+        matches: list[Issue] = []
+        seen_ids: set[int] = set()
+        for issue in issues:
+            if issue.worker in worker_keys and issue.id not in seen_ids:
+                seen_ids.add(issue.id)
+                matches.append(issue)
+        return matches
 
     def create_issue(
         self,

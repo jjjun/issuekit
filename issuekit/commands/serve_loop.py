@@ -288,13 +288,7 @@ def recover_orphaned_issues(
     if me is None:
         return submitted_count, None, store
     try:
-        issues = []
-        seen: set[int] = set()
-        for worker_key in config.worker_lookup_keys():
-            for issue in store.find_implementing_for_worker(worker_key):
-                if issue.id not in seen:
-                    seen.add(issue.id)
-                    issues.append(issue)
+        issues = store.find_implementing_for_workers(config.worker_lookup_keys())
     except (RuntimeError, TimeoutError, WorkflowError, ValueError) as exc:
         log_event(sys.stderr, log_path, "recovery_error", worker=me, error=str(exc))
         if should_recreate_store(exc):
