@@ -31,7 +31,7 @@ from issuekit.negotiation.engine import (
     inspect_thread,
     run_negotiation,
 )
-from issuekit.negotiation_prompts import NegotiationParseError
+from issuekit.negotiation.prompts import NegotiationParseError
 from issuekit.proposals import ProposalError
 from issuekit.proposals_api import validate_target_project
 from issuekit.store import get_store

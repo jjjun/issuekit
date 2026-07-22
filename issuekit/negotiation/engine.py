@@ -21,7 +21,7 @@ from issuekit.negotiation.model import (
     ThreadStatus,
     Verdict,
 )
-from issuekit.negotiation_prompts import (
+from issuekit.negotiation.prompts import (
     NegotiationParseError,
     ParsedRound,
     _backend_issue_body,

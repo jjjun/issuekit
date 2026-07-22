@@ -576,7 +576,7 @@ def test_claim_next_task_schema_includes_sync_escape_hatch(tmp_path: Path) -> No
 
 
 def test_get_protocol_matches_canonical_text(tmp_path: Path) -> None:
-    from issuekit.protocol import render_protocol
+    from issuekit.prompts.protocol import render_protocol
 
     server = create_server(tmp_path)
 

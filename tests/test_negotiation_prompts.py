@@ -1,7 +1,7 @@
 import pytest
 
 from issuekit.negotiation import NegotiationEntry, Verdict
-from issuekit.negotiation_prompts import (
+from issuekit.negotiation.prompts import (
     NegotiationParseError,
     ParsedRound,
     parse_round_output,

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 
-from issuekit.protocol import render_protocol
+from issuekit.prompts.protocol import render_protocol
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:

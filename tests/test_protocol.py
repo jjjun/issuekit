@@ -1,7 +1,7 @@
 import pytest
 
 from issuekit import cli
-from issuekit.protocol import render_protocol, render_server_instructions
+from issuekit.prompts.protocol import render_protocol, render_server_instructions
 
 
 def test_render_protocol_returns_each_agent_and_both() -> None:

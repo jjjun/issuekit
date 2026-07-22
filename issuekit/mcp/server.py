@@ -26,7 +26,7 @@ from issuekit.core import issue_dict
 from issuekit.gitutil import git_root
 from issuekit.localconfig import LocalConfigError, load_toml, read_local_config
 from issuekit.orphans import DEFAULT_STALE_AFTER_SEC, list_stale_claims, stale_claim_dict
-from issuekit.protocol import render_protocol, render_server_instructions
+from issuekit.prompts.protocol import render_protocol, render_server_instructions
 from issuekit.proposals_api import (
     adopt_proposal_with_append,
     api_client,
