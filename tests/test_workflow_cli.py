@@ -4,7 +4,7 @@ import pytest
 
 from issuekit import cli
 from issuekit import store as store_module
-from issuekit.author_guard import read_author_guard
+from issuekit.guards.author import read_author_guard
 from issuekit.commands.approve import approve_issue
 from issuekit.commands.complete import complete_issue
 from issuekit.config import IssuekitConfig
@@ -201,7 +201,7 @@ def test_claim_command_allow_any_branch_bypasses_work_branch_guard(
         newline="\n",
     )
     monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
-    monkeypatch.setattr("issuekit.branch_guard.git_current_branch", lambda cwd: "feature")
+    monkeypatch.setattr("issuekit.guards.branch.git_current_branch", lambda cwd: "feature")
     monkeypatch.chdir(tmp_path)
 
     exit_code = cli.main(
@@ -226,8 +226,8 @@ def test_claim_command_no_sync_bypasses_claim_sync_guard(
         newline="\n",
     )
     monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
-    monkeypatch.setattr("issuekit.branch_guard.git_current_branch", lambda cwd: "main")
-    monkeypatch.setattr("issuekit.claim_sync.git_status_short", lambda cwd: "?? debris.txt")
+    monkeypatch.setattr("issuekit.guards.branch.git_current_branch", lambda cwd: "main")
+    monkeypatch.setattr("issuekit.guards.claim_sync.git_status_short", lambda cwd: "?? debris.txt")
     monkeypatch.chdir(tmp_path)
 
     exit_code = cli.main(["claim", "--id", "5", "--assignee", "codex", "--no-sync"])

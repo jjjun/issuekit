@@ -16,7 +16,7 @@ from issuekit.agents.proposal_check import (
     run_proposal_check_cycle,
 )
 from issuekit.agentrun import AgentRunner
-from issuekit.author_guard import STOP_SENTINEL, create_author_guard, guard_dict
+from issuekit.guards.author import STOP_SENTINEL, create_author_guard, guard_dict
 from issuekit.commands.approve import approve_issue
 from issuekit.commands.edit import edit_issue
 from issuekit.commands.readdress import readdress_result_dict

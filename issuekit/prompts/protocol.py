@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from issuekit.separation_duties import SEPARATION_GUARD_REFERENCE
+from issuekit.guards.separation import SEPARATION_GUARD_REFERENCE
 
 
 CYCLE_PROTOCOL = f"""# Delegation cycle overview

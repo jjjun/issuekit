@@ -6,13 +6,13 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from issuekit.author_guard import (
+from issuekit.guards.author import (
     AuthorOrchestrationContext,
     author_handoff_enforced,
     enforce_no_author_guard,
 )
-from issuekit.branch_guard import enforce_work_branch
-from issuekit.claim_sync import enforce_claim_sync
+from issuekit.guards.branch import enforce_work_branch
+from issuekit.guards.claim_sync import enforce_claim_sync
 from issuekit.config import IssuekitConfig
 from issuekit.core import (
     Issue,
@@ -63,7 +63,7 @@ class WorkflowError(RuntimeError):
 
     def __str__(self) -> str:
         message = super().__str__()
-        from issuekit.separation_duties import separation_guard_note
+        from issuekit.guards.separation import separation_guard_note
 
         note = separation_guard_note(message, code=self.code)
         if note is None or note in message:

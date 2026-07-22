@@ -10,7 +10,7 @@ from importlib import import_module
 import shutil
 import tomllib
 
-from issuekit.author_guard import read_author_guard
+from issuekit.guards.author import read_author_guard
 from issuekit.commands.init import CODEX_MCP_HEADER, HANDOFF_HEADER
 from issuekit.config import load_config
 

@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from issuekit.claim_sync import enforce_claim_sync
+from issuekit.guards.claim_sync import enforce_claim_sync
 from issuekit.config import IssuekitConfig
 from issuekit.gitutil import GitResult
 from issuekit.workflow import WorkflowError
@@ -15,7 +15,7 @@ def test_claim_sync_noops_without_work_branch(
     def fail_status(cwd):
         raise AssertionError("status should not run")
 
-    monkeypatch.setattr("issuekit.claim_sync.git_status_short", fail_status)
+    monkeypatch.setattr("issuekit.guards.claim_sync.git_status_short", fail_status)
 
     enforce_claim_sync(tmp_path, config=IssuekitConfig(), action="claim-next")
 
@@ -24,7 +24,7 @@ def test_claim_sync_blocks_dirty_checkout(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr("issuekit.claim_sync.git_status_short", lambda cwd: " M file.py")
+    monkeypatch.setattr("issuekit.guards.claim_sync.git_status_short", lambda cwd: " M file.py")
 
     with pytest.raises(WorkflowError) as excinfo:
         enforce_claim_sync(
@@ -44,14 +44,14 @@ def test_claim_sync_skips_fetch_when_origin_is_not_configured(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr("issuekit.claim_sync.git_status_short", lambda cwd: "")
-    monkeypatch.setattr("issuekit.claim_sync.git_current_branch", lambda cwd: "main")
-    monkeypatch.setattr("issuekit.claim_sync.git_origin_url", lambda cwd: None)
+    monkeypatch.setattr("issuekit.guards.claim_sync.git_status_short", lambda cwd: "")
+    monkeypatch.setattr("issuekit.guards.claim_sync.git_current_branch", lambda cwd: "main")
+    monkeypatch.setattr("issuekit.guards.claim_sync.git_origin_url", lambda cwd: None)
 
     def fail_run_git(args, cwd, *, timeout=30):
         raise AssertionError("fetch should not run without origin")
 
-    monkeypatch.setattr("issuekit.claim_sync.run_git", fail_run_git)
+    monkeypatch.setattr("issuekit.guards.claim_sync.run_git", fail_run_git)
 
     enforce_claim_sync(
         tmp_path,
@@ -65,15 +65,15 @@ def test_claim_sync_fetches_and_fast_forwards_configured_branch(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls = []
-    monkeypatch.setattr("issuekit.claim_sync.git_status_short", lambda cwd: "")
-    monkeypatch.setattr("issuekit.claim_sync.git_current_branch", lambda cwd: "main")
-    monkeypatch.setattr("issuekit.claim_sync.git_origin_url", lambda cwd: "https://example/repo.git")
+    monkeypatch.setattr("issuekit.guards.claim_sync.git_status_short", lambda cwd: "")
+    monkeypatch.setattr("issuekit.guards.claim_sync.git_current_branch", lambda cwd: "main")
+    monkeypatch.setattr("issuekit.guards.claim_sync.git_origin_url", lambda cwd: "https://example/repo.git")
 
     def fake_run_git(args, cwd, *, timeout=30):
         calls.append((list(args), cwd, timeout))
         return GitResult(returncode=0, stdout="", stderr="")
 
-    monkeypatch.setattr("issuekit.claim_sync.run_git", fake_run_git)
+    monkeypatch.setattr("issuekit.guards.claim_sync.run_git", fake_run_git)
 
     enforce_claim_sync(
         tmp_path,
@@ -93,15 +93,15 @@ def test_claim_sync_throttles_successful_fetch(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls = []
-    monkeypatch.setattr("issuekit.claim_sync.git_status_short", lambda cwd: "")
-    monkeypatch.setattr("issuekit.claim_sync.git_current_branch", lambda cwd: "main")
-    monkeypatch.setattr("issuekit.claim_sync.git_origin_url", lambda cwd: "https://example/repo.git")
+    monkeypatch.setattr("issuekit.guards.claim_sync.git_status_short", lambda cwd: "")
+    monkeypatch.setattr("issuekit.guards.claim_sync.git_current_branch", lambda cwd: "main")
+    monkeypatch.setattr("issuekit.guards.claim_sync.git_origin_url", lambda cwd: "https://example/repo.git")
 
     def fake_run_git(args, cwd, *, timeout=30):
         calls.append(list(args))
         return GitResult(returncode=0, stdout="", stderr="")
 
-    monkeypatch.setattr("issuekit.claim_sync.run_git", fake_run_git)
+    monkeypatch.setattr("issuekit.guards.claim_sync.run_git", fake_run_git)
 
     config = IssuekitConfig(work_branch="main", claim_sync_interval_sec=60.0)
     enforce_claim_sync(tmp_path, config=config, action="claim-next")
@@ -117,11 +117,11 @@ def test_claim_sync_fetch_failure_blocks_claim(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr("issuekit.claim_sync.git_status_short", lambda cwd: "")
-    monkeypatch.setattr("issuekit.claim_sync.git_current_branch", lambda cwd: "main")
-    monkeypatch.setattr("issuekit.claim_sync.git_origin_url", lambda cwd: "https://example/repo.git")
+    monkeypatch.setattr("issuekit.guards.claim_sync.git_status_short", lambda cwd: "")
+    monkeypatch.setattr("issuekit.guards.claim_sync.git_current_branch", lambda cwd: "main")
+    monkeypatch.setattr("issuekit.guards.claim_sync.git_origin_url", lambda cwd: "https://example/repo.git")
     monkeypatch.setattr(
-        "issuekit.claim_sync.run_git",
+        "issuekit.guards.claim_sync.run_git",
         lambda args, cwd, *, timeout=30: GitResult(
             returncode=1,
             stdout="",
@@ -146,8 +146,8 @@ def test_claim_sync_skips_fetch_when_current_branch_is_not_work_branch(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr("issuekit.claim_sync.git_status_short", lambda cwd: "")
-    monkeypatch.setattr("issuekit.claim_sync.git_current_branch", lambda cwd: "feature")
+    monkeypatch.setattr("issuekit.guards.claim_sync.git_status_short", lambda cwd: "")
+    monkeypatch.setattr("issuekit.guards.claim_sync.git_current_branch", lambda cwd: "feature")
 
     def fail_origin(cwd):
         raise AssertionError("origin lookup should not run for another branch")
@@ -155,8 +155,8 @@ def test_claim_sync_skips_fetch_when_current_branch_is_not_work_branch(
     def fail_run_git(args, cwd, *, timeout=30):
         raise AssertionError("fetch should not run for another branch")
 
-    monkeypatch.setattr("issuekit.claim_sync.git_origin_url", fail_origin)
-    monkeypatch.setattr("issuekit.claim_sync.run_git", fail_run_git)
+    monkeypatch.setattr("issuekit.guards.claim_sync.git_origin_url", fail_origin)
+    monkeypatch.setattr("issuekit.guards.claim_sync.run_git", fail_run_git)
 
     enforce_claim_sync(
         tmp_path,
@@ -172,7 +172,7 @@ def test_claim_sync_allows_explicit_no_sync(
     def fail_status(cwd):
         raise AssertionError("status should not run")
 
-    monkeypatch.setattr("issuekit.claim_sync.git_status_short", fail_status)
+    monkeypatch.setattr("issuekit.guards.claim_sync.git_status_short", fail_status)
 
     enforce_claim_sync(
         tmp_path,

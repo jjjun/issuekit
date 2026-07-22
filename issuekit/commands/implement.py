@@ -12,7 +12,7 @@ from issuekit.agents.run_claimed import (
     run_and_submit,
 )
 from issuekit.agentrun import AgentResult, AgentRunner
-from issuekit.author_guard import AuthorOrchestrationContext, read_author_guard
+from issuekit.guards.author import AuthorOrchestrationContext, read_author_guard
 from issuekit.commands._common import run_command
 from issuekit.config import load_config
 from issuekit.core import Issue, parse_issue_id_arg

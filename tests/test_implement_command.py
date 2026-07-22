@@ -136,7 +136,7 @@ def test_implement_command_blocks_wrong_work_branch_before_agent(
     client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
     FakeRunner.calls.clear()
     _configure_api(tmp_path, monkeypatch, client, extra_config="work_branch = 'main'\n")
-    monkeypatch.setattr("issuekit.branch_guard.git_current_branch", lambda cwd: "feature")
+    monkeypatch.setattr("issuekit.guards.branch.git_current_branch", lambda cwd: "feature")
     monkeypatch.setattr("issuekit.commands.implement.AgentRunner", FakeRunner)
 
     exit_code = cli.main(["implement", "1", "--agent", "codex"])

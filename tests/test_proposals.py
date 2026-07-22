@@ -4,7 +4,7 @@ from pathlib import Path
 
 from issuekit import cli
 from issuekit import proposals_api
-from issuekit.author_guard import read_author_guard
+from issuekit.guards.author import read_author_guard
 from issuekit.config import IssuekitConfig, TriagePolicy
 from issuekit.proposals_api import _git_commit
 from issuekit.proposals import ProposalError, origin_destination

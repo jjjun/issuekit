@@ -6,7 +6,7 @@ import argparse
 import json
 from pathlib import Path
 
-from issuekit.author_guard import guard_dict, read_author_guard
+from issuekit.guards.author import guard_dict, read_author_guard
 from issuekit.config import load_config
 from issuekit.core import issue_dict
 from issuekit.issue_display import dependency_detail_lines, dependency_marker

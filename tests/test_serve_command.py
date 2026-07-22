@@ -956,7 +956,7 @@ def test_serve_loop_claim_ignores_author_guard_outside_configured_cwd(
     # Regression for issuekit#152: the claim path must resolve the author-session
     # guard against the loop's configured cwd, not the process working directory.
     # A live guard in the process CWD must not block a serve loop given another cwd.
-    from issuekit.author_guard import create_author_guard
+    from issuekit.guards.author import create_author_guard
 
     class Args:
         priority = None

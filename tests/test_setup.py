@@ -3,7 +3,7 @@ import json
 import subprocess
 
 from issuekit import cli
-from issuekit.author_guard import create_author_guard
+from issuekit.guards.author import create_author_guard
 from issuekit.config import IssuekitConfig
 from issuekit.commands.init import init_repo
 from issuekit.commands import setup

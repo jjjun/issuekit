@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 import sys
 
-from issuekit.author_guard import STOP_SENTINEL, create_author_guard, guard_dict, stop_message
+from issuekit.guards.author import STOP_SENTINEL, create_author_guard, guard_dict, stop_message
 from issuekit.commands._common import load_config_for_project_mutation
 from issuekit.config import load_config
 from issuekit.core import VALID_ISSUE_PRIORITIES

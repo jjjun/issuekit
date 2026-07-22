@@ -4,7 +4,7 @@ from pathlib import Path
 from issuekit import cli
 from issuekit.commands import info as info_command
 from issuekit import store as store_module
-from issuekit.author_guard import create_author_guard
+from issuekit.guards.author import create_author_guard
 from issuekit.config import load_config
 from issuekit.testing import FakeIssuekitClient
 

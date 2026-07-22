@@ -3,7 +3,7 @@ from pathlib import Path
 
 from issuekit import cli
 from issuekit import store as store_module
-from issuekit.author_guard import read_author_guard
+from issuekit.guards.author import read_author_guard
 from issuekit.testing import FakeIssuekitClient
 
 

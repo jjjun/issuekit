@@ -9,7 +9,7 @@ from pathlib import Path
 import re
 import sys
 
-from issuekit.author_guard import (
+from issuekit.guards.author import (
     STOP_SENTINEL,
     create_author_guard,
     guard_dict,

@@ -11,7 +11,7 @@ from typing import TextIO
 
 from issuekit.agents.registry import resolve_adapter
 from issuekit.agentrun import AgentPrompt, AgentResult, AgentRunner
-from issuekit.author_guard import AuthorOrchestrationContext
+from issuekit.guards.author import AuthorOrchestrationContext
 from issuekit.config import IssuekitConfig
 from issuekit.core import Issue
 from issuekit.encoding import (
