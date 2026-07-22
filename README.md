@@ -451,7 +451,10 @@ to grow later to an allowed branch list or glob such as
 The agent submit mojibake gate checks half-width katakana by default, matching
 `issuekit check-encoding`. Set `gate_halfwidth_kana = false` only when touched
 generated files legitimately contain half-width katakana; other encoding-artifact
-checks remain enabled.
+checks remain enabled. The gate also honors `check_encoding_exclude` for
+unconfirmed hits: use a narrow repo-relative path glob for a tree with
+known-legitimate Japanese text. Confirmed corruption still blocks submission in
+every path.
 
 For likely mojibake, `check-encoding` has three outcomes: confirmed candidates
 are reported, unconfirmed candidates are suppressed but available through
@@ -464,8 +467,10 @@ legitimately contain such text, or when the project has none.
 
 Set `check_encoding_exclude` to a list of POSIX-style, repo-relative glob
 patterns for generated paths that `issuekit check-encoding` should skip. The
-exclusions apply to BOM, mojibake, stray carriage-return, and CRLF checks. Use
-repeatable `--exclude PATTERN` flags for one-off exclusions. Legacy
+agent submit mojibake gate also honors them for unconfirmed hits; confirmed
+mojibake remains blocked by that gate. The exclusions apply to BOM, mojibake,
+stray carriage-return, and CRLF checks. Use repeatable `--exclude PATTERN` flags
+for one-off exclusions. Legacy
 `docs/issues/` files remain excluded from source text checks as before.
 
 At startup, issuekit also reads a repo-local `.env` file from the current repo

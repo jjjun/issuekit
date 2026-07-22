@@ -12,7 +12,12 @@ from typing import TextIO
 from issuekit.agents.runner import AgentResult, AgentRunner, resolve_adapter
 from issuekit.author_guard import AuthorOrchestrationContext
 from issuekit.config import IssuekitConfig
-from issuekit.core import Issue, _confirmed_mojibake_hits, find_encoding_artifacts
+from issuekit.core import (
+    Issue,
+    _confirmed_mojibake_hits,
+    find_encoding_artifacts,
+    is_encoding_excluded_path,
+)
 from issuekit.gitutil import git_root, git_status_short, run_git
 from issuekit.prompts import render_review_feedback_prompt
 from issuekit.store import get_store
@@ -152,6 +157,7 @@ def run_and_submit(
                 cwd,
                 issues_dir,
                 include_halfwidth_katakana=config.gate_halfwidth_kana,
+                exclude_patterns=config.check_encoding_exclude,
             )
             if confirmed_hits or unconfirmed_hits:
                 print(
@@ -165,6 +171,12 @@ def run_and_submit(
                 for hit in unconfirmed_hits:
                     _print_mojibake_hit(hit, err)
                     print("  failed CP932 reverse confirmation", file=err)
+                if unconfirmed_hits:
+                    print(
+                        "To allow known-legitimate unconfirmed text, add its "
+                        "repo-relative path to check_encoding_exclude.",
+                        file=err,
+                    )
                 return RunOutcome(issue=issue, result=result, exit_code=1)
 
         reviewed_issue = submit_for_review(
@@ -214,6 +226,7 @@ def _mojibake_touched_hits(
     issues_dir: Path,
     *,
     include_halfwidth_katakana: bool,
+    exclude_patterns: tuple[str, ...],
 ) -> tuple[list[dict[str, int | str]], list[dict[str, int | str]]]:
     confirmed_hits: list[dict[str, int | str]] = []
     unconfirmed_hits: list[dict[str, int | str]] = []
@@ -252,7 +265,8 @@ def _mojibake_touched_hits(
             artifacts,
         )
         confirmed_hits.extend(confirmed)
-        unconfirmed_hits.extend(unconfirmed)
+        if not is_encoding_excluded_path(rel_path.as_posix(), exclude_patterns):
+            unconfirmed_hits.extend(unconfirmed)
     return confirmed_hits, unconfirmed_hits
 
 

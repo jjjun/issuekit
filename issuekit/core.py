@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+import fnmatch
+from pathlib import Path
 import re
 from typing import Any
 
@@ -173,6 +175,32 @@ def has_encoding_artifacts(text: str, *, include_halfwidth_katakana: bool = True
             include_halfwidth_katakana=include_halfwidth_katakana,
         )
     )
+
+
+def is_encoding_excluded_path(file: str, patterns: tuple[str, ...]) -> bool:
+    path = Path(file).as_posix()
+    return any(_matches_path_pattern(path, pattern) for pattern in patterns)
+
+
+def _matches_path_pattern(path: str, pattern: str) -> bool:
+    return _matches_path_parts(
+        path.split("/"),
+        pattern.replace("\\", "/").split("/"),
+    )
+
+
+def _matches_path_parts(path_parts: list[str], pattern_parts: list[str]) -> bool:
+    if not pattern_parts:
+        return not path_parts
+    pattern_part = pattern_parts[0]
+    if pattern_part == "**":
+        return any(
+            _matches_path_parts(path_parts[index:], pattern_parts[1:])
+            for index in range(len(path_parts) + 1)
+        )
+    if not path_parts or not fnmatch.fnmatchcase(path_parts[0], pattern_part):
+        return False
+    return _matches_path_parts(path_parts[1:], pattern_parts[1:])
 
 
 # Reverse confirmation operates on a contiguous non-ASCII window, not an

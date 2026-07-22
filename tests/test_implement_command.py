@@ -249,6 +249,69 @@ def test_implement_command_mojibake_gate_blocks_unconfirmed_changed_text(
     captured = capsys.readouterr()
     assert "- code.py:2:10: U+7E5D" in captured.err
     assert "failed CP932 reverse confirmation" in captured.err
+    assert "add its repo-relative path to check_encoding_exclude" in captured.err
+    assert [call["method"] for call in client.calls] == ["claim"]
+
+
+def test_implement_command_mojibake_gate_allows_excluded_legitimate_japanese(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
+    _configure_api(
+        tmp_path,
+        monkeypatch,
+        client,
+        extra_config="check_encoding_exclude = ['titles/**']\n",
+    )
+    title_path = tmp_path / "titles" / "anime.py"
+    title_path.parent.mkdir()
+    title_path.write_text("title = 'clean'\n", encoding="utf-8", newline="\n")
+    _init_git_repo(tmp_path)
+
+    class JapaneseRunner(FakeRunner):
+        def run(self, adapter, plan_path, repo, timeout, **kwargs) -> FakeResult:
+            (repo / "titles" / "anime.py").write_text(
+                "title = '\u87f2\u5e2b'\n", encoding="utf-8", newline="\n"
+            )
+            return FakeResult(status_short=" M titles/anime.py")
+
+    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", JapaneseRunner)
+
+    assert cli.main(["implement", "1", "--agent", "codex"]) == 0
+    assert [call["method"] for call in client.calls] == ["claim", "submit"]
+
+
+def test_implement_command_mojibake_gate_blocks_confirmed_excluded_text(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
+    _configure_api(
+        tmp_path,
+        monkeypatch,
+        client,
+        extra_config="check_encoding_exclude = ['titles/**']\n",
+    )
+    title_path = tmp_path / "titles" / "anime.py"
+    title_path.parent.mkdir()
+    title_path.write_text("title = 'clean'\n", encoding="utf-8", newline="\n")
+    _init_git_repo(tmp_path)
+
+    class MojibakeRunner(FakeRunner):
+        def run(self, adapter, plan_path, repo, timeout, **kwargs) -> FakeResult:
+            (repo / "titles" / "anime.py").write_text(
+                "title = '\u7e67\uff62\u7e5d\u4e5d\u0393'\n",
+                encoding="utf-8",
+                newline="\n",
+            )
+            return FakeResult(status_short=" M titles/anime.py")
+
+    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", MojibakeRunner)
+
+    assert cli.main(["implement", "1", "--agent", "codex"]) == 1
+    assert "recovers to U+" in capsys.readouterr().err
     assert [call["method"] for call in client.calls] == ["claim"]
 
 
