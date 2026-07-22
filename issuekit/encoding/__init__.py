@@ -8,7 +8,6 @@ from issuekit.encoding.detect import (
     NON_ASCII_PATTERN,
     confirmed_mojibake_hits,
     find_encoding_artifacts,
-    has_encoding_artifacts,
     has_non_ascii,
     is_encoding_excluded_path,
 )
@@ -30,7 +29,6 @@ __all__ = [
     "code_point_context",
     "code_point_text",
     "find_encoding_artifacts",
-    "has_encoding_artifacts",
     "has_non_ascii",
     "is_encoding_excluded_path",
     "print_mojibake_hit",

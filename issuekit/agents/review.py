@@ -312,10 +312,6 @@ def _render_review_prompt(
     )
 
 
-def _git_diff_context(cwd: Path) -> str:
-    return _collect_git_diff_context(cwd).text
-
-
 def _collect_git_diff_context(cwd: Path, *, issue: Issue | None = None) -> ReviewDiffContext:
     status = git_status_short(cwd, strip=False, untracked_files="all")
     stat = _git_stdout(["--no-pager", "diff", "--stat", "HEAD", "--"], cwd) or ""

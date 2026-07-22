@@ -9,7 +9,6 @@ from typing import Any
 from issuekit.encoding import has_non_ascii
 from issuekit.negotiation import NegotiationEntry, Verdict
 from issuekit.prompts import (
-    NEGOTIATION_RESUMED_ROUND_PROMPT,
     NEGOTIATION_ROUND_PROMPT,
     NegotiationParseError,
 )
@@ -45,26 +44,6 @@ def render_round_prompt(
         seed=seed,
         resolved_contract=resolved,
         thread_summary=thread_summary,
-        output_keys=", ".join(NEGOTIATION_OUTPUT_KEYS),
-        verdict_values=verdict_values,
-    )
-
-
-def render_resumed_round_prompt(
-    *,
-    side: str,
-    latest_counterpart: NegotiationEntry,
-    resolved_contract: str | None = None,
-) -> str:
-    """Render a compact prompt for an already-resumed side session."""
-
-    resolved = resolved_contract if resolved_contract is not None else "(none yet)"
-    verdict_values = ", ".join(verdict.value for verdict in Verdict)
-
-    return NEGOTIATION_RESUMED_ROUND_PROMPT.render(
-        side=side,
-        resolved_contract=resolved,
-        latest_counterpart=_format_thread_entry(1, latest_counterpart),
         output_keys=", ".join(NEGOTIATION_OUTPUT_KEYS),
         verdict_values=verdict_values,
     )

@@ -37,15 +37,6 @@ def find_encoding_artifacts(
     return sorted(matches.items())
 
 
-def has_encoding_artifacts(text: str, *, include_halfwidth_katakana: bool = True) -> bool:
-    return bool(
-        find_encoding_artifacts(
-            text,
-            include_halfwidth_katakana=include_halfwidth_katakana,
-        )
-    )
-
-
 def is_encoding_excluded_path(file: str, patterns: tuple[str, ...]) -> bool:
     path = Path(file).as_posix()
     return any(_matches_path_pattern(path, pattern) for pattern in patterns)
