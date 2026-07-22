@@ -46,18 +46,18 @@ def test_resolve_adapter_returns_claude() -> None:
     assert adapter.agent_name == "claude"
 
 
-def test_claude_adapter_argv_contains_print_and_accept_edits() -> None:
+def test_claude_adapter_argv_contains_print_and_bypass_permissions() -> None:
     adapter = resolve_adapter("claude")
     argv = adapter.build_argv("prompt", Path("/plan.md"))
     assert argv[0] == "-p"
     assert argv[1].startswith("prompt")
     assert argv[2:6] == [
         "--permission-mode",
-        "acceptEdits",
+        "bypassPermissions",
         "--output-format",
         "text",
     ]
-    assert "bypassPermissions" not in argv
+    assert "acceptEdits" not in argv
 
 
 def test_claude_adapter_argv_includes_model() -> None:

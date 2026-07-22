@@ -166,7 +166,7 @@ class IssuekitConfig:
                 resumable=True,
                 session_flag="--session-id",
                 approval_flag="--permission-mode",
-                approval_value="acceptEdits",
+                approval_value="bypassPermissions",
                 output_format_flag="--output-format",
                 output_format="text",
                 model_flag="--model",

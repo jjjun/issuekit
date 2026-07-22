@@ -107,7 +107,7 @@ def test_info_surfaces_effective_agent_config_and_sources(
             "model": None,
             "reasoningEffort": None,
             "approvalFlag": "--permission-mode",
-            "approvalValue": "acceptEdits",
+            "approvalValue": "bypassPermissions",
             "headlessArgv": ["-p"],
             "modelPromptKeys": [],
         },

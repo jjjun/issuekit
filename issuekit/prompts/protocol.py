@@ -55,6 +55,9 @@ By default, the built-in Codex config runs without a sandbox and relies on the
 repository worktree plus the review gate. Projects that require the strict
 sandbox can set `[agents.codex] approval_flag = "--full-auto"`, or set
 `approval_flag = "--sandbox"` with `approval_value = "workspace-write"`.
+The built-in Claude config uses `--permission-mode bypassPermissions` for
+unattended headless runs; stricter projects can set
+`[agents.claude] approval_value = "acceptEdits"`.
 
 Agent-launching commands accept pass-through `--model <model-id>` and
 `--reasoning-effort <value>` overrides.

@@ -621,6 +621,11 @@ worktree plus the review gate. Projects that require the strict sandbox can use
 the override above, or set `approval_flag = "--sandbox"` and
 `approval_value = "workspace-write"`.
 
+The built-in Claude config bypasses permissions so headless implementer runs
+can execute shell commands unattended. Stricter projects can restore the old
+behavior with `[agents.claude] approval_value = "acceptEdits"` in repo or
+machine config.
+
 Agent-launching commands accept pass-through `--model <model-id>` and
 `--reasoning-effort <value>` overrides,
 including `implement`, `review`, `negotiate`, `serve`, `triage`, and

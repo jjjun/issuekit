@@ -354,7 +354,7 @@ def test_claude_adapter_argv_build_full_shape() -> None:
     assert argv[1].startswith("prompt")
     assert argv[2:] == [
         "--permission-mode",
-        "acceptEdits",
+        "bypassPermissions",
         "--output-format",
         "text",
     ]
@@ -367,7 +367,7 @@ def test_claude_adapter_argv_appends_model_when_supplied() -> None:
         "-p",
         argv[1],
         "--permission-mode",
-        "acceptEdits",
+        "bypassPermissions",
         "--output-format",
         "text",
     ]
