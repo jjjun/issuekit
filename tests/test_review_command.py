@@ -73,6 +73,11 @@ class RequestChangesRunner(ApprovingRunner):
         )
 
 
+class MalformedReviewRunner(ApprovingRunner):
+    def run(self, *args, **kwargs) -> FakeResult:
+        return FakeResult(parsed={"stdout": "The implementation looks good.\n"})
+
+
 def _configure_registered_api(tmp_path: Path, monkeypatch, client: FakeIssuekitClient) -> None:
     (tmp_path / "issuekit.toml").write_text(
         "api_url = 'https://mine.example'\nproject = 'demo'\ndefault_reviewer = 'auto'\n",
@@ -256,6 +261,105 @@ def test_review_command_rejects_same_worker_self_review(
     assert exit_code == 1
     assert not ApprovingRunner.calls
     assert "self-review by the same worker is not allowed" in capsys.readouterr().err
+
+
+def test_review_command_reports_no_decision_for_malformed_review_output(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                1,
+                "Malformed review",
+                status="in_progress",
+                assignee="",
+                stage="review",
+                implementer="codex",
+                worker="machine/demo/implementer",
+                author="claude",
+            )
+        ]
+    )
+    _configure_registered_api(tmp_path, monkeypatch, client)
+    _create_reviewable_diff(tmp_path)
+    monkeypatch.setattr("issuekit.commands.review.AgentRunner", MalformedReviewRunner)
+
+    exit_code = cli.main(["review", "1", "--agent", "codex"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "agent_exit_code=0" in captured.out
+    assert "review_decision=none (no decision recorded)" in captured.out
+    assert "No ```review``` block found" in captured.err
+    assert client.calls == []
+
+
+def test_review_command_self_review_names_no_eligible_reviewer(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                1,
+                "Only reviewer",
+                status="in_progress",
+                assignee="",
+                stage="review",
+                implementer="codex",
+                worker="",
+                author="claude",
+            )
+        ]
+    )
+    _configure_registered_api(tmp_path, monkeypatch, client)
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\n"
+        "project = 'demo'\n"
+        "default_reviewer = 'auto'\n"
+        "disabled_agents = ['kimi', 'claude']\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    exit_code = cli.main(["review", "1", "--agent", "codex"])
+
+    error = capsys.readouterr().err
+    assert exit_code == 1
+    assert "self-review is not allowed" in error
+    assert "no eligible reviewer via --agent" in error
+
+
+def test_review_command_self_review_keeps_plain_message_when_another_agent_exists(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                1,
+                "Another reviewer",
+                status="in_progress",
+                assignee="",
+                stage="review",
+                implementer="codex",
+                worker="",
+                author="claude",
+            )
+        ]
+    )
+    _configure_registered_api(tmp_path, monkeypatch, client)
+
+    exit_code = cli.main(["review", "1", "--agent", "codex"])
+
+    error = capsys.readouterr().err
+    assert exit_code == 1
+    assert "Issue #1 was implemented by codex; self-review is not allowed." in error
+    assert "no eligible reviewer" not in error
 
 
 def test_review_command_rejects_empty_implementation_diff_before_agent(

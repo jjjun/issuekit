@@ -63,6 +63,14 @@ class ReviewOutcome:
     decided_issue: Issue | None = None
 
 
+class ReviewRunParseError(ReviewParseError):
+    """A review parse error that retains the completed agent run result."""
+
+    def __init__(self, error: ReviewParseError, result: AgentResult) -> None:
+        super().__init__(str(error))
+        self.result = result
+
+
 @dataclass(frozen=True)
 class ReviewDiffContext:
     text: str
@@ -153,7 +161,10 @@ def run_review_and_decide(
         )
         return ReviewOutcome(issue=issue, result=result, verdict=_empty_verdict(), exit_code=1)
 
-    verdict = parse_review_output(_stdout_text(result))
+    try:
+        verdict = parse_review_output(_stdout_text(result))
+    except ReviewParseError as exc:
+        raise ReviewRunParseError(exc, result) from exc
     owned_store = None
     if store is None:
         owned_store = get_store(config)
@@ -250,8 +261,20 @@ def _ensure_registered_distinct_worker(
             "self-review by the same worker is not allowed."
         )
     if not issue.worker and issue.implementer == agent:
+        no_eligible_reviewer = not any(
+            configured_agent != issue.implementer
+            for configured_agent, _run_config in config.agents
+        )
+        no_eligible_reviewer_message = (
+            " no eligible reviewer via --agent: "
+            f"{agent} is the implementer and no other agent is configured; "
+            "use the open review pool (issuekit serve --review) or configure another reviewer."
+            if no_eligible_reviewer
+            else ""
+        )
         raise WorkflowError(
             f"Issue #{issue.id} was implemented by {agent}; self-review is not allowed."
+            f"{no_eligible_reviewer_message}"
         )
 
 

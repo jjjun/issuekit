@@ -6,7 +6,12 @@ import argparse
 from pathlib import Path
 import sys
 
-from issuekit.agents.review import ReviewOutcome, ReviewParseError, run_review_and_decide
+from issuekit.agents.review import (
+    ReviewOutcome,
+    ReviewParseError,
+    ReviewRunParseError,
+    run_review_and_decide,
+)
 from issuekit.agents.runner import AgentResult, AgentRunner
 from issuekit.commands._common import run_command
 from issuekit.config import load_config
@@ -54,20 +59,29 @@ def run(args) -> int:
             print(f"Active issue #{issue_id} was not found.", file=sys.stderr)
             return 1
 
-        outcome = run_review_and_decide(
+        try:
+            outcome = run_review_and_decide(
+                issue,
+                agent=args.agent,
+                config=config,
+                cwd=cwd,
+                timeout=float(args.timeout_sec),
+                model=args.model,
+                reasoning_effort=args.reasoning_effort,
+                follow=getattr(args, "follow", False),
+                runner_factory=AgentRunner,
+                out=sys.stdout,
+                err=sys.stderr,
+            )
+        except ReviewRunParseError as exc:
+            _print_run_report(issue, exc.result, args.agent, decision_recorded=False)
+            raise
+        _print_run_report(
             issue,
-            agent=args.agent,
-            config=config,
-            cwd=cwd,
-            timeout=float(args.timeout_sec),
-            model=args.model,
-            reasoning_effort=args.reasoning_effort,
-            follow=getattr(args, "follow", False),
-            runner_factory=AgentRunner,
-            out=sys.stdout,
-            err=sys.stderr,
+            outcome.result,
+            args.agent,
+            decision_recorded=outcome.decided_issue is not None,
         )
-        _print_run_report(issue, outcome.result, args.agent)
         if outcome.decided_issue is not None:
             _print_decision_report(outcome)
         return outcome.exit_code
@@ -85,10 +99,16 @@ def run(args) -> int:
     )
 
 
-def _print_run_report(issue: Issue, result: AgentResult, agent: str) -> None:
+def _print_run_report(
+    issue: Issue,
+    result: AgentResult,
+    agent: str,
+    *,
+    decision_recorded: bool,
+) -> None:
     print(f"issue={issue.id} ref={issue.ref} reviewer={agent}")
     print(
-        "exit_code={exit_code} timed_out={timed_out} elapsed_sec={elapsed:.2f}".format(
+        "agent_exit_code={exit_code} timed_out={timed_out} elapsed_sec={elapsed:.2f}".format(
             exit_code=result.exit_code,
             timed_out=str(result.timed_out).lower(),
             elapsed=result.elapsed_sec,
@@ -98,6 +118,8 @@ def _print_run_report(issue: Issue, result: AgentResult, agent: str) -> None:
     print(f"agent_log={result.agent_log_path}")
     if result.status_path:
         print(f"status_file={result.status_path}")
+    if not decision_recorded:
+        print("review_decision=none (no decision recorded)")
 
 
 def _print_decision_report(outcome: ReviewOutcome) -> None:
