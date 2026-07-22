@@ -31,7 +31,7 @@ from .resources import (
 )
 from .security import _jwt_expiry
 from issuekit.core import is_valid_workflow_token
-from .token_cache import _read_cached_token
+from .token_cache import read_cached_token
 
 
 DEFAULT_HTTP_LIMITS = httpx.Limits(
@@ -79,7 +79,7 @@ class IssuekitClient(
         self._token = token if token is not None else env_token
         self._token_expiry = _jwt_expiry(self._token)
         if self._token is None:
-            cached = _read_cached_token(self.api_url)
+            cached = read_cached_token(self.api_url)
             if cached is not None:
                 self._token = cached["token"]
                 self._token_expiry = cached["expires_at"]

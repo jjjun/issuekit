@@ -794,7 +794,7 @@ def test_token_cache_miss_message_lists_other_cached_urls(
         encoding="utf-8",
     )
 
-    assert token_cache_module._read_cached_token("https://missing.example") is None
+    assert token_cache_module.read_cached_token("https://missing.example") is None
     assert token_cache_module._cached_token_miss_message("https://missing.example") == (
         "no cached token for https://missing.example "
         "(cached: https://alpha.example, https://beta.example); "

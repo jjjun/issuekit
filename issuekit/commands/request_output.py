@@ -6,7 +6,7 @@ import json
 from typing import Any
 
 
-def _print_payload(payload: dict[str, Any], *, json_output: bool) -> None:
+def print_payload(payload: dict[str, Any], *, json_output: bool) -> None:
     if json_output:
         print(json.dumps(payload, indent=2))
         return
@@ -36,7 +36,7 @@ def _print_payload(payload: dict[str, Any], *, json_output: bool) -> None:
             )
 
 
-def _print_status_record(item: dict[str, Any]) -> None:
+def print_status_record(item: dict[str, Any]) -> None:
     print(f"Request {item['request_id']}: {item.get('decision') or 'pending'}")
     if item.get("pending_question"):
         print(f"  clarification: {item['pending_question']}")

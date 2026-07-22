@@ -21,8 +21,6 @@ from datetime import datetime, timezone
 
 from issuekit.config import IssuekitConfig
 from issuekit.core import Issue, worker_keys_from_row, worker_keys_match
-from issuekit.store import get_store
-from issuekit.workers.registry import list_api_workers
 
 # The worker heartbeat posts every WORKER_HEARTBEAT_INTERVAL_SEC (60s). Wait for
 # several missed beats before flagging so a healthy but briefly-delayed worker
@@ -133,6 +131,9 @@ def list_stale_claims(
     checkout, independent of which project it registered under, so the worker
     key is what identifies a live holder.
     """
+    from issuekit.store import get_store
+    from issuekit.workers.registry import list_api_workers
+
     current = now or datetime.now(timezone.utc)
     workers = list_api_workers(config)
     with get_store(config) as store:

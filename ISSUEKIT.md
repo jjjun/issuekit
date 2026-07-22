@@ -24,6 +24,10 @@ that API.
 
 ## Public surface
 
+Every subpackage ``__init__.py`` has a module docstring and exposes its public
+surface through an ``__all__`` facade when one is appropriate. Package initializers
+do not contain implementation; implementation lives in focused submodules.
+
 - CLI subcommands: author, claim, submit-review, review, approve,
   request-changes, complete, edit, queue, serve, implement, propose/incoming/
   outgoing/adopt/discard, negotiate/threads, triage, profile, workers, add,

@@ -141,7 +141,7 @@ def _validate_entry_input(side: str, verdict: object) -> None:
     _coerce_verdict(verdict)
 
 
-def _validate_contract(contract: str | None) -> None:
+def validate_contract(contract: str | None) -> None:
     if contract is not None and len(contract) > MAX_CONTRACT_LENGTH:
         raise WorkflowError(
             f"Negotiation contract exceeds {MAX_CONTRACT_LENGTH} characters.",

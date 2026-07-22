@@ -6,8 +6,8 @@ from copy import deepcopy
 from datetime import date
 from typing import Any
 
-from issuekit.core import _drop_none
-from issuekit.negotiation.model import _validate_contract as validate_negotiation_contract
+from issuekit.core import drop_none
+from issuekit.negotiation.model import validate_contract as validate_negotiation_contract
 from issuekit.workflow import WorkflowError
 
 
@@ -32,7 +32,7 @@ class FakeProposalSurface:
         target_worker: str | None = None,
     ) -> JsonDict:
         self._validate_contract(contract)
-        request = _drop_none(
+        request = drop_none(
             {
                 "origin": origin,
                 "title": title,
@@ -163,7 +163,7 @@ class FakeProposalSurface:
             self._record(
                 "post_proposal_check_result",
                 number=check_id,
-                body=_drop_none(
+                body=drop_none(
                     {
                         "project": project,
                         "verdict": verdict,
@@ -250,7 +250,7 @@ class FakeProposalSurface:
         priority: str | None = None,
     ) -> JsonDict:
         self._validate_contract(contract)
-        request = _drop_none(
+        request = drop_none(
             {
                 "origin": origin,
                 "title": title,
@@ -342,7 +342,7 @@ class FakeProposalSurface:
             self._record(
                 "patch_thread",
                 number=thread_id,
-                body=_drop_none(
+                body=drop_none(
                     {
                         "status": status,
                         "agreed_contract": agreed_contract,
@@ -392,7 +392,7 @@ class FakeProposalSurface:
             self._record(
                 "adopt_proposal",
                 number=proposal_id,
-                body=_drop_none({"priority": priority}),
+                body=drop_none({"priority": priority}),
             )
             proposal = self._find_proposal(proposal_id)
             if proposal.get("status") != "pending":

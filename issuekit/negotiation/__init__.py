@@ -20,7 +20,6 @@ from issuekit.negotiation.model import (
     ThreadStatus,
     Verdict,
     _latest_agree_contract,
-    _validate_contract,
 )
 from issuekit.workflow import WorkflowError
 

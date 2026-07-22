@@ -7,7 +7,7 @@ from typing import Any
 from urllib.parse import quote
 
 from .base import JsonDict, _ensure_dict, _profile_rows, _worker_rows
-from issuekit.core import _drop_none
+from issuekit.core import drop_none
 from issuekit.issues.session import validate_session_token
 from issuekit.workflow import WorkflowError
 
@@ -29,7 +29,7 @@ class _IssueResourceMixin:
             payload = self._authorized_request(
                 "GET",
                 "/api/issues/board",
-                params=_drop_none(
+                params=drop_none(
                     {
                         "projects": self.project,
                         "status": status,
@@ -50,7 +50,7 @@ class _IssueResourceMixin:
                 )
             return [_ensure_dict(item, "Issue response") for item in items]
 
-        params = _drop_none(
+        params = drop_none(
             {
                 "status": status,
                 "stage": stage,
@@ -120,7 +120,7 @@ class _IssueResourceMixin:
         payload = self._authorized_request(
             "GET",
             "/api/issues/board",
-            params=_drop_none(
+            params=drop_none(
                 {
                     "projects": self.project,
                     "status": status,
@@ -153,7 +153,7 @@ class _IssueResourceMixin:
         return _ensure_dict(payload, "Create response")
 
     def update_issue(self, number: int, issue: Mapping[str, Any]) -> JsonDict:
-        update = _drop_none(
+        update = drop_none(
             {
                 "title": issue.get("title"),
                 "body": issue.get("body"),
@@ -175,7 +175,7 @@ class _IssueResourceMixin:
         allow_self_implement: bool = False,
         session: str | None = None,
     ) -> JsonDict:
-        body = _drop_none(
+        body = drop_none(
             {
                 "assignee": assignee,
                 "worker": worker,
@@ -200,7 +200,7 @@ class _IssueResourceMixin:
         allow_self_implement: bool = False,
         session: str | None = None,
     ) -> JsonDict | None:
-        body = _drop_none(
+        body = drop_none(
             {
                 "assignee": assignee,
                 "priority": priority,
@@ -230,7 +230,7 @@ class _IssueResourceMixin:
         payload = self._request(
             "POST",
             f"/{number}/reclaim",
-            json=_drop_none(
+            json=drop_none(
                 {
                     "expected_worker": expected_worker,
                     "actor": actor,
@@ -251,7 +251,7 @@ class _IssueResourceMixin:
         payload = self._request(
             "POST",
             f"/{number}/readdress",
-            json=_drop_none(
+            json=drop_none(
                 {
                     "expected_target_worker": expected_target_worker,
                     "actor": actor,
@@ -274,7 +274,7 @@ class _IssueResourceMixin:
         payload = self._request(
             "POST",
             f"/{number}/submit",
-            json=_drop_none(
+            json=drop_none(
                 {
                     "summary": summary,
                     "branch": branch,
@@ -299,7 +299,7 @@ class _IssueResourceMixin:
         payload = self._request(
             "POST",
             f"/{number}/request-changes",
-            json=_drop_none(
+            json=drop_none(
                 {
                     "notes": notes,
                     "reviewer": reviewer,
@@ -324,7 +324,7 @@ class _IssueResourceMixin:
         payload = self._request(
             "POST",
             f"/{number}/approve",
-            json=_drop_none(
+            json=drop_none(
                 {
                     "summary": summary,
                     "verification": verification,
@@ -357,7 +357,7 @@ class _WorkerResourceMixin:
         description: str | None = None,
         meta: Mapping[str, str] | None = None,
     ) -> JsonDict:
-        body = _drop_none(
+        body = drop_none(
             {
                 "repo_key": repo_key,
                 "canonical_url": canonical_url,
@@ -400,7 +400,7 @@ class _WorkerResourceMixin:
         # role/description are optional, backward-compatible fields: only send
         # them when set so older backends keep accepting the payload.
         body.update(
-            _drop_none(
+            drop_none(
                 {
                     "project": project,
                     "role": role,
@@ -422,7 +422,7 @@ class _WorkerResourceMixin:
         payload = self._authorized_request(
             "GET",
             "/api/workers",
-            params=_drop_none({"repo_id": repo_id, "project": project}),
+            params=drop_none({"repo_id": repo_id, "project": project}),
         )
         return _worker_rows(payload)
 
@@ -457,7 +457,7 @@ class _ProfileResourceMixin:
         source_commit: str | None = None,
         source_committed_at: str | None = None,
     ) -> JsonDict:
-        body = _drop_none(
+        body = drop_none(
             {
                 "summary": summary,
                 "profile_md": profile_md,
@@ -533,7 +533,7 @@ class _ProposalCheckResourceMixin:
         payload = self._authorized_request(
             "GET",
             "/api/issues/proposal-checks",
-            params=_drop_none(
+            params=drop_none(
                 {
                     "target_worker": target_worker,
                     "status": status,
@@ -563,7 +563,7 @@ class _ProposalCheckResourceMixin:
         payload = self._authorized_request(
             "POST",
             f"/api/issues/{project}/proposal-checks/{check_id}/result",
-            json=_drop_none(
+            json=drop_none(
                 {
                     "verdict": verdict,
                     "comment": comment,
@@ -595,7 +595,7 @@ class _ProposalResourceMixin:
             "POST",
             "/",
             collection="proposals",
-            json=_drop_none(
+            json=drop_none(
                 {
                     "origin": origin,
                     "title": title,
@@ -648,7 +648,7 @@ class _ProposalResourceMixin:
             "POST",
             f"/{proposal_id}/reply",
             collection="proposals",
-            json=_drop_none(
+            json=drop_none(
                 {
                     "origin": origin,
                     "title": title,
@@ -696,7 +696,7 @@ class _ProposalResourceMixin:
             "PATCH",
             f"/thread/{thread_id}",
             collection="proposals",
-            json=_drop_none(
+            json=drop_none(
                 {
                     "status": status,
                     "agreed_contract": agreed_contract,
@@ -716,7 +716,7 @@ class _ProposalResourceMixin:
             "POST",
             f"/{proposal_id}/adopt",
             collection="proposals",
-            json=_drop_none({"priority": priority}),
+            json=drop_none({"priority": priority}),
         )
         return _ensure_dict(payload, "Adopt proposal response")
 

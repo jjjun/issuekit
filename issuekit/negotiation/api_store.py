@@ -16,7 +16,7 @@ from issuekit.negotiation.model import (
     _coerce_status,
     _coerce_verdict,
     _latest_agree_contract,
-    _validate_contract,
+    validate_contract,
     _validate_entry_input,
 )
 from issuekit.workflow import WorkflowError
@@ -48,7 +48,7 @@ class ApiNegotiationStore:
         contract: str | None = None,
     ) -> NegotiationEntry:
         _validate_entry_input(side, verdict)
-        _validate_contract(contract)
+        validate_contract(contract)
         try:
             proposal = self.client.create_proposal(
                 origin=origin,
@@ -85,7 +85,7 @@ class ApiNegotiationStore:
         contract: str | None = None,
     ) -> NegotiationEntry:
         _validate_entry_input(side, verdict)
-        _validate_contract(contract)
+        validate_contract(contract)
         entries = self.get_thread(thread_id)
         if not entries:
             raise WorkflowError(
@@ -143,7 +143,7 @@ class ApiNegotiationStore:
         *,
         agreed_contract: str | None = None,
     ) -> None:
-        _validate_contract(agreed_contract)
+        validate_contract(agreed_contract)
         next_status = _coerce_status(status)
         if next_status is ThreadStatus.agreed and agreed_contract is None:
             agreed_contract = _latest_agree_contract(self.get_thread(thread_id))

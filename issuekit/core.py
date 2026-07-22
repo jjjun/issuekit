@@ -83,7 +83,7 @@ def issue_dict(issue: "Issue", *, include_body: bool = False) -> dict[str, objec
     return data
 
 
-def _drop_none(values: Mapping[str, Any]) -> dict[str, Any]:
+def drop_none(values: Mapping[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in values.items() if value is not None}
 
 

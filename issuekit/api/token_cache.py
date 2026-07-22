@@ -27,7 +27,7 @@ def _token_cache_path() -> Path:
     return Path.home() / ".issuekit" / "token.json"
 
 
-def _read_cached_token(api_url: str) -> dict[str, Any] | None:
+def read_cached_token(api_url: str) -> dict[str, Any] | None:
     entry = _read_token_cache().get(api_url)
     if not isinstance(entry, dict):
         return None

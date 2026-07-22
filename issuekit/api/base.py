@@ -13,7 +13,7 @@ from .security import (
     _response_expiry,
     _warn_insecure_api_url,
 )
-from issuekit.core import _drop_none
+from issuekit.core import drop_none
 from .token_cache import (
     _cached_token_miss_message,
     _delete_cached_token,
@@ -162,7 +162,7 @@ class _ClientTransportMixin:
         page_size = min(page_size, 500)
         offset = 0
         while True:
-            page_params = _drop_none({**params, "limit": page_size, "offset": offset})
+            page_params = drop_none({**params, "limit": page_size, "offset": offset})
             if collection is None:
                 payload = self._authorized_request("GET", path, params=page_params)
             else:

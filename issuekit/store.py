@@ -9,7 +9,7 @@ from issuekit.api import IssuekitClient
 from issuekit.config import IssuekitConfig
 from issuekit.core import (
     Issue,
-    _drop_none,
+    drop_none,
     get_issue_heading,
 )
 from issuekit.workflow import WorkflowError
@@ -184,7 +184,7 @@ class ApiStore:
     ) -> Issue:
         return self._issue_from_response(
             self.client.create_issue(
-                _drop_none(
+                drop_none(
                     {
                         "title": title,
                         "body": body,
@@ -213,7 +213,7 @@ class ApiStore:
         return self._issue_from_response(
             self.client.update_issue(
                 issue_id,
-                _drop_none(
+                drop_none(
                     {
                         "title": title,
                         "body": body,

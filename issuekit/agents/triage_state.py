@@ -11,16 +11,16 @@ from pathlib import Path
 STATE_FILENAME = "triage-author-state.json"
 
 
-def _now() -> str:
+def now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
 
-def _state_path(cwd: Path) -> Path:
+def state_path(cwd: Path) -> Path:
     return cwd / ".agent-runs" / STATE_FILENAME
 
 
-def _load_state(cwd: Path) -> dict[str, dict[str, str]]:
-    path = _state_path(cwd)
+def load_state(cwd: Path) -> dict[str, dict[str, str]]:
+    path = state_path(cwd)
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -37,8 +37,8 @@ def _load_state(cwd: Path) -> dict[str, dict[str, str]]:
     return state
 
 
-def _save_state(cwd: Path, state: Mapping[str, Mapping[str, str]]) -> None:
-    path = _state_path(cwd)
+def save_state(cwd: Path, state: Mapping[str, Mapping[str, str]]) -> None:
+    path = state_path(cwd)
     path.parent.mkdir(exist_ok=True)
     path.write_text(
         json.dumps(dict(state), indent=2, sort_keys=True),

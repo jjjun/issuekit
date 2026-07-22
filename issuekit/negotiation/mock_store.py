@@ -19,7 +19,7 @@ from issuekit.negotiation.model import (
     _coerce_status,
     _coerce_verdict,
     _latest_agree_contract,
-    _validate_contract,
+    validate_contract,
     _validate_entry_input,
 )
 from issuekit.workflow import WorkflowError
@@ -49,7 +49,7 @@ class MockNegotiationStore:
         contract: str | None = None,
     ) -> NegotiationEntry:
         _validate_entry_input(side, verdict)
-        _validate_contract(contract)
+        validate_contract(contract)
         thread_id = str(self._next_thread_id)
         self._next_thread_id += 1
         entry = self._make_entry(
@@ -81,7 +81,7 @@ class MockNegotiationStore:
     ) -> NegotiationEntry:
         self._ensure_thread(thread_id)
         _validate_entry_input(side, verdict)
-        _validate_contract(contract)
+        validate_contract(contract)
         self._ensure_negotiating(thread_id)
         self._ensure_unique_origin(thread_id, origin)
         entry = self._make_entry(
@@ -132,7 +132,7 @@ class MockNegotiationStore:
     ) -> None:
         self._ensure_thread(thread_id)
         next_status = _coerce_status(status)
-        _validate_contract(agreed_contract)
+        validate_contract(agreed_contract)
         current_status = self._statuses[thread_id]
         if current_status is not ThreadStatus.negotiating:
             raise WorkflowError(
@@ -342,5 +342,5 @@ def _optional_string(value: object) -> str | None:
         return None
     if not isinstance(value, str):
         raise WorkflowError("Negotiation persistence value was not a string or null.")
-    _validate_contract(value)
+    validate_contract(value)
     return value

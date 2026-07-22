@@ -41,7 +41,7 @@ from issuekit.proposals.api import (
 )
 from issuekit.issues.session import new_session_token
 from issuekit.store import get_store
-from issuekit.api.token_cache import _read_cached_token
+from issuekit.api.token_cache import read_cached_token
 from issuekit.workers.registry import list_api_workers, remove_api_repo, remove_api_worker
 from issuekit.workflow import (
     claim_next,
@@ -560,7 +560,7 @@ async def _health_status(root: Path, ctx: Context | None = None) -> dict[str, An
 
     payload["project"] = config.project
     payload["api_url_configured"] = bool(config.api_url)
-    cached_token = _read_cached_token(config.api_url.rstrip("/")) if config.api_url else None
+    cached_token = read_cached_token(config.api_url.rstrip("/")) if config.api_url else None
     payload["token_cached"] = cached_token is not None
     payload["token_expires_at"] = None if cached_token is None else cached_token["expires_at"]
     payload["worker"] = config.worker_key()

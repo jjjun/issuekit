@@ -19,7 +19,7 @@ from issuekit.issues.dependencies import (
     dependency_refs,
 )
 from issuekit.gitutil import git_short_head
-from . import Proposal, ProposalError, origin_destination
+from .model import Proposal, ProposalError, origin_destination
 from issuekit.config.refs import RefError, list_effective_refs
 from issuekit.store import get_store
 from issuekit.workflow import WorkflowError

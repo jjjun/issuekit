@@ -30,10 +30,9 @@ from issuekit.agents.registry import resolve_adapter
 from issuekit.agentrun import AgentRunner
 from issuekit.agents.triage_state import (
     STATE_FILENAME,
-    _load_state,
-    _now,
-    _save_state,
-    _state_path,
+    load_state,
+    now,
+    save_state,
 )
 from issuekit.config import IssuekitConfig
 from issuekit.encoding import has_non_ascii
@@ -141,7 +140,7 @@ def run_triage_author_cycle(
         model=model,
         reasoning_effort=reasoning_effort,
     )
-    state = _load_state(cwd)
+    state = load_state(cwd)
     decisions: list[TriageDecision] = []
     evaluated = 0
     limit = config.triage.max_adoptions_per_cycle
@@ -216,7 +215,7 @@ def run_triage_author_cycle(
                 issue=decision.issue_id if decision.issue_id is not None else decision.detail,
             )
 
-    _save_state(cwd, state)
+    save_state(cwd, state)
     return decisions
 
 
@@ -293,7 +292,7 @@ def _apply_decision(
         if decision == "reply":
             question = parsed["question"]
             issue_ref = _send_reply(proposal, question, config=config, cwd=cwd)
-            state[str(proposal_id)] = {"body_sha": body_sha, "replied_at": _now()}
+            state[str(proposal_id)] = {"body_sha": body_sha, "replied_at": now()}
             return TriageDecision(
                 proposal_id=proposal_id,
                 origin=origin,

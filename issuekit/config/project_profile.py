@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from issuekit.config.settings import IssuekitConfig
-from issuekit.core import _drop_none
+from issuekit.core import drop_none
 from issuekit.gitutil import run_git
 
 
@@ -31,7 +31,7 @@ class ProjectProfile:
     source_committed_at: str = ""
 
     def to_payload(self) -> dict[str, object]:
-        return _drop_none(
+        return drop_none(
             {
                 "summary": self.summary or None,
                 "profile_md": self.profile_md,

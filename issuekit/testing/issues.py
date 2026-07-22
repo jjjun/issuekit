@@ -5,7 +5,7 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any
 
-from issuekit.core import _drop_none, directed_target_matches, worker_keys_match
+from issuekit.core import directed_target_matches, drop_none, worker_keys_match
 from issuekit.workflow import WorkflowError
 
 
@@ -116,7 +116,7 @@ class FakeIssueSurface:
         session: str | None = None,
     ) -> JsonDict:
         with self._lock:
-            body = _drop_none({"assignee": assignee, "worker": worker, "session": session})
+            body = drop_none({"assignee": assignee, "worker": worker, "session": session})
             if allow_self_implement:
                 body["allow_self_implement"] = True
             self._record(
@@ -148,7 +148,7 @@ class FakeIssueSurface:
         session: str | None = None,
     ) -> JsonDict | None:
         with self._lock:
-            body = _drop_none(
+            body = drop_none(
                 {
                     "assignee": assignee,
                     "priority": priority,
@@ -202,7 +202,7 @@ class FakeIssueSurface:
             self._record(
                 "reclaim",
                 number=number,
-                body=_drop_none(
+                body=drop_none(
                     {
                         "expected_worker": expected_worker,
                         "actor": actor,
@@ -242,7 +242,7 @@ class FakeIssueSurface:
             self._record(
                 "readdress",
                 number=number,
-                body=_drop_none(
+                body=drop_none(
                     {
                         "expected_target_worker": expected_target_worker,
                         "actor": actor,
@@ -279,7 +279,7 @@ class FakeIssueSurface:
             self._record(
                 "submit",
                 number=number,
-                body=_drop_none(
+                body=drop_none(
                     {
                         "summary": summary,
                         "branch": branch,
@@ -320,7 +320,7 @@ class FakeIssueSurface:
             self._record(
                 "request_changes",
                 number=number,
-                body=_drop_none(
+                body=drop_none(
                     {
                         "notes": notes,
                         "reviewer": reviewer,
@@ -351,7 +351,7 @@ class FakeIssueSurface:
             self._record(
                 "approve",
                 number=number,
-                body=_drop_none(
+                body=drop_none(
                     {
                         "summary": summary,
                         "verification": verification,

@@ -18,7 +18,7 @@ from issuekit.agents.router import (
     run_router,
 )
 from issuekit.commands._common import run_command
-from issuekit.commands.request_output import _print_payload, _print_status_record
+from issuekit.commands.request_output import print_payload, print_status_record
 from issuekit.commands.request_state import (
     STATE_FILENAME,
     _load_state,
@@ -249,7 +249,7 @@ def _run_link(
         "target_project": target_project,
         "proposal_ref": ref,
     }
-    _print_payload(payload, json_output=json_output)
+    print_payload(payload, json_output=json_output)
     return 0
 
 
@@ -418,7 +418,7 @@ def _run_target_reply_answer(
             "target_project": pending_question["target_project"],
             "supersedes": pending_question["proposal_ref"],
         }
-        _print_payload(payload, json_output=json_output)
+        print_payload(payload, json_output=json_output)
         return 0
 
     targets = _state_targets(record)
@@ -502,7 +502,7 @@ def _run_target_reply_answer(
         "dependency_ref": dependency_ref,
         "supersedes": previous_ref,
     }
-    _print_payload(payload, json_output=json_output)
+    print_payload(payload, json_output=json_output)
     return 0
 
 
@@ -520,7 +520,7 @@ def _handle_decision(
 ) -> int:
     if dry_run:
         payload = {"request_id": request_id, **decision.to_dict()}
-        _print_payload(payload, json_output=json_output)
+        print_payload(payload, json_output=json_output)
         return 0
 
     if decision.decision == "clarify" and force_reject_clarify:
@@ -543,7 +543,7 @@ def _handle_decision(
             "decision": "clarify",
             "question": decision.question,
         }
-        _print_payload(payload, json_output=json_output)
+        print_payload(payload, json_output=json_output)
         return 0
 
     if decision.decision == "reject":
@@ -558,7 +558,7 @@ def _handle_decision(
             "decision": "reject",
             "reason": decision.reason,
         }
-        _print_payload(payload, json_output=json_output)
+        print_payload(payload, json_output=json_output)
         return 0
 
     sent_targets = _send_route_targets(
@@ -574,7 +574,7 @@ def _handle_decision(
         "decision": "route",
         "targets": sent_targets,
     }
-    _print_payload(payload, json_output=json_output)
+    print_payload(payload, json_output=json_output)
     return 0
 
 
@@ -703,7 +703,7 @@ def _run_status(
         print("No PM requests recorded.")
         return 0
     for item in payload:
-        _print_status_record(item)
+        print_status_record(item)
     return 0
 
 
