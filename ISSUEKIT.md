@@ -16,7 +16,9 @@ that API.
 - `httpx` HTTP client against the mine-py issuekit API (`IssuekitClient`).
 - CLI dispatcher (`issuekit`) plus an optional FastMCP server (`issuekit-mcp`,
   installed with the `mcp` extra) exposing the same operations as MCP tools.
-- Headless coding-agent adapters (codex, claude, kimi) driven by `AgentRunner`.
+- Headless coding-agent adapters (codex, claude, kimi) driven by `AgentRunner`;
+  see [`issuekit/agentrun/README.md`](issuekit/agentrun/README.md) for the
+  runtime boundary and extension path.
 - `pytest` for the test suite; a `check-encoding` gate enforces UTF-8 without
   BOM, no CRLF, and no mojibake in tracked files.
 

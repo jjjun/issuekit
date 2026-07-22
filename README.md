@@ -612,6 +612,9 @@ model = "gpt-5.6"
 "gpt-5.6" = "Follow the gpt-5.6 project guidance."
 ```
 
+For the runtime boundary and how to add a config-only or custom agent adapter,
+see [`issuekit/agentrun/README.md`](issuekit/agentrun/README.md).
+
 By default, issuekit runs Codex without a sandbox and relies on the repository
 worktree plus the review gate. Projects that require the strict sandbox can use
 the override above, or set `approval_flag = "--sandbox"` and
