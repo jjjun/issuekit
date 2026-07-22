@@ -289,7 +289,10 @@ def run(args) -> int:
                 "\nTip: normalize tracked line endings with `git add --renormalize .`.",
                 file=sys.stderr,
             )
-        _print_unconfirmed_mojibake_hits(unconfirmed_mojibake_hits)
+        _print_unconfirmed_mojibake_hits(
+            unconfirmed_mojibake_hits,
+            failed=args.fail_on_unconfirmed,
+        )
     return 1
 
 
@@ -403,11 +406,24 @@ def _stray_carriage_return_lines(content: bytes) -> list[int]:
     ]
 
 
-def _print_unconfirmed_mojibake_hits(hits: list[dict[str, int | str]]) -> None:
+def _print_unconfirmed_mojibake_hits(
+    hits: list[dict[str, int | str]],
+    *,
+    failed: bool = False,
+) -> None:
     if not hits:
         return
+    headline = (
+        "Encoding check failed: "
+        f"{len(hits)} unconfirmed mojibake candidate(s) with --fail-on-unconfirmed."
+        if failed
+        else (
+            "Encoding audit: "
+            f"{len(hits)} likely mojibake candidate(s) failed CP932 reverse confirmation."
+        )
+    )
     print(
-        f"Encoding audit: {len(hits)} likely mojibake candidate(s) failed CP932 reverse confirmation.",
+        headline,
         file=sys.stderr,
     )
     for hit in hits:

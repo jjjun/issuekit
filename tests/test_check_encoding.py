@@ -174,7 +174,8 @@ def test_check_encoding_fails_on_unconfirmed_mojibake_candidates(
     assert cli.main(["check-encoding"]) == 0
     assert cli.main(["check-encoding", "--fail-on-unconfirmed"]) == 1
     captured = capsys.readouterr()
-    assert "Encoding audit" in captured.err
+    assert "Encoding check failed: 1 unconfirmed mojibake candidate(s) with --fail-on-unconfirmed." in captured.err
+    assert "Encoding audit" not in captured.err
     assert "clean.md:1:1: U+87F2" in captured.err
 
 
