@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from bisect import bisect_right
 import fnmatch
 from pathlib import Path
 import re
@@ -35,6 +36,19 @@ def find_encoding_artifacts(
         for match in pattern.finditer(text)
     }
     return sorted(matches.items())
+
+
+def newline_offsets(text: str) -> tuple[int, ...]:
+    offsets: list[int] = []
+    offset = text.find("\n")
+    while offset != -1:
+        offsets.append(offset)
+        offset = text.find("\n", offset + 1)
+    return tuple(offsets)
+
+
+def line_number_at(offsets: tuple[int, ...], index: int) -> int:
+    return bisect_right(offsets, index) + 1
 
 
 def is_encoding_excluded_path(file: str, patterns: tuple[str, ...]) -> bool:
@@ -74,10 +88,13 @@ def confirmed_mojibake_hits(
     file: str,
     text: str,
     artifacts: list[tuple[int, str]],
+    *,
+    offsets: tuple[int, ...] | None = None,
 ) -> tuple[list[dict[str, int | str]], list[dict[str, int | str]]]:
     confirmed_hits: list[dict[str, int | str]] = []
     unconfirmed_hits: list[dict[str, int | str]] = []
     checked_windows: set[tuple[int, int]] = set()
+    offsets = offsets if offsets is not None else newline_offsets(text)
     for index, character in artifacts:
         start, end = _non_ascii_window(text, index)
         if (start, end) in checked_windows:
@@ -85,7 +102,7 @@ def confirmed_mojibake_hits(
         checked_windows.add((start, end))
         window = text[start:end]
         recovered = _reverse_cp932(window)
-        hit = _mojibake_hit(file, text, index, character)
+        hit = _mojibake_hit(file, text, index, character, offsets)
         if recovered is not None and (
             _contains_c1_control_or_private_use_character(window)
             or _is_plausible_recovery(recovered)
@@ -102,9 +119,11 @@ def _mojibake_hit(
     text: str,
     index: int,
     character: str,
+    offsets: tuple[int, ...],
 ) -> dict[str, int | str]:
-    line = text.count("\n", 0, index) + 1
-    column = index - text.rfind("\n", 0, index)
+    line = line_number_at(offsets, index)
+    previous_newline = offsets[line - 2] if line > 1 else -1
+    column = index - previous_newline
     return {
         "file": file,
         "line": line,

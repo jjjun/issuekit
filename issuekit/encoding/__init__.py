@@ -10,6 +10,8 @@ from issuekit.encoding.detect import (
     find_encoding_artifacts,
     has_non_ascii,
     is_encoding_excluded_path,
+    line_number_at,
+    newline_offsets,
 )
 from issuekit.encoding.report import (
     code_point,
@@ -31,5 +33,7 @@ __all__ = [
     "find_encoding_artifacts",
     "has_non_ascii",
     "is_encoding_excluded_path",
+    "line_number_at",
+    "newline_offsets",
     "print_mojibake_hit",
 ]

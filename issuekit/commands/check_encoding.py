@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from bisect import bisect_right
 import json
 from pathlib import Path
 import subprocess
@@ -392,14 +393,22 @@ def _has_source_extension(file: str) -> bool:
 
 
 def _stray_carriage_return_lines(content: bytes) -> list[int]:
-    if b"\r" not in content:
+    if content.find(b"\r") == -1:
         return []
-    return [
-        content.count(b"\n", 0, index) + 1
-        for index, byte in enumerate(content)
-        if byte == ord("\r")
-        and (index + 1 == len(content) or content[index + 1] != ord("\n"))
-    ]
+
+    newline_offsets: list[int] = []
+    offset = content.find(b"\n")
+    while offset != -1:
+        newline_offsets.append(offset)
+        offset = content.find(b"\n", offset + 1)
+
+    lines: list[int] = []
+    offset = content.find(b"\r")
+    while offset != -1:
+        if offset + 1 == len(content) or content[offset + 1] != ord("\n"):
+            lines.append(bisect_right(newline_offsets, offset) + 1)
+        offset = content.find(b"\r", offset + 1)
+    return lines
 
 
 def _print_unconfirmed_mojibake_hits(

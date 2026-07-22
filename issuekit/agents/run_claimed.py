@@ -17,6 +17,8 @@ from issuekit.encoding import (
     confirmed_mojibake_hits,
     find_encoding_artifacts,
     is_encoding_excluded_path,
+    line_number_at,
+    newline_offsets,
     print_mojibake_hit,
 )
 from issuekit.gitutil import git_root, git_status_short, run_git
@@ -231,7 +233,10 @@ def _mojibake_touched_hits(
 ) -> tuple[list[dict[str, int | str]], list[dict[str, int | str]]]:
     confirmed_hits: list[dict[str, int | str]] = []
     unconfirmed_hits: list[dict[str, int | str]] = []
-    for rel_path in _touched_implementation_paths(repo, issues_dir):
+    paths = _touched_implementation_paths(repo, issues_dir)
+    changed_lines_by_path = _changed_line_numbers(repo, paths)
+    tracked_paths = _tracked_paths(repo, paths)
+    for rel_path in paths:
         path = repo / rel_path
         if not path.exists() or not path.is_file():
             continue
@@ -251,19 +256,23 @@ def _mojibake_touched_hits(
             continue
         # The submit gate defaults to the CLI's strict kana check, but projects
         # with generated half-width katakana can set gate_halfwidth_kana = false.
-        changed_lines = _changed_line_numbers(repo, rel_path, text)
+        offsets = newline_offsets(text)
+        changed_lines = changed_lines_by_path.get(rel_path, set())
+        if not changed_lines and rel_path not in tracked_paths:
+            changed_lines = set(range(1, len(offsets) + 2))
         artifacts = [
             (index, character)
             for index, character in find_encoding_artifacts(
                 text,
                 include_halfwidth_katakana=include_halfwidth_katakana,
             )
-            if text.count("\n", 0, index) + 1 in changed_lines
+            if line_number_at(offsets, index) in changed_lines
         ]
         confirmed, unconfirmed = confirmed_mojibake_hits(
             rel_path.as_posix(),
             text,
             artifacts,
+            offsets=offsets,
         )
         confirmed_hits.extend(confirmed)
         if not is_encoding_excluded_path(rel_path.as_posix(), exclude_patterns):
@@ -271,34 +280,53 @@ def _mojibake_touched_hits(
     return confirmed_hits, unconfirmed_hits
 
 
-def _changed_line_numbers(repo: Path, rel_path: Path, text: str) -> set[int]:
+def _changed_line_numbers(
+    repo: Path, rel_paths: tuple[Path, ...]
+) -> dict[Path, set[int]]:
+    if not rel_paths:
+        return {}
     result = run_git(
-        ["--no-pager", "diff", "--unified=0", "HEAD", "--", rel_path.as_posix()],
+        [
+            "--no-pager",
+            "diff",
+            "--unified=0",
+            "HEAD",
+            "--",
+            *(rel_path.as_posix() for rel_path in rel_paths),
+        ],
+        repo,
+    )
+    if result is None or result.returncode != 0:
+        return {}
+    return _added_line_numbers(result.stdout)
+
+
+def _tracked_paths(repo: Path, rel_paths: tuple[Path, ...]) -> set[Path]:
+    if not rel_paths:
+        return set()
+    result = run_git(
+        ["ls-files", "-z", "--", *(rel_path.as_posix() for rel_path in rel_paths)],
         repo,
     )
     if result is None or result.returncode != 0:
         return set()
-    changed_lines = _added_line_numbers(result.stdout)
-    if changed_lines or _is_tracked_path(repo, rel_path):
-        return changed_lines
-    return set(range(1, text.count("\n") + 2))
+    return {Path(path) for path in result.stdout.split("\0") if path}
 
 
-def _is_tracked_path(repo: Path, rel_path: Path) -> bool:
-    result = run_git(["ls-files", "--error-unmatch", "--", rel_path.as_posix()], repo)
-    return result is not None and result.returncode == 0
-
-
-def _added_line_numbers(diff: str) -> set[int]:
-    changed_lines: set[int] = set()
+def _added_line_numbers(diff: str) -> dict[Path, set[int]]:
+    changed_lines: dict[Path, set[int]] = {}
+    rel_path: Path | None = None
     line_number: int | None = None
     for line in diff.splitlines():
-        if line.startswith("@@"):
+        if line.startswith("+++ b/"):
+            rel_path = Path(line[6:])
+            changed_lines.setdefault(rel_path, set())
+        elif line.startswith("@@"):
             plus_range = line.split(" ")[2]
             start = plus_range[1:].split(",", 1)[0]
             line_number = int(start)
-        elif line_number is not None and line.startswith("+"):
-            changed_lines.add(line_number)
+        elif rel_path is not None and line_number is not None and line.startswith("+"):
+            changed_lines[rel_path].add(line_number)
             line_number += 1
         elif line_number is not None and not line.startswith("-"):
             line_number += 1
