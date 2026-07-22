@@ -95,8 +95,9 @@ do not contain implementation; implementation lives in focused submodules.
   submit_for_review, next_review, approve, request_changes, propose,
   list_incoming/outgoing, adopt/discard_proposal, list_workers,
   list_project_profiles, get_issue, update_issue, list_queue.
-- Library modules: `workflow`, `proposals_api`, `client`, `config`,
-  `agents/*` (runner, review, triage_author), `project_profile`.
+- Library modules: `workflow`, `proposals/api.py`, `api/`, `config`,
+  `agentrun/runner.py`, `agents/` (review, triage_author),
+  `config/project_profile.py`.
 
 ## Example in-scope requests
 
