@@ -33,7 +33,7 @@ from issuekit.negotiation.engine import (
 )
 from issuekit.negotiation.prompts import NegotiationParseError
 from issuekit.proposals import ProposalError
-from issuekit.proposals_api import validate_target_project
+from issuekit.proposals.api import validate_target_project
 from issuekit.store import get_store
 from issuekit.workflow import WorkflowError
 

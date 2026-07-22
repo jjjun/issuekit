@@ -39,7 +39,7 @@ from issuekit.config import IssuekitConfig
 from issuekit.encoding import has_non_ascii
 from issuekit.prompts import TRIAGE_PROMPT, TriageAuthorParseError
 from issuekit.proposals import origin_destination
-from issuekit.proposals_api import (
+from issuekit.proposals.api import (
     ProposalError,
     adopt_proposal_with_append,
     api_client,

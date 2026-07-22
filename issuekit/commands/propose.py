@@ -12,7 +12,7 @@ from issuekit.commands._common import load_config_for_project_mutation
 from issuekit.config import load_config
 from issuekit.core import VALID_ISSUE_PRIORITIES
 from issuekit.proposals import ProposalError
-from issuekit.proposals_api import (
+from issuekit.proposals.api import (
     ProposalAppendError,
     adopt_proposal_with_append,
     api_client,

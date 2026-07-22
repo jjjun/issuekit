@@ -10,7 +10,7 @@ from issuekit.guards.author import guard_dict, read_author_guard
 from issuekit.config import load_config
 from issuekit.core import issue_dict
 from issuekit.issues.display import dependency_detail_lines, dependency_marker
-from issuekit.proposals_api import api_client
+from issuekit.proposals.api import api_client
 from issuekit.store import get_store
 
 

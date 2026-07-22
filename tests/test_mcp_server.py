@@ -9,7 +9,7 @@ import pytest
 pytest.importorskip("mcp")
 
 from issuekit import cli
-from issuekit import proposals_api
+import issuekit.proposals.api as proposals_api
 from issuekit import store as store_module
 from issuekit.api import token_cache as token_cache_module
 from issuekit.workers import registry as worker_registry

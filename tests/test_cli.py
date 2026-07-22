@@ -210,7 +210,7 @@ def test_handlers_are_stubs(command: str) -> None:
 
 
 def test_proposal_cli_round_trip(tmp_path, monkeypatch, capsys) -> None:
-    from issuekit import proposals_api
+    import issuekit.proposals.api as proposals_api
     from issuekit.testing import FakeIssuekitClient
 
     client = FakeIssuekitClient(
@@ -533,7 +533,7 @@ def test_workspace_refs_drive_propose_and_reply_round_trip(
     tmp_path,
     monkeypatch,
 ) -> None:
-    from issuekit import proposals_api
+    import issuekit.proposals.api as proposals_api
     from issuekit import store as store_module
     from issuekit.testing import FakeIssuekitClient
     from tests.issue_helpers import api_issue

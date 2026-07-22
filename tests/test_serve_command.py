@@ -7,7 +7,7 @@ import threading
 from types import SimpleNamespace
 
 from issuekit import cli
-from issuekit import proposals_api
+import issuekit.proposals.api as proposals_api
 from issuekit import store as store_module
 from issuekit.workers import registry as worker_registry
 from issuekit.commands import serve

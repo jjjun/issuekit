@@ -3,10 +3,10 @@ import subprocess
 from pathlib import Path
 
 from issuekit import cli
-from issuekit import proposals_api
+import issuekit.proposals.api as proposals_api
 from issuekit.guards.author import read_author_guard
 from issuekit.config import IssuekitConfig, TriagePolicy
-from issuekit.proposals_api import _git_commit
+from issuekit.proposals.api import _git_commit
 from issuekit.proposals import ProposalError, origin_destination
 from issuekit.testing import FakeIssuekitClient
 

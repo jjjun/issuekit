@@ -19,7 +19,7 @@ from issuekit.agentrun import AgentRunner
 from issuekit.config import IssuekitConfig
 from issuekit.encoding import has_non_ascii
 from issuekit.prompts import PROPOSAL_CHECK_PROMPT, ProposalCheckParseError
-from issuekit.proposals_api import ProposalError, adopt_proposal_with_append, api_client
+from issuekit.proposals.api import ProposalError, adopt_proposal_with_append, api_client
 from issuekit.workflow import WorkflowError
 PROPOSAL_CHECK_BLOCK_LANGUAGE = PROPOSAL_CHECK_PROMPT.block_language
 PROPOSAL_CHECK_VERDICTS = {"approve", "reject", "revise"}

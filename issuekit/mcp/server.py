@@ -31,7 +31,7 @@ from issuekit.issues.orphans import (
     stale_claim_dict,
 )
 from issuekit.prompts.protocol import render_protocol, render_server_instructions
-from issuekit.proposals_api import (
+from issuekit.proposals.api import (
     adopt_proposal_with_append,
     api_client,
     build_proposal,

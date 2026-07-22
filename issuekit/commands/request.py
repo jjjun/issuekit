@@ -28,7 +28,7 @@ from issuekit.commands.request_state import (
 )
 from issuekit.config import IssuekitConfig, load_config
 from issuekit.gitutil import git_short_head
-from issuekit import proposals_api
+import issuekit.proposals.api as proposals_api
 from issuekit.proposals import ProposalError
 from issuekit.workflow import WorkflowError
 

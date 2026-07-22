@@ -35,7 +35,7 @@ from issuekit.commands.serve_loop import (
 )
 from issuekit.core import Issue
 from issuekit.proposals import ProposalError
-from issuekit.proposals_api import auto_adopt_incoming_proposals
+from issuekit.proposals.api import auto_adopt_incoming_proposals
 from issuekit.store import get_store
 from issuekit.workers.registry import (
     WORKER_HEARTBEAT_INTERVAL_SEC,

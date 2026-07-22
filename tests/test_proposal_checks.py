@@ -8,7 +8,7 @@ import subprocess
 
 import pytest
 
-from issuekit import proposals_api
+import issuekit.proposals.api as proposals_api
 from issuekit.agents import proposal_check
 from issuekit.agents.proposal_check import (
     ProposalCheckParseError,

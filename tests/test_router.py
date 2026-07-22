@@ -8,7 +8,8 @@ import subprocess
 
 import pytest
 
-from issuekit import cli, proposals_api
+from issuekit import cli
+import issuekit.proposals.api as proposals_api
 from issuekit.agents import router
 from issuekit.agentrun import AgentResult
 from issuekit.agents.router import RouterParseError, parse_router_output

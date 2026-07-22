@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 from issuekit import cli
-from issuekit import proposals_api
+import issuekit.proposals.api as proposals_api
 from issuekit.testing import FakeIssuekitClient
 
 

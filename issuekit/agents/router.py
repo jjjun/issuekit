@@ -16,7 +16,7 @@ from issuekit.config import IssuekitConfig
 from issuekit.encoding import has_non_ascii
 from issuekit.issues.dependencies import DEPENDENCY_REF_EXPECTED, DEPENDENCY_REF_PATTERN
 from issuekit.prompts import ROUTER_PROMPT, RouterParseError
-from issuekit.proposals_api import api_client
+from issuekit.proposals.api import api_client
 from issuekit.workflow import WorkflowError
 ROUTE_BLOCK_LANGUAGE = ROUTER_PROMPT.block_language
 _DECISIONS = {"route", "clarify", "reject"}

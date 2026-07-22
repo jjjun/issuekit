@@ -9,7 +9,7 @@ import subprocess
 
 import pytest
 
-from issuekit import proposals_api
+import issuekit.proposals.api as proposals_api
 from issuekit.agents import triage_author
 from issuekit.agentrun import AgentResult
 from issuekit.agents.triage_author import (
