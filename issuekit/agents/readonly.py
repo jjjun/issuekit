@@ -29,15 +29,14 @@ def prompt_from_spec(
     *,
     cwd: Path,
     filename: str,
-    body: str | None = None,
-    **context: object,
+    body: str,
 ) -> AgentPrompt:
-    """Build a runtime prompt from a prompt spec and render context."""
+    """Build a runtime prompt from a prompt spec and rendered body."""
 
     path = cwd / ".agent-runs" / filename
     return AgentPrompt(
         path=path,
-        body=spec.render(**context) if body is None else body,
+        body=body,
         pointer=spec.render_pointer(prompt_path=path),
     )
 
