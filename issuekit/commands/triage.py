@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
 import sys
 
+from issuekit.commands._common import print_json
 from issuekit.agentrun import AgentRunner
 from issuekit.agents.triage_author import (
     TriageAuthorParseError,
@@ -71,7 +71,7 @@ def run(args) -> int:
             err=sys.stderr,
         )
         if args.json:
-            print(json.dumps([decision.to_dict() for decision in decisions], indent=2))
+            print_json([decision.to_dict() for decision in decisions])
         else:
             _print_decisions(decisions)
         return 0

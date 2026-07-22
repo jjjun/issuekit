@@ -795,7 +795,7 @@ def test_token_cache_miss_message_lists_other_cached_urls(
     )
 
     assert token_cache_module.read_cached_token("https://missing.example") is None
-    assert token_cache_module._cached_token_miss_message("https://missing.example") == (
+    assert token_cache_module.cached_token_miss_message("https://missing.example") == (
         "no cached token for https://missing.example "
         "(cached: https://alpha.example, https://beta.example); "
         "re-run `issuekit login` with ISSUEKIT_API_URL set to the URL this client uses"

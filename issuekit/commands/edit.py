@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import argparse
 from collections.abc import Sequence
-import json
 from pathlib import Path
 
+from issuekit.commands._common import print_json
 from issuekit.commands._common import active_issue_not_found, require_ascii, run_command
 from issuekit.config import IssuekitConfig, load_config
 from issuekit.core import Issue, VALID_ISSUE_PRIORITIES, issue_dict, parse_issue_id_arg
@@ -62,7 +62,7 @@ def run(args) -> int:
             config=config,
         )
         if args.json:
-            print(json.dumps(issue_dict(issue, include_body=True), indent=2))
+            print_json(issue_dict(issue, include_body=True))
         else:
             print(f"Updated issue: {issue.ref}")
         return 0

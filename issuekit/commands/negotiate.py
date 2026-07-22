@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
 import sys
 
+from issuekit.commands._common import print_json
 from issuekit.agentrun import AgentRunner
 from issuekit.commands._common import run_command
 from issuekit.config import load_config
@@ -132,7 +132,7 @@ def run(args) -> int:
                 issue_creator=creator,
             )
             if args.json:
-                print(json.dumps(result.to_dict(), indent=2))
+                print_json(result.to_dict())
             else:
                 _print_human_finalization_result(result)
             return 0
@@ -166,7 +166,7 @@ def run(args) -> int:
             runner=AgentRunner(),
         )
         if args.json:
-            print(json.dumps(result.to_dict(), indent=2))
+            print_json(result.to_dict())
         else:
             _print_human_result(result)
         return 0
@@ -198,14 +198,14 @@ def run_threads(args) -> int:
         if args.thread_id:
             inspection = inspect_thread(args.thread_id, store=store)
             if args.json:
-                print(json.dumps(inspection.to_dict(), indent=2))
+                print_json(inspection.to_dict())
             else:
                 _print_human_thread_inspection(inspection)
             return 0
 
         summaries = store.list_threads(status=status)
         if args.json:
-            print(json.dumps([_thread_summary_to_dict(summary) for summary in summaries], indent=2))
+            print_json([_thread_summary_to_dict(summary) for summary in summaries])
         else:
             _print_human_thread_summaries(summaries)
         return 0

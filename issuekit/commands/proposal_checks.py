@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
 import sys
 
+from issuekit.commands._common import print_json
 from issuekit.agents.proposal_check import (
     ProposalCheckParseError,
     ProposalCheckDecision,
@@ -100,7 +100,7 @@ def run(args) -> int:
             err=sys.stderr,
         )
         if args.json:
-            print(json.dumps([decision.to_dict() for decision in decisions], indent=2))
+            print_json([decision.to_dict() for decision in decisions])
         else:
             _print_decisions(decisions)
         return 1 if any(decision.error for decision in decisions) else 0
@@ -128,7 +128,7 @@ def _run_list(args, config: IssuekitConfig) -> int:
             offset=int(args.offset),
         )
         if args.json:
-            print(json.dumps(checks, indent=2))
+            print_json(checks)
         else:
             _print_checks(checks)
         return 0

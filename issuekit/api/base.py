@@ -8,29 +8,29 @@ from typing import Any
 import httpx
 
 from .security import (
-    _is_expired,
-    _jwt_expiry,
-    _response_expiry,
-    _warn_insecure_api_url,
+    is_expired,
+    jwt_expiry,
+    response_expiry,
+    warn_insecure_api_url,
 )
 from issuekit.core import drop_none
 from .token_cache import (
-    _cached_token_miss_message,
-    _delete_cached_token,
-    _write_cached_token,
+    cached_token_miss_message,
+    delete_cached_token,
+    write_cached_token,
 )
 from issuekit.workflow import WorkflowError
 
 
 JsonDict = dict[str, Any]
 JsonBody = Mapping[str, Any] | Sequence[Mapping[str, Any]]
-_LOGIN_GUIDANCE = (
+LOGIN_GUIDANCE = (
     "API credentials are required; run `issuekit login` or set "
     "ISSUEKIT_API_USER and ISSUEKIT_API_PASSWORD or ISSUEKIT_API_TOKEN."
 )
 
 
-class _ClientTransportMixin:
+class ClientTransportMixin:
     api_url: str
     project: str
     timeout: float
@@ -43,14 +43,14 @@ class _ClientTransportMixin:
 
     def login(self, *, force: bool = False) -> str:
         """Log in with service-account credentials and cache the JWT."""
-        if not force and self._token and not _is_expired(self._token_expiry):
+        if not force and self._token and not is_expired(self._token_expiry):
             return self._token
         if not self.username or not self.password:
-            if self._external_token and self._token and not _is_expired(self._token_expiry):
+            if self._external_token and self._token and not is_expired(self._token_expiry):
                 return self._token
             raise WorkflowError(_login_guidance(self.api_url), code="unauthorized")
 
-        _warn_insecure_api_url(self.api_url)
+        warn_insecure_api_url(self.api_url)
         response = self._send(
             "POST",
             "/auth/login",
@@ -64,15 +64,15 @@ class _ClientTransportMixin:
         if not isinstance(token, str) or not token:
             raise WorkflowError("Login response did not include an access token.", code="invalid_response")
         self._token = token
-        self._token_expiry = _response_expiry(payload) or _jwt_expiry(token)
+        self._token_expiry = response_expiry(payload) or jwt_expiry(token)
         if not self._external_token:
-            _write_cached_token(self.api_url, token, self._token_expiry)
+            write_cached_token(self.api_url, token, self._token_expiry)
         return token
 
     def logout(self) -> None:
         """Best-effort API logout followed by local token-cache removal."""
         token = self._token
-        if token and not _is_expired(self._token_expiry):
+        if token and not is_expired(self._token_expiry):
             try:
                 response = self._send(
                     "POST",
@@ -85,7 +85,7 @@ class _ClientTransportMixin:
                 self._parse_response(response)
             except WorkflowError:
                 pass
-        _delete_cached_token(self.api_url)
+        delete_cached_token(self.api_url)
         self._token = None
         self._token_expiry = None
 
@@ -93,7 +93,7 @@ class _ClientTransportMixin:
         """Read the unauthenticated backend health payload."""
         response = self._send("GET", "/health", headers={"Accept": "application/json"})
         payload = self._parse_response(response)
-        return _ensure_dict(payload, "Health response")
+        return ensure_dict(payload, "Health response")
 
     def _request(
         self,
@@ -119,7 +119,7 @@ class _ClientTransportMixin:
         json: JsonBody | None = None,
         params: Mapping[str, Any] | None = None,
     ) -> Any:
-        _warn_insecure_api_url(self.api_url)
+        warn_insecure_api_url(self.api_url)
         token = self.login()
         response = self._send(
             method,
@@ -167,7 +167,7 @@ class _ClientTransportMixin:
                 payload = self._authorized_request("GET", path, params=page_params)
             else:
                 payload = self._request("GET", path, collection=collection, params=page_params)
-            page = _ensure_dict(payload, page_label)
+            page = ensure_dict(payload, page_label)
             items = page.get("items")
             if not isinstance(items, list):
                 raise WorkflowError(
@@ -175,7 +175,7 @@ class _ClientTransportMixin:
                     code="invalid_response",
                 )
             for item in items:
-                yield _ensure_dict(item, item_label)
+                yield ensure_dict(item, item_label)
 
             total = page.get("total")
             limit = page.get("limit", page_size)
@@ -247,37 +247,37 @@ class _ClientTransportMixin:
         return f"{self.api_url}{suffix}"
 
 
-def _ensure_dict(payload: Any, label: str) -> JsonDict:
+def ensure_dict(payload: Any, label: str) -> JsonDict:
     if not isinstance(payload, dict):
         raise WorkflowError(f"{label} was not a JSON object.", code="invalid_response")
     return payload
 
 
 def _login_guidance(api_url: str) -> str:
-    miss_message = _cached_token_miss_message(api_url)
+    miss_message = cached_token_miss_message(api_url)
     if miss_message is None:
-        return _LOGIN_GUIDANCE
-    return f"{_LOGIN_GUIDANCE} {miss_message}."
+        return LOGIN_GUIDANCE
+    return f"{LOGIN_GUIDANCE} {miss_message}."
 
 
 def _items_envelope_rows(payload: Any, *, page_label: str, item_label: str) -> list[JsonDict]:
-    page = _ensure_dict(payload, page_label)
+    page = ensure_dict(payload, page_label)
     items = page.get("items")
     if not isinstance(items, list):
         raise WorkflowError(
             f"{page_label} items was not a JSON array.",
             code="invalid_response",
         )
-    return [_ensure_dict(item, item_label) for item in items]
+    return [ensure_dict(item, item_label) for item in items]
 
 
 def _array_or_items_rows(payload: Any, *, page_label: str, item_label: str) -> list[JsonDict]:
     if isinstance(payload, list):
-        return [_ensure_dict(item, item_label) for item in payload]
+        return [ensure_dict(item, item_label) for item in payload]
     return _items_envelope_rows(payload, page_label=page_label, item_label=item_label)
 
 
-def _profile_rows(payload: Any) -> list[JsonDict]:
+def profile_rows(payload: Any) -> list[JsonDict]:
     # Accept a bare JSON array or a paginated {"items": [...]} envelope so the
     # client tolerates either backend list shape.
     return _array_or_items_rows(
@@ -287,7 +287,7 @@ def _profile_rows(payload: Any) -> list[JsonDict]:
     )
 
 
-def _worker_rows(payload: Any) -> list[JsonDict]:
+def worker_rows(payload: Any) -> list[JsonDict]:
     # Accept either a bare JSON array or a paginated {"items": [...]} envelope so
     # the client tolerates either backend list shape.
     return _array_or_items_rows(

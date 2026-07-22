@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import argparse
-import json
 from datetime import datetime
 from pathlib import Path
 import sys
 
+from issuekit.commands._common import print_json
 from issuekit.agentrun.status import RunStatus, find_status, is_stale, list_statuses
 
 
@@ -42,7 +42,7 @@ def _print_list(run_dir: Path, *, active_only: bool, json_output: bool) -> int:
         statuses = [status for status in statuses if status.is_active]
 
     if json_output:
-        print(json.dumps([status.to_dict() for status in statuses], indent=2))
+        print_json([status.to_dict() for status in statuses])
         return 0
 
     if not statuses:
@@ -82,10 +82,10 @@ def _print_detail(run_dir: Path, run_id: str, *, json_output: bool) -> int:
 
     record = status.to_dict()
     if json_output:
-        print(json.dumps(record, indent=2))
+        print_json(record)
         return 0
 
-    print(json.dumps(record, indent=2))
+    print_json(record)
     _print_log_tail("stdout", _resolve_log_path(run_dir, status.stdout_log))
     _print_log_tail("agent", _resolve_log_path(run_dir, status.agent_log))
     return 0

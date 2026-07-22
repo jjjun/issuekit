@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
 
+from issuekit.commands._common import print_json
 from issuekit.commands._common import run_command
 from issuekit.config import load_config
 from issuekit.core import issue_dict, worker_display_from_row
@@ -80,7 +80,7 @@ def run_list(args) -> int:
             project=args.project,
         )
         if args.json:
-            print(json.dumps(workers, indent=2))
+            print_json(workers)
             return 0
         if not workers:
             print("No workers registered.")
@@ -100,7 +100,7 @@ def run_remove(args) -> int:
         config = load_config(Path.cwd())
         result = remove_api_worker(config, args.address, force=args.force)
         if args.json:
-            print(json.dumps(worker_removal_result_dict(result), indent=2))
+            print_json(worker_removal_result_dict(result))
             return 0
         _print_removal_result(result)
         return 0
@@ -121,7 +121,7 @@ def run_prune(args) -> int:
         )
         if args.dry_run:
             if args.json:
-                print(json.dumps(worker_prune_result_dict(preview), indent=2))
+                print_json(worker_prune_result_dict(preview))
                 return 0
             _print_prune_preview(preview)
             return 0
@@ -133,7 +133,7 @@ def run_prune(args) -> int:
             expected_count=len(preview.candidates),
         )
         if args.json:
-            print(json.dumps(worker_prune_result_dict(result), indent=2))
+            print_json(worker_prune_result_dict(result))
             return 0
         _print_prune_result(result)
         return 0

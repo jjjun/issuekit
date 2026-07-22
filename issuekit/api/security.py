@@ -17,11 +17,11 @@ _ALLOW_INSECURE_ENV = "ISSUEKIT_ALLOW_INSECURE"
 _WARNED_INSECURE_API_URLS: set[str] = set()
 
 
-def _is_expired(expiry: float | None) -> bool:
+def is_expired(expiry: float | None) -> bool:
     return expiry is not None and expiry <= time.time() + 30
 
 
-def _warn_insecure_api_url(api_url: str) -> None:
+def warn_insecure_api_url(api_url: str) -> None:
     if _env_flag_enabled(_ALLOW_INSECURE_ENV):
         return
     if not _is_insecure_remote_url(api_url):
@@ -54,7 +54,7 @@ def _env_flag_enabled(name: str) -> bool:
     return os.getenv(name, "").strip().lower() in {"1", "true", "yes", "on"}
 
 
-def _response_expiry(payload: Mapping[str, Any]) -> float | None:
+def response_expiry(payload: Mapping[str, Any]) -> float | None:
     for key in ("expires_at", "expires"):
         raw = payload.get(key)
         if isinstance(raw, (int, float)):
@@ -65,7 +65,7 @@ def _response_expiry(payload: Mapping[str, Any]) -> float | None:
     return None
 
 
-def _jwt_expiry(token: str | None) -> float | None:
+def jwt_expiry(token: str | None) -> float | None:
     if not token:
         return None
     parts = token.split(".")

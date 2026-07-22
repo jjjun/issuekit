@@ -6,13 +6,13 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 from urllib.parse import quote
 
-from .base import JsonDict, _ensure_dict, _profile_rows, _worker_rows
+from .base import JsonDict, ensure_dict, profile_rows, worker_rows
 from issuekit.core import drop_none
 from issuekit.issues.session import validate_session_token
 from issuekit.workflow import WorkflowError
 
 
-class _IssueResourceMixin:
+class IssueResourceMixin:
     project: str
 
     def list_issues(
@@ -41,14 +41,14 @@ class _IssueResourceMixin:
                     }
                 ),
             )
-            page = _ensure_dict(payload, "Issue board response")
+            page = ensure_dict(payload, "Issue board response")
             items = page.get("items")
             if not isinstance(items, list):
                 raise WorkflowError(
                     "Issue board response items was not a JSON array.",
                     code="invalid_response",
                 )
-            return [_ensure_dict(item, "Issue response") for item in items]
+            return [ensure_dict(item, "Issue response") for item in items]
 
         params = drop_none(
             {
@@ -132,7 +132,7 @@ class _IssueResourceMixin:
                 }
             ),
         )
-        page = _ensure_dict(payload, "Issue board response")
+        page = ensure_dict(payload, "Issue board response")
         total = page.get("total")
         if not isinstance(total, int):
             raise WorkflowError(
@@ -143,14 +143,14 @@ class _IssueResourceMixin:
 
     def get_issue(self, number: int) -> JsonDict:
         payload = self._request("GET", f"/{number}")
-        return _ensure_dict(payload, "Issue response")
+        return ensure_dict(payload, "Issue response")
 
     def create_issue(self, issue: Mapping[str, Any], *, session: str | None = None) -> JsonDict:
         body = dict(issue)
         if session is not None:
             body["session"] = validate_session_token(session)
         payload = self._request("POST", "/", json=body)
-        return _ensure_dict(payload, "Create response")
+        return ensure_dict(payload, "Create response")
 
     def update_issue(self, number: int, issue: Mapping[str, Any]) -> JsonDict:
         update = drop_none(
@@ -164,7 +164,7 @@ class _IssueResourceMixin:
         if not update:
             raise ValueError("Issue update requires at least one editable field.")
         payload = self._request("PATCH", f"/{number}", json=update)
-        return _ensure_dict(payload, "Update response")
+        return ensure_dict(payload, "Update response")
 
     def claim(
         self,
@@ -189,7 +189,7 @@ class _IssueResourceMixin:
             f"/{number}/claim",
             json=body,
         )
-        return _ensure_dict(payload, "Claim response")
+        return ensure_dict(payload, "Claim response")
 
     def claim_next(
         self,
@@ -217,7 +217,7 @@ class _IssueResourceMixin:
         )
         if payload is None:
             return None
-        return _ensure_dict(payload, "Claim-next response")
+        return ensure_dict(payload, "Claim-next response")
 
     def reclaim(
         self,
@@ -238,7 +238,7 @@ class _IssueResourceMixin:
                 }
             ),
         )
-        return _ensure_dict(payload, "Reclaim response")
+        return ensure_dict(payload, "Reclaim response")
 
     def readdress(
         self,
@@ -259,7 +259,7 @@ class _IssueResourceMixin:
                 }
             ),
         )
-        return _ensure_dict(payload, "Readdress response")
+        return ensure_dict(payload, "Readdress response")
 
     def submit(
         self,
@@ -284,7 +284,7 @@ class _IssueResourceMixin:
                 }
             ),
         )
-        return _ensure_dict(payload, "Submit response")
+        return ensure_dict(payload, "Submit response")
 
     def request_changes(
         self,
@@ -309,7 +309,7 @@ class _IssueResourceMixin:
                 }
             ),
         )
-        return _ensure_dict(payload, "Request-changes response")
+        return ensure_dict(payload, "Request-changes response")
 
     def approve(
         self,
@@ -334,7 +334,7 @@ class _IssueResourceMixin:
                 }
             ),
         )
-        return _ensure_dict(payload, "Approve response")
+        return ensure_dict(payload, "Approve response")
 
     def complete(self, number: int, *, summary: str, verification: str, force: bool = False) -> JsonDict:
         payload = self._request(
@@ -346,9 +346,9 @@ class _IssueResourceMixin:
                 "force": force,
             },
         )
-        return _ensure_dict(payload, "Complete response")
+        return ensure_dict(payload, "Complete response")
 
-class _WorkerResourceMixin:
+class WorkerResourceMixin:
     def upsert_repo(
         self,
         *,
@@ -366,7 +366,7 @@ class _WorkerResourceMixin:
             }
         )
         payload = self._authorized_request("POST", "/api/repos", json=body)
-        return _ensure_dict(payload, "Repo response")
+        return ensure_dict(payload, "Repo response")
 
     def upsert_worker(
         self,
@@ -411,7 +411,7 @@ class _WorkerResourceMixin:
             )
         )
         payload = self._authorized_request("POST", "/api/workers", json=body)
-        return _ensure_dict(payload, "Worker response")
+        return ensure_dict(payload, "Worker response")
 
     def list_workers(
         self,
@@ -424,7 +424,7 @@ class _WorkerResourceMixin:
             "/api/workers",
             params=drop_none({"repo_id": repo_id, "project": project}),
         )
-        return _worker_rows(payload)
+        return worker_rows(payload)
 
     def delete_worker(self, worker_id: str) -> JsonDict:
         payload = self._authorized_request(
@@ -433,7 +433,7 @@ class _WorkerResourceMixin:
         )
         if payload is None:
             return {"id": worker_id, "deleted": True}
-        return _ensure_dict(payload, "Worker delete response")
+        return ensure_dict(payload, "Worker delete response")
 
     def delete_repo(self, repo_key: str) -> JsonDict:
         payload = self._authorized_request(
@@ -442,10 +442,10 @@ class _WorkerResourceMixin:
         )
         if payload is None:
             return {"repo_key": repo_key, "deleted": True}
-        return _ensure_dict(payload, "Repo delete response")
+        return ensure_dict(payload, "Repo delete response")
 
 
-class _ProfileResourceMixin:
+class ProfileResourceMixin:
     project: str
 
     def put_project_profile(
@@ -471,7 +471,7 @@ class _ProfileResourceMixin:
             f"/api/projects/{self.project}/profile",
             json=body,
         )
-        return _ensure_dict(payload, "Project profile response")
+        return ensure_dict(payload, "Project profile response")
 
     def get_project_profile(self, project: str | None = None) -> JsonDict:
         target = project or self.project
@@ -479,14 +479,14 @@ class _ProfileResourceMixin:
             "GET",
             f"/api/projects/{target}/profile",
         )
-        return _ensure_dict(payload, "Project profile response")
+        return ensure_dict(payload, "Project profile response")
 
     def list_project_profiles(self) -> list[JsonDict]:
         payload = self._authorized_request("GET", "/api/projects/profiles")
-        return _profile_rows(payload)
+        return profile_rows(payload)
 
 
-class _ProposalCheckResourceMixin:
+class ProposalCheckResourceMixin:
     project: str
 
     def create_proposal_check(
@@ -502,7 +502,7 @@ class _ProposalCheckResourceMixin:
             f"/api/issues/{target_project}/proposals/{proposal_id}/checks",
             json={"target_worker": target_worker},
         )
-        return _ensure_dict(payload, "Proposal check response")
+        return ensure_dict(payload, "Proposal check response")
 
     def list_proposal_checks(
         self,
@@ -542,14 +542,14 @@ class _ProposalCheckResourceMixin:
                 }
             ),
         )
-        page = _ensure_dict(payload, "Proposal check list response")
+        page = ensure_dict(payload, "Proposal check list response")
         items = page.get("items")
         if not isinstance(items, list):
             raise WorkflowError(
                 "Proposal check list response items was not a JSON array.",
                 code="invalid_response",
             )
-        return [_ensure_dict(item, "Proposal check response") for item in items]
+        return [ensure_dict(item, "Proposal check response") for item in items]
 
     def post_proposal_check_result(
         self,
@@ -571,10 +571,10 @@ class _ProposalCheckResourceMixin:
                 }
             ),
         )
-        return _ensure_dict(payload, "Proposal check response")
+        return ensure_dict(payload, "Proposal check response")
 
 
-class _ProposalResourceMixin:
+class ProposalResourceMixin:
     def create_proposal(
         self,
         *,
@@ -612,7 +612,7 @@ class _ProposalResourceMixin:
                 }
             ),
         )
-        return _ensure_dict(payload, "Proposal response")
+        return ensure_dict(payload, "Proposal response")
 
     def list_proposals(
         self,
@@ -660,11 +660,11 @@ class _ProposalResourceMixin:
                 }
             ),
         )
-        return _ensure_dict(payload, "Proposal response")
+        return ensure_dict(payload, "Proposal response")
 
     def get_thread(self, thread_id: int) -> JsonDict:
         payload = self._request("GET", f"/thread/{thread_id}", collection="proposals")
-        return _ensure_dict(payload, "Proposal thread response")
+        return ensure_dict(payload, "Proposal thread response")
 
     def list_threads(
         self,
@@ -705,11 +705,11 @@ class _ProposalResourceMixin:
                 }
             ),
         )
-        return _ensure_dict(payload, "Proposal thread response")
+        return ensure_dict(payload, "Proposal thread response")
 
     def get_proposal(self, proposal_id: int) -> JsonDict:
         payload = self._request("GET", f"/{proposal_id}", collection="proposals")
-        return _ensure_dict(payload, "Proposal response")
+        return ensure_dict(payload, "Proposal response")
 
     def adopt_proposal(self, proposal_id: int, *, priority: str | None = None) -> JsonDict:
         payload = self._request(
@@ -718,11 +718,11 @@ class _ProposalResourceMixin:
             collection="proposals",
             json=drop_none({"priority": priority}),
         )
-        return _ensure_dict(payload, "Adopt proposal response")
+        return ensure_dict(payload, "Adopt proposal response")
 
     def discard_proposal(self, proposal_id: int) -> JsonDict:
         payload = self._request("POST", f"/{proposal_id}/discard", collection="proposals")
-        return _ensure_dict(payload, "Discard proposal response")
+        return ensure_dict(payload, "Discard proposal response")
 
 def _validated_session(session: str | None) -> str | None:
     return None if session is None else validate_session_token(session)

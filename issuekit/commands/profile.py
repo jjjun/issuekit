@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 import sys
 
+from issuekit.commands._common import print_json
 from issuekit.commands._common import run_command
 from issuekit.config import load_config
 from issuekit.config.project_profile import ProjectProfile, load_project_profile
@@ -53,7 +54,7 @@ def _run_all(config, *, json_out: bool) -> int:
     with api_client(config) as client:
         profiles = client.list_project_profiles()
     if json_out:
-        print(json.dumps(profiles, indent=2))
+        print_json(profiles)
         return 0
     if not profiles:
         print("No stored project profiles.")
@@ -68,7 +69,7 @@ def _run_remote(config, project: str, *, json_out: bool) -> int:
     with api_client(config) as client:
         profile = client.get_project_profile(project)
     if json_out:
-        print(json.dumps(profile, indent=2))
+        print_json(profile)
         return 0
     _print_remote(profile)
     return 0

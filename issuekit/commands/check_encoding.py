@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import argparse
 from bisect import bisect_right
-import json
 from pathlib import Path
 import subprocess
 import sys
 
+from issuekit.commands._common import print_json
 from issuekit.config import load_config
 from issuekit.encoding import (
     confirmed_mojibake_hits,
@@ -201,7 +201,7 @@ def run(args) -> int:
         "fixed": fixed_files,
     }
     if args.json:
-        print(json.dumps(payload, indent=2))
+        print_json(payload)
 
     if (
         not remaining_bom_files

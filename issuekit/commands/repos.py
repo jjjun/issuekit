@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
 
+from issuekit.commands._common import print_json
 from issuekit.commands._common import run_command
 from issuekit.config import load_config
 from issuekit.workers.registry import (
@@ -42,7 +42,7 @@ def run_remove(args) -> int:
         config = load_config(Path.cwd())
         result = remove_api_repo(config, args.repo)
         if args.json:
-            print(json.dumps(repo_removal_result_dict(result), indent=2))
+            print_json(repo_removal_result_dict(result))
             return 0
         print(f"Removed repo {result.repo_key}.")
         return 0

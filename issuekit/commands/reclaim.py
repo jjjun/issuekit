@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
 
+from issuekit.commands._common import print_json
 from issuekit.commands._common import run_command
 from issuekit.config import load_config
 from issuekit.core import issue_dict
@@ -54,7 +54,7 @@ def run(args) -> int:
             config=config,
         )
         if args.json:
-            print(json.dumps(reclaim_result_dict(result), indent=2))
+            print_json(reclaim_result_dict(result))
             return 0
         _print_result(result)
         return 0

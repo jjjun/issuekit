@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import asynccontextmanager
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, AsyncIterator
 from urllib.parse import unquote, urlparse
 
 from mcp.server.fastmcp import Context, FastMCP
@@ -89,8 +90,7 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
         no_sync: bool = False,
         ctx: Context | None = None,
     ) -> dict[str, Any]:
-        config, config_root = await _load_api_config(root, ctx)
-        with get_store(config) as store:
+        async with _api_store(root, ctx) as (config, config_root, store):
             issue = claim_next(
                 assignee,
                 priority=priority,
@@ -122,8 +122,7 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
         allow_any_branch: bool = False,
         ctx: Context | None = None,
     ) -> dict[str, Any]:
-        config, config_root = await _load_api_config(root, ctx)
-        with get_store(config) as store:
+        async with _api_store(root, ctx) as (config, config_root, store):
             issue = workflow_submit_for_review(
                 id,
                 summary=summary,
@@ -149,8 +148,7 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
         reviewer: str | None = None,
         ctx: Context | None = None,
     ) -> dict[str, Any]:
-        config, _config_root = await _load_api_config(root, ctx)
-        with get_store(config) as store:
+        async with _api_store(root, ctx) as (config, _config_root, store):
             issue = workflow_next_review(reviewer, config=config, store=store)
         if issue is None:
             return {
@@ -170,8 +168,7 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
         assignee: str | None = None,
         ctx: Context | None = None,
     ) -> dict[str, Any]:
-        config, _config_root = await _load_api_config(root, ctx)
-        with get_store(config) as store:
+        async with _api_store(root, ctx) as (config, _config_root, store):
             issue = workflow_request_changes(
                 id,
                 notes=notes,
@@ -192,8 +189,7 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
         reviewer: str | None = None,
         ctx: Context | None = None,
     ) -> dict[str, Any]:
-        config, _config_root = await _load_api_config(root, ctx)
-        with get_store(config) as store:
+        async with _api_store(root, ctx) as (config, _config_root, store):
             issue = approve_issue(
                 id,
                 verification=verification,
@@ -206,8 +202,7 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
 
     @server.tool(description="Read one active or completed issue by id.")
     async def get_issue(id: int, ctx: Context | None = None) -> dict[str, Any]:
-        config, _config_root = await _load_api_config(root, ctx)
-        with get_store(config) as store:
+        async with _api_store(root, ctx) as (config, _config_root, store):
             issue = store.get_issue(id)
         if issue is None:
             return {"status": "none", "id": id}
@@ -226,8 +221,7 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
     ) -> dict[str, Any]:
         if body is not None and append is not None:
             raise ValueError("body and append are mutually exclusive.")
-        config, _config_root = await _load_api_config(root, ctx)
-        with get_store(config) as store:
+        async with _api_store(root, ctx) as (config, _config_root, store):
             issue = edit_issue(
                 id,
                 title=title,
@@ -247,8 +241,7 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
         stage: str | None = None,
         ctx: Context | None = None,
     ) -> list[dict[str, Any]]:
-        config, _config_root = await _load_api_config(root, ctx)
-        with get_store(config) as store:
+        async with _api_store(root, ctx) as (config, _config_root, store):
             return [
                 issue_dict(issue)
                 for issue in find_for(assignee, stage=stage, config=config, store=store)
@@ -265,8 +258,8 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
         project: str | None = None,
         ctx: Context | None = None,
     ) -> list[dict[str, Any]]:
-        config, _config_root = await _load_api_config(root, ctx)
-        return list_api_workers(config, repo_id=repo_id, project=project)
+        async with _api_config(root, ctx) as (config, _config_root):
+            return list_api_workers(config, repo_id=repo_id, project=project)
 
     @server.tool(
         description=(
@@ -279,8 +272,8 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
         force: bool = False,
         ctx: Context | None = None,
     ) -> dict[str, Any]:
-        config, _config_root = await _load_api_config(root, ctx)
-        result = remove_api_worker(config, address, force=force)
+        async with _api_config(root, ctx) as (config, _config_root):
+            result = remove_api_worker(config, address, force=force)
         return {
             "worker": result.worker,
             "display": worker_display_from_row(result.worker),
@@ -301,8 +294,8 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
         repo: str,
         ctx: Context | None = None,
     ) -> dict[str, Any]:
-        config, _config_root = await _load_api_config(root, ctx)
-        result = remove_api_repo(config, repo)
+        async with _api_config(root, ctx) as (config, _config_root):
+            result = remove_api_repo(config, repo)
         return {"repo_key": result.repo_key, "deleted": result.deleted}
 
     @server.tool(
@@ -316,8 +309,8 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
         stale_after_sec: float = DEFAULT_STALE_AFTER_SEC,
         ctx: Context | None = None,
     ) -> list[dict[str, Any]]:
-        config, _config_root = await _load_api_config(root, ctx)
-        claims = list_stale_claims(config, stale_after_sec=stale_after_sec)
+        async with _api_config(root, ctx) as (config, _config_root):
+            claims = list_stale_claims(config, stale_after_sec=stale_after_sec)
         return [stale_claim_dict(claim) for claim in claims]
 
     @server.tool(
@@ -334,14 +327,14 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
         reason: str | None = None,
         ctx: Context | None = None,
     ) -> dict[str, Any]:
-        config, _config_root = await _load_api_config(root, ctx)
-        result = workflow_reclaim_issue(
-            id,
-            force=force,
-            stale_after_sec=stale_after_sec,
-            reason=reason,
-            config=config,
-        )
+        async with _api_config(root, ctx) as (config, _config_root):
+            result = workflow_reclaim_issue(
+                id,
+                force=force,
+                stale_after_sec=stale_after_sec,
+                reason=reason,
+                config=config,
+            )
         return reclaim_result_dict(result)
 
     @server.tool(
@@ -355,12 +348,12 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
         reason: str | None = None,
         ctx: Context | None = None,
     ) -> dict[str, Any]:
-        config, _config_root = await _load_api_config(root, ctx)
-        result = workflow_readdress_issue(
-            id,
-            reason=reason,
-            config=config,
-        )
+        async with _api_config(root, ctx) as (config, _config_root):
+            result = workflow_readdress_issue(
+                id,
+                reason=reason,
+                config=config,
+            )
         return readdress_result_dict(result)
 
     @server.tool(
@@ -370,9 +363,9 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
         )
     )
     async def list_project_profiles(ctx: Context | None = None) -> list[dict[str, Any]]:
-        config, _config_root = await _load_api_config(root, ctx)
-        with api_client(config) as client:
-            return client.list_project_profiles()
+        async with _api_config(root, ctx) as (config, _config_root):
+            with api_client(config) as client:
+                return client.list_project_profiles()
 
     @server.tool(
         description=(
@@ -393,19 +386,19 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
         agent: str | None = None,
         ctx: Context | None = None,
     ) -> dict[str, Any]:
-        config, config_root = await _load_api_config(root, ctx)
-        proposal = build_proposal(
-            config_root,
-            to=to,
-            title=title,
-            body=body,
-            body_file=None,
-            from_issue=from_issue,
-            reply=reply,
-            blocking=blocking,
-            depends_on=depends_on,
-        )
-        sent = send_proposal(config, proposal)
+        async with _api_config(root, ctx) as (config, config_root):
+            proposal = build_proposal(
+                config_root,
+                to=to,
+                title=title,
+                body=body,
+                body_file=None,
+                from_issue=from_issue,
+                reply=reply,
+                blocking=blocking,
+                depends_on=depends_on,
+            )
+            sent = send_proposal(config, proposal)
         if sent.get("payload_mismatch"):
             return sent
         guard = create_author_guard(
@@ -425,9 +418,9 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
 
     @server.tool(description="List incoming cross-repository proposals.")
     async def list_incoming(ctx: Context | None = None) -> list[dict[str, Any]]:
-        config, _config_root = await _load_api_config(root, ctx)
-        with api_client(config) as client:
-            return client.list_proposals(status="pending")
+        async with _api_config(root, ctx) as (config, _config_root):
+            with api_client(config) as client:
+                return client.list_proposals(status="pending")
 
     @server.tool(
         description=(
@@ -440,8 +433,8 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
         status: str | None = None,
         ctx: Context | None = None,
     ) -> list[dict[str, Any]]:
-        config, _config_root = await _load_api_config(root, ctx)
-        return list_outgoing_proposals(config, to=to, status=status)
+        async with _api_config(root, ctx) as (config, _config_root):
+            return list_outgoing_proposals(config, to=to, status=status)
 
     @server.tool(description="Adopt an incoming proposal as a local active issue.")
     async def adopt_proposal(
@@ -451,14 +444,14 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
         append: str | None = None,
         ctx: Context | None = None,
     ) -> dict[str, Any]:
-        config, _config_root = await _load_api_config(root, ctx)
-        raw_id = proposal_id if proposal_id is not None else proposal_id_arg(proposal_file or "")
-        return adopt_proposal_with_append(
-            config,
-            raw_id,
-            priority=priority,
-            append_text=append,
-        )
+        async with _api_config(root, ctx) as (config, _config_root):
+            raw_id = proposal_id if proposal_id is not None else proposal_id_arg(proposal_file or "")
+            return adopt_proposal_with_append(
+                config,
+                raw_id,
+                priority=priority,
+                append_text=append,
+            )
 
     @server.tool(description="Discard an incoming cross-repository proposal.")
     async def discard_proposal(
@@ -466,10 +459,10 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
         proposal_file: str | None = None,
         ctx: Context | None = None,
     ) -> dict[str, Any]:
-        config, _config_root = await _load_api_config(root, ctx)
-        raw_id = proposal_id if proposal_id is not None else proposal_id_arg(proposal_file or "")
-        with api_client(config) as client:
-            return client.discard_proposal(int(raw_id))
+        async with _api_config(root, ctx) as (config, _config_root):
+            raw_id = proposal_id if proposal_id is not None else proposal_id_arg(proposal_file or "")
+            with api_client(config) as client:
+                return client.discard_proposal(int(raw_id))
 
     @server.tool(
         description=(
@@ -486,17 +479,17 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
         limit: int = 50,
         ctx: Context | None = None,
     ) -> list[dict[str, Any]]:
-        config, config_root = await _load_api_config(root, ctx)
-        decisions = run_proposal_check_cycle(
-            config,
-            config_root,
-            agent=agent,
-            timeout=timeout_sec,
-            model=model,
-            reasoning_effort=reasoning_effort,
-            limit=limit,
-            runner_factory=AgentRunner,
-        )
+        async with _api_config(root, ctx) as (config, config_root):
+            decisions = run_proposal_check_cycle(
+                config,
+                config_root,
+                agent=agent,
+                timeout=timeout_sec,
+                model=model,
+                reasoning_effort=reasoning_effort,
+                limit=limit,
+                runner_factory=AgentRunner,
+            )
         return [decision.to_dict() for decision in decisions]
 
     @server.tool(
@@ -511,15 +504,15 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
         offset: int = 0,
         ctx: Context | None = None,
     ) -> list[dict[str, Any]]:
-        config, _config_root = await _load_api_config(root, ctx)
         if status not in (None, "pending", "answered"):
             raise ValueError("status must be pending or answered.")
-        return list_worker_proposal_checks(
-            config,
-            status=status,
-            limit=limit,
-            offset=offset,
-        )
+        async with _api_config(root, ctx) as (config, _config_root):
+            return list_worker_proposal_checks(
+                config,
+                status=status,
+                limit=limit,
+                offset=offset,
+            )
 
     return server
 
@@ -577,6 +570,24 @@ async def _load_api_config(
     if not config.api_url:
         raise WorkflowError(_missing_api_url_message(config_root), code="missing_api_url")
     return config, config_root
+
+
+@asynccontextmanager
+async def _api_config(
+    root: Path,
+    ctx: Context | None = None,
+) -> AsyncIterator[tuple[IssuekitConfig, Path]]:
+    yield await _load_api_config(root, ctx)
+
+
+@asynccontextmanager
+async def _api_store(
+    root: Path,
+    ctx: Context | None = None,
+) -> AsyncIterator[tuple[IssuekitConfig, Path, Any]]:
+    config, config_root = await _load_api_config(root, ctx)
+    with get_store(config) as store:
+        yield config, config_root, store
 
 
 async def _resolve_config_root(root: Path, ctx: Context | None = None) -> Path:

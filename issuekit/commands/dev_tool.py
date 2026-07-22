@@ -11,6 +11,8 @@ import platform
 import subprocess
 import sys
 
+from issuekit.commands._common import print_json
+
 
 MCP_PROCESS_NAME = "issuekit-mcp.exe"
 MCP_PROCESS_NAME_POSIX = "issuekit-mcp"
@@ -534,7 +536,7 @@ def _merge_payload(target: dict[str, object], source: dict[str, object]) -> None
 
 def _finish(payload: dict[str, object], *, json_output: bool) -> int:
     if json_output:
-        print(json.dumps(payload, indent=2))
+        print_json(payload)
     else:
         _print_human(payload)
     return 0 if payload["ok"] else 1

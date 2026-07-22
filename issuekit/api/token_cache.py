@@ -12,7 +12,7 @@ import subprocess
 import sys
 from typing import Any
 
-from .security import _is_expired, _jwt_expiry
+from .security import is_expired, jwt_expiry
 from issuekit.workflow import WorkflowError
 
 
@@ -37,13 +37,13 @@ def read_cached_token(api_url: str) -> dict[str, Any] | None:
         return None
     if expires_at is not None and not isinstance(expires_at, (int, float)):
         return None
-    expiry = float(expires_at) if isinstance(expires_at, (int, float)) else _jwt_expiry(token)
-    if _is_expired(expiry):
+    expiry = float(expires_at) if isinstance(expires_at, (int, float)) else jwt_expiry(token)
+    if is_expired(expiry):
         return None
     return {"token": token, "expires_at": expiry}
 
 
-def _cached_token_miss_message(api_url: str) -> str | None:
+def cached_token_miss_message(api_url: str) -> str | None:
     cached_urls = sorted(
         url
         for url in _read_token_cache()
@@ -57,13 +57,13 @@ def _cached_token_miss_message(api_url: str) -> str | None:
     )
 
 
-def _write_cached_token(api_url: str, token: str, expires_at: float | None) -> None:
+def write_cached_token(api_url: str, token: str, expires_at: float | None) -> None:
     cache = _read_token_cache()
     cache[api_url] = {"token": token, "expires_at": expires_at}
     _write_token_cache(cache)
 
 
-def _delete_cached_token(api_url: str) -> None:
+def delete_cached_token(api_url: str) -> None:
     path = _token_cache_path()
     cache = _read_token_cache()
     if api_url not in cache:

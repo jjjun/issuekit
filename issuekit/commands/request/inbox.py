@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 import re
 from typing import Any
 
 import issuekit.proposals.api as proposals_api
+from issuekit.commands._common import print_json
 from issuekit.commands.request_output import print_status_record
 from issuekit.commands.request_state import (
     PROPOSAL_REF_PATTERN,
@@ -32,7 +32,7 @@ def run_inbox(
     state = load_state(cwd)
     payload = inbox_questions(config, state)
     if json_output:
-        print(json.dumps(payload, indent=2))
+        print_json(payload)
         return 0
     matched = payload["matched"]
     unmatched = payload["unmatched"]
@@ -78,7 +78,7 @@ def run_status(
         for request_id, record in records
     ]
     if json_output:
-        print(json.dumps(payload, indent=2))
+        print_json(payload)
         return 0
     if not payload:
         print("No PM requests recorded.")

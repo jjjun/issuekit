@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import json
 import os
 import time
@@ -56,6 +57,15 @@ def _tool_schema(server, name: str) -> dict[str, Any]:
     return asyncio.run(run())
 
 
+def _tool_schema_digest(server) -> str:
+    async def run() -> str:
+        schemas = {tool.name: tool.inputSchema for tool in await server.list_tools()}
+        encoded = json.dumps(schemas, sort_keys=True, separators=(",", ":")).encode()
+        return hashlib.sha256(encoded).hexdigest()
+
+    return asyncio.run(run())
+
+
 def _configure_api(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -106,13 +116,19 @@ def test_server_registers_expected_tools(tmp_path: Path) -> None:
     }
 
 
+def test_server_tool_schemas_match_the_contract(tmp_path: Path) -> None:
+    assert _tool_schema_digest(create_server(tmp_path)) == (
+        "c6a2d5df9131c52c4736fb738050809e7708c21ad24f7561b8badbdfe313982d"
+    )
+
+
 def test_health_tool_reports_config_and_local_state(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("ISSUEKIT_TOKEN_CACHE", str(tmp_path / "token.json"))
     expires_at = time.time() + 3600
-    token_cache_module._write_cached_token("https://mine.example", "cached-token", expires_at)
+    token_cache_module.write_cached_token("https://mine.example", "cached-token", expires_at)
     (tmp_path / "issuekit.toml").write_text(
         "api_url = 'https://mine.example'\nproject = 'demo'\n",
         encoding="utf-8",
@@ -161,7 +177,7 @@ def test_health_tool_reports_token_cache_miss_for_resolved_url(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("ISSUEKIT_TOKEN_CACHE", str(tmp_path / "token.json"))
-    token_cache_module._write_cached_token(
+    token_cache_module.write_cached_token(
         "https://mine.example",
         "cached-token",
         time.time() + 3600,

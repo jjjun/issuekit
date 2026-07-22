@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
 import sys
 
+from issuekit.commands._common import print_json
 from issuekit.guards.author import clear_author_guard, guard_dict, read_author_guard, stop_message
 from issuekit.commands._common import run_command
 from issuekit.guards.separation import AUTHOR_GUARD_HELP
@@ -48,7 +48,7 @@ def run_show(args) -> int:
     def action() -> int:
         guard = read_author_guard(Path.cwd())
         if getattr(args, "json", False):
-            print(json.dumps({"authorGuard": guard_dict(guard)}, indent=2))
+            print_json({"authorGuard": guard_dict(guard)})
             return 0
         if guard is None:
             print("No author-session guard.")
@@ -64,7 +64,7 @@ def run_check(args) -> int:
     def action() -> int:
         guard = read_author_guard(Path.cwd())
         if args.json:
-            print(json.dumps({"ok": guard is None, "authorGuard": guard_dict(guard)}, indent=2))
+            print_json({"ok": guard is None, "authorGuard": guard_dict(guard)})
         if guard is None:
             if not args.json:
                 print("Author guard check passed: no local author-session guard.")
@@ -80,7 +80,7 @@ def run_clear(args) -> int:
     def action() -> int:
         cleared = clear_author_guard(Path.cwd())
         if args.json:
-            print(json.dumps({"cleared": cleared}, indent=2))
+            print_json({"cleared": cleared})
             return 0
         print("Cleared author-session guard." if cleared else "No author-session guard to clear.")
         return 0

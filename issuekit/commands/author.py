@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import argparse
-import json
 import os
 from pathlib import Path
 import re
 import sys
 
+from issuekit.commands._common import print_json
 from issuekit.guards.author import (
     STOP_SENTINEL,
     create_author_guard,
@@ -120,7 +120,7 @@ def run(args) -> int:
             output = issue_dict(authored, include_body=True)
             output["authorGuard"] = guard_dict(guard)
             output["stop"] = STOP_SENTINEL
-            print(json.dumps(output, indent=2))
+            print_json(output)
             return 0
         print(f"Authored issue: {_authored_ref(authored)}")
         print(stop_message(guard))

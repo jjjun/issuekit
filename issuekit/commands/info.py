@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
 
+from issuekit.commands._common import print_json
 from issuekit.guards.author import guard_dict, read_author_guard
 from issuekit.config import load_config
 from issuekit.core import issue_dict
@@ -80,7 +80,7 @@ def run(args) -> int:
     }
 
     if args.json:
-        print(json.dumps(summary, indent=2))
+        print_json(summary)
         return 0
 
     print("Issue tracker status")

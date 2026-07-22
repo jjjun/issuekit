@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import replace
+import json
 from pathlib import Path
 import sys
 from typing import TypeVar
@@ -23,6 +24,12 @@ STANDARD_COMMAND_ERRORS: tuple[CommandError, ...] = (
     WorkflowError,
     UnicodeError,
 )
+
+
+def print_json(payload: object) -> None:
+    """Print a machine-readable command response to standard output."""
+
+    print(json.dumps(payload, indent=2))
 
 
 def run_command(

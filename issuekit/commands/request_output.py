@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-import json
 from typing import Any
+
+from issuekit.commands._common import print_json
 
 
 def print_payload(payload: dict[str, Any], *, json_output: bool) -> None:
     if json_output:
-        print(json.dumps(payload, indent=2))
+        print_json(payload)
         return
     request_id = payload["request_id"]
     decision = payload["decision"]

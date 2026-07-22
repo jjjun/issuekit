@@ -16,20 +16,20 @@ import httpx
 from .base import (
     JsonBody,
     JsonDict,
-    _LOGIN_GUIDANCE,
-    _ClientTransportMixin,
-    _ensure_dict,
-    _profile_rows,
-    _worker_rows,
+    LOGIN_GUIDANCE,
+    ClientTransportMixin,
+    ensure_dict,
+    profile_rows,
+    worker_rows,
 )
 from .resources import (
-    _IssueResourceMixin,
-    _ProfileResourceMixin,
-    _ProposalCheckResourceMixin,
-    _ProposalResourceMixin,
-    _WorkerResourceMixin,
+    IssueResourceMixin,
+    ProfileResourceMixin,
+    ProposalCheckResourceMixin,
+    ProposalResourceMixin,
+    WorkerResourceMixin,
 )
-from .security import _jwt_expiry
+from .security import jwt_expiry
 from issuekit.core import is_valid_workflow_token
 from .token_cache import read_cached_token
 
@@ -42,12 +42,12 @@ DEFAULT_HTTP_LIMITS = httpx.Limits(
 
 
 class IssuekitClient(
-    _IssueResourceMixin,
-    _WorkerResourceMixin,
-    _ProfileResourceMixin,
-    _ProposalResourceMixin,
-    _ProposalCheckResourceMixin,
-    _ClientTransportMixin,
+    IssueResourceMixin,
+    WorkerResourceMixin,
+    ProfileResourceMixin,
+    ProposalResourceMixin,
+    ProposalCheckResourceMixin,
+    ClientTransportMixin,
 ):
     """Synchronous client for mine-py's issuekit-compatible API."""
 
@@ -77,7 +77,7 @@ class IssuekitClient(
         env_token = os.getenv("ISSUEKIT_API_TOKEN") if use_env_token else None
         self._external_token = token is not None or env_token is not None
         self._token = token if token is not None else env_token
-        self._token_expiry = _jwt_expiry(self._token)
+        self._token_expiry = jwt_expiry(self._token)
         if self._token is None:
             cached = read_cached_token(self.api_url)
             if cached is not None:

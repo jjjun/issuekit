@@ -5,9 +5,9 @@ from __future__ import annotations
 import argparse
 from importlib import import_module
 from pathlib import Path
-import json
 import shutil
 
+from issuekit.commands._common import print_json
 from issuekit.commands.init import InitResult, init_repo
 from issuekit.commands.setup.actions import collect_setup_actions
 from issuekit.commands.setup.diagnostics import Diagnostic, collect_diagnostics as _collect_diagnostics
@@ -75,14 +75,14 @@ def run(args) -> int:
     if getattr(args, "check", False) or getattr(args, "setup_action", None) == "check":
         payload = build_check_json_payload(cwd)
         if args.json:
-            print(json.dumps(payload, indent=2))
+            print_json(payload)
             return 0
         _print_check_payload(payload)
         return 0
 
     result = init_repo(cwd, force=args.force, with_mcp=True)
     if args.json:
-        print(json.dumps(build_json_payload(cwd, result), indent=2))
+        print_json(build_json_payload(cwd, result))
         return 0
     _print_init_result(result)
     _print_diagnostics(cwd)

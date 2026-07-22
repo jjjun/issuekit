@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
 import sys
 
+from issuekit.commands._common import print_json
 from issuekit.guards.author import STOP_SENTINEL, create_author_guard, guard_dict, stop_message
 from issuekit.commands._common import load_config_for_project_mutation
 from issuekit.config import load_config
@@ -202,7 +202,7 @@ def run_propose(args) -> int:
         output.pop("warning", None)
     if mismatched:
         if args.json:
-            print(json.dumps(output, indent=2))
+            print_json(output)
         print(warning, file=sys.stderr)
         return 1
     for preflight_warning in created.get("warnings", []):
@@ -224,7 +224,7 @@ def run_propose(args) -> int:
     if args.json:
         output["authorGuard"] = guard_dict(guard)
         output["stop"] = STOP_SENTINEL
-        print(json.dumps(output, indent=2))
+        print_json(output)
     if not args.json:
         print(f"Sent proposal #{created.get('id')}: {created.get('title', proposal.title)}")
         dependency_ref = created.get("dependency_ref")
@@ -243,7 +243,7 @@ def run_incoming(args) -> int:
         print(str(exc), file=sys.stderr)
         return 1
     if args.json:
-        print(json.dumps(incoming, indent=2))
+        print_json(incoming)
         return 0
     if not incoming:
         print("No incoming proposals.")
@@ -269,7 +269,7 @@ def run_outgoing(args) -> int:
         print(str(exc), file=sys.stderr)
         return 1
     if args.json:
-        print(json.dumps(outgoing, indent=2))
+        print_json(outgoing)
         return 0
     if not outgoing:
         print(f"No outgoing proposals in {args.to}.")
@@ -301,14 +301,14 @@ def run_adopt(args) -> int:
         if args.json:
             output = dict(exc.outcome)
             output["append_error"] = exc.append_error
-            print(json.dumps(output, indent=2))
+            print_json(output)
         print(str(exc), file=sys.stderr)
         return 1
     except (ProposalError, WorkflowError, ValueError) as exc:
         print(str(exc), file=sys.stderr)
         return 1
     if args.json:
-        print(json.dumps(outcome, indent=2))
+        print_json(outcome)
         return 0
     if outcome["created_api_issue"]:
         print(
@@ -331,7 +331,7 @@ def run_discard(args) -> int:
         print(str(exc), file=sys.stderr)
         return 1
     if getattr(args, "json", False):
-        print(json.dumps(discarded, indent=2))
+        print_json(discarded)
         return 0
     print(f"Discarded proposal #{discarded.get('id')}.")
     return 0
