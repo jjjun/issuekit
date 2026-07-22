@@ -9,7 +9,7 @@ import pytest
 
 from issuekit.config import IssuekitConfig, TriagePolicy  # noqa: F401 (import parity)
 from issuekit.config import load_config
-from issuekit.project_profile import (
+from issuekit.config.project_profile import (
     PROFILE_MD_MAX_BYTES,
     ProjectProfile,
     load_project_profile,

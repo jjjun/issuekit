@@ -9,7 +9,7 @@ import sys
 
 from issuekit.commands._common import run_command
 from issuekit.config import load_config
-from issuekit.project_profile import ProjectProfile, load_project_profile
+from issuekit.config.project_profile import ProjectProfile, load_project_profile
 from issuekit.proposals.api import api_client
 from issuekit.workflow import WorkflowError
 

@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from issuekit.config import IssuekitConfig, parse_bool_value
-from issuekit.localconfig import LocalConfigError, read_local_config, write_local_config
+from issuekit.config.local import LocalConfigError, read_local_config, write_local_config
 
 
 STOP_SENTINEL = "STOP_NOW"

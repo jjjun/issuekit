@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from issuekit.localconfig import (
+from issuekit.config.local import (
     LOCAL_CONFIG_NAME,
     missing_gitignore_entries,
     read_local_config,

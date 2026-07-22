@@ -14,8 +14,8 @@ from issuekit.core import (
 )
 from issuekit.agentrun.config import AgentRunConfig
 from issuekit.encoding import has_non_ascii
-from issuekit.dotenv import load_dotenv
-from issuekit.localconfig import LocalConfigError, load_toml, read_local_config
+from .dotenv import load_dotenv
+from .local import LocalConfigError, load_toml, read_local_config
 from issuekit.workers.keys import qualified_worker_key, worker_key
 
 

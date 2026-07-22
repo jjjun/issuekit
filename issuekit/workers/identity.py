@@ -15,7 +15,7 @@ from issuekit.config import WorkerIdentity
 from issuekit.core import is_valid_workflow_token
 from issuekit.gitutil import git_origin_url as _git_origin_url
 from issuekit.gitutil import git_root
-from issuekit.localconfig import (
+from issuekit.config.local import (
     LOCAL_CONFIG_NAME,
     LocalConfigError,
     ensure_gitignore_entries,

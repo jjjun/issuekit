@@ -22,7 +22,7 @@ from issuekit.proposals.api import (
     proposal_id_arg,
     send_proposal,
 )
-from issuekit.refs import (
+from issuekit.config.refs import (
     RefError,
     add_ref,
     add_workspace_ref,

@@ -24,7 +24,7 @@ from issuekit.commands.reclaim import reclaim_result_dict
 from issuekit.config import IssuekitConfig, load_config, resolve_machine_config_path
 from issuekit.core import issue_dict
 from issuekit.gitutil import git_root
-from issuekit.localconfig import LocalConfigError, load_toml, read_local_config
+from issuekit.config.local import LocalConfigError, load_toml, read_local_config
 from issuekit.issues.orphans import (
     DEFAULT_STALE_AFTER_SEC,
     list_stale_claims,

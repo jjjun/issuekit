@@ -11,7 +11,7 @@ from issuekit.commands.init import (
     CODEX_MCP_HEADER,
     HANDOFF_HEADER,
 )
-from issuekit.localconfig import missing_gitignore_entries
+from issuekit.config.local import missing_gitignore_entries
 
 
 @dataclass(frozen=True)

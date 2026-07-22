@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from issuekit.refs import (
+from issuekit.config.refs import (
     RefError,
     add_ref,
     add_workspace_ref,

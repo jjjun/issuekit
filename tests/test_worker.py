@@ -12,7 +12,7 @@ from issuekit.workers.identity import (
     register_worker,
     worker_key,
 )
-from issuekit.refs import add_ref
+from issuekit.config.refs import add_ref
 
 
 @pytest.mark.parametrize(
