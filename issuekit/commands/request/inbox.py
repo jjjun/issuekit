@@ -8,8 +8,8 @@ from typing import Any
 
 import issuekit.proposals.api as proposals_api
 from issuekit.commands._common import print_json
-from issuekit.commands.request_output import print_status_record
-from issuekit.commands.request_state import (
+from issuekit.commands.request.output import print_status_record
+from issuekit.commands.request.state import (
     PROPOSAL_REF_PATTERN,
     load_state,
     state_targets,

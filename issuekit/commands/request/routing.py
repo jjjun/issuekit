@@ -9,8 +9,8 @@ from typing import Any
 import issuekit.proposals.api as proposals_api
 from issuekit.agentrun import AgentRunner
 from issuekit.agents.router import RouterDecision, RouteTarget, run_router
-from issuekit.commands.request_output import print_payload
-from issuekit.commands.request_state import (
+from issuekit.commands.request.output import print_payload
+from issuekit.commands.request.state import (
     PROPOSAL_REF_PATTERN,
     find_or_create_request,
     load_state,

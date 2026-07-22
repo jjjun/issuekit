@@ -117,6 +117,9 @@ def test_server_registers_expected_tools(tmp_path: Path) -> None:
 
 
 def test_server_tool_schemas_match_the_contract(tmp_path: Path) -> None:
+    # This digest covers the MCP tool contract. If it changes, confirm the
+    # schema change was intended, describe it in the commit message, then update
+    # this digest.
     assert _tool_schema_digest(create_server(tmp_path)) == (
         "c6a2d5df9131c52c4736fb738050809e7708c21ad24f7561b8badbdfe313982d"
     )
