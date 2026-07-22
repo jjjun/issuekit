@@ -100,9 +100,10 @@ def _setup(monkeypatch, tmp_path, outputs, *, profiles=None, extra_router: str =
     clients = _clients(monkeypatch, profiles)
     fake_runner = FakeRunner(outputs)
     monkeypatch.setattr(router, "resolve_adapter", lambda *a, **k: object())
-    from issuekit.commands import request as request_cmd
+    from issuekit.commands.request import answers, routing
 
-    monkeypatch.setattr(request_cmd, "AgentRunner", lambda: fake_runner)
+    monkeypatch.setattr(answers, "AgentRunner", lambda: fake_runner)
+    monkeypatch.setattr(routing, "AgentRunner", lambda: fake_runner)
     monkeypatch.chdir(tmp_path)
     return clients, fake_runner
 
