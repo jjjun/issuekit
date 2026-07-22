@@ -5,14 +5,12 @@ from __future__ import annotations
 import argparse
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import datetime
 import os
 from pathlib import Path
 import signal
 import subprocess
 import sys
 import threading
-from types import FrameType
 from typing import Iterator
 
 from issuekit.agents.proposal_check import (
@@ -20,10 +18,23 @@ from issuekit.agents.proposal_check import (
     run_proposal_check_cycle,
 )
 from issuekit.agents.runner import AgentRunner
-from issuekit.agents.run_claimed import review_feedback_prompt, run_and_submit
-from issuekit.agents.review import ReviewParseError, run_review_and_decide
 from issuekit.agents.triage_author import run_triage_author_cycle
 from issuekit.config import IssuekitConfig, load_config
+from issuekit.commands.serve_loop import (
+    _Backoff,
+    BACKOFF_INITIAL_SEC,
+    BACKOFF_MAX_SEC,
+    PollResult,
+    ShutdownController,
+    close_store as _close_store,
+    log_event as _log,
+    recreate_store as _recreate_store,
+    recover_orphaned_issues as _recover_orphaned_issues,
+    run_claimed_issue as _run_claimed_issue,
+    run_poll_loop,
+    run_review_issue as _run_review_issue,
+    should_recreate_store as _should_recreate_store,
+)
 from issuekit.core import Issue
 from issuekit.proposals import ProposalError
 from issuekit.proposals_api import auto_adopt_incoming_proposals
@@ -34,10 +45,6 @@ from issuekit.worker_registry import (
     try_post_worker_registration,
 )
 from issuekit.workflow import WorkflowError, claim_next, next_review
-
-
-BACKOFF_INITIAL_SEC = 1.0
-BACKOFF_MAX_SEC = 60.0
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:
@@ -121,57 +128,8 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     serve_parser.set_defaults(func=run)
 
 
-@dataclass
-class _Backoff:
-    current: float = BACKOFF_INITIAL_SEC
-
-    def step(self) -> None:
-        self.current = min(self.current * 2, BACKOFF_MAX_SEC)
-
-    def reset(self) -> None:
-        self.current = BACKOFF_INITIAL_SEC
-
-
 class ServeLockError(RuntimeError):
     """Raised when another live serve process holds the checkout lock."""
-
-
-@dataclass(frozen=True)
-class IssueRunResult:
-    status: str
-    exit_code: int
-    reviewed_issue: Issue | None = None
-    recreate_store: bool = False
-
-
-@dataclass
-class ShutdownController:
-    """Signal-aware stop flag for the serve loop."""
-
-    event: threading.Event
-    abort_event: threading.Event
-    signal_count: int = 0
-
-    @classmethod
-    def create(cls) -> "ShutdownController":
-        return cls(event=threading.Event(), abort_event=threading.Event())
-
-    @property
-    def requested(self) -> bool:
-        return self.event.is_set()
-
-    def request(self) -> None:
-        self.event.set()
-
-    def sleep(self, seconds: float) -> bool:
-        return self.event.wait(timeout=max(0.0, seconds))
-
-    def handle_signal(self, signum: int, _frame: FrameType | None) -> None:
-        self.signal_count += 1
-        self.request()
-        _log(sys.stderr, None, "signal", signum=signum, count=self.signal_count)
-        if self.signal_count >= 2:
-            self.abort_event.set()
 
 
 def run(args) -> int:
@@ -224,6 +182,9 @@ def run(args) -> int:
     lock_path = run_dir / "serve.lock"
     log_path = run_dir / "serve.log"
     controller = ShutdownController.create()
+    controller.on_signal = lambda signum, count: _log(
+        sys.stderr, None, "signal", signum=signum, count=count
+    )
 
     try:
         with _serve_lock(lock_path), _signal_handlers(controller):
@@ -255,8 +216,6 @@ def _serve_loop(
     controller: ShutdownController,
 ) -> int:
     submitted_count = 0
-    backoff = _Backoff()
-    attempt_count = 0
     if getattr(args, "proposal_checks", False):
         return _serve_proposal_checks_loop(
             args,
@@ -283,6 +242,7 @@ def _serve_loop(
                 store=review_store,
             )
 
+        backoff = _Backoff()
         recovery_store = get_store(config) if config.api_url else None
         submitted_count, exit_code, recovery_store = _recover_orphaned_issues(
             args,
@@ -295,12 +255,12 @@ def _serve_loop(
             submitted_count=submitted_count,
             backoff=backoff,
             store=recovery_store,
+            log_submitted=_log_submitted,
         )
         if exit_code is not None:
             return exit_code
 
-        while not controller.requested:
-            attempt_count += 1
+        def poll(attempt: int, backoff_seconds: float):
             if _triage_enabled(args, config):
                 try:
                     if config.triage.author_agent:
@@ -323,15 +283,13 @@ def _serve_loop(
                         log_path,
                         "triage_error",
                         error=str(exc),
-                        backoff=backoff.current,
+                        backoff=backoff_seconds,
                     )
-                    if _should_recreate_store(exc):
-                        store = _recreate_store(store, config)
-                    if args.once:
-                        return 1
-                    controller.sleep(backoff.current)
-                    backoff.step()
-                    continue
+                    return PollResult(
+                        status="error",
+                        exit_code=1,
+                        recreate_store=_should_recreate_store(exc),
+                    )
             try:
                 issue = claim_next(
                     agent,
@@ -343,21 +301,15 @@ def _serve_loop(
                     no_sync=getattr(args, "no_sync", False),
                 )
             except (TimeoutError, WorkflowError, ValueError) as exc:
-                _log(sys.stderr, log_path, "claim_error", error=str(exc), backoff=backoff.current)
-                if _should_recreate_store(exc):
-                    store = _recreate_store(store, config)
-                if args.once:
-                    return 1
-                controller.sleep(backoff.current)
-                backoff.step()
-                continue
+                _log(sys.stderr, log_path, "claim_error", error=str(exc), backoff=backoff_seconds)
+                return PollResult(
+                    status="error",
+                    exit_code=1,
+                    recreate_store=_should_recreate_store(exc),
+                )
 
             if issue is None:
-                _log(sys.stderr, log_path, "idle", attempt=attempt_count)
-                if args.once:
-                    return 0
-                controller.sleep(float(args.interval))
-                continue
+                return PollResult(status="idle")
 
             _log(sys.stderr, log_path, "claimed", issue=issue.id, agent=agent)
             result = _run_claimed_issue(
@@ -369,37 +321,39 @@ def _serve_loop(
                 issues_dir=issues_dir,
                 log_path=log_path,
                 controller=controller,
-                backoff=backoff.current,
+                backoff=backoff_seconds,
                 store=store,
             )
-            if result.recreate_store:
-                store = _recreate_store(store, config)
             if result.status == "error":
-                if args.once:
-                    return 1
-                controller.sleep(backoff.current)
-                backoff.step()
-                continue
-
+                return PollResult("error", 1, result.recreate_store)
             if result.status == "failed":
-                if args.once:
-                    return result.exit_code
-                if controller.abort_event.is_set():
-                    return 0
-                controller.sleep(backoff.current)
-                backoff.step()
-                continue
+                return PollResult("failed", result.exit_code, result.recreate_store)
+            return PollResult(
+                "success",
+                recreate_store=result.recreate_store,
+                value=result.reviewed_issue,
+            )
 
-            submitted_count += 1
-            backoff.reset()
-            _log_submitted(log_path, result.reviewed_issue, submitted_count)
-            if args.once:
-                return 0
-            if args.max_issues is not None and submitted_count >= args.max_issues:
-                return 0
+        def recreate() -> None:
+            nonlocal store
+            store = _recreate_store(store, config)
 
-        _log(sys.stderr, log_path, "stopped")
-        return 0
+        return run_poll_loop(
+            controller,
+            backoff,
+            poll=poll,
+            on_idle=lambda attempt: _log(sys.stderr, log_path, "idle", attempt=attempt),
+            on_error=lambda _result, _attempt, _backoff: None,
+            on_success=lambda poll_result, count: _log_submitted(
+                log_path, poll_result.value, count
+            ),
+            on_stopped=lambda: _log(sys.stderr, log_path, "stopped"),
+            once=args.once,
+            interval=float(args.interval),
+            max_count=args.max_issues - submitted_count if args.max_issues is not None else None,
+            recreate_store=recreate,
+            abort_failed_exit_code=0,
+        )
     finally:
         _close_store(store)
         _close_store(recovery_store)
@@ -415,15 +369,15 @@ def _serve_proposal_checks_loop(
     controller: ShutdownController,
 ) -> int:
     backoff = _Backoff()
-    attempt_count = 0
     answered_count = 0
-    while not controller.requested:
-        attempt_count += 1
+
+    def poll(attempt: int, backoff_seconds: float):
+        nonlocal answered_count
         _log(
             sys.stderr,
             log_path,
             "proposal_checks_cycle_start",
-            attempt=attempt_count,
+            attempt=attempt,
             agent=agent,
             limit=args.proposal_check_limit,
         )
@@ -456,17 +410,11 @@ def _serve_proposal_checks_loop(
                 sys.stderr,
                 log_path,
                 "proposal_checks_cycle_error",
-                attempt=attempt_count,
+                attempt=attempt,
                 error=str(exc),
-                backoff=backoff.current,
+                backoff=backoff_seconds,
             )
-            if args.once:
-                return 1
-            if controller.requested:
-                break
-            controller.sleep(backoff.current)
-            backoff.step()
-            continue
+            return PollResult("error", exit_code=1)
 
         errors = [decision for decision in decisions if decision.error is not None]
         if decisions:
@@ -480,32 +428,34 @@ def _serve_proposal_checks_loop(
                 sys.stderr,
                 log_path,
                 "proposal_checks_cycle_complete",
-                attempt=attempt_count,
+                attempt=attempt,
                 decisions=len(decisions),
                 errors=len(errors),
                 answered=answered_count,
             )
         else:
-            _log(sys.stderr, log_path, "proposal_checks_idle", attempt=attempt_count)
+            return PollResult("idle")
 
         if errors:
-            if args.once:
-                return 1
-            if controller.requested:
-                break
-            controller.sleep(backoff.current)
-            backoff.step()
-            continue
+            return PollResult("error", exit_code=1)
 
-        backoff.reset()
-        if args.once:
-            return 0
-        if controller.requested:
-            break
-        controller.sleep(float(args.interval))
+        return PollResult("success")
 
-    _log(sys.stderr, log_path, "stopped")
-    return 0
+    return run_poll_loop(
+        controller,
+        backoff,
+        poll=poll,
+        on_idle=lambda attempt: _log(
+            sys.stderr, log_path, "proposal_checks_idle", attempt=attempt
+        ),
+        on_error=lambda _result, _attempt, _backoff: None,
+        on_success=lambda _result, _count: None,
+        on_stopped=lambda: _log(sys.stderr, log_path, "stopped"),
+        once=args.once,
+        interval=float(args.interval),
+        max_count=None,
+        stop_before_retry_sleep=True,
+    )
 
 
 def _serve_review_loop(
@@ -518,30 +468,19 @@ def _serve_review_loop(
     controller: ShutdownController,
     store,
 ) -> int:
-    decided_count = 0
     backoff = _Backoff()
-    attempt_count = 0
     try:
-        while not controller.requested:
-            attempt_count += 1
+        def poll(attempt: int, backoff_seconds: float):
             try:
                 issue = next_review(agent, config=config, store=store, include_open=True)
             except (TimeoutError, WorkflowError, ValueError) as exc:
-                _log(sys.stderr, log_path, "review_poll_error", error=str(exc), backoff=backoff.current)
-                if _should_recreate_store(exc):
-                    store = _recreate_store(store, config)
-                if args.once:
-                    return 1
-                controller.sleep(backoff.current)
-                backoff.step()
-                continue
+                _log(sys.stderr, log_path, "review_poll_error", error=str(exc), backoff=backoff_seconds)
+                return PollResult(
+                    "error", 1, recreate_store=_should_recreate_store(exc)
+                )
 
             if issue is None:
-                _log(sys.stderr, log_path, "review_idle", attempt=attempt_count)
-                if args.once:
-                    return 0
-                controller.sleep(float(args.interval))
-                continue
+                return PollResult("idle")
 
             _log(sys.stderr, log_path, "reviewing", issue=issue.id, agent=agent)
             result = _run_review_issue(
@@ -552,256 +491,37 @@ def _serve_review_loop(
                 cwd=cwd,
                 log_path=log_path,
                 controller=controller,
-                backoff=backoff.current,
+                backoff=backoff_seconds,
                 store=store,
             )
-            if result.recreate_store:
-                store = _recreate_store(store, config)
             if result.status == "error":
-                if args.once:
-                    return 1
-                controller.sleep(backoff.current)
-                backoff.step()
-                continue
+                return PollResult("error", 1, result.recreate_store)
             if result.status == "failed":
-                if args.once:
-                    return result.exit_code
-                if controller.abort_event.is_set():
-                    return 0
-                controller.sleep(backoff.current)
-                backoff.step()
-                continue
+                return PollResult("failed", result.exit_code, result.recreate_store)
+            return PollResult("success", value=result.reviewed_issue)
 
-            decided_count += 1
-            backoff.reset()
-            _log_reviewed(log_path, result.reviewed_issue, decided_count)
-            if args.once:
-                return 0
-            if args.max_issues is not None and decided_count >= args.max_issues:
-                return 0
+        def recreate() -> None:
+            nonlocal store
+            store = _recreate_store(store, config)
 
-        _log(sys.stderr, log_path, "stopped")
-        return 0
+        return run_poll_loop(
+            controller,
+            backoff,
+            poll=poll,
+            on_idle=lambda attempt: _log(
+                sys.stderr, log_path, "review_idle", attempt=attempt
+            ),
+            on_error=lambda _result, _attempt, _backoff: None,
+            on_success=lambda result, count: _log_reviewed(log_path, result.value, count),
+            on_stopped=lambda: _log(sys.stderr, log_path, "stopped"),
+            once=args.once,
+            interval=float(args.interval),
+            max_count=args.max_issues,
+            recreate_store=recreate,
+            abort_failed_exit_code=0,
+        )
     finally:
         _close_store(store)
-
-
-def _recover_orphaned_issues(
-    args,
-    *,
-    agent: str,
-    config: IssuekitConfig,
-    cwd: Path,
-    issues_dir: Path,
-    log_path: Path,
-    controller: ShutdownController,
-    submitted_count: int,
-    backoff: _Backoff,
-    store,
-) -> tuple[int, int | None, object]:
-    if config.worker is None:
-        return submitted_count, None, store
-
-    me = config.worker_key()
-    if me is None:
-        return submitted_count, None, store
-    lookup_keys = config.worker_lookup_keys()
-    try:
-        issues = []
-        seen: set[int] = set()
-        for worker_key in lookup_keys:
-            for issue in store.find_implementing_for_worker(worker_key):
-                if issue.id in seen:
-                    continue
-                seen.add(issue.id)
-                issues.append(issue)
-    except (AttributeError, RuntimeError, TimeoutError, WorkflowError, ValueError) as exc:
-        _log(sys.stderr, log_path, "recovery_error", worker=me, error=str(exc))
-        if _should_recreate_store(exc):
-            store = _recreate_store(store, config)
-        return submitted_count, None, store
-
-    for issue in issues:
-        if controller.requested:
-            break
-        _log(sys.stderr, log_path, "recovered", issue=issue.id, agent=agent, worker=me)
-        result = _run_claimed_issue(
-            args,
-            issue,
-            agent=agent,
-            config=config,
-            cwd=cwd,
-            issues_dir=issues_dir,
-            log_path=log_path,
-            controller=controller,
-            backoff=backoff.current,
-        )
-        if result.status == "submitted":
-            submitted_count += 1
-            backoff.reset()
-            _log_submitted(log_path, result.reviewed_issue, submitted_count)
-            if args.once:
-                return submitted_count, 0, store
-            if args.max_issues is not None and submitted_count >= args.max_issues:
-                return submitted_count, 0, store
-            continue
-
-        if result.status == "failed" and controller.abort_event.is_set():
-            return submitted_count, 0, store
-        if result.recreate_store:
-            store = _recreate_store(store, config)
-        if not args.once:
-            controller.sleep(backoff.current)
-            backoff.step()
-
-    return submitted_count, None, store
-
-
-def _run_claimed_issue(
-    args,
-    issue: Issue,
-    *,
-    agent: str,
-    config: IssuekitConfig,
-    cwd: Path,
-    issues_dir: Path,
-    log_path: Path,
-    controller: ShutdownController,
-    backoff: float,
-    store=None,
-) -> IssueRunResult:
-    try:
-        outcome = run_and_submit(
-            issue,
-            agent=agent,
-            config=config,
-            cwd=cwd,
-            issues_dir=issues_dir,
-            timeout=float(args.timeout_sec),
-            model=getattr(args, "model", None),
-            reasoning_effort=getattr(args, "reasoning_effort", None),
-            prompt_suffix=review_feedback_prompt(issue.body),
-            abort_event=controller.abort_event,
-            store=store,
-            out=sys.stderr,
-            err=sys.stderr,
-            allow_any_branch=getattr(args, "allow_any_branch", False),
-        )
-    except (
-        FileNotFoundError,
-        RuntimeError,
-        ValueError,
-        TimeoutError,
-        WorkflowError,
-    ) as exc:
-        _log(sys.stderr, log_path, "run_error", issue=issue.id, error=str(exc), backoff=backoff)
-        return IssueRunResult(
-            status="error",
-            exit_code=1,
-            recreate_store=_should_recreate_store(exc),
-        )
-
-    if outcome.exit_code != 0 or outcome.reviewed_issue is None:
-        _log(
-            sys.stderr,
-            log_path,
-            "run_failed",
-            issue=issue.id,
-            exit_code=outcome.exit_code,
-            backoff=backoff,
-        )
-        return IssueRunResult(status="failed", exit_code=outcome.exit_code)
-
-    return IssueRunResult(
-        status="submitted",
-        exit_code=0,
-        reviewed_issue=outcome.reviewed_issue,
-    )
-
-
-def _run_review_issue(
-    args,
-    issue: Issue,
-    *,
-    agent: str,
-    config: IssuekitConfig,
-    cwd: Path,
-    log_path: Path,
-    controller: ShutdownController,
-    backoff: float,
-    store=None,
-) -> IssueRunResult:
-    try:
-        outcome = run_review_and_decide(
-            issue,
-            agent=agent,
-            config=config,
-            cwd=cwd,
-            timeout=float(args.timeout_sec),
-            model=getattr(args, "model", None),
-            reasoning_effort=getattr(args, "reasoning_effort", None),
-            abort_event=controller.abort_event,
-            store=store,
-            out=sys.stderr,
-            err=sys.stderr,
-        )
-    except (
-        FileNotFoundError,
-        RuntimeError,
-        ValueError,
-        TimeoutError,
-        WorkflowError,
-        ReviewParseError,
-    ) as exc:
-        _log(
-            sys.stderr,
-            log_path,
-            "review_error",
-            issue=issue.id,
-            error=str(exc),
-            backoff=backoff,
-        )
-        return IssueRunResult(
-            status="error",
-            exit_code=1,
-            recreate_store=_should_recreate_store(exc),
-        )
-
-    if outcome.exit_code != 0 or outcome.decided_issue is None:
-        _log(
-            sys.stderr,
-            log_path,
-            "review_failed",
-            issue=issue.id,
-            exit_code=outcome.exit_code,
-            backoff=backoff,
-        )
-        return IssueRunResult(status="failed", exit_code=outcome.exit_code)
-
-    return IssueRunResult(
-        status="reviewed",
-        exit_code=0,
-        reviewed_issue=outcome.decided_issue,
-    )
-
-
-def _should_recreate_store(exc: BaseException) -> bool:
-    if isinstance(exc, TimeoutError):
-        return True
-    return isinstance(exc, WorkflowError) and exc.code == "request_failed"
-
-
-def _recreate_store(store, config: IssuekitConfig):
-    _close_store(store)
-    return get_store(config) if config.api_url else None
-
-
-def _close_store(store) -> None:
-    if store is None:
-        return
-    close = getattr(store, "close", None)
-    if close is not None:
-        close()
 
 
 def _log_submitted(log_path: Path, reviewed_issue: Issue | None, submitted_count: int) -> None:
@@ -971,14 +691,3 @@ def _signal_handlers(controller: ShutdownController) -> Iterator[None]:
                 signal.signal(signum, handler)
             except (ValueError, OSError, AttributeError):
                 pass
-
-
-def _log(stream, log_path: Path | None, event: str, **fields: object) -> None:
-    timestamp = datetime.now().replace(microsecond=0).isoformat()
-    parts = [f"ts={timestamp}", f"event={event}"]
-    parts.extend(f"{key}={value}" for key, value in fields.items())
-    line = " ".join(parts)
-    print(line, file=stream)
-    if log_path is not None:
-        with log_path.open("a", encoding="utf-8", newline="\n") as fh:
-            fh.write(line + "\n")
