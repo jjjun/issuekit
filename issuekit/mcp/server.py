@@ -37,7 +37,7 @@ from issuekit.proposals_api import (
 )
 from issuekit.session import new_session_token
 from issuekit.store import get_store
-from issuekit.token_cache import _read_cached_token
+from issuekit.api.token_cache import _read_cached_token
 from issuekit.worker_registry import list_api_workers, remove_api_repo, remove_api_worker
 from issuekit.worker_keys import worker_display_from_row
 from issuekit.workflow import (

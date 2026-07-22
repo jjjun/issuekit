@@ -9,7 +9,7 @@ import os
 from pathlib import Path
 import sys
 
-from issuekit.client import IssuekitClient
+from issuekit.api import IssuekitClient
 from issuekit.config import load_config
 from issuekit.workflow import WorkflowError
 

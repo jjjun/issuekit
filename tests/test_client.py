@@ -11,9 +11,10 @@ from urllib.parse import parse_qs
 import httpx
 import pytest
 
-import issuekit.client_security as security_module
-import issuekit.token_cache as token_cache_module
-from issuekit.client import DEFAULT_HTTP_LIMITS, IssuekitClient
+import issuekit.api.security as security_module
+import issuekit.api.token_cache as token_cache_module
+from issuekit.api import IssuekitClient
+from issuekit.api.client import DEFAULT_HTTP_LIMITS
 from issuekit.testing import FakeIssuekitClient
 from issuekit.workflow import WorkflowError
 
@@ -313,7 +314,7 @@ def test_client_owned_http_client_follows_redirects_and_uses_bounded_pool(
         def close(self) -> None:
             captured["closed"] = True
 
-    monkeypatch.setattr("issuekit.client.httpx.Client", RecordingClient)
+    monkeypatch.setattr("issuekit.api.client.httpx.Client", RecordingClient)
 
     client = IssuekitClient("https://mine.example", token="static-token")
     try:
@@ -341,7 +342,7 @@ def test_client_owned_http_client_accepts_transport_overrides(
         def close(self) -> None:
             pass
 
-    monkeypatch.setattr("issuekit.client.httpx.Client", RecordingClient)
+    monkeypatch.setattr("issuekit.api.client.httpx.Client", RecordingClient)
     limits = httpx.Limits(max_connections=2, max_keepalive_connections=1)
     headers = {"Connection": "close"}
 

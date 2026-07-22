@@ -9,7 +9,7 @@ import logging
 from pathlib import Path
 import threading
 
-from issuekit.client import IssuekitClient, JsonDict
+from issuekit.api import IssuekitClient, JsonDict
 from issuekit.config import IssuekitConfig
 from issuekit.core import Issue
 from issuekit.project_profile import load_project_profile

@@ -9,7 +9,7 @@ from pathlib import Path
 import re
 from typing import Any
 
-from issuekit.client import IssuekitClient
+from issuekit.api import IssuekitClient
 from issuekit.config import IssuekitConfig, load_config
 from issuekit.core import Issue, parse_issue_id_arg, parse_target_address
 from issuekit.encoding import ASCII_ONLY_HINT, has_non_ascii

@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any, Protocol
 
-from issuekit.client import IssuekitClient
+from issuekit.api import IssuekitClient
 from issuekit.config import IssuekitConfig
 from issuekit.core import (
     Issue,

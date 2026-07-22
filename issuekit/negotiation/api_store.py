@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from issuekit.client import IssuekitClient
+from issuekit.api import IssuekitClient
 from issuekit.config import IssuekitConfig
 from issuekit.core import optional_int
 from issuekit.negotiation.model import (

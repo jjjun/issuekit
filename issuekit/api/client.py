@@ -13,7 +13,7 @@ import os
 
 import httpx
 
-from issuekit.client_base import (
+from .base import (
     JsonBody,
     JsonDict,
     _LOGIN_GUIDANCE,
@@ -22,16 +22,16 @@ from issuekit.client_base import (
     _profile_rows,
     _worker_rows,
 )
-from issuekit.client_resources import (
+from .resources import (
     _IssueResourceMixin,
     _ProfileResourceMixin,
     _ProposalCheckResourceMixin,
     _ProposalResourceMixin,
     _WorkerResourceMixin,
 )
-from issuekit.client_security import _jwt_expiry
+from .security import _jwt_expiry
 from issuekit.core import is_valid_workflow_token
-from issuekit.token_cache import _read_cached_token
+from .token_cache import _read_cached_token
 
 
 DEFAULT_HTTP_LIMITS = httpx.Limits(

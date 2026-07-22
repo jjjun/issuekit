@@ -1,4 +1,4 @@
-"""Resource-specific method mixins for :class:`issuekit.client.IssuekitClient`."""
+"""Resource-specific method mixins for :class:`issuekit.api.IssuekitClient`."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 from urllib.parse import quote
 
-from issuekit.client_base import JsonDict, _ensure_dict, _profile_rows, _worker_rows
+from .base import JsonDict, _ensure_dict, _profile_rows, _worker_rows
 from issuekit.core import _drop_none
 from issuekit.session import validate_session_token
 from issuekit.workflow import WorkflowError

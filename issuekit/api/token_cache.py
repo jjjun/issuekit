@@ -12,7 +12,7 @@ import subprocess
 import sys
 from typing import Any
 
-from issuekit.client_security import _is_expired, _jwt_expiry
+from .security import _is_expired, _jwt_expiry
 from issuekit.workflow import WorkflowError
 
 

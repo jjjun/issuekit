@@ -7,14 +7,14 @@ from typing import Any
 
 import httpx
 
-from issuekit.client_security import (
+from .security import (
     _is_expired,
     _jwt_expiry,
     _response_expiry,
     _warn_insecure_api_url,
 )
 from issuekit.core import _drop_none
-from issuekit.token_cache import (
+from .token_cache import (
     _cached_token_miss_message,
     _delete_cached_token,
     _write_cached_token,
