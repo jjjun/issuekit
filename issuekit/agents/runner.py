@@ -23,7 +23,7 @@ from issuekit.agents.status import (
     status_path,
     write_status,
 )
-from issuekit.config import AgentRunConfig, IssuekitConfig
+from issuekit.agents.run_config import AgentRunConfig
 from issuekit.core import last_nonempty_line
 from issuekit.gitutil import changed_file_count, git_status_short
 
@@ -59,19 +59,13 @@ class ConfigAgentAdapter(AgentAdapter):
     def __init__(
         self,
         agent_name: str,
+        run_config: AgentRunConfig,
         *,
-        config: IssuekitConfig | None = None,
         model: str | None = None,
         reasoning_effort: str | None = None,
     ) -> None:
         self.agent_name = agent_name
-        self.config = config or IssuekitConfig()
-        agents_dict = dict(self.config.agents)
-        if agent_name not in agents_dict:
-            if agent_name in self.config.disabled_agents:
-                raise ValueError(f"Agent disabled by config: {agent_name}")
-            raise ValueError(f"Unknown agent: {agent_name}")
-        self.run_config = agents_dict[agent_name]
+        self.run_config = run_config
         self.model = model
         self.reasoning_effort = reasoning_effort
         if (
@@ -151,19 +145,13 @@ class ConfigAgentAdapter(AgentAdapter):
         return "\n\n".join(parts)
 
 
-def resolve_adapter(
+def build_adapter(
     agent_name: str,
-    config: IssuekitConfig | None = None,
+    run_config: AgentRunConfig,
     model: str | None = None,
     reasoning_effort: str | None = None,
 ) -> AgentAdapter:
-    """Resolve an AgentAdapter by registered agent name."""
-    config = config or IssuekitConfig()
-    run_config = dict(config.agents).get(agent_name)
-    if run_config is None:
-        if agent_name in config.disabled_agents:
-            raise ValueError(f"Agent disabled by config: {agent_name}")
-        raise ValueError(f"Unknown agent: {agent_name}")
+    """Build an AgentAdapter from runtime configuration."""
     if run_config.adapter:
         from issuekit.agents.adapters.registry import resolve_custom_adapter
 
@@ -174,13 +162,13 @@ def resolve_adapter(
             )
         return adapter_class(
             agent_name,
-            config=config,
+            run_config=run_config,
             model=model,
             reasoning_effort=reasoning_effort,
         )
     return ConfigAgentAdapter(
         agent_name,
-        config=config,
+        run_config=run_config,
         model=model,
         reasoning_effort=reasoning_effort,
     )
@@ -297,6 +285,7 @@ class AgentRunner:
         follow: bool = False,
         prompt_suffix: str | None = None,
         prompt_override: str | None = None,
+        run_dir: Path | None = None,
         abort_event: threading.Event | None = None,
         session_id: str | None = None,
         issuekit_session: str | None = None,
@@ -309,22 +298,7 @@ class AgentRunner:
             raise FileNotFoundError(f"Repo directory not found: {repo}")
 
         binary = adapter.resolve_binary()
-        prompt = prompt_override or (
-            f"Read the plan file at: {plan_path} . Implement it fully by editing "
-            "files directly in this repository. Do NOT run git commit or git push - "
-            "leave all changes unstaged for review. Edit only code, tests, and "
-            "supporting project files needed for the implementation. Write "
-            "maintainable, idiomatic code that matches surrounding imports, naming, "
-            "and comment density; use normal imports and real identifiers when they "
-            "work. Do not split or obfuscate string literals, import paths, or "
-            "identifiers, and do not use importlib/getattr/setattr/globals() "
-            "indirection unless dynamic loading is truly required. Issuekit owns the "
-            "API-backed issue lifecycle, including claim, submit, review, approval, "
-            "and completion state; do not run issuekit claim, submit-review, "
-            "request-changes, approve, or complete, and do not mutate tracker state "
-            "or issue lifecycle metadata directly. If the plan is ambiguous, make "
-            "the most reasonable choice and note it at the end."
-        )
+        prompt = prompt_override or f"Read and carry out the plan at: {plan_path}"
         if prompt_suffix:
             prompt = f"{prompt}\n\n{prompt_suffix}"
         argv = [str(binary)] + adapter.build_argv(
@@ -333,7 +307,7 @@ class AgentRunner:
             session_id=session_id,
         )
 
-        run_dir = repo / ".agent-runs"
+        run_dir = (run_dir or repo / ".agent-runs").resolve()
         run_dir_existed = run_dir.exists()
         run_dir.mkdir(exist_ok=True)
         if not run_dir_existed:

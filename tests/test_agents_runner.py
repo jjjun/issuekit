@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from issuekit.agents.adapters.kimi import KimiAdapter
+from issuekit.agents.registry import resolve_adapter
 from issuekit.agents.runner import AgentAdapter, AgentResult, AgentRunner, ConfigAgentAdapter
 from issuekit.config import AgentRunConfig, IssuekitConfig
 
@@ -63,7 +64,28 @@ def test_runner_captures_stdout_stderr_and_returns_result(tmp_path: Path) -> Non
     assert status["agent_log"].endswith(".agent.log")
 
 
-def test_runner_prompt_describes_api_lifecycle_without_file_tracker(
+def test_runner_uses_explicit_run_directory(tmp_path: Path) -> None:
+    script = tmp_path / "script.py"
+    script.write_text("pass")
+    plan = tmp_path / "plan.md"
+    plan.write_text("plan")
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    run_dir = tmp_path / "runtime-files"
+
+    result = AgentRunner().run(
+        FakeAdapter([sys.executable, str(script)]),
+        plan,
+        repo,
+        timeout=10.0,
+        run_dir=run_dir,
+    )
+
+    assert result.stdout_path.parent == run_dir
+    assert result.agent_log_path.parent == run_dir
+
+
+def test_runner_uses_caller_prompt_override(
     tmp_path: Path,
 ) -> None:
     class PromptCaptureAdapter(FakeAdapter):
@@ -87,23 +109,15 @@ def test_runner_prompt_describes_api_lifecycle_without_file_tracker(
     (repo / ".git").mkdir()
 
     adapter = PromptCaptureAdapter([sys.executable, str(script)])
-    AgentRunner().run(adapter, plan, repo, timeout=10.0)
+    AgentRunner().run(
+        adapter,
+        plan,
+        repo,
+        timeout=10.0,
+        prompt_override="Caller-owned prompt.",
+    )
 
-    assert "Do NOT run git commit or git push" in adapter.prompt
-    assert "Write maintainable, idiomatic code" in adapter.prompt
-    assert "use normal imports and real identifiers" in adapter.prompt
-    assert (
-        "Do not split or obfuscate string literals, import paths, or identifiers"
-        in adapter.prompt
-    )
-    assert "unless dynamic loading is truly required" in adapter.prompt
-    assert "Issuekit owns the API-backed issue lifecycle" in adapter.prompt
-    assert (
-        "do not run issuekit claim, submit-review, request-changes, approve, or complete"
-        in adapter.prompt
-    )
-    assert "do not mutate tracker state or issue lifecycle metadata directly" in adapter.prompt
-    assert "docs/issues" not in adapter.prompt
+    assert adapter.prompt == "Caller-owned prompt."
 
 
 def test_runner_passes_session_id_through_to_argv(tmp_path: Path) -> None:
@@ -132,7 +146,7 @@ def test_runner_passes_session_id_through_to_argv(tmp_path: Path) -> None:
         )
     )
 
-    adapter = ConfigAgentAdapter("python-agent", config=config)
+    adapter = ConfigAgentAdapter("python-agent", dict(config.agents)["python-agent"])
     result = AgentRunner().run(
         adapter,
         plan,
@@ -314,7 +328,7 @@ def test_runner_missing_repo_raises(tmp_path: Path) -> None:
 
 
 def test_kimi_adapter_argv_contains_p_and_never_auto() -> None:
-    adapter = KimiAdapter()
+    adapter = resolve_adapter("kimi")
     argv = adapter.build_argv("prompt", Path("/plan.md"))
     assert "-p" in argv
     assert "--auto" not in argv
@@ -323,14 +337,14 @@ def test_kimi_adapter_argv_contains_p_and_never_auto() -> None:
 
 
 def test_kimi_adapter_argv_includes_model() -> None:
-    adapter = KimiAdapter(model="k2")
+    adapter = resolve_adapter("kimi", model="k2")
     argv = adapter.build_argv("prompt", Path("/plan.md"))
     assert "-m" in argv
     assert argv[argv.index("-m") + 1] == "k2"
 
 
 def test_claude_adapter_argv_build_full_shape() -> None:
-    adapter = ConfigAgentAdapter("claude")
+    adapter = resolve_adapter("claude")
     argv = adapter.build_argv("prompt", Path("/plan.md"))
     assert argv[0] == "-p"
     assert argv[1].startswith("prompt")
@@ -343,7 +357,7 @@ def test_claude_adapter_argv_build_full_shape() -> None:
 
 
 def test_claude_adapter_argv_appends_model_when_supplied() -> None:
-    adapter = ConfigAgentAdapter("claude", model="claude-opus-4-8")
+    adapter = resolve_adapter("claude", model="claude-opus-4-8")
     argv = adapter.build_argv("prompt", Path("/plan.md"))
     assert argv[:6] == [
         "-p",
@@ -379,8 +393,8 @@ def test_config_adapter_appends_session_flag_only_when_resumable() -> None:
         )
     )
 
-    resumable = ConfigAgentAdapter("resumable", config=config)
-    plain = ConfigAgentAdapter("plain", config=config)
+    resumable = ConfigAgentAdapter("resumable", dict(config.agents)["resumable"])
+    plain = ConfigAgentAdapter("plain", dict(config.agents)["plain"])
 
     assert resumable.supports_session_resume() is True
     assert plain.supports_session_resume() is False
@@ -398,7 +412,7 @@ def test_config_adapter_appends_session_flag_only_when_resumable() -> None:
 
 
 def test_claude_adapter_argv_appends_session_id_when_supplied() -> None:
-    adapter = ConfigAgentAdapter("claude")
+    adapter = resolve_adapter("claude")
     argv = adapter.build_argv(
         "prompt",
         Path("/plan.md"),
@@ -426,7 +440,7 @@ def test_config_adapter_uses_configured_model_and_prompt_suffix() -> None:
         )
     )
 
-    argv = ConfigAgentAdapter("codex", config=config).build_argv("base", Path("/plan.md"))
+    argv = ConfigAgentAdapter("codex", dict(config.agents)["codex"]).build_argv("base", Path("/plan.md"))
 
     assert argv[:2] == ["exec", "base\n\nGeneral guardrail.\n\nSpark guardrail."]
     assert argv[argv.index("--model") + 1] == "gpt-5.3-codex-spark"
@@ -452,7 +466,7 @@ def test_config_adapter_cli_model_overrides_config_model_for_argv_and_prompt() -
         )
     )
 
-    argv = ConfigAgentAdapter("codex", config=config, model="cli-model").build_argv(
+    argv = ConfigAgentAdapter("codex", dict(config.agents)["codex"], model="cli-model").build_argv(
         "base",
         Path("/plan.md"),
     )
@@ -481,7 +495,7 @@ def test_config_adapter_reasoning_effort_formats_template_and_cli_overrides_defa
 
     argv = ConfigAgentAdapter(
         "codex",
-        config=config,
+        dict(config.agents)["codex"],
         model="cli-model",
         reasoning_effort="low",
     ).build_argv("base", Path("/plan.md"))
@@ -502,7 +516,7 @@ def test_config_adapter_rejects_reasoning_effort_without_template() -> None:
     )
 
     with pytest.raises(ValueError, match="reasoning_effort"):
-        ConfigAgentAdapter("claude", config=config, reasoning_effort="medium")
+        ConfigAgentAdapter("claude", dict(config.agents)["claude"], reasoning_effort="medium")
 
 
 def test_config_adapter_model_prompt_requires_exact_match() -> None:
@@ -521,14 +535,14 @@ def test_config_adapter_model_prompt_requires_exact_match() -> None:
         )
     )
 
-    argv = ConfigAgentAdapter("codex", config=config).build_argv("base", Path("/plan.md"))
+    argv = ConfigAgentAdapter("codex", dict(config.agents)["codex"]).build_argv("base", Path("/plan.md"))
 
     assert argv[1] == "base"
     assert "Spark guardrail." not in argv[1]
 
 
 def test_kimi_adapter_parse_output_extracts_resume_id_from_stderr() -> None:
-    adapter = KimiAdapter()
+    adapter = resolve_adapter("kimi")
     stdout = "Answer\n"
     stderr = "thinking...\nTo resume this session: kimi -r abc123\n"
     parsed = adapter.parse_output(stdout, stderr)
@@ -540,7 +554,7 @@ def test_kimi_adapter_parse_output_extracts_resume_id_from_stderr() -> None:
 def test_kimi_adapter_resolve_binary_raises_when_not_found(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr("issuekit.agents.runner.shutil.which", lambda _cmd: None)
     monkeypatch.setattr("os.path.expanduser", lambda p: str(p).replace("~", str(tmp_path)))
-    adapter = KimiAdapter()
+    adapter = resolve_adapter("kimi")
     with pytest.raises(RuntimeError, match="not found"):
         adapter.resolve_binary()
 

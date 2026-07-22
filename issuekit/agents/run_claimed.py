@@ -9,7 +9,8 @@ import sys
 import threading
 from typing import TextIO
 
-from issuekit.agents.runner import AgentResult, AgentRunner, resolve_adapter
+from issuekit.agents.registry import resolve_adapter
+from issuekit.agents.runner import AgentResult, AgentRunner
 from issuekit.author_guard import AuthorOrchestrationContext
 from issuekit.config import IssuekitConfig
 from issuekit.core import Issue
@@ -39,6 +40,27 @@ class RunOutcome:
 
 RunReporter = Callable[[Issue, AgentResult], None]
 RunnerFactory = Callable[[], AgentRunner]
+
+
+def implementation_prompt(plan_path: Path) -> str:
+    """Return the Issuekit implementation prompt for a claimed issue."""
+
+    return (
+        f"Read the plan file at: {plan_path} . Implement it fully by editing "
+        "files directly in this repository. Do NOT run git commit or git push - "
+        "leave all changes unstaged for review. Edit only code, tests, and "
+        "supporting project files needed for the implementation. Write "
+        "maintainable, idiomatic code that matches surrounding imports, naming, "
+        "and comment density; use normal imports and real identifiers when they "
+        "work. Do not split or obfuscate string literals, import paths, or "
+        "identifiers, and do not use importlib/getattr/setattr/globals() "
+        "indirection unless dynamic loading is truly required. Issuekit owns the "
+        "API-backed issue lifecycle, including claim, submit, review, approval, "
+        "and completion state; do not run issuekit claim, submit-review, "
+        "request-changes, approve, or complete, and do not mutate tracker state "
+        "or issue lifecycle metadata directly. If the plan is ambiguous, make "
+        "the most reasonable choice and note it at the end."
+    )
 
 
 def run_and_submit(
@@ -93,6 +115,8 @@ def run_and_submit(
         issue_id=issue_id,
         follow=follow,
         prompt_suffix=prompt_suffix,
+        prompt_override=implementation_prompt(plan_path),
+        run_dir=run_dir,
         abort_event=abort_event,
         issuekit_session=session,
     )
@@ -147,15 +171,15 @@ def run_and_submit(
                 file=out,
             )
 
-        run_config = dict(config.agents).get(agent)
-        if run_config is not None and run_config.diff_shape_warn_deletions is not None:
+        policy = dict(config.agent_policies).get(agent)
+        if policy is not None and policy.diff_shape_warn_deletions is not None:
             _warn_heavy_deletions(
                 cwd,
                 issues_dir,
-                deletion_threshold=run_config.diff_shape_warn_deletions,
+                deletion_threshold=policy.diff_shape_warn_deletions,
                 err=err,
             )
-        if run_config is not None and run_config.mojibake_gate:
+        if policy is not None and policy.mojibake_gate:
             confirmed_hits, unconfirmed_hits = _mojibake_touched_hits(
                 cwd,
                 issues_dir,

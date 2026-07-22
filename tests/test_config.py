@@ -858,9 +858,9 @@ def test_load_config_reads_agent_guardrail_fields(tmp_path: Path) -> None:
         effort_argv=("-c", "model_reasoning_effort={value}"),
         prompt_suffix="Keep diffs small.",
         model_prompts=(("gpt-5.3-codex-spark", "Spark-only guardrail."),),
-        mojibake_gate=True,
-        diff_shape_warn_deletions=12,
     )
+    assert dict(config.agent_policies)["codex"].mojibake_gate is True
+    assert dict(config.agent_policies)["codex"].diff_shape_warn_deletions == 12
 
 
 def test_load_config_merges_builtin_agent_overrides(tmp_path: Path) -> None:
@@ -893,8 +893,6 @@ def test_load_config_merges_builtin_agent_overrides(tmp_path: Path) -> None:
         effort_argv=codex_default.effort_argv,
         prompt_suffix=codex_default.prompt_suffix,
         model_prompts=codex_default.model_prompts,
-        mojibake_gate=True,
-        diff_shape_warn_deletions=40,
     )
     assert agents["kimi"] == dict(IssuekitConfig.agents)["kimi"]
     assert agents["claude"] == dict(IssuekitConfig.agents)["claude"]
@@ -918,9 +916,10 @@ def test_load_config_honors_false_builtin_agent_override(tmp_path: Path) -> None
         newline="\n",
     )
 
-    codex = dict(load_config(tmp_path).agents)["codex"]
+    config = load_config(tmp_path)
+    codex = dict(config.agents)["codex"]
 
-    assert codex.mojibake_gate is False
+    assert dict(config.agent_policies)["codex"].mojibake_gate is False
     assert codex.prompt_suffix == dict(IssuekitConfig.agents)["codex"].prompt_suffix
 
 
@@ -938,21 +937,22 @@ def test_load_config_empty_agent_string_clears_optional_default(tmp_path: Path) 
 
 def test_shipped_codex_defaults_enable_guardrails() -> None:
     codex = dict(IssuekitConfig.agents)["codex"]
+    policy = dict(IssuekitConfig.agent_policies)["codex"]
 
     assert codex.model is None
     assert codex.prompt_suffix is not None
     assert "minimal, additive diffs" in codex.prompt_suffix
     assert "mojibake" in codex.prompt_suffix
-    assert codex.mojibake_gate is True
-    assert codex.diff_shape_warn_deletions == 40
+    assert policy.mojibake_gate is True
+    assert policy.diff_shape_warn_deletions == 40
 
 
 def test_shipped_kimi_defaults_do_not_enable_guardrails() -> None:
     kimi = dict(IssuekitConfig.agents)["kimi"]
+    policy = dict(IssuekitConfig.agent_policies).get("kimi")
 
     assert kimi.prompt_suffix is None
-    assert kimi.mojibake_gate is False
-    assert kimi.diff_shape_warn_deletions is None
+    assert policy is None
 
 
 def test_shipped_only_claude_defaults_enable_resumable_sessions() -> None:

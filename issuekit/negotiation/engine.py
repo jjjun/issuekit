@@ -10,7 +10,8 @@ import uuid
 from typing import Protocol
 
 from issuekit.agents.readonly import stdout_text
-from issuekit.agents.runner import AgentAdapter, AgentResult, AgentRunner, resolve_adapter
+from issuekit.agents.registry import resolve_adapter
+from issuekit.agents.runner import AgentAdapter, AgentResult, AgentRunner
 from issuekit.config import IssuekitConfig
 from issuekit.core import Issue, last_nonempty_line
 from issuekit.negotiation.model import (

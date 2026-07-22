@@ -3,7 +3,8 @@ from pathlib import Path
 import pytest
 
 from issuekit.agents.adapters.kimi import KimiAdapter
-from issuekit.agents.runner import ConfigAgentAdapter, resolve_adapter
+from issuekit.agents.registry import resolve_adapter
+from issuekit.agents.runner import ConfigAgentAdapter
 from issuekit.config import AgentRunConfig, IssuekitConfig, load_config
 
 
@@ -46,7 +47,7 @@ def test_resolve_adapter_returns_claude() -> None:
 
 
 def test_claude_adapter_argv_contains_print_and_accept_edits() -> None:
-    adapter = ConfigAgentAdapter("claude")
+    adapter = resolve_adapter("claude")
     argv = adapter.build_argv("prompt", Path("/plan.md"))
     assert argv[0] == "-p"
     assert argv[1].startswith("prompt")
@@ -60,14 +61,14 @@ def test_claude_adapter_argv_contains_print_and_accept_edits() -> None:
 
 
 def test_claude_adapter_argv_includes_model() -> None:
-    adapter = ConfigAgentAdapter("claude", model="claude-opus-4-8")
+    adapter = resolve_adapter("claude", model="claude-opus-4-8")
     argv = adapter.build_argv("prompt", Path("/plan.md"))
     assert "--model" in argv
     assert argv[argv.index("--model") + 1] == "claude-opus-4-8"
 
 
 def test_claude_adapter_parse_output_returns_streams() -> None:
-    adapter = ConfigAgentAdapter("claude")
+    adapter = resolve_adapter("claude")
     parsed = adapter.parse_output("stdout text", "stderr text")
     assert parsed["stdout"] == "stdout text"
     assert parsed["stderr"] == "stderr text"
@@ -90,7 +91,7 @@ def test_resolve_adapter_disabled_agent_raises_clear_error() -> None:
         resolve_adapter("kimi", config=config)
 
 
-def test_config_agent_adapter_disabled_agent_raises_clear_error() -> None:
+def test_config_agent_adapter_uses_only_run_config() -> None:
     config = IssuekitConfig(
         disabled_agents=("kimi",),
         agents=(
@@ -98,8 +99,9 @@ def test_config_agent_adapter_disabled_agent_raises_clear_error() -> None:
         ),
     )
 
-    with pytest.raises(ValueError, match="Agent disabled by config: kimi"):
-        ConfigAgentAdapter("kimi", config=config)
+    adapter = ConfigAgentAdapter("kimi", AgentRunConfig(binary="kimi"))
+
+    assert adapter.agent_name == "kimi"
 
 
 def test_resolve_adapter_returns_configured_agent() -> None:
@@ -181,7 +183,7 @@ def test_resolve_adapter_passes_reasoning_effort() -> None:
 
 
 def test_codex_adapter_argv_contains_exec() -> None:
-    adapter = ConfigAgentAdapter("codex")
+    adapter = resolve_adapter("codex")
     argv = adapter.build_argv("prompt", Path("/plan.md"))
     assert "exec" in argv
     assert argv[1].startswith("prompt")
@@ -189,14 +191,14 @@ def test_codex_adapter_argv_contains_exec() -> None:
 
 
 def test_codex_adapter_argv_includes_model() -> None:
-    adapter = ConfigAgentAdapter("codex", model="gpt-4")
+    adapter = resolve_adapter("codex", model="gpt-4")
     argv = adapter.build_argv("prompt", Path("/plan.md"))
     assert "--model" in argv
     assert argv[argv.index("--model") + 1] == "gpt-4"
 
 
 def test_codex_adapter_parse_output_returns_streams() -> None:
-    adapter = ConfigAgentAdapter("codex")
+    adapter = resolve_adapter("codex")
     parsed = adapter.parse_output("stdout text", "stderr text")
     assert parsed["stdout"] == "stdout text"
     assert parsed["stderr"] == "stderr text"
@@ -216,7 +218,7 @@ def test_codex_adapter_argv_value_less_approval_flag() -> None:
             ),
         )
     )
-    adapter = ConfigAgentAdapter("codex", config=config)
+    adapter = ConfigAgentAdapter("codex", dict(config.agents)["codex"])
     argv = adapter.build_argv("prompt", Path("/plan.md"))
     assert argv == ["exec", "prompt", "--full-auto"]
 
@@ -240,7 +242,7 @@ def test_config_agent_adapter_resolve_binary_uses_path(monkeypatch, tmp_path: Pa
             ),
         )
     )
-    adapter = FakeAdapter("fake", config=config)
+    adapter = FakeAdapter("fake", dict(config.agents)["fake"])
     assert adapter.resolve_binary() == fake_bin
 
 

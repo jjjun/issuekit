@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from issuekit.agents.runner import ConfigAgentAdapter
-from issuekit.config import IssuekitConfig
+from issuekit.agents.run_config import AgentRunConfig
 
 
 class KimiAdapter(ConfigAgentAdapter):
@@ -20,13 +20,13 @@ class KimiAdapter(ConfigAgentAdapter):
         self,
         agent_name: str = "kimi",
         *,
-        config: IssuekitConfig | None = None,
+        run_config: AgentRunConfig,
         model: str | None = None,
         reasoning_effort: str | None = None,
     ) -> None:
         super().__init__(
             agent_name,
-            config=config,
+            run_config=run_config,
             model=model,
             reasoning_effort=reasoning_effort,
         )

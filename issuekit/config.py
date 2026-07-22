@@ -12,6 +12,7 @@ from issuekit.core import (
     optional_int,
     optional_str,
 )
+from issuekit.agents.run_config import AgentRunConfig
 from issuekit.encoding import has_non_ascii
 from issuekit.dotenv import load_dotenv
 from issuekit.localconfig import LocalConfigError, load_toml, read_local_config
@@ -35,25 +36,9 @@ PROFILE_TAGS_MAX = 20
 
 
 @dataclass(frozen=True)
-class AgentRunConfig:
-    """Per-agent headless run settings."""
+class AgentPolicy:
+    """Issuekit submission policy applied to an agent's implementation."""
 
-    binary: str
-    adapter: str | None = None
-    known_paths: tuple[str, ...] = ()
-    headless_argv: tuple[str, ...] = ()
-    resumable: bool = False
-    session_flag: str | None = None
-    approval_flag: str | None = None
-    approval_value: str | None = None
-    output_format_flag: str | None = None
-    output_format: str | None = None
-    model_flag: str | None = None
-    model: str | None = None
-    reasoning_effort: str | None = None
-    effort_argv: tuple[str, ...] = ()
-    prompt_suffix: str | None = None
-    model_prompts: tuple[tuple[str, str], ...] = ()
     mojibake_gate: bool = False
     diff_shape_warn_deletions: int | None = None
 
@@ -164,8 +149,6 @@ class IssuekitConfig:
                     "must touch only the added region; if you cannot, stop and report "
                     "instead of reformatting."
                 ),
-                mojibake_gate=True,
-                diff_shape_warn_deletions=40,
             ),
         ),
         (
@@ -197,10 +180,12 @@ class IssuekitConfig:
                     "must touch only the added region; if you cannot, stop and report "
                     "instead of reformatting."
                 ),
-                mojibake_gate=True,
-                diff_shape_warn_deletions=40,
             ),
         ),
+    )
+    agent_policies: tuple[tuple[str, AgentPolicy], ...] = (
+        ("codex", AgentPolicy(mojibake_gate=True, diff_shape_warn_deletions=40)),
+        ("claude", AgentPolicy(mojibake_gate=True, diff_shape_warn_deletions=40)),
     )
 
     def issues_path(self, cwd: Path | str = ".") -> Path:
@@ -255,10 +240,9 @@ def load_config(cwd: Path | str = ".") -> IssuekitConfig:
     disabled_agents = _load_disabled_agents(
         raw_config.get("disabled_agents", IssuekitConfig.disabled_agents)
     )
-    agents = _filter_disabled_agents(
-        _load_agents(raw_config.get("agents", {})),
-        disabled_agents,
-    )
+    agents, agent_policies = _load_agents(raw_config.get("agents", {}))
+    agents = _filter_disabled_agents(agents, disabled_agents)
+    agent_policies = _filter_disabled_agent_policies(agent_policies, disabled_agents)
     assignees = _load_assignees(raw_config, agents, disabled_agents)
     default_reviewer = (
         "auto"
@@ -359,6 +343,7 @@ def load_config(cwd: Path | str = ".") -> IssuekitConfig:
         machine_config_path=machine_path if machine_path is not None and machine_path.is_file() else None,
         repo_config_source=repo_config_source,
         agents=agents,
+        agent_policies=agent_policies,
     )
 
 
@@ -504,6 +489,16 @@ def _filter_disabled_agents(
     return tuple((name, cfg) for name, cfg in agents if name not in disabled)
 
 
+def _filter_disabled_agent_policies(
+    policies: tuple[tuple[str, AgentPolicy], ...],
+    disabled_agents: tuple[str, ...],
+) -> tuple[tuple[str, AgentPolicy], ...]:
+    if not disabled_agents:
+        return policies
+    disabled = set(disabled_agents)
+    return tuple((name, policy) for name, policy in policies if name not in disabled)
+
+
 def _dedupe_tokens(values: tuple[str, ...]) -> tuple[str, ...]:
     seen: set[str] = set()
     result: list[str] = []
@@ -550,18 +545,24 @@ def _validate_claim_sync_interval(value: float) -> None:
         raise ValueError("claim_sync_interval_sec must be zero or greater.")
 
 
-def _load_agents(raw: dict[str, object]) -> tuple[tuple[str, AgentRunConfig], ...]:
+def _load_agents(
+    raw: dict[str, object],
+) -> tuple[tuple[tuple[str, AgentRunConfig], ...], tuple[tuple[str, AgentPolicy], ...]]:
     if not raw:
-        return IssuekitConfig.agents
+        return IssuekitConfig.agents, IssuekitConfig.agent_policies
     default_agents = IssuekitConfig.agents
     default_by_name = dict(default_agents)
+    default_policies = dict(IssuekitConfig.agent_policies)
     configured: dict[str, AgentRunConfig] = {}
+    configured_policies: dict[str, AgentPolicy] = {}
     new_agent_names: list[str] = []
     for name, cfg in raw.items():
         if not isinstance(cfg, dict):
             continue
         base = default_by_name.get(name, AgentRunConfig(binary=name))
-        configured[name] = replace(base, **_agent_overrides(cfg))
+        configured[name] = replace(base, **_agent_run_config_overrides(cfg))
+        policy = default_policies.get(name, AgentPolicy())
+        configured_policies[name] = replace(policy, **_agent_policy_overrides(cfg))
         if configured[name].reasoning_effort and not configured[name].effort_argv:
             raise ValueError(
                 f"agents.{name}.reasoning_effort requires agents.{name}.effort_argv."
@@ -574,7 +575,11 @@ def _load_agents(raw: dict[str, object]) -> tuple[tuple[str, AgentRunConfig], ..
         result.append((name, configured.get(name, default_config)))
     for name in new_agent_names:
         result.append((name, configured[name]))
-    return tuple(result)
+    policies = tuple(
+        (name, configured_policies.get(name, default_policies.get(name, AgentPolicy())))
+        for name, _run_config in result
+    )
+    return tuple(result), policies
 
 
 def _load_worker(raw: object) -> WorkerIdentity | None:
@@ -697,7 +702,7 @@ def _required_worker_value(raw: dict[str, object], key: str) -> str:
     return "" if value is None else str(value).strip()
 
 
-def _agent_overrides(cfg: dict[str, object]) -> dict[str, object]:
+def _agent_run_config_overrides(cfg: dict[str, object]) -> dict[str, object]:
     loaders = {
         "binary": str,
         "adapter": optional_str,
@@ -715,8 +720,6 @@ def _agent_overrides(cfg: dict[str, object]) -> dict[str, object]:
         "effort_argv": _string_tuple,
         "prompt_suffix": optional_str,
         "model_prompts": _model_prompts,
-        "mojibake_gate": _bool_value,
-        "diff_shape_warn_deletions": optional_int,
     }
     overrides: dict[str, object] = {}
     for key, loader in loaders.items():
@@ -724,6 +727,18 @@ def _agent_overrides(cfg: dict[str, object]) -> dict[str, object]:
         if value is not _SENTINEL:
             overrides[key] = loader(value)
     return overrides
+
+
+def _agent_policy_overrides(cfg: dict[str, object]) -> dict[str, object]:
+    loaders = {
+        "mojibake_gate": _bool_value,
+        "diff_shape_warn_deletions": optional_int,
+    }
+    return {
+        key: loader(value)
+        for key, loader in loaders.items()
+        if (value := cfg.get(key, _SENTINEL)) is not _SENTINEL
+    }
 
 
 def _model_prompts(value: object) -> tuple[tuple[str, str], ...]:
