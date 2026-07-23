@@ -14,6 +14,56 @@ from issuekit.workflow import WorkflowError
 from tests.issue_helpers import api_issue
 
 
+def test_lifecycle_commands_allow_unlaunchable_agent_effort_config(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                1,
+                "Implementation",
+                status="in_progress",
+                assignee="codex",
+                stage="implementing",
+                implementer="codex",
+            ),
+            api_issue(
+                2,
+                "Changes",
+                status="in_progress",
+                assignee="claude",
+                stage="review",
+                implementer="codex",
+            ),
+            api_issue(
+                3,
+                "Approval",
+                status="in_progress",
+                assignee="claude",
+                stage="review",
+                implementer="codex",
+            ),
+        ]
+    )
+    (tmp_path / "issuekit.toml").write_text(
+        (
+            "api_url = 'https://mine.example'\nproject = 'demo'\n"
+            "[agents.kimi]\nreasoning_effort = 'medium'\n"
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["submit-review", "1", "--summary", "Implemented."]) == 0
+    assert cli.main(["request-changes", "2", "--notes", "Add tests."]) == 0
+    assert cli.main(["approve", "3", "--verification", "uv run pytest"]) == 0
+    assert capsys.readouterr().err == ""
+
+
 def test_queue_command_uses_api_store_when_configured(
     tmp_path: Path,
     monkeypatch,

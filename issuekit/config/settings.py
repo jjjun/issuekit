@@ -638,10 +638,6 @@ def _load_agents(
         policy = default_policies.get(name, AgentPolicy())
         configured_policies[name] = replace(policy, **_agent_policy_overrides(cfg))
         configured_role_overlays[name] = _agent_role_overlays(cfg, agent_name=name)
-        if configured[name].reasoning_effort and not configured[name].effort_argv:
-            raise ValueError(
-                f"agents.{name}.reasoning_effort requires agents.{name}.effort_argv."
-            )
         if name not in default_by_name:
             new_agent_names.append(name)
 
@@ -659,7 +655,6 @@ def _load_agents(
         for name, _run_config in result
         if name in configured_role_overlays and configured_role_overlays[name]
     )
-    _validate_role_overlay_effort(role_overlays, result)
     return tuple(result), policies, role_overlays
 
 
@@ -857,22 +852,6 @@ def _agent_role_overlays(
             )
         )
     return tuple(overlays)
-
-
-def _validate_role_overlay_effort(
-    overlays: tuple[tuple[str, tuple[tuple[str, RoleOverlay], ...]], ...],
-    agents: list[tuple[str, AgentRunConfig]],
-) -> None:
-    agent_configs = dict(agents)
-    for agent_name, role_overlays in overlays:
-        if agent_configs[agent_name].effort_argv:
-            continue
-        for role, overlay in role_overlays:
-            if overlay.reasoning_effort:
-                raise ValueError(
-                    f"agents.{agent_name}.roles.{role}.reasoning_effort requires "
-                    f"agents.{agent_name}.effort_argv."
-                )
 
 
 def _model_prompts(value: object) -> tuple[tuple[str, str], ...]:

@@ -527,7 +527,10 @@ def test_config_adapter_rejects_reasoning_effort_without_template() -> None:
         agents=(("claude", AgentRunConfig(binary="claude", headless_argv=("-p",))),)
     )
 
-    with pytest.raises(ValueError, match="reasoning_effort"):
+    with pytest.raises(
+        ValueError,
+        match="add effort_argv to the agent configuration or remove reasoning_effort",
+    ):
         ConfigAgentAdapter("claude", dict(config.agents)["claude"], reasoning_effort="medium")
 
 

@@ -976,7 +976,7 @@ def test_load_config_reads_claude_reasoning_effort(tmp_path: Path) -> None:
     assert dict(load_config(tmp_path).agents)["claude"].reasoning_effort == "medium"
 
 
-def test_load_config_rejects_reasoning_effort_without_effort_argv(
+def test_load_config_reads_reasoning_effort_without_effort_argv(
     tmp_path: Path,
 ) -> None:
     (tmp_path / "issuekit.toml").write_text(
@@ -985,11 +985,7 @@ def test_load_config_rejects_reasoning_effort_without_effort_argv(
         newline="\n",
     )
 
-    with pytest.raises(
-        ValueError,
-        match="agents.kimi.reasoning_effort requires agents.kimi.effort_argv.",
-    ):
-        load_config(tmp_path)
+    assert dict(load_config(tmp_path).agents)["kimi"].reasoning_effort == "medium"
 
 
 def test_load_config_reads_agent_role_overlays(tmp_path: Path) -> None:
@@ -1025,10 +1021,6 @@ def test_load_config_reads_agent_role_overlays(tmp_path: Path) -> None:
             "[agents.claude.roles.reviewer]\nbinary = 'claude'\n",
             "only supports model and reasoning_effort",
         ),
-        (
-            "[agents.kimi.roles.reviewer]\nreasoning_effort = 'medium'\n",
-            "agents.kimi.roles.reviewer.reasoning_effort requires agents.kimi.effort_argv.",
-        ),
     ],
 )
 def test_load_config_validates_agent_role_overlays(
@@ -1038,6 +1030,22 @@ def test_load_config_validates_agent_role_overlays(
 
     with pytest.raises(ValueError, match=message):
         load_config(tmp_path)
+
+
+def test_load_config_reads_role_reasoning_effort_without_effort_argv(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "[agents.kimi.roles.reviewer]\nreasoning_effort = 'medium'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    config = load_config(tmp_path)
+
+    assert dict(dict(config.agent_role_overlays)["kimi"])["reviewer"] == RoleOverlay(
+        reasoning_effort="medium"
+    )
 
 
 def test_load_config_honors_false_builtin_agent_override(tmp_path: Path) -> None:

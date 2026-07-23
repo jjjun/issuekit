@@ -54,7 +54,8 @@ class ConfigAgentAdapter(AgentAdapter):
             and not self.run_config.effort_argv
         ):
             raise ValueError(
-                f"Agent '{agent_name}' config sets reasoning_effort but has no effort_argv."
+                f"Agent '{agent_name}' config sets reasoning_effort but has no effort_argv; "
+                "add effort_argv to the agent configuration or remove reasoning_effort."
             )
 
     def resolve_binary(self) -> Path:

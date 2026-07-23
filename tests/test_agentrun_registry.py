@@ -189,6 +189,38 @@ def test_resolve_adapter_passes_reasoning_effort() -> None:
     assert adapter.reasoning_effort == "medium"
 
 
+def test_resolve_adapter_rejects_configured_reasoning_effort_without_template(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "[agents.kimi]\nreasoning_effort = 'medium'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="add effort_argv to the agent configuration or remove reasoning_effort",
+    ):
+        resolve_adapter("kimi", config=load_config(tmp_path))
+
+
+def test_resolve_adapter_rejects_role_reasoning_effort_without_template(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "[agents.kimi.roles.reviewer]\nreasoning_effort = 'medium'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="add effort_argv to the agent configuration or remove reasoning_effort",
+    ):
+        resolve_adapter("kimi", config=load_config(tmp_path), role="reviewer")
+
+
 def test_resolve_adapter_applies_role_overlay_before_agent_default() -> None:
     config = IssuekitConfig(
         agents=(
