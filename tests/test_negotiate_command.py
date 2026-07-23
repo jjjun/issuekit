@@ -1,6 +1,7 @@
 import json
 import re
 from pathlib import Path
+import subprocess
 
 import pytest
 
@@ -8,6 +9,7 @@ from issuekit import cli
 from issuekit.agentrun import AgentPrompt, AgentResult
 from issuekit.commands.negotiate import (
     MockIssueCreator,
+    _resolve_backend_cwd,
     entry_origin,
     origin_issue_ref_from_thread,
     finalize_negotiation,
@@ -15,6 +17,7 @@ from issuekit.commands.negotiate import (
     run_negotiation,
 )
 from issuekit.config import IssuekitConfig
+from issuekit.config.refs import add_ref
 from issuekit.core import Issue
 from issuekit.negotiation import MockNegotiationStore, ThreadStatus, Verdict
 from issuekit.testing import FakeIssuekitClient
@@ -99,6 +102,35 @@ class CannedRunner:
         )
 
 
+class WritingRunner(CannedRunner):
+    def __init__(self, outputs: list[str], *, write_call: int):
+        super().__init__(outputs)
+        self.write_call = write_call
+
+    def run(
+        self,
+        adapter,
+        prompt: AgentPrompt,
+        repo: Path,
+        timeout: float,
+        agent_name: str | None = None,
+        issue_id: int | None = None,
+        **kwargs,
+    ) -> AgentResult:
+        result = super().run(
+            adapter,
+            prompt,
+            repo,
+            timeout,
+            agent_name=agent_name,
+            issue_id=issue_id,
+            **kwargs,
+        )
+        if len(self.calls) == self.write_call:
+            (repo / "mutated.txt").write_text("changed\n", encoding="utf-8", newline="\n")
+        return result
+
+
 def _call_plan_text(runner: CannedRunner, index: int) -> str:
     prompt = runner.calls[index]["prompt"]
     assert isinstance(prompt, AgentPrompt)
@@ -143,6 +175,83 @@ def test_negotiate_converges_when_both_sides_agree_on_same_contract(tmp_path) ->
     assert isinstance(prompt, AgentPrompt)
     assert "Read the negotiation round prompt at:" in prompt.pointer
     assert "Perspective: you represent the frontend side." in _call_plan_text(runner, 0)
+
+
+def test_negotiate_runs_backend_turns_in_backend_checkout(tmp_path) -> None:
+    backend_cwd = tmp_path / "backend"
+    backend_cwd.mkdir()
+    runner = CannedRunner(
+        [
+            _block(side="frontend", verdict="propose", contract="GET /items"),
+            _block(side="backend", verdict="blocked", contract=None),
+        ]
+    )
+
+    run_negotiation(
+        issue=_issue(),
+        to_project="backend",
+        frontend_agent="codex",
+        backend_agent="claude",
+        max_rounds=2,
+        config=IssuekitConfig(api_url="https://mine.example", project="frontend"),
+        cwd=tmp_path,
+        backend_cwd=backend_cwd,
+        store=MockNegotiationStore(None),
+        runner=runner,
+    )
+
+    assert runner.calls[0]["repo"] == tmp_path
+    assert runner.calls[1]["repo"] == backend_cwd
+
+
+@pytest.mark.parametrize(
+    ("write_call", "max_rounds"),
+    [(1, 1), (2, 2)],
+)
+def test_negotiate_rejects_worktree_mutations_from_either_side(
+    tmp_path,
+    write_call: int,
+    max_rounds: int,
+) -> None:
+    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
+    runner = WritingRunner(
+        [
+            _block(side="frontend", verdict="propose", contract="GET /items"),
+            _block(side="backend", verdict="counter", contract="GET /items?page=1"),
+        ],
+        write_call=write_call,
+    )
+
+    with pytest.raises(WorkflowError, match="modified the worktree"):
+        run_negotiation(
+            issue=_issue(),
+            to_project="backend",
+            frontend_agent="codex",
+            backend_agent="claude",
+            max_rounds=max_rounds,
+            config=IssuekitConfig(api_url="https://mine.example", project="frontend"),
+            cwd=tmp_path,
+            store=MockNegotiationStore(None),
+            runner=runner,
+        )
+
+
+def test_backend_ref_resolution_lists_known_refs_and_rejects_dirty_checkout(
+    tmp_path,
+) -> None:
+    backend_cwd = tmp_path / "backend"
+    backend_cwd.mkdir()
+    add_ref("backend", backend_cwd, tmp_path)
+
+    assert _resolve_backend_cwd("backend", tmp_path) == backend_cwd.resolve()
+    with pytest.raises(WorkflowError, match="Known refs: backend"):
+        _resolve_backend_cwd("missing", tmp_path)
+
+    subprocess.run(["git", "init"], cwd=backend_cwd, check=True, capture_output=True)
+    (backend_cwd / "dirty.txt").write_text("dirty\n", encoding="utf-8", newline="\n")
+
+    with pytest.raises(WorkflowError, match="dirty checkout"):
+        _resolve_backend_cwd("backend", tmp_path)
 
 
 def test_negotiate_uses_fresh_resumable_side_session_and_full_prompt(tmp_path) -> None:
@@ -312,6 +421,7 @@ def test_negotiate_passes_single_line_pointer_prompt_and_writes_full_plan(tmp_pa
     plan_text = prompt.body
     assert "You are participating in an issuekit cross-repo design negotiation." in plan_text
     assert "Perspective: you represent the frontend side." in plan_text
+    assert "Inspect the repository read-only." in plan_text
     assert "Compact thread so far:" in plan_text
 
 

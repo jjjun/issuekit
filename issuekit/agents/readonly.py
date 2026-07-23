@@ -52,6 +52,7 @@ def run_readonly_evaluation(
     label: str,
     subject: str,
     issue_id: int | None = None,
+    session_id: str | None = None,
     follow: bool = False,
     abort_event: threading.Event | None = None,
 ) -> ReadonlyAgentRun:
@@ -66,6 +67,7 @@ def run_readonly_evaluation(
         timeout=float(timeout),
         agent_name=agent,
         issue_id=issue_id,
+        session_id=session_id,
         follow=follow,
         abort_event=abort_event,
     )

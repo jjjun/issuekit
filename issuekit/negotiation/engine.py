@@ -9,7 +9,7 @@ import sys
 import uuid
 from typing import Protocol
 
-from issuekit.agents.readonly import stdout_text
+from issuekit.agents.readonly import require_clean_run, run_readonly_evaluation
 from issuekit.agents.registry import resolve_adapter
 from issuekit.agentrun import AgentAdapter, AgentPrompt, AgentResult, AgentRunner
 from issuekit.config import IssuekitConfig
@@ -324,6 +324,7 @@ def run_negotiation(
     reasoning_effort: str | None = None,
     config: IssuekitConfig,
     cwd: Path,
+    backend_cwd: Path | None = None,
     store: NegotiationStore,
     runner: AgentRunner | None = None,
 ) -> NegotiationResult:
@@ -352,6 +353,10 @@ def run_negotiation(
         FRONTEND_SIDE: frontend_agent,
         BACKEND_SIDE: backend_agent,
     }
+    side_cwds = {
+        FRONTEND_SIDE: cwd,
+        BACKEND_SIDE: backend_cwd or cwd,
+    }
     resume_thread_id = _find_resumable_thread_id(store, issue=issue, config=config)
     if resume_thread_id is None:
         first = _run_side_turn(
@@ -363,7 +368,7 @@ def run_negotiation(
             seed=seed,
             thread=[],
             issue=issue,
-            cwd=cwd,
+            cwd=side_cwds[FRONTEND_SIDE],
             timeout=timeout,
             runner=runner,
         )
@@ -400,7 +405,7 @@ def run_negotiation(
                 seed=seed,
                 thread=thread,
                 issue=issue,
-                cwd=cwd,
+                cwd=side_cwds[side],
                 timeout=timeout,
                 runner=runner,
             )
@@ -484,15 +489,19 @@ def _run_side_turn(
         body=prompt,
         pointer=render_negotiation_round_pointer(plan_path),
     )
-    result = runner.run(
-        adapter,
-        agent_prompt,
-        cwd,
-        timeout=float(timeout),
-        agent_name=agent,
+    readonly_run = run_readonly_evaluation(
+        agent=agent,
+        adapter=adapter,
+        cwd=cwd,
+        timeout=timeout,
+        runner_factory=lambda: runner,
+        prompt=agent_prompt,
+        label=f"Negotiation round {round_number}",
+        subject=side,
         issue_id=issue.id,
         session_id=session_id,
     )
+    result = readonly_run.result
     run_id = _run_id(result)
     print(
         f"round={round_number} side={side} agent={agent} run_id={run_id or '-'} "
@@ -515,7 +524,15 @@ def _run_side_turn(
             code="agent_failed",
         )
 
-    parsed = parse_round_output(stdout_text(result))
+    output = require_clean_run(
+        readonly_run,
+        err=sys.stderr,
+        mutation_log_message=(
+            f"ERROR: negotiation round {round_number} {side} run modified the "
+            "worktree; ignoring its output."
+        ),
+    )
+    parsed = parse_round_output(output)
     if parsed.side != side:
         raise WorkflowError(
             f"Negotiation round {round_number} returned side {parsed.side}, expected {side}.",

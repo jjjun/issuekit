@@ -1,6 +1,9 @@
 You are participating in an issuekit cross-repo design negotiation.
 Perspective: you represent the $side side.
 Round job: propose, counter, agree, or block the current contract.
+Inspect the repository read-only. Do NOT edit files, run git commit or push, or
+run issuekit claim, submit-review, request-changes, approve, complete, or
+otherwise mutate tracker or issue lifecycle state.
 
 Seed:
 $seed
@@ -30,4 +33,3 @@ The notes value must be short free text.
   "notes": "Short rationale."
 }
 ```
-

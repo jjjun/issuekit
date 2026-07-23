@@ -9,8 +9,10 @@ import sys
 from issuekit.commands._common import print_json
 from issuekit.agentrun import AgentRunner
 from issuekit.commands._common import run_command
-from issuekit.config import load_config
+from issuekit.config import IssuekitConfig, load_config
+from issuekit.config.refs import RefError, list_effective_refs
 from issuekit.core import parse_issue_id_arg
+from issuekit.gitutil import git_status_short
 from issuekit.negotiation import (
     NegotiationThreadSummary,
     ThreadStatus,
@@ -57,6 +59,10 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     negotiate_parser.add_argument(
         "--backend-agent",
         help="Configured agent representing the backend side.",
+    )
+    negotiate_parser.add_argument(
+        "--backend-ref",
+        help="Effective ref whose checkout the backend agent inspects.",
     )
     negotiate_parser.add_argument(
         "--max-rounds",
@@ -143,6 +149,7 @@ def run(args) -> int:
             return 0
 
         _require_round_args(args)
+        backend_cwd = _resolve_backend_cwd(args.backend_ref, cwd)
         issue_id = parse_issue_id_arg(args.from_issue)
         max_rounds = int(args.max_rounds)
         if max_rounds < 1:
@@ -167,6 +174,7 @@ def run(args) -> int:
             reasoning_effort=args.reasoning_effort,
             config=config,
             cwd=cwd,
+            backend_cwd=backend_cwd,
             store=store,
             runner=AgentRunner(),
         )
@@ -184,6 +192,7 @@ def run(args) -> int:
             ValueError,
             TimeoutError,
             ProposalError,
+            RefError,
             WorkflowError,
             NegotiationParseError,
         ),
@@ -244,6 +253,26 @@ def _require_round_args(args) -> None:
     ]
     if missing:
         raise ValueError(f"{', '.join(missing)} required unless --finalize is used.")
+
+
+def _resolve_backend_cwd(backend_ref: str | None, cwd: Path) -> Path:
+    if backend_ref is None:
+        return cwd
+
+    refs = list_effective_refs(cwd)
+    entry = refs.get(backend_ref)
+    if entry is None:
+        known_refs = ", ".join(refs) or "(none)"
+        raise WorkflowError(
+            f"Unknown backend ref {backend_ref!r}. Known refs: {known_refs}."
+        )
+
+    backend_cwd = entry.path
+    if git_status_short(backend_cwd):
+        raise WorkflowError(
+            f"Backend ref {backend_ref!r} points to a dirty checkout: {backend_cwd}."
+        )
+    return backend_cwd
 
 
 def _print_human_result(result: NegotiationResult) -> None:
