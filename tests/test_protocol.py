@@ -40,10 +40,10 @@ def test_render_protocol_returns_each_agent_and_both() -> None:
         assert "Author with upstream dependency" in rendered
         assert (
             'issuekit author --title "Short title" --body-file issue.md '
-            "--priority medium --agent codex --depends-on upstream#proposal:123"
+            "--priority medium --agent <agent> --depends-on upstream#proposal:123"
         ) in rendered
-        assert "issuekit claim --assignee codex" in rendered
-        assert "issuekit claim --id 123 --assignee codex" in rendered
+        assert "issuekit claim --assignee <agent>" in rendered
+        assert "issuekit claim --id 123 --assignee <agent>" in rendered
         assert 'issuekit submit-review 123 --summary "Implemented."' in rendered
         assert 'issuekit request-changes 123 --notes "Add focused tests."' in rendered
         assert 'issuekit approve 123 --verification "uv run pytest"' in rendered
@@ -53,7 +53,7 @@ def test_render_protocol_returns_each_agent_and_both() -> None:
         assert "issuekit propose --to <project> --title <t> --body <b> --depends-on upstream#proposal:123 --json" in rendered
         assert "issuekit adopt 42 --priority medium --json" in rendered
         assert "issuekit outgoing --to <project> --json" in rendered
-        assert "issuekit serve --agent codex --triage" in rendered
+        assert "issuekit serve --agent <agent> --triage" in rendered
         assert "Upstream feedback loop" in rendered
         assert "issuekit propose --to issuekit" in rendered
         assert "issuekit outgoing --to issuekit" in rendered
@@ -95,6 +95,12 @@ def test_render_protocol_returns_implementer_for_unknown_agent() -> None:
 def test_render_protocol_returns_role_for_kimi() -> None:
     assert render_protocol("kimi") == render_protocol("codex")
     assert render_protocol("kimi", role="reviewer") == render_protocol("claude")
+
+
+def test_render_protocol_uses_injected_agent_roles() -> None:
+    assert render_protocol("claude", agent_roles={"claude": "implementer"}) == render_protocol(
+        "codex"
+    )
 
 
 def test_render_protocol_returns_author_role() -> None:
@@ -177,6 +183,21 @@ def test_protocol_command_prints_kimi_text(capsys: pytest.CaptureFixture[str]) -
     assert exit_code == 0
     assert captured.out == render_protocol("kimi")
     captured.out.encode("ascii")
+
+
+def test_protocol_command_uses_configured_agent_role(
+    tmp_path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "[agent_roles]\nclaude = 'implementer'\n", encoding="utf-8", newline="\n"
+    )
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = cli.main(["protocol", "--agent", "claude"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert captured.out == render_protocol("codex")
 
 
 def test_protocol_command_prints_role_text(capsys: pytest.CaptureFixture[str]) -> None:

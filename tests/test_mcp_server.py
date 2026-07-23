@@ -602,6 +602,15 @@ def test_get_protocol_matches_canonical_text(tmp_path: Path) -> None:
     assert _call(server, "get_protocol", {}) == render_protocol(None)
 
 
+def test_get_protocol_uses_configured_agent_role(tmp_path: Path) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "[agent_roles]\nclaude = 'implementer'\n", encoding="utf-8", newline="\n"
+    )
+    server = create_server(tmp_path)
+
+    assert _call(server, "get_protocol", {"agent": "claude"}) == render_protocol("codex")
+
+
 def test_claim_next_task_claims_only_once(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     client = FakeIssuekitClient([api_issue(1, "First")])
     _configure_api(tmp_path, monkeypatch, client)

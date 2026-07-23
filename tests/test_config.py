@@ -704,6 +704,32 @@ def test_load_config_rejects_invalid_disabled_agent_token(tmp_path: Path) -> Non
         load_config(tmp_path)
 
 
+def test_load_config_reads_agent_roles(tmp_path: Path) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "[agent_roles]\nclaude = 'implementer'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    assert load_config(tmp_path).agent_roles == {"claude": "implementer"}
+
+
+@pytest.mark.parametrize(
+    ("body", "message"),
+    [
+        ("[agent_roles]\nclaude = 'invalid'\n", "Invalid agent_roles role"),
+        ("[agent_roles]\n'bad agent' = 'implementer'\n", "Invalid agent_roles token"),
+    ],
+)
+def test_load_config_rejects_invalid_agent_roles(
+    tmp_path: Path, body: str, message: str
+) -> None:
+    (tmp_path / "issuekit.toml").write_text(body, encoding="utf-8", newline="\n")
+
+    with pytest.raises(ValueError, match=message):
+        load_config(tmp_path)
+
+
 @pytest.mark.parametrize(
     ("body", "message"),
     [

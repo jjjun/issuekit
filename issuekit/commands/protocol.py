@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 
+from issuekit.config import load_config
 from issuekit.prompts.protocol import render_protocol
 
 
@@ -25,5 +26,6 @@ def register(subparsers: argparse._SubParsersAction) -> None:
 
 
 def run(args) -> int:
-    print(render_protocol(args.agent, role=args.role), end="")
+    config = load_config()
+    print(render_protocol(args.agent, role=args.role, agent_roles=config.agent_roles), end="")
     return 0

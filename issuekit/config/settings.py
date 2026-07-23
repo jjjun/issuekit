@@ -34,6 +34,7 @@ DEFAULT_PROFILE_FILE = "ISSUEKIT.md"
 PROFILE_SUMMARY_MAX_LEN = 500
 PROFILE_TAG_MAX_LEN = 40
 PROFILE_TAGS_MAX = 20
+AGENT_ROLES = frozenset({"author", "implementer", "pm", "reviewer", "triage"})
 
 
 @dataclass(frozen=True)
@@ -112,6 +113,7 @@ class IssuekitConfig:
     profile_tags: tuple[str, ...] = ()
     triage: TriagePolicy = field(default_factory=TriagePolicy)
     router: RouterPolicy = field(default_factory=RouterPolicy)
+    agent_roles: dict[str, str] = field(default_factory=dict)
     disabled_agents: tuple[str, ...] = ()
     machine_config_path: Path | None = None
     repo_config_source: str = field(default="none", compare=False)
@@ -269,6 +271,7 @@ def load_config(cwd: Path | str = ".") -> IssuekitConfig:
     _validate_claim_sync_interval(claim_sync_interval_sec)
     triage = _load_triage_policy(raw_config.get("triage", {}))
     router = _load_router_policy(raw_config.get("router", {}))
+    agent_roles = _load_agent_roles(raw_config.get("agent_roles"))
     _validate_not_disabled("router.agent", router.agent, disabled_agents)
     _validate_not_disabled("triage.author_agent", triage.author_agent, disabled_agents)
     worker_role = _worker_metadata(
@@ -347,6 +350,7 @@ def load_config(cwd: Path | str = ".") -> IssuekitConfig:
         profile_tags=profile_tags,
         triage=triage,
         router=router,
+        agent_roles=agent_roles,
         disabled_agents=disabled_agents,
         machine_config_path=machine_path if machine_path is not None and machine_path.is_file() else None,
         repo_config_source=repo_config_source,
@@ -465,6 +469,23 @@ def _load_disabled_agents(value: object) -> tuple[str, ...]:
         if not agent or not is_valid_workflow_token(agent):
             raise ValueError(f"Invalid disabled_agents token: {agent}")
     return disabled_agents
+
+
+def _load_agent_roles(value: object) -> dict[str, str]:
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise ValueError("agent_roles must be a table.")
+    agent_roles: dict[str, str] = {}
+    for raw_agent, raw_role in value.items():
+        agent = str(raw_agent).strip()
+        if not agent or not is_valid_workflow_token(agent):
+            raise ValueError(f"Invalid agent_roles token: {raw_agent}")
+        role = str(raw_role).strip()
+        if role not in AGENT_ROLES:
+            raise ValueError(f"Invalid agent_roles role: {role}")
+        agent_roles[agent] = role
+    return agent_roles
 
 
 def _load_assignees(

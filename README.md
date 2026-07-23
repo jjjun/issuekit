@@ -417,6 +417,14 @@ Set `default_implementer` in machine config when one agent is the usual worker
 on that machine. Commands and MCP tools that omit an implementer use it before
 falling back to a single enabled assignee; repository config can override it.
 
+Use `[agent_roles]` in machine config to select the protocol each agent sees.
+For example, when Claude is the implementer on that machine:
+
+```toml
+[agent_roles]
+claude = "implementer"
+```
+
 The mine-py server owns issue ids and reviewer policy. When `api_url` is set,
 issuekit always treats review handoff as `default_reviewer = "auto"` and
 `require_distinct_reviewer = true` for local decisions, regardless of local

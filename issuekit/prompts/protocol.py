@@ -140,15 +140,15 @@ Canonical guard diagnostics: see README.md#separation-of-duties-guards or run
 Copyable CLI examples:
 
 - Register worker: `issuekit add`
-- Author: `issuekit author --title "Short title" --body-file issue.md --priority medium --agent codex`
-- Author with upstream dependency: `issuekit author --title "Short title" --body-file issue.md --priority medium --agent codex --depends-on upstream#proposal:123`
+- Author: `issuekit author --title "Short title" --body-file issue.md --priority medium --agent <agent>`
+- Author with upstream dependency: `issuekit author --title "Short title" --body-file issue.md --priority medium --agent <agent> --depends-on upstream#proposal:123`
 - Author a local issue that references another project: `issuekit author --title "Short title" --body-file issue.md --direct-local-author`
-- Claim next: `issuekit claim --assignee codex`
-- Claim specific issue: `issuekit claim --id 123 --assignee codex`
+- Claim next: `issuekit claim --assignee <agent>`
+- Claim specific issue: `issuekit claim --id 123 --assignee <agent>`
 - Submit review: `issuekit submit-review 123 --summary "Implemented." --branch main --commit abc123`
-- Agent review: `issuekit review 123 --agent claude`
-- Request changes: `issuekit request-changes 123 --notes "Add focused tests." --reviewer claude`
-- Approve: `issuekit approve 123 --verification "uv run pytest" --reviewer claude`
+- Agent review: `issuekit review 123 --agent <agent>`
+- Request changes: `issuekit request-changes 123 --notes "Add focused tests." --reviewer <agent>`
+- Approve: `issuekit approve 123 --verification "uv run pytest" --reviewer <agent>`
 - Complete: `issuekit complete 123 --summary "Done." --verification "uv run pytest"`
 - Close no-op issue: `issuekit complete 123 --force --summary "Obsolete." --verification "no local code scope"`
 - Blocking proposal: `issuekit propose --to <project> --title <t> --body <b> --blocking --json`
@@ -156,8 +156,8 @@ Copyable CLI examples:
 - Incoming proposals: `issuekit incoming --json`
 - Adopt proposal: `issuekit adopt 42 --priority medium --json`
 - Outgoing proposal status: `issuekit outgoing --to <project> --json`
-- Serve with target-owned inbox triage: `issuekit serve --agent codex --triage`
-- Serve as a reviewer worker: `issuekit serve --agent claude --review`
+- Serve with target-owned inbox triage: `issuekit serve --agent <agent> --triage`
+- Serve as a reviewer worker: `issuekit serve --agent <agent> --review`
 """
 
 
@@ -505,7 +505,11 @@ To see the full protocol steps for your role, call:
 """
 
 
-def render_protocol(agent: str | None = None, role: str | None = None) -> str:
+def render_protocol(
+    agent: str | None = None,
+    role: str | None = None,
+    agent_roles: dict[str, str] | None = None,
+) -> str:
     """Render the handoff protocol for one agent/role, or all roles."""
     if agent is None and role is None:
         return "\n\n".join(
@@ -524,7 +528,7 @@ def render_protocol(agent: str | None = None, role: str | None = None) -> str:
         except KeyError as exc:
             raise ValueError(f"unknown role: {role}") from exc
         return f"{CYCLE_PROTOCOL.rstrip()}\n\n{role_protocol}"
-    resolved_role = _AGENT_ROLE.get(agent, "implementer")
+    resolved_role = (agent_roles or {}).get(agent, _AGENT_ROLE.get(agent, "implementer"))
     return f"{CYCLE_PROTOCOL.rstrip()}\n\n{_ROLE_PROTOCOLS[resolved_role]}"
 
 
