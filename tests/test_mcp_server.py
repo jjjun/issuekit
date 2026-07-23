@@ -59,6 +59,16 @@ def _tool_schema(server, name: str) -> dict[str, Any]:
     return asyncio.run(run())
 
 
+def _tool_description(server, name: str) -> str:
+    async def run() -> str:
+        for tool in await server.list_tools():
+            if tool.name == name:
+                return tool.description
+        raise AssertionError(f"tool not found: {name}")
+
+    return asyncio.run(run())
+
+
 def _tool_schema_digest(server) -> str:
     async def run() -> str:
         schemas = {tool.name: tool.inputSchema for tool in await server.list_tools()}
@@ -126,6 +136,15 @@ def test_server_tool_schemas_match_the_contract(tmp_path: Path) -> None:
     assert _tool_schema_digest(create_server(tmp_path)) == (
         "62e615e29a2268e03d43a1d518512e644c07a0f6eb8bd093de782b8515e72af0"
     )
+
+
+def test_run_proposal_checks_is_deprecated(tmp_path: Path) -> None:
+    description = _tool_description(create_server(tmp_path), "run_proposal_checks")
+
+    assert "Deprecated compatibility tool." in description
+    assert "issuekit serve --proposal-checks --proposal-check-limit <n>" in description
+    assert "issuekit proposal-checks --agent <a> --once" in description
+    assert "Run one worker-side proposal-check cycle for this registered checkout" in description
 
 
 def test_health_tool_reports_config_and_local_state(

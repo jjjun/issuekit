@@ -500,9 +500,12 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
 
     @server.tool(
         description=(
-            "Run one worker-side proposal-check cycle for this registered checkout: "
-            "poll checks addressed to this worker, evaluate with an agent, post results, "
-            "and adopt approved proposals."
+            "Deprecated compatibility tool. Use `issuekit serve --proposal-checks "
+            "--proposal-check-limit <n>` or `issuekit proposal-checks --agent <a> "
+            "--once` instead. Run one worker-side proposal-check cycle for this "
+            "registered checkout: poll checks addressed to this worker, evaluate with "
+            "an agent, post results, and adopt approved proposals. This tool will be "
+            "removed after the CLI workflow is proven in use."
         )
     )
     async def run_proposal_checks(
