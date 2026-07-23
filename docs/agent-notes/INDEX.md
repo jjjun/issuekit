@@ -9,3 +9,6 @@ one. See [README.md](README.md) for the rules.
   `submit-review` text fields reject non-ASCII characters.
 - [CI policy](ci-policy.md) - which workflows are automatic and which are
   manual-only, and why.
+- [One agent maps to one default protocol role](agent-roles-single-default.md) -
+  `--agent` returns the wrong protocol when an agent serves two roles; pass
+  `--role` instead.
