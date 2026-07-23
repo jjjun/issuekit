@@ -69,6 +69,8 @@ def approve_issue(
     config: IssuekitConfig | None = None,
     store=None,
     session: str | None = None,
+    agent_model: str | None = None,
+    agent_reasoning_effort: str | None = None,
 ) -> Issue:
     require_ascii(
         summary or "",
@@ -94,6 +96,8 @@ def approve_issue(
             reviewer=resolved_reviewer,
             worker=worker,
             session=resolved_session,
+            agent_model=agent_model,
+            agent_reasoning_effort=agent_reasoning_effort,
         )
     finally:
         if owned_store is not None:

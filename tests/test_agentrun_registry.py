@@ -189,6 +189,31 @@ def test_resolve_adapter_passes_reasoning_effort() -> None:
     assert adapter.reasoning_effort == "medium"
 
 
+def test_effective_runtime_prefers_run_overrides() -> None:
+    config = IssuekitConfig(
+        agents=(
+            (
+                "codex",
+                AgentRunConfig(
+                    binary="codex",
+                    headless_argv=("exec",),
+                    model="configured-model",
+                    reasoning_effort="medium",
+                    effort_argv=("-c", "model_reasoning_effort={value}"),
+                ),
+            ),
+        )
+    )
+
+    assert resolve_adapter("codex", config=config).effective_runtime() == (
+        "configured-model",
+        "medium",
+    )
+    assert resolve_adapter(
+        "codex", config=config, model="run-model", reasoning_effort="high"
+    ).effective_runtime() == ("run-model", "high")
+
+
 def test_resolve_adapter_rejects_configured_reasoning_effort_without_template(
     tmp_path: Path,
 ) -> None:

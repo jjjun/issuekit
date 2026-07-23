@@ -300,6 +300,8 @@ def submit_for_review(
     allow_any_branch: bool = False,
     session: str | None = None,
     orchestration: AuthorOrchestrationContext | None = None,
+    agent_model: str | None = None,
+    agent_reasoning_effort: str | None = None,
 ) -> Issue:
     config = config or IssuekitConfig()
     _validate_stage("review", config)
@@ -333,6 +335,8 @@ def submit_for_review(
             commit=commit,
             reviewer=reviewer,
             session=resolved_session,
+            agent_model=agent_model,
+            agent_reasoning_effort=agent_reasoning_effort,
         )
     finally:
         if store is None:
@@ -348,6 +352,8 @@ def request_changes(
     config: IssuekitConfig | None = None,
     store=None,
     session: str | None = None,
+    agent_model: str | None = None,
+    agent_reasoning_effort: str | None = None,
 ) -> Issue:
     config = config or IssuekitConfig()
     if assignee is not None:
@@ -365,6 +371,8 @@ def request_changes(
             assignee=assignee,
             worker=worker,
             session=resolved_session,
+            agent_model=agent_model,
+            agent_reasoning_effort=agent_reasoning_effort,
         )
     finally:
         if store is None:

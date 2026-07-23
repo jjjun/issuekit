@@ -193,6 +193,49 @@ def test_review_command_approves_with_distinct_worker_identity(
     }
 
 
+def test_review_command_sends_runtime_on_both_verdicts(tmp_path: Path, monkeypatch) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                1,
+                "Review me",
+                status="in_progress",
+                assignee="",
+                stage="review",
+                implementer="codex",
+                worker="machine/demo/implementer",
+                author="claude",
+            ),
+            api_issue(
+                2,
+                "Needs tests",
+                status="in_progress",
+                assignee="claude",
+                stage="review",
+                implementer="codex",
+                worker="machine/demo/implementer",
+                author="claude",
+            ),
+        ]
+    )
+    _configure_registered_api(tmp_path, monkeypatch, client)
+    _create_reviewable_diff(tmp_path)
+    monkeypatch.setattr("issuekit.commands.review.AgentRunner", ApprovingRunner)
+
+    assert cli.main(
+        ["review", "1", "--agent", "codex", "--model", "review-model", "--reasoning-effort", "high"]
+    ) == 0
+    assert client.calls[-1]["body"]["agent_model"] == "review-model"
+    assert client.calls[-1]["body"]["agent_reasoning_effort"] == "high"
+
+    monkeypatch.setattr("issuekit.commands.review.AgentRunner", RequestChangesRunner)
+    assert cli.main(
+        ["review", "2", "--agent", "claude", "--model", "review-model", "--reasoning-effort", "high"]
+    ) == 0
+    assert client.calls[-1]["body"]["agent_model"] == "review-model"
+    assert client.calls[-1]["body"]["agent_reasoning_effort"] == "high"
+
+
 def test_review_command_requests_changes(
     tmp_path: Path,
     monkeypatch,

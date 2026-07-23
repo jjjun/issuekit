@@ -16,6 +16,7 @@ require_distinct_reviewer = true
 work_branch = "main"
 gate_halfwidth_kana = true
 check_encoding_exclude = ["packages/*/src/generated/**"]
+send_agent_runtime = true
 ```
 
 Non-Python repositories can use a standalone `issuekit.toml` at the repo root
@@ -189,6 +190,12 @@ name use different settings for implementation and review within one `serve`
 loop. An agent must define `effort_argv` to support `reasoning_effort`; the
 built-in Codex adapter uses `("-c", "model_reasoning_effort={value}")` and the
 built-in Claude adapter uses `("--effort", "{value}")`.
+
+By default, agent-launched implementation and review transitions report the
+effective model and reasoning effort to mine-py. Set `send_agent_runtime = false`
+when using a mine-py deployment older than mine-py#579: that server rejects the
+additional fields with HTTP 422, so the transition fails rather than omitting
+the runtime data.
 
 ## Work branch guard
 

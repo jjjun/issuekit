@@ -1708,6 +1708,30 @@ def test_client_submit_sends_exact_server_body() -> None:
     ) == {"id": 7, "stage": "review"}
 
 
+def test_client_submit_sends_agent_runtime() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/issues/issuekit/issues/7/submit"
+        assert json.loads(request.content) == {
+            "summary": "implemented",
+            "agent_model": "gpt-5.2-codex",
+            "agent_reasoning_effort": "high",
+        }
+        return httpx.Response(200, json={"id": 7, "stage": "review"})
+
+    client = IssuekitClient(
+        "https://mine.example",
+        token="static-token",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    assert client.submit(
+        7,
+        summary="implemented",
+        agent_model="gpt-5.2-codex",
+        agent_reasoning_effort="high",
+    ) == {"id": 7, "stage": "review"}
+
+
 def test_client_reclaim_sends_audit_body() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/api/issues/issuekit/issues/7/reclaim"
@@ -1806,6 +1830,34 @@ def test_client_approve_sends_exact_server_body() -> None:
         summary="approved",
         verification="uv run python -m pytest",
         reviewer="claude",
+    ) == {"id": 7, "stage": "done"}
+
+
+def test_client_approve_sends_agent_runtime() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/issues/issuekit/issues/7/approve"
+        assert json.loads(request.content) == {
+            "summary": "approved",
+            "verification": "uv run python -m pytest",
+            "reviewer": "claude",
+            "agent_model": "gpt-5.2-codex",
+            "agent_reasoning_effort": "high",
+        }
+        return httpx.Response(200, json={"id": 7, "stage": "done"})
+
+    client = IssuekitClient(
+        "https://mine.example",
+        token="static-token",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    assert client.approve(
+        7,
+        summary="approved",
+        verification="uv run python -m pytest",
+        reviewer="claude",
+        agent_model="gpt-5.2-codex",
+        agent_reasoning_effort="high",
     ) == {"id": 7, "stage": "done"}
 
 

@@ -110,6 +110,7 @@ class IssuekitConfig:
     check_encoding_exclude: tuple[str, ...] = ()
     claim_sync: bool = True
     claim_sync_interval_sec: float = 60.0
+    send_agent_runtime: bool = True
     worker: WorkerIdentity | None = None
     worker_role: str = ""
     worker_description: str = ""
@@ -347,6 +348,9 @@ def load_config(cwd: Path | str = ".") -> IssuekitConfig:
         ),
         claim_sync=_bool_value(raw_config.get("claim_sync", IssuekitConfig.claim_sync)),
         claim_sync_interval_sec=claim_sync_interval_sec,
+        send_agent_runtime=_bool_value(
+            raw_config.get("send_agent_runtime", IssuekitConfig.send_agent_runtime)
+        ),
         worker=worker,
         worker_role=worker_role,
         worker_description=worker_description,

@@ -274,6 +274,8 @@ class ApiStore:
         commit: str | None = None,
         reviewer: str | None = None,
         session: str | None = None,
+        agent_model: str | None = None,
+        agent_reasoning_effort: str | None = None,
     ) -> Issue:
         return self._issue_from_response(
             self.client.submit(
@@ -283,6 +285,8 @@ class ApiStore:
                 commit=commit,
                 reviewer=reviewer,
                 session=session,
+                agent_model=agent_model,
+                agent_reasoning_effort=agent_reasoning_effort,
             )
         )
 
@@ -295,6 +299,8 @@ class ApiStore:
         assignee: str | None = None,
         worker: str | None = None,
         session: str | None = None,
+        agent_model: str | None = None,
+        agent_reasoning_effort: str | None = None,
     ) -> Issue:
         return self._issue_from_response(
             self.client.request_changes(
@@ -304,6 +310,8 @@ class ApiStore:
                 assignee=assignee,
                 worker=worker,
                 session=session,
+                agent_model=agent_model,
+                agent_reasoning_effort=agent_reasoning_effort,
             )
         )
 
@@ -316,6 +324,8 @@ class ApiStore:
         reviewer: str,
         worker: str | None = None,
         session: str | None = None,
+        agent_model: str | None = None,
+        agent_reasoning_effort: str | None = None,
     ) -> Issue:
         return self._issue_from_response(
             self.client.approve(
@@ -325,6 +335,8 @@ class ApiStore:
                 reviewer=reviewer,
                 worker=worker,
                 session=session,
+                agent_model=agent_model,
+                agent_reasoning_effort=agent_reasoning_effort,
             )
         )
 
@@ -335,6 +347,8 @@ class ApiStore:
         summary: str,
         verification: str,
         force: bool = False,
+        agent_model: str | None = None,
+        agent_reasoning_effort: str | None = None,
     ) -> Issue:
         return self._issue_from_response(
             self.client.complete(
@@ -342,6 +356,8 @@ class ApiStore:
                 summary=summary,
                 verification=verification,
                 force=force,
+                agent_model=agent_model,
+                agent_reasoning_effort=agent_reasoning_effort,
             )
         )
 

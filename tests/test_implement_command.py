@@ -138,6 +138,49 @@ def test_implement_command_uses_default_implementer(tmp_path: Path, monkeypatch,
     assert "agent=kimi" in capsys.readouterr().out
 
 
+def test_implement_command_sends_effective_agent_runtime(tmp_path: Path, monkeypatch) -> None:
+    client = FakeIssuekitClient(
+        [api_issue(1, "First", author="claude"), api_issue(2, "Second", author="claude")]
+    )
+    _configure_api(
+        tmp_path,
+        monkeypatch,
+        client,
+        extra_config=(
+            "[agents.codex]\n"
+            "model = 'configured-model'\n"
+            "reasoning_effort = 'medium'\n"
+        ),
+    )
+    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", FakeRunner)
+
+    assert cli.main(["implement", "1", "--agent", "codex"]) == 0
+
+    assert client.calls[-1]["body"]["agent_model"] == "configured-model"
+    assert client.calls[-1]["body"]["agent_reasoning_effort"] == "medium"
+
+    assert cli.main(["implement", "2", "--agent", "codex", "--model", "run-model"]) == 0
+
+    assert client.calls[-1]["body"].get("agent_model") == "run-model"
+    assert client.calls[-1]["body"]["agent_reasoning_effort"] == "medium"
+
+
+def test_implement_command_omits_agent_runtime_when_disabled(tmp_path: Path, monkeypatch) -> None:
+    client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
+    _configure_api(
+        tmp_path,
+        monkeypatch,
+        client,
+        extra_config="send_agent_runtime = false\n[agents.codex]\nmodel = 'configured-model'\n",
+    )
+    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", FakeRunner)
+
+    assert cli.main(["implement", "1", "--agent", "codex"]) == 0
+
+    assert "agent_model" not in client.calls[-1]["body"]
+    assert "agent_reasoning_effort" not in client.calls[-1]["body"]
+
+
 def test_implement_command_blocks_wrong_work_branch_before_agent(
     tmp_path: Path,
     monkeypatch,

@@ -274,6 +274,8 @@ class FakeIssueSurface:
         commit: str | None = None,
         reviewer: str | None = None,
         session: str | None = None,
+        agent_model: str | None = None,
+        agent_reasoning_effort: str | None = None,
     ) -> JsonDict:
         with self._lock:
             self._record(
@@ -286,6 +288,8 @@ class FakeIssueSurface:
                         "commit": commit,
                         "reviewer": reviewer,
                         "session": session,
+                        "agent_model": agent_model,
+                        "agent_reasoning_effort": agent_reasoning_effort,
                     }
                 ),
             )
@@ -315,6 +319,8 @@ class FakeIssueSurface:
         assignee: str | None = None,
         worker: str | None = None,
         session: str | None = None,
+        agent_model: str | None = None,
+        agent_reasoning_effort: str | None = None,
     ) -> JsonDict:
         with self._lock:
             self._record(
@@ -327,6 +333,8 @@ class FakeIssueSurface:
                         "assignee": assignee,
                         "worker": worker,
                         "session": session,
+                        "agent_model": agent_model,
+                        "agent_reasoning_effort": agent_reasoning_effort,
                     }
                 ),
             )
@@ -346,6 +354,8 @@ class FakeIssueSurface:
         reviewer: str,
         worker: str | None = None,
         session: str | None = None,
+        agent_model: str | None = None,
+        agent_reasoning_effort: str | None = None,
     ) -> JsonDict:
         with self._lock:
             self._record(
@@ -358,6 +368,8 @@ class FakeIssueSurface:
                         "reviewer": reviewer,
                         "worker": worker,
                         "session": session,
+                        "agent_model": agent_model,
+                        "agent_reasoning_effort": agent_reasoning_effort,
                     }
                 ),
             )
@@ -379,12 +391,29 @@ class FakeIssueSurface:
             issue["assignee"] = ""
             return deepcopy(issue)
 
-    def complete(self, number: int, *, summary: str, verification: str, force: bool = False) -> JsonDict:
+    def complete(
+        self,
+        number: int,
+        *,
+        summary: str,
+        verification: str,
+        force: bool = False,
+        agent_model: str | None = None,
+        agent_reasoning_effort: str | None = None,
+    ) -> JsonDict:
         with self._lock:
             self._record(
                 "complete",
                 number=number,
-                body={"summary": summary, "verification": verification, "force": force},
+                body=drop_none(
+                    {
+                        "summary": summary,
+                        "verification": verification,
+                        "force": force,
+                        "agent_model": agent_model,
+                        "agent_reasoning_effort": agent_reasoning_effort,
+                    }
+                ),
             )
             issue = self._find(number)
             issue["status"] = "completed"

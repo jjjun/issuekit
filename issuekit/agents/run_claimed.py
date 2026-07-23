@@ -102,6 +102,10 @@ def run_and_submit(
         reasoning_effort=reasoning_effort,
         role="implementer",
     )
+    agent_model, agent_reasoning_effort = adapter.effective_runtime()
+    if not config.send_agent_runtime:
+        agent_model = None
+        agent_reasoning_effort = None
     run_dir = cwd / ".agent-runs"
     plan_path = run_dir / f"issue-{issue_id}.md"
     prompt = AgentPrompt(
@@ -219,6 +223,8 @@ def run_and_submit(
             allow_any_branch=allow_any_branch,
             session=session,
             orchestration=orchestration,
+            agent_model=agent_model,
+            agent_reasoning_effort=agent_reasoning_effort,
         )
         return RunOutcome(
             issue=issue,

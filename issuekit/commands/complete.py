@@ -62,6 +62,8 @@ def complete_issue(
     force: bool = False,
     config: IssuekitConfig | None = None,
     store=None,
+    agent_model: str | None = None,
+    agent_reasoning_effort: str | None = None,
 ) -> Issue:
     require_ascii(
         summary,
@@ -82,6 +84,8 @@ def complete_issue(
             summary=summary,
             verification=verification,
             force=force,
+            agent_model=agent_model,
+            agent_reasoning_effort=agent_reasoning_effort,
         )
     finally:
         if owned_store is not None:

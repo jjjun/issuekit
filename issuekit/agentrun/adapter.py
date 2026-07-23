@@ -33,6 +33,10 @@ class AgentAdapter(ABC):
         """Return True when the adapter can resume a caller-provided session."""
         return False
 
+    def effective_runtime(self) -> tuple[str | None, str | None]:
+        """Return the effective model and reasoning effort for this run."""
+        return None, None
+
 
 class ConfigAgentAdapter(AgentAdapter):
     """Adapter driven by declarative AgentRunConfig."""
@@ -115,6 +119,13 @@ class ConfigAgentAdapter(AgentAdapter):
     def supports_session_resume(self) -> bool:
         """Return True when the declarative config has a session flag."""
         return bool(self.run_config.resumable and self.run_config.session_flag)
+
+    def effective_runtime(self) -> tuple[str | None, str | None]:
+        """Return the model and reasoning effort used to build agent argv."""
+        return (
+            self.model or self.run_config.model,
+            self.reasoning_effort or self.run_config.reasoning_effort,
+        )
 
     def _append_prompt_suffixes(self, prompt: str, resolved_model: str | None) -> str:
         parts = [prompt]

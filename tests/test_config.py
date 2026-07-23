@@ -76,6 +76,16 @@ def test_load_config_reads_check_encoding_exclude(tmp_path: Path) -> None:
     )
 
 
+def test_load_config_reads_send_agent_runtime(tmp_path: Path) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "send_agent_runtime = false\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    assert load_config(tmp_path).send_agent_runtime is False
+
+
 def test_load_config_reads_machine_config(tmp_path: Path, monkeypatch) -> None:
     machine_path = tmp_path / "machine.toml"
     machine_path.write_text("issues_dir = 'machine/issues'\n", encoding="utf-8")

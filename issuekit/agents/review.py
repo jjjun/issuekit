@@ -169,6 +169,10 @@ def run_review_and_decide(
         owned_store = get_store(config)
         store = owned_store
     try:
+        agent_model, agent_reasoning_effort = adapter.effective_runtime()
+        if not config.send_agent_runtime:
+            agent_model = None
+            agent_reasoning_effort = None
         if verdict.verdict == "approve":
             decided = approve_issue(
                 issue_id,
@@ -177,6 +181,8 @@ def run_review_and_decide(
                 reviewer=agent,
                 config=config,
                 store=store,
+                agent_model=agent_model,
+                agent_reasoning_effort=agent_reasoning_effort,
             )
             print(f"approved id={decided.id} ref={decided.ref}", file=out)
         else:
@@ -186,6 +192,8 @@ def run_review_and_decide(
                 reviewer=agent,
                 config=config,
                 store=store,
+                agent_model=agent_model,
+                agent_reasoning_effort=agent_reasoning_effort,
             )
             print(
                 f"requested_changes id={decided.id} ref={decided.ref} "

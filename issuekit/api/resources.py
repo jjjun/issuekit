@@ -270,6 +270,8 @@ class IssueResourceMixin:
         commit: str | None = None,
         reviewer: str | None = None,
         session: str | None = None,
+        agent_model: str | None = None,
+        agent_reasoning_effort: str | None = None,
     ) -> JsonDict:
         payload = self._request(
             "POST",
@@ -281,6 +283,8 @@ class IssueResourceMixin:
                     "commit": commit,
                     "reviewer": reviewer,
                     "session": _validated_session(session),
+                    "agent_model": agent_model,
+                    "agent_reasoning_effort": agent_reasoning_effort,
                 }
             ),
         )
@@ -295,6 +299,8 @@ class IssueResourceMixin:
         assignee: str | None = None,
         worker: str | None = None,
         session: str | None = None,
+        agent_model: str | None = None,
+        agent_reasoning_effort: str | None = None,
     ) -> JsonDict:
         payload = self._request(
             "POST",
@@ -306,6 +312,8 @@ class IssueResourceMixin:
                     "assignee": assignee,
                     "worker": worker,
                     "session": _validated_session(session),
+                    "agent_model": agent_model,
+                    "agent_reasoning_effort": agent_reasoning_effort,
                 }
             ),
         )
@@ -320,6 +328,8 @@ class IssueResourceMixin:
         reviewer: str,
         worker: str | None = None,
         session: str | None = None,
+        agent_model: str | None = None,
+        agent_reasoning_effort: str | None = None,
     ) -> JsonDict:
         payload = self._request(
             "POST",
@@ -331,20 +341,35 @@ class IssueResourceMixin:
                     "reviewer": reviewer,
                     "worker": worker,
                     "session": _validated_session(session),
+                    "agent_model": agent_model,
+                    "agent_reasoning_effort": agent_reasoning_effort,
                 }
             ),
         )
         return ensure_dict(payload, "Approve response")
 
-    def complete(self, number: int, *, summary: str, verification: str, force: bool = False) -> JsonDict:
+    def complete(
+        self,
+        number: int,
+        *,
+        summary: str,
+        verification: str,
+        force: bool = False,
+        agent_model: str | None = None,
+        agent_reasoning_effort: str | None = None,
+    ) -> JsonDict:
         payload = self._request(
             "POST",
             f"/{number}/complete",
-            json={
-                "summary": summary,
-                "verification": verification,
-                "force": force,
-            },
+            json=drop_none(
+                {
+                    "summary": summary,
+                    "verification": verification,
+                    "force": force,
+                    "agent_model": agent_model,
+                    "agent_reasoning_effort": agent_reasoning_effort,
+                }
+            ),
         )
         return ensure_dict(payload, "Complete response")
 
