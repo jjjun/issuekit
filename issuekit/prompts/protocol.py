@@ -72,6 +72,13 @@ built-in Codex adapter uses `("-c", "model_reasoning_effort={{value}}")`.
 Serve-level overrides apply to every agent launched; use per-agent overlays
 when a mixed-agent serve setup needs different models or effort levels.
 
+Commands and MCP tools that omit an implementer resolve it as an explicit value,
+then `default_implementer`, then the single enabled assignee. They fail with a
+clear message when more than one enabled assignee exists and no default is set.
+Use `[agent_roles]` to select the protocol text an agent receives from
+`issuekit protocol --agent <agent>` and `get_protocol(agent=...)`; `--role` or
+`role=` always takes precedence over the agent default.
+
 When a reviewer daemon is needed, run it from a separate registered checkout:
 `issuekit serve --agent <reviewer> --review`. For a one-shot agent review of a
 specific review-stage issue, use `issuekit review <id> --agent <reviewer>`.
@@ -324,9 +331,11 @@ When the user asks an implementer to work on an issue in open-ended terms, such
 as "handle the next issue" or "take the queue", do not wait for explicit
 commands. Run this protocol end to end:
 
-1. Call the issuekit MCP tool `claim_next_task(assignee="<agent>")`. The returned
-   payload includes the issue body, which is the spec to implement. If it
-   returns no issue, report that the queue is empty and stop.
+1. Call the issuekit MCP tool `claim_next_task()`, which resolves the
+   implementer from `default_implementer`; use
+   `claim_next_task(assignee="<agent>")` for an explicit implementer. The
+   returned payload includes the issue body, which is the spec to implement. If
+   it returns no issue, report that the queue is empty and stop.
 2. Read the claimed issue, especially Problem, Implementation Plan, and Test
    Plan. Lay out a short plan with the files to change and the order of steps.
    Confirm the plan matches the issue scope before writing code; do not expand
@@ -344,8 +353,9 @@ commands. Run this protocol end to end:
    implementer may not name itself as the explicit reviewer; use the open pool
    for same-name review.
 6. If a reviewer returns the issue with stage=changes_requested, call
-   `claim_next_task(assignee="<agent>")` again, read the Review Feedback note,
-   re-plan for just that feedback, address it, and submit for review again.
+   `claim_next_task()` again, or use `claim_next_task(assignee="<agent>")` for
+   an explicit implementer, read the Review Feedback note, re-plan for just
+   that feedback, address it, and submit for review again.
 
 The assigned implementer owns implementation unless assigned as reviewer. The
 reviewer owns the review decision for issues assigned to them at stage=review.

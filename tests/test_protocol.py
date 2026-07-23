@@ -57,7 +57,13 @@ def test_render_protocol_returns_each_agent_and_both() -> None:
         assert "Upstream feedback loop" in rendered
         assert "issuekit propose --to issuekit" in rendered
         assert "issuekit outgoing --to issuekit" in rendered
+        assert "default_implementer" in rendered
+        assert "[agent_roles]" in rendered
+        assert "always takes precedence over the agent default" in rendered
     assert "claim_next_task" in codex
+    assert "resolves the" in codex
+    assert "implementer from `default_implementer`" in codex
+    assert "`claim_next_task(assignee=\"<agent>\")` for an explicit implementer" in codex
     assert "submit_for_review" in codex
     assert 'submit_for_review(id, summary, branch, commit, reviewer=None)' in codex
     assert 'submit_for_review(id, summary, branch, commit, assignee="<agent>"' not in codex
