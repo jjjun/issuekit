@@ -4,6 +4,10 @@ Related projects exchange suggestions through API proposal inboxes. Proposals
 are not workflow items until they are adopted, so the API-backed issue queue is
 separate from proposal triage.
 
+The [PM request router](pm-request.md) is another way to create proposals: it
+routes a natural-language request from a dedicated PM checkout to owning
+projects.
+
 ## Stay in your own project
 
 Use `issuekit author` only for work that originates in and belongs to the
