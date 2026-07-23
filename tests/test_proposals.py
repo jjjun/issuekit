@@ -1139,6 +1139,10 @@ def test_api_cli_outgoing_lists_own_proposals(
     assert cli.main(["outgoing", "--to", "target", "--json"]) == 0
     outgoing = json.loads(capsys.readouterr().out)
     assert [proposal["id"] for proposal in outgoing] == [1, 3]
+    assert outgoing[0]["adopted_issue_status"] is None
+    assert outgoing[0]["adopted_issue_stage"] is None
+    assert outgoing[1]["adopted_issue_status"] is None
+    assert outgoing[1]["adopted_issue_stage"] is None
     assert set(created_projects) == {"source", "target"}
 
     assert cli.main(["outgoing", "--to", "target", "--status", "adopted", "--json"]) == 0
@@ -1152,8 +1156,43 @@ def test_api_cli_outgoing_lists_own_proposals(
     assert cli.main(["outgoing", "--to", "target"]) == 0
     text = capsys.readouterr().out
     assert "target#42" in text
+    assert "-/-" in text
     assert "Mine pending" in text
     assert "Not mine" not in text
+
+
+def test_api_cli_outgoing_includes_adopted_issue_state(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient(
+        issues=[api_issue(42, "Adopted", status="completed", stage="done")],
+        proposals=[
+            {
+                "id": 3,
+                "origin": "source#2@abc",
+                "title": "Mine adopted",
+                "body": "b",
+                "status": "adopted",
+                "adopted_issue_number": 42,
+            },
+        ],
+    )
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'source'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.chdir(tmp_path)
+    client.register_catalog_project("target")
+
+    assert cli.main(["outgoing", "--to", "target", "--json"]) == 0
+
+    proposal = json.loads(capsys.readouterr().out)[0]
+    assert proposal["adopted_issue_status"] == "completed"
+    assert proposal["adopted_issue_stage"] == "done"
 
 
 def test_api_cli_outgoing_rejects_foreign_and_invalid_lookups(

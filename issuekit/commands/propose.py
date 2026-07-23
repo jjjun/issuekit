@@ -277,10 +277,16 @@ def run_outgoing(args) -> int:
     for proposal in outgoing:
         adopted = proposal.get("adopted_issue_number")
         adopted_ref = f"{args.to}#{adopted}" if adopted else "-"
+        adopted_state = (
+            f"{proposal.get('adopted_issue_status') or '-'}/"
+            f"{proposal.get('adopted_issue_stage') or '-'}"
+            if adopted
+            else "-"
+        )
         blocking = "blocking" if proposal.get("blocking") else "-"
         print(
             f"{proposal['id']}\t{proposal.get('status')}\t"
-            f"{adopted_ref}\t{blocking}\t{proposal.get('title')}"
+            f"{adopted_ref}\t{adopted_state}\t{blocking}\t{proposal.get('title')}"
         )
     return 0
 

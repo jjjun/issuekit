@@ -15,3 +15,8 @@ one. See [README.md](README.md) for the rules.
 - [MCP test coverage](mcp-test-coverage.md) - without the `mcp` dependency the
   whole MCP test file skips silently and the suite still reports green; keeping
   it in the dev group is deliberate.
+- [Claude trust-dialog warning](claude-trust-dialog.md) - the untrusted-workspace
+  permissions warning is cosmetic under the bypass-permissions launch mode.
+- [Multiple proposals from one session need distinct origins](proposal-origin-dedup.md) -
+  without `--from-issue`, a second propose to the same target is silently
+  deduplicated by the implicit `#0` origin.

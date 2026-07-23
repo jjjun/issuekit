@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+import sys
 
 from issuekit.commands._common import active_issue_not_found, require_ascii, run_command
 from issuekit.config import IssuekitConfig, load_config
@@ -13,6 +14,7 @@ from issuekit.core import (
     parse_issue_id_arg,
 )
 from issuekit.issues.session import current_session_token, validate_session_token
+from issuekit.gitutil import git_status_short
 from issuekit.workflow import (
     WorkflowError,
     ensure_assigned_reviewer,
@@ -39,6 +41,11 @@ def run(args) -> int:
         nonlocal issue_id
         issue_id = parse_issue_id_arg(args.id)
         config = load_config(Path.cwd())
+        if git_status_short(Path.cwd()):
+            print(
+                "WARNING: approval is being recorded with uncommitted changes in this checkout.",
+                file=sys.stderr,
+            )
         completed_issue = approve_issue(
             issue_id,
             summary=args.summary,

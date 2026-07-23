@@ -50,6 +50,27 @@ def test_approve_completes_review_stage_issue(tmp_path: Path, monkeypatch, capsy
     }
 
 
+def test_approve_warns_about_uncommitted_changes(tmp_path: Path, monkeypatch, capsys) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                1,
+                "First",
+                status="in_progress",
+                assignee="claude",
+                stage="review",
+                implementer="codex",
+            )
+        ]
+    )
+    _configure_api(tmp_path, monkeypatch, client)
+    monkeypatch.setattr("issuekit.commands.approve.git_status_short", lambda cwd: " M file.py")
+
+    assert cli.main(["approve", "1", "--verification", "uv run pytest"]) == 0
+
+    assert "approval is being recorded with uncommitted changes" in capsys.readouterr().err
+
+
 def test_approve_rejects_non_review_stage_issue(
     tmp_path: Path,
     monkeypatch,

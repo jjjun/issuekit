@@ -278,6 +278,7 @@ def list_outgoing_proposals(
                 for proposal in client.list_proposals(status=candidate_status)
                 if _is_own_origin(proposal.get("origin"), config.project)
             )
+        outgoing = [_with_adopted_issue_state(proposal, client) for proposal in outgoing]
     outgoing.sort(key=lambda proposal: int(proposal.get("id", 0)))
     return outgoing
 
@@ -288,11 +289,30 @@ def get_outgoing_proposal(config: IssuekitConfig, *, to: str, proposal_id: int) 
     validate_target_project(config, to)
     with api_client(config, project=to) as client:
         proposal = client.get_proposal(int(proposal_id))
-    if not _is_own_origin(proposal.get("origin"), config.project):
-        raise ProposalError(
-            f"Proposal #{proposal_id} in {to} was not sent by {config.project}."
-        )
-    return proposal
+        if not _is_own_origin(proposal.get("origin"), config.project):
+            raise ProposalError(
+                f"Proposal #{proposal_id} in {to} was not sent by {config.project}."
+            )
+        return _with_adopted_issue_state(proposal, client)
+
+
+def _with_adopted_issue_state(proposal: Mapping[str, Any], client: IssuekitClient) -> dict:
+    enriched = dict(proposal)
+    enriched["adopted_issue_status"] = None
+    enriched["adopted_issue_stage"] = None
+    try:
+        adopted_issue_number = int(proposal.get("adopted_issue_number"))
+    except (TypeError, ValueError):
+        return enriched
+    if adopted_issue_number <= 0:
+        return enriched
+    try:
+        issue = client.get_issue(adopted_issue_number)
+    except WorkflowError:
+        return enriched
+    enriched["adopted_issue_status"] = issue.get("status")
+    enriched["adopted_issue_stage"] = issue.get("stage")
+    return enriched
 
 
 def _is_own_origin(origin: object, project: str) -> bool:
