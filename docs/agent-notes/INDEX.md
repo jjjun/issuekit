@@ -17,6 +17,9 @@ one. See [README.md](README.md) for the rules.
   it in the dev group is deliberate.
 - [Claude trust-dialog warning](claude-trust-dialog.md) - the untrusted-workspace
   permissions warning is cosmetic under the bypass-permissions launch mode.
+- [Adoption notes never reach the proposal sender](adoption-notes-do-not-reach-the-sender.md) -
+  `adopt --append-file` writes only to the receiving project's issue; anything
+  the sender must act on needs a proposal. Also: `edit --body-file` replaces.
 - [Multiple proposals from one session need distinct origins](proposal-origin-dedup.md) -
   without `--from-issue`, a second propose to the same target is silently
   deduplicated by the implicit `#0` origin.
