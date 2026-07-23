@@ -39,8 +39,11 @@ the backend agent's inspection directory; its checkout configuration is read
 only to verify its declared project, and its worker identity is not loaded. The
 backend-ref checkout must be clean before the run starts.
 
-Both sides are read-only. If either turn modifies its worktree, issuekit
-discards that turn's output and the run fails.
+Both agents are instructed to inspect their checkout read-only. As a backstop,
+issuekit discards a turn's output when it leaves worktree changes or moves HEAD
+or the current branch; this includes a turn that commits its changes. The check
+does not detect pushes, API or other external side effects, or edits that the
+turn reverts before it finishes, so the prompt is the primary control.
 
 ## Verdicts and thread status
 

@@ -464,4 +464,4 @@ def test_proposal_check_rejects_content_only_worktree_mutations(
     )
 
     assert decisions[0].status == "error"
-    assert decisions[0].error == "Proposal-check agent modified the worktree for proposal #1."
+    assert decisions[0].error == "Proposal-check agent modified repository state for proposal #1."

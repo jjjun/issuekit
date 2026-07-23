@@ -131,6 +131,70 @@ class WritingRunner(CannedRunner):
         return result
 
 
+class CommittingRunner(CannedRunner):
+    def run(
+        self,
+        adapter,
+        prompt: AgentPrompt,
+        repo: Path,
+        timeout: float,
+        agent_name: str | None = None,
+        issue_id: int | None = None,
+        **kwargs,
+    ) -> AgentResult:
+        result = super().run(
+            adapter,
+            prompt,
+            repo,
+            timeout,
+            agent_name=agent_name,
+            issue_id=issue_id,
+            **kwargs,
+        )
+        (repo / "committed.txt").write_text(
+            "changed\n", encoding="utf-8", newline="\n"
+        )
+        subprocess.run(
+            ["git", "add", "committed.txt"], cwd=repo, check=True, capture_output=True
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "agent change"],
+            cwd=repo,
+            check=True,
+            capture_output=True,
+        )
+        return result
+
+
+class BranchSwitchingRunner(CannedRunner):
+    def run(
+        self,
+        adapter,
+        prompt: AgentPrompt,
+        repo: Path,
+        timeout: float,
+        agent_name: str | None = None,
+        issue_id: int | None = None,
+        **kwargs,
+    ) -> AgentResult:
+        result = super().run(
+            adapter,
+            prompt,
+            repo,
+            timeout,
+            agent_name=agent_name,
+            issue_id=issue_id,
+            **kwargs,
+        )
+        subprocess.run(
+            ["git", "checkout", "-b", "agent-branch"],
+            cwd=repo,
+            check=True,
+            capture_output=True,
+        )
+        return result
+
+
 def _call_plan_text(runner: CannedRunner, index: int) -> str:
     prompt = runner.calls[index]["prompt"]
     assert isinstance(prompt, AgentPrompt)
@@ -222,13 +286,56 @@ def test_negotiate_rejects_worktree_mutations_from_either_side(
         write_call=write_call,
     )
 
-    with pytest.raises(WorkflowError, match="modified the worktree"):
+    with pytest.raises(WorkflowError, match="modified repository state"):
         run_negotiation(
             issue=_issue(),
             to_project="backend",
             frontend_agent="codex",
             backend_agent="claude",
             max_rounds=max_rounds,
+            config=IssuekitConfig(api_url="https://mine.example", project="frontend"),
+            cwd=tmp_path,
+            store=MockNegotiationStore(None),
+            runner=runner,
+        )
+
+
+def _init_git_repository(path: Path) -> None:
+    subprocess.run(["git", "init"], cwd=path, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.com"],
+        cwd=path,
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Test"],
+        cwd=path,
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "commit", "--allow-empty", "-m", "initial"],
+        cwd=path,
+        check=True,
+        capture_output=True,
+    )
+
+
+@pytest.mark.parametrize("runner_type", [CommittingRunner, BranchSwitchingRunner])
+def test_negotiate_rejects_head_or_branch_changes(tmp_path, runner_type) -> None:
+    _init_git_repository(tmp_path)
+    runner = runner_type(
+        [_block(side="frontend", verdict="agree", contract="GET /items")]
+    )
+
+    with pytest.raises(WorkflowError, match="modified repository state"):
+        run_negotiation(
+            issue=_issue(),
+            to_project="backend",
+            frontend_agent="codex",
+            backend_agent="claude",
+            max_rounds=1,
             config=IssuekitConfig(api_url="https://mine.example", project="frontend"),
             cwd=tmp_path,
             store=MockNegotiationStore(None),

@@ -581,5 +581,5 @@ def test_review_command_blocks_verdict_when_agent_mutates_worktree(
     exit_code = cli.main(["review", "1", "--agent", "codex"])
 
     assert exit_code == 1
-    assert "reviewer run modified the worktree" in capsys.readouterr().err
+    assert "reviewer run modified repository state" in capsys.readouterr().err
     assert [call["method"] for call in client.calls] == []

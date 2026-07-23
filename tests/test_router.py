@@ -947,7 +947,7 @@ def test_router_rejects_content_only_worktree_mutations(monkeypatch, tmp_path, f
     config = load_config(tmp_path)
     runner = MutatingRunner([_route_block({"decision": "reject", "reason": "No."})])
 
-    with pytest.raises(WorkflowError, match="Router agent modified the worktree"):
+    with pytest.raises(WorkflowError, match="Router agent modified repository state"):
         router.run_router(
             config,
             tmp_path,

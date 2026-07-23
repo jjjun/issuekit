@@ -106,9 +106,10 @@ either side can be specified. After agreement, `issuekit negotiate --finalize`
 creates cross-linked implementation issues on both sides. Negotiation is
 CLI-only because it launches multiple long-running agent turns and holding an
 MCP stdio transport open for that orchestration is fragile. MCP provides only
-read-only negotiation thread inspection. Both sides run read-only. With
-`--backend-ref <ref>`, the backend side runs in that ref's checkout so it can
-inspect the real code.
+read-only negotiation thread inspection. Both sides receive read-only
+instructions; issuekit rejects worktree changes left by a turn and HEAD or
+branch changes, including commits. With `--backend-ref <ref>`, the backend side
+runs in that ref's checkout so it can inspect the real code.
 
 Local issues vs. cross-project proposals:
 

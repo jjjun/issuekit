@@ -9,17 +9,17 @@ import threading
 from typing import TextIO
 
 from issuekit.agentrun import AgentPrompt, AgentResult
-from issuekit.gitutil import git_status_short
+from issuekit.gitutil import git_current_branch, git_short_head, git_status_short
 from issuekit.prompts import PromptSpec
 from issuekit.workflow import WorkflowError
 
 
 @dataclass(frozen=True)
 class ReadonlyAgentRun:
-    """Completed agent run together with its worktree mutation result."""
+    """Completed agent run together with its repository mutation result."""
 
     result: AgentResult
-    worktree_modified: bool
+    repository_modified: bool
     label: str
     subject: str
 
@@ -56,9 +56,9 @@ def run_readonly_evaluation(
     follow: bool = False,
     abort_event: threading.Event | None = None,
 ) -> ReadonlyAgentRun:
-    """Run an agent from a prompt file and record whether it changed the worktree."""
+    """Run an agent from a prompt file and record whether it changed repository state."""
 
-    fingerprint_before = worktree_fingerprint(cwd)
+    fingerprint_before = repository_fingerprint(cwd)
 
     result = runner_factory().run(
         adapter,
@@ -71,10 +71,10 @@ def run_readonly_evaluation(
         follow=follow,
         abort_event=abort_event,
     )
-    fingerprint_after = worktree_fingerprint(cwd)
+    fingerprint_after = repository_fingerprint(cwd)
     return ReadonlyAgentRun(
         result=result,
-        worktree_modified=fingerprint_before != fingerprint_after,
+        repository_modified=fingerprint_before != fingerprint_after,
         label=label,
         subject=subject,
     )
@@ -94,9 +94,9 @@ def require_clean_run(
         raise RuntimeError(
             f"{run.label} agent exited {run.result.exit_code} for {run.subject}."
         )
-    if run.worktree_modified:
+    if run.repository_modified:
         print(mutation_log_message, file=err)
-        raise WorkflowError(f"{run.label} agent modified the worktree for {run.subject}.")
+        raise WorkflowError(f"{run.label} agent modified repository state for {run.subject}.")
     return stdout_text(run.result)
 
 
@@ -118,6 +118,18 @@ def worktree_fingerprint(cwd: Path) -> tuple[tuple[str, str, str], ...] | None:
             continue
         entries.append((line[:2], path.as_posix(), _file_digest(cwd / path)))
     return tuple(sorted(entries))
+
+
+def repository_fingerprint(
+    cwd: Path,
+) -> tuple[tuple[tuple[str, str, str], ...] | None, str | None, str | None]:
+    """Return worktree, HEAD, and branch state for a repository or non-git directory."""
+
+    return (
+        worktree_fingerprint(cwd),
+        git_short_head(cwd),
+        git_current_branch(cwd),
+    )
 
 
 def stdout_text(result: AgentResult) -> str:

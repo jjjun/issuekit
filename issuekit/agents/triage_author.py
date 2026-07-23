@@ -247,7 +247,7 @@ def _evaluate_proposal(
         ),
         label="Triage",
         mutation_log_message=(
-            "ERROR: triage-author run modified the worktree; ignoring its output."
+            "ERROR: triage-author run modified repository state; ignoring its output."
         ),
     )
     return parse_triage_output(stdout)

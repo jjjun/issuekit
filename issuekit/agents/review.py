@@ -153,9 +153,9 @@ def run_review_and_decide(
             exit_code=result.exit_code if result.exit_code >= 0 else 1,
         )
 
-    if run.worktree_modified:
+    if run.repository_modified:
         print(
-            "ERROR: reviewer run modified the worktree; not applying review verdict.",
+            "ERROR: reviewer run modified repository state; not applying review verdict.",
             file=err,
         )
         return ReviewOutcome(issue=issue, result=result, verdict=_empty_verdict(), exit_code=1)

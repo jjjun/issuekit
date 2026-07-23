@@ -612,4 +612,4 @@ def test_triage_author_rejects_content_only_worktree_mutations(
     )
 
     assert decisions[0].decision == "error"
-    assert decisions[0].error == "Triage agent modified the worktree for proposal #5."
+    assert decisions[0].error == "Triage agent modified repository state for proposal #5."

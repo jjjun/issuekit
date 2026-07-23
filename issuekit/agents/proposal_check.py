@@ -334,7 +334,7 @@ def _evaluate_check(
         ),
         label="Proposal-check",
         mutation_log_message=(
-            "ERROR: proposal-check run modified the worktree; ignoring its output."
+            "ERROR: proposal-check run modified repository state; ignoring its output."
         ),
         abort_event=abort_event,
     )

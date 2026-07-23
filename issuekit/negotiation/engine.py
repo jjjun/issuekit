@@ -528,8 +528,8 @@ def _run_side_turn(
         readonly_run,
         err=sys.stderr,
         mutation_log_message=(
-            f"ERROR: negotiation round {round_number} {side} run modified the "
-            "worktree; ignoring its output."
+            f"ERROR: negotiation round {round_number} {side} run modified "
+            "repository state; ignoring its output."
         ),
     )
     parsed = parse_round_output(output)

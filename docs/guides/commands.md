@@ -40,7 +40,7 @@
 | `issuekit repos remove <repo> [--json]` | Remove a repo catalog entry; the API refuses entries that still have references. |
 | `issuekit add-ref <name> --path <repo> [--scope local\|workspace]` | Register an optional local project alias. |
 | `issuekit list-refs` | List effective local project aliases and their source. |
-| `issuekit negotiate --from-issue <id> --to <project> --frontend-agent <agent> --backend-agent <agent> [--backend-ref <ref>]` | Drive a bounded cross-project design negotiation; see [Cross-project negotiation](negotiation.md). |
+| `issuekit negotiate --from-issue <id> --to <project> --frontend-agent <agent> --backend-agent <agent> [--backend-ref <ref>]` | Drive a bounded cross-project design negotiation. Agents receive read-only instructions; issuekit rejects worktree, HEAD, and branch changes left by a turn. See [Cross-project negotiation](negotiation.md). |
 | `issuekit threads [<thread-id>] [--status negotiating\|agreed\|blocked] [--mock] [--json]` | Inspect or list cross-project negotiation threads; see [Cross-project negotiation](negotiation.md). |
 | `issuekit propose --to <project> --title "..."` | Send a proposal to a project API inbox. |
 | `issuekit incoming [--json]` | List inbound API proposals. |

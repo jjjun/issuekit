@@ -190,7 +190,7 @@ def run_router(
         require_clean_run(
             run,
             err=err,
-            mutation_log_message="ERROR: router run modified the worktree; ignoring its output.",
+            mutation_log_message="ERROR: router run modified repository state; ignoring its output.",
         ),
         candidates=candidates,
         max_targets=config.router.max_targets,
