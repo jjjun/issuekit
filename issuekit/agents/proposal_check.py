@@ -89,6 +89,7 @@ def run_proposal_check_cycle(
         config=config,
         model=model,
         reasoning_effort=reasoning_effort,
+        role="triage",
     )
 
     with api_client(config) as client:

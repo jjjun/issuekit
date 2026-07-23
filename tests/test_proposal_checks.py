@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 import json
 from pathlib import Path
 import subprocess
@@ -16,7 +17,8 @@ from issuekit.agents.proposal_check import (
     run_proposal_check_cycle,
 )
 from issuekit.agentrun import AgentResult
-from issuekit.config import load_config
+from issuekit.agents.registry import resolve_adapter
+from issuekit.config import AgentRunConfig, RoleOverlay, load_config
 from issuekit.testing import FakeIssuekitClient
 
 
@@ -126,6 +128,70 @@ def test_proposal_check_forwards_model_to_adapter(monkeypatch, tmp_path) -> None
 
     assert seen["agent"] == "codex"
     assert seen["model"] == "gpt-5.6"
+
+
+def test_proposal_check_uses_triage_role_overlay(monkeypatch, tmp_path) -> None:
+    _client, runner, config = _setup(
+        monkeypatch,
+        tmp_path,
+        output=_check_block(verdict="reject", comment="Out of scope."),
+    )
+    config = replace(
+        config,
+        agents=(
+            (
+                "codex",
+                AgentRunConfig(
+                    binary="codex",
+                    headless_argv=("exec",),
+                    model_flag="--model",
+                    model="gpt-5.5",
+                    effort_argv=("-c", "model_reasoning_effort={value}"),
+                ),
+            ),
+        ),
+        agent_role_overlays=(
+            (
+                "codex",
+                (("triage", RoleOverlay(model="gpt-5.6", reasoning_effort="high")),),
+            ),
+        ),
+    )
+    adapters = []
+
+    def capture_adapter(*args, **kwargs):
+        adapter = resolve_adapter(*args, **kwargs)
+        adapters.append(adapter)
+        return adapter
+
+    monkeypatch.setattr(proposal_check, "resolve_adapter", capture_adapter)
+
+    run_proposal_check_cycle(
+        config,
+        tmp_path,
+        agent="codex",
+        runner_factory=lambda: runner,
+    )
+    run_proposal_check_cycle(
+        config,
+        tmp_path,
+        agent="codex",
+        model="gpt-5.7",
+        runner_factory=lambda: runner,
+    )
+
+    assert adapters[0].build_argv("prompt", Path("/plan.md"))[-4:] == [
+        "--model",
+        "gpt-5.6",
+        "-c",
+        "model_reasoning_effort=high",
+    ]
+    assert adapters[1].build_argv("prompt", Path("/plan.md"))[-4:] == [
+        "--model",
+        "gpt-5.7",
+        "-c",
+        "model_reasoning_effort=high",
+    ]
 
 
 def test_proposal_check_approve_adopts_and_posts_issue_ref(monkeypatch, tmp_path) -> None:
