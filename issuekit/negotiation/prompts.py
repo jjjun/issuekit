@@ -103,22 +103,22 @@ def _optional_string(value: object, key: str) -> str | None:
     return value
 
 
-def backend_issue_body(
+def provider_issue_body(
     *,
     thread_id: str,
     origin_issue_ref: str | None,
-    frontend_issue_ref: str,
+    consumer_issue_ref: str,
     contract: str,
 ) -> str:
     lines = [
         "## Implementation Task",
         "",
-        "Implement the backend/API side of the agreed cross-repository contract.",
+        "Implement the contract this project owns and now exposes.",
         "",
         "## Links",
         "",
         f"- Negotiation thread: {thread_id}",
-        f"- Frontend/origin issue: {frontend_issue_ref}",
+        f"- Consumer issue: {consumer_issue_ref}",
     ]
     if origin_issue_ref:
         lines.append(f"- Originating issue: {origin_issue_ref}")
@@ -134,30 +134,30 @@ def backend_issue_body(
             "",
             "## Acceptance Criteria",
             "",
-            "- The API behavior described in the agreed contract is implemented.",
+            "- The contract behavior described in the agreed contract is implemented.",
             "- The contract is covered by focused tests.",
-            "- Any documented request/response shape remains compatible with the frontend issue.",
+            "- Any documented request/response shape remains compatible with the consumer issue.",
         ]
     )
     return "\n".join(lines)
 
 
-def frontend_issue_body(
+def consumer_issue_body(
     *,
     thread_id: str,
     origin_issue_ref: str | None,
-    backend_issue_ref: str,
+    provider_issue_ref: str,
     contract: str,
 ) -> str:
     lines = [
         "## Implementation Task",
         "",
-        "Integrate the frontend/origin project with the agreed backend contract.",
+        "Integrate this project against the agreed contract.",
         "",
         "## Links",
         "",
         f"- Negotiation thread: {thread_id}",
-        f"- Backend/API issue: {backend_issue_ref}",
+        f"- Provider issue: {provider_issue_ref}",
     ]
     if origin_issue_ref:
         lines.append(f"- Originating issue: {origin_issue_ref}")
@@ -174,8 +174,8 @@ def frontend_issue_body(
             "## Acceptance Criteria",
             "",
             "- The integration consumes the agreed contract.",
-            "- User-facing behavior from the originating issue is covered.",
-            "- The implementation handles backend errors or unavailable data clearly.",
+            "- Behavior from the originating issue is covered.",
+            "- The implementation handles provider errors or unavailable data clearly.",
         ]
     )
     return "\n".join(lines)

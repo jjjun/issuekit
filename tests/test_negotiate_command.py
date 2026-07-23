@@ -9,7 +9,7 @@ from issuekit import cli
 from issuekit.agentrun import AgentPrompt, AgentResult
 from issuekit.commands.negotiate import (
     MockIssueCreator,
-    _resolve_backend_cwd,
+    _resolve_counterpart_cwd,
     entry_origin,
     origin_issue_ref_from_thread,
     finalize_negotiation,
@@ -357,15 +357,15 @@ def test_backend_ref_resolution_validates_project_and_rejects_dirty_checkout(tmp
     _write_project_config(backend_cwd, "backend")
     add_ref("backend", backend_cwd, tmp_path)
 
-    assert _resolve_backend_cwd("backend", "backend", tmp_path) == backend_cwd.resolve()
+    assert _resolve_counterpart_cwd("backend", "backend", tmp_path) == backend_cwd.resolve()
     with pytest.raises(WorkflowError, match="Known refs: backend"):
-        _resolve_backend_cwd("missing", "backend", tmp_path)
+        _resolve_counterpart_cwd("missing", "backend", tmp_path)
 
     subprocess.run(["git", "init"], cwd=backend_cwd, check=True, capture_output=True)
     (backend_cwd / "dirty.txt").write_text("dirty\n", encoding="utf-8", newline="\n")
 
     with pytest.raises(WorkflowError, match="dirty checkout"):
-        _resolve_backend_cwd("backend", "backend", tmp_path)
+        _resolve_counterpart_cwd("backend", "backend", tmp_path)
 
 
 def test_backend_ref_resolution_rejects_different_project(tmp_path) -> None:
@@ -378,7 +378,7 @@ def test_backend_ref_resolution_rejects_different_project(tmp_path) -> None:
         WorkflowError,
         match="project 'repom'.+requested project 'mine-py'",
     ):
-        _resolve_backend_cwd("backend", "mine-py", tmp_path)
+        _resolve_counterpart_cwd("backend", "mine-py", tmp_path)
 
 
 def test_backend_ref_resolution_defaults_to_matching_project_ref(tmp_path) -> None:
@@ -387,7 +387,7 @@ def test_backend_ref_resolution_defaults_to_matching_project_ref(tmp_path) -> No
     _write_project_config(backend_cwd, "mine-py")
     add_ref("counterpart", backend_cwd, tmp_path)
 
-    assert _resolve_backend_cwd(None, "mine-py", tmp_path) == backend_cwd.resolve()
+    assert _resolve_counterpart_cwd(None, "mine-py", tmp_path) == backend_cwd.resolve()
 
 
 def test_backend_ref_resolution_ignores_dirty_automatic_counterpart(tmp_path, capsys) -> None:
@@ -398,8 +398,8 @@ def test_backend_ref_resolution_ignores_dirty_automatic_counterpart(tmp_path, ca
     subprocess.run(["git", "init"], cwd=backend_cwd, check=True, capture_output=True)
     (backend_cwd / "dirty.txt").write_text("dirty\n", encoding="utf-8", newline="\n")
 
-    assert _resolve_backend_cwd(None, "mine-py", tmp_path) == tmp_path
-    assert "Ignoring automatically resolved backend ref 'counterpart'" in capsys.readouterr().err
+    assert _resolve_counterpart_cwd(None, "mine-py", tmp_path) == tmp_path
+    assert "Ignoring automatically resolved counterpart ref 'counterpart'" in capsys.readouterr().err
 
 
 def test_backend_ref_resolution_keeps_initiating_checkout_without_matching_ref(tmp_path) -> None:
@@ -408,7 +408,7 @@ def test_backend_ref_resolution_keeps_initiating_checkout_without_matching_ref(t
     _write_project_config(other_cwd, "other")
     add_ref("other", other_cwd, tmp_path)
 
-    assert _resolve_backend_cwd(None, "mine-py", tmp_path) == tmp_path
+    assert _resolve_counterpart_cwd(None, "mine-py", tmp_path) == tmp_path
 
 
 def test_backend_ref_resolution_accepts_project_alias(tmp_path) -> None:
@@ -418,7 +418,7 @@ def test_backend_ref_resolution_accepts_project_alias(tmp_path) -> None:
     add_ref("mine-js-monorepo", backend_cwd, tmp_path)
 
     assert (
-        _resolve_backend_cwd("mine-js-monorepo", "js-mine", tmp_path)
+        _resolve_counterpart_cwd("mine-js-monorepo", "js-mine", tmp_path)
         == backend_cwd.resolve()
     )
 
@@ -791,10 +791,140 @@ def test_finalize_negotiation_creates_cross_linked_issues() -> None:
     assert "GET /items 200" in frontend.body
     assert f"Negotiation thread: {thread_id}" in backend.body
     assert f"Negotiation thread: {thread_id}" in frontend.body
-    assert "Frontend/origin issue: frontend#1" in backend.body
-    assert "Backend/API issue: backend#1" in frontend.body
+    assert "Consumer issue: frontend#1" in backend.body
+    assert "Provider issue: backend#1" in frontend.body
     assert "Originating issue: frontend#108" in backend.body
     assert "Originating issue: frontend#108" in frontend.body
+
+
+@pytest.mark.parametrize(
+    ("initiator_side", "provider_project", "consumer_project"),
+    [
+        ("provider", "origin", "target"),
+        ("consumer", "target", "origin"),
+    ],
+)
+def test_finalize_negotiation_creates_consumer_dependency_for_both_role_directions(
+    initiator_side: str,
+    provider_project: str,
+    consumer_project: str,
+) -> None:
+    store = MockNegotiationStore(None)
+    first = store.create_thread(
+        side=initiator_side,
+        verdict=Verdict.agree,
+        title=f"{initiator_side} agree",
+        body="Accepted.",
+        origin=f"origin#108@{initiator_side}:round-1",
+        contract="GET /items 200",
+    )
+    counterpart = "consumer" if initiator_side == "provider" else "provider"
+    store.append_entry(
+        first.thread_id,
+        side=counterpart,
+        verdict=Verdict.agree,
+        title=f"{counterpart} agree",
+        body="Accepted.",
+        origin=f"origin#108@{counterpart}:round-2",
+        contract="GET /items 200",
+    )
+    store.set_status(first.thread_id, ThreadStatus.agreed)
+    creator = MockIssueCreator()
+
+    result = finalize_negotiation(
+        thread_id=first.thread_id,
+        to_project="target",
+        author_agent="codex",
+        priority="medium",
+        config=IssuekitConfig(project="origin"),
+        store=store,
+        issue_creator=creator,
+    )
+
+    provider = creator.issues[result.backend_issue_ref]
+    consumer = creator.issues[result.frontend_issue_ref]
+    assert provider.ref == f"{provider_project}#1"
+    assert consumer.ref == f"{consumer_project}#1"
+    assert consumer.depends_on == (f"{provider_project}#issue:1",)
+
+
+@pytest.mark.parametrize("initiator_side", ["provider", "consumer"])
+def test_negotiate_initiator_opens_for_each_role(tmp_path, initiator_side: str) -> None:
+    runner = CannedRunner(
+        [_block(side=initiator_side, verdict="propose", contract="GET /items")]
+    )
+
+    result = run_negotiation(
+        issue=_issue(),
+        to_project="target",
+        initiator_side=initiator_side,
+        provider_agent="codex",
+        consumer_agent="claude",
+        max_rounds=1,
+        config=IssuekitConfig(api_url="https://mine.example", project="origin"),
+        cwd=tmp_path,
+        store=MockNegotiationStore(None),
+        runner=runner,
+    )
+
+    assert result.round_runs[0].side == initiator_side
+    assert runner.calls[0]["agent_name"] == ("codex" if initiator_side == "provider" else "claude")
+
+
+def test_negotiate_resumes_legacy_thread_as_consumer(tmp_path) -> None:
+    store = MockNegotiationStore(None)
+    first = store.create_thread(
+        side="frontend",
+        verdict=Verdict.propose,
+        title="frontend propose",
+        body="Start.",
+        origin="frontend#108@frontend:round-1",
+        contract="GET /items",
+    )
+    runner = CannedRunner([_block(side="provider", verdict="blocked", contract=None)])
+
+    result = run_negotiation(
+        issue=_issue(),
+        to_project="backend",
+        initiator_side="consumer",
+        provider_agent="claude",
+        consumer_agent="codex",
+        max_rounds=2,
+        config=IssuekitConfig(api_url="https://mine.example", project="frontend"),
+        cwd=tmp_path,
+        store=store,
+        runner=runner,
+    )
+
+    assert result.outcome == "blocked"
+    assert [entry.side for entry in store.get_thread(first.thread_id)] == ["frontend", "provider"]
+    assert runner.calls[0]["agent_name"] == "claude"
+
+
+def test_negotiate_rejects_mismatched_initiator_role_when_resuming(tmp_path) -> None:
+    store = MockNegotiationStore(None)
+    store.create_thread(
+        side="consumer",
+        verdict=Verdict.propose,
+        title="consumer propose",
+        body="Start.",
+        origin="frontend#108@consumer:round-1",
+        contract="GET /items",
+    )
+
+    with pytest.raises(WorkflowError, match="initiated by the consumer side"):
+        run_negotiation(
+            issue=_issue(),
+            to_project="backend",
+            initiator_side="provider",
+            provider_agent="claude",
+            consumer_agent="codex",
+            max_rounds=2,
+            config=IssuekitConfig(api_url="https://mine.example", project="frontend"),
+            cwd=tmp_path,
+            store=store,
+            runner=CannedRunner([]),
+        )
 
 
 def test_finalize_negotiation_uses_longer_fence_for_contract_with_backticks() -> None:
@@ -1000,8 +1130,8 @@ def test_negotiate_cli_json_uses_mock_store_and_api_issue(tmp_path, monkeypatch,
     monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
     fake_runner = CannedRunner(
         [
-            _block(side="frontend", verdict="propose", contract="GET /items"),
-            _block(side="backend", verdict="blocked", contract=None),
+            _block(side="consumer", verdict="propose", contract="GET /items"),
+            _block(side="provider", verdict="blocked", contract=None),
         ]
     )
     monkeypatch.setattr(negotiate, "AgentRunner", lambda: fake_runner)
@@ -1015,10 +1145,12 @@ def test_negotiate_cli_json_uses_mock_store_and_api_issue(tmp_path, monkeypatch,
                 "108",
                 "--to",
                 "backend",
-                "--frontend-agent",
-                "codex",
-                "--backend-agent",
+                "--initiator-side",
+                "consumer",
+                "--provider-agent",
                 "claude",
+                "--consumer-agent",
+                "codex",
                 "--max-rounds",
                 "2",
                 "--mock",
@@ -1031,6 +1163,48 @@ def test_negotiate_cli_json_uses_mock_store_and_api_issue(tmp_path, monkeypatch,
     payload = json.loads(capsys.readouterr().out)
     assert payload["outcome"] == "blocked"
     assert payload["thread_id"] == "1"
+
+
+def test_negotiate_cli_requires_known_initiator_side_and_hides_retired_flags(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "project = 'frontend'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    assert (
+        cli.main(
+            [
+                "negotiate",
+                "--from-issue",
+                "108",
+                "--to",
+                "backend",
+                "--provider-agent",
+                "claude",
+                "--consumer-agent",
+                "codex",
+                "--mock",
+            ]
+        )
+        == 1
+    )
+    assert "--initiator-side" in capsys.readouterr().err
+
+    assert cli.main(["negotiate", "--initiator-side", "unknown"]) == 2
+    assert "invalid choice" in capsys.readouterr().err
+
+    assert cli.main(["negotiate", "--help"]) == 0
+    help_text = capsys.readouterr().out
+    assert "--provider-agent" in help_text
+    assert "--consumer-agent" in help_text
+    assert "--counterpart-ref" in help_text
+    assert "--frontend-agent" not in help_text
+    assert "--backend-agent" not in help_text
+    assert "--backend-ref" not in help_text
 
 
 def test_negotiate_cli_finalize_json_uses_mock_store(tmp_path, monkeypatch, capsys) -> None:

@@ -2,7 +2,7 @@
 
 Use `issuekit negotiate` when two projects need to settle an interface before
 either project can be specified independently. It runs a bounded,
-agent-driven conversation between a frontend side and a backend side. Once the
+agent-driven conversation between a provider side and a consumer side. Once the
 thread agrees on a contract, `--finalize` creates cross-linked implementation
 issues for both projects.
 
@@ -17,27 +17,30 @@ persisted thread state.
 
 ## Start a thread
 
-Start from an existing issue in the initiating project and choose configured
-agents for each side:
+Start from an existing issue in the initiating project, declare whether that
+project provides or consumes the contract, and choose configured agents for
+each role:
 
 ```powershell
-issuekit negotiate --from-issue <id> --to <project> --frontend-agent <agent> --backend-agent <agent>
+issuekit negotiate --from-issue <id> --to <project> --initiator-side consumer --provider-agent <agent> --consumer-agent <agent>
 ```
 
-The frontend agent runs in the initiating checkout. When a configured ref's
-checkout declares the target project, the backend agent uses that checkout
-automatically. Use `--backend-ref <ref>` to select a specific counterpart
+Use `--initiator-side provider` when the initiating project owns and exposes
+the contract; use `consumer` when it integrates against the contract. The
+initiator always opens the negotiation. When a configured ref's checkout
+declares the target project, the counterpart agent uses that checkout
+automatically. Use `--counterpart-ref <ref>` to select a specific counterpart
 checkout instead; it must declare the same project as `--to`:
 
 ```powershell
-issuekit negotiate --from-issue <id> --to <project> --frontend-agent <agent> --backend-agent <agent> --backend-ref <ref>
+issuekit negotiate --from-issue <id> --to <project> --initiator-side provider --provider-agent <agent> --consumer-agent <agent> --counterpart-ref <ref>
 ```
 
 The initiating checkout still supplies the configuration for the thread,
-agent selection, and issues created by finalization. The backend ref is only
-the backend agent's inspection directory; its checkout configuration is read
+agent selection, and issues created by finalization. The counterpart ref is only
+the counterpart agent's inspection directory; its checkout configuration is read
 only to verify its declared project, and its worker identity is not loaded. The
-backend-ref checkout must be clean before the run starts.
+counterpart-ref checkout must be clean before the run starts.
 
 Both agents are instructed to inspect their checkout read-only. As a backstop,
 issuekit discards a turn's output when it leaves worktree changes or moves HEAD
@@ -93,8 +96,9 @@ After a thread is agreed, finalize it with the target project:
 issuekit negotiate --finalize <thread_id> --to <project> --author-agent <agent> --priority medium
 ```
 
-Finalization creates and cross-links implementation issues in the initiating
-and target projects. It refuses threads that are not agreed. The author agent
+Finalization creates and cross-links provider and consumer implementation
+issues. The consumer issue depends on the provider issue. It refuses threads
+that are not agreed. The author agent
 is resolved from `--author-agent`, then `default_implementer`, then a single
 enabled assignee. `--priority` controls the priority of the created issues.
 

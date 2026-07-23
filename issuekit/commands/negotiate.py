@@ -54,16 +54,21 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         help="Create cross-linked implementation issues for an agreed thread.",
     )
     negotiate_parser.add_argument(
-        "--frontend-agent",
-        help="Configured agent representing the frontend side.",
+        "--provider-agent",
+        help="Configured agent representing the provider side.",
     )
     negotiate_parser.add_argument(
-        "--backend-agent",
-        help="Configured agent representing the backend side.",
+        "--consumer-agent",
+        help="Configured agent representing the consumer side.",
     )
     negotiate_parser.add_argument(
-        "--backend-ref",
-        help="Effective ref whose checkout the backend agent inspects.",
+        "--counterpart-ref",
+        help="Effective ref whose checkout the counterpart agent inspects.",
+    )
+    negotiate_parser.add_argument(
+        "--initiator-side",
+        choices=("provider", "consumer"),
+        help="Role held by the initiating checkout.",
     )
     negotiate_parser.add_argument(
         "--max-rounds",
@@ -150,7 +155,7 @@ def run(args) -> int:
             return 0
 
         _require_round_args(args)
-        backend_cwd = _resolve_backend_cwd(args.backend_ref, args.to, cwd)
+        counterpart_cwd = _resolve_counterpart_cwd(args.counterpart_ref, args.to, cwd)
         issue_id = parse_issue_id_arg(args.from_issue)
         max_rounds = int(args.max_rounds)
         if max_rounds < 1:
@@ -167,15 +172,16 @@ def run(args) -> int:
         result = run_negotiation(
             issue=issue,
             to_project=args.to,
-            frontend_agent=args.frontend_agent,
-            backend_agent=args.backend_agent,
+            initiator_side=args.initiator_side,
+            provider_agent=args.provider_agent,
+            consumer_agent=args.consumer_agent,
             max_rounds=max_rounds,
             timeout=float(args.timeout_sec),
             model=args.model,
             reasoning_effort=args.reasoning_effort,
             config=config,
             cwd=cwd,
-            backend_cwd=backend_cwd,
+            counterpart_cwd=counterpart_cwd,
             store=store,
             runner=AgentRunner(),
         )
@@ -247,8 +253,9 @@ def _require_round_args(args) -> None:
         for name, value in (
             ("--from-issue", args.from_issue),
             ("--to", args.to),
-            ("--frontend-agent", args.frontend_agent),
-            ("--backend-agent", args.backend_agent),
+            ("--initiator-side", args.initiator_side),
+            ("--provider-agent", args.provider_agent),
+            ("--consumer-agent", args.consumer_agent),
         )
         if not value
     ]
@@ -256,95 +263,93 @@ def _require_round_args(args) -> None:
         raise ValueError(f"{', '.join(missing)} required unless --finalize is used.")
 
 
-def _resolve_backend_cwd(
-    backend_ref: str | None,
+def _resolve_counterpart_cwd(
+    counterpart_ref: str | None,
     to_project: str,
     cwd: Path,
 ) -> Path:
     refs = list_effective_refs(cwd)
-    if backend_ref is not None:
-        entry = refs.get(backend_ref)
+    if counterpart_ref is not None:
+        entry = refs.get(counterpart_ref)
         if entry is None:
             known_refs = ", ".join(refs) or "(none)"
             raise WorkflowError(
-                f"Unknown backend ref {backend_ref!r}. Known refs: {known_refs}."
+                f"Unknown counterpart ref {counterpart_ref!r}. Known refs: {known_refs}."
             )
-        return _validated_backend_cwd(backend_ref, entry.path, to_project, required=True)
+        return _validated_counterpart_cwd(counterpart_ref, entry.path, to_project, required=True)
 
     for ref_name, entry in refs.items():
-        if _backend_project(entry.path) == to_project:
+        if _counterpart_project(entry.path) == to_project:
             try:
-                return _validated_backend_cwd(ref_name, entry.path, to_project, required=False)
+                return _validated_counterpart_cwd(ref_name, entry.path, to_project, required=False)
             except WorkflowError as exc:
                 print(
-                    f"Ignoring automatically resolved backend ref {ref_name!r}: {exc}",
+                    f"Ignoring automatically resolved counterpart ref {ref_name!r}: {exc}",
                     file=sys.stderr,
                 )
                 return cwd
     return cwd
 
 
-def _validated_backend_cwd(
-    backend_ref: str,
-    backend_cwd: Path,
+def _validated_counterpart_cwd(
+    counterpart_ref: str,
+    counterpart_cwd: Path,
     to_project: str,
     *,
     required: bool,
 ) -> Path:
-    backend_project = _backend_project(backend_cwd, required=required)
-    if backend_project != to_project:
+    counterpart_project = _counterpart_project(counterpart_cwd, required=required)
+    if counterpart_project != to_project:
         raise WorkflowError(
-            f"Backend ref {backend_ref!r} points to project {backend_project!r}, "
+            f"Counterpart ref {counterpart_ref!r} points to project {counterpart_project!r}, "
             f"not requested project {to_project!r}."
         )
 
-    if git_status_short(backend_cwd):
+    if git_status_short(counterpart_cwd):
         raise WorkflowError(
-            f"Backend ref {backend_ref!r} points to a dirty checkout: {backend_cwd}."
+            f"Counterpart ref {counterpart_ref!r} points to a dirty checkout: {counterpart_cwd}."
         )
-    return backend_cwd
+    return counterpart_cwd
 
 
-def _backend_project(backend_cwd: Path, *, required: bool = False) -> str | None:
+def _counterpart_project(counterpart_cwd: Path, *, required: bool = False) -> str | None:
     try:
-        config_data = _backend_config_data(backend_cwd)
+        config_data = _counterpart_config_data(counterpart_cwd)
     except (OSError, TypeError, ValueError) as exc:
         if not required:
             return None
         raise WorkflowError(
-            f"Could not read issuekit configuration for backend checkout {backend_cwd}: {exc}"
+            f"Could not read issuekit configuration for counterpart checkout {counterpart_cwd}: {exc}"
         ) from exc
 
     if config_data is None:
         if not required:
             return None
-        raise WorkflowError(
-            f"Backend ref checkout {backend_cwd} has no readable issuekit configuration."
-        )
+        raise WorkflowError(f"Counterpart ref checkout {counterpart_cwd} has no readable issuekit configuration.")
 
     project = config_data.get("project")
     if isinstance(project, str) and project.strip():
         return project.strip()
     if required:
         raise WorkflowError(
-            f"Backend ref checkout {backend_cwd} does not declare a project in its "
+            f"Counterpart ref checkout {counterpart_cwd} does not declare a project in its "
             "issuekit configuration."
         )
     return None
 
 
-def _backend_config_data(backend_cwd: Path) -> dict[str, object] | None:
+def _counterpart_config_data(counterpart_cwd: Path) -> dict[str, object] | None:
     # load_config validates all settings and reads machine-local state; this only
     # needs the counterpart's declared project and must not inherit either.
-    pyproject_path = backend_cwd / "pyproject.toml"
+    pyproject_path = counterpart_cwd / "pyproject.toml"
     if pyproject_path.exists():
-        with (backend_cwd / "pyproject.toml").open("rb") as config_file:
+        with pyproject_path.open("rb") as config_file:
             data = tomllib.load(config_file)
         project_config = data.get("tool", {}).get("issuekit")
         if project_config is not None:
             return dict(project_config)
 
-    issuekit_path = backend_cwd / "issuekit.toml"
+    issuekit_path = counterpart_cwd / "issuekit.toml"
     if not issuekit_path.exists():
         return None
     with issuekit_path.open("rb") as config_file:
@@ -367,7 +372,7 @@ def _print_human_finalization_result(result: NegotiationFinalizationResult) -> N
     action = "created" if result.created else "already finalized"
     print(
         f"negotiation thread={result.thread_id} {action} "
-        f"backend={result.backend_issue_ref} frontend={result.frontend_issue_ref}"
+        f"provider={result.backend_issue_ref} consumer={result.frontend_issue_ref}"
     )
 
 

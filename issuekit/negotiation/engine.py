@@ -24,9 +24,9 @@ from issuekit.negotiation.model import (
 from issuekit.negotiation.prompts import (
     NegotiationParseError,
     ParsedRound,
-    backend_issue_body,
-    frontend_issue_body,
+    consumer_issue_body,
     parse_round_output,
+    provider_issue_body,
     render_round_prompt,
 )
 from issuekit.prompts import render_negotiation_round_pointer
@@ -34,8 +34,10 @@ from issuekit.store import get_store
 from issuekit.workflow import WorkflowError
 
 
-FRONTEND_SIDE = "frontend"
-BACKEND_SIDE = "backend"
+PROVIDER_SIDE = "provider"
+CONSUMER_SIDE = "consumer"
+# Legacy threads used positional sides, so frontend maps to consumer and backend to provider.
+LEGACY_SIDES = {"frontend": CONSUMER_SIDE, "backend": PROVIDER_SIDE}
 DEFAULT_MAX_ROUNDS = 4
 
 
@@ -137,6 +139,7 @@ class IssueCreator(Protocol):
         body: str,
         priority: str,
         author: str,
+        depends_on: tuple[str, ...] | None = None,
     ) -> Issue:
         """Create one implementation issue in a project."""
 
@@ -156,6 +159,7 @@ class ApiIssueCreator:
         body: str,
         priority: str,
         author: str,
+        depends_on: tuple[str, ...] | None = None,
     ) -> Issue:
         project_config = replace(self.config, project=project)
         store = get_store(project_config)
@@ -164,6 +168,7 @@ class ApiIssueCreator:
             body=body,
             priority=priority,
             author=author,
+            depends_on=depends_on,
         )
 
     def update_issue_body(self, *, project: str, issue_id: int, body: str) -> Issue:
@@ -185,6 +190,7 @@ class MockIssueCreator:
         body: str,
         priority: str,
         author: str,
+        depends_on: tuple[str, ...] | None = None,
     ) -> Issue:
         issue_id = self._next_ids.get(project, 1)
         self._next_ids[project] = issue_id + 1
@@ -201,7 +207,8 @@ class MockIssueCreator:
             implementer="",
             author=author,
             body=body,
-            metadata={"title": title},
+            metadata={"title": title, "depends_on": list(depends_on or ())},
+            depends_on=depends_on or (),
         )
         self.issues[issue.ref] = issue
         return issue
@@ -260,48 +267,53 @@ def finalize_negotiation(
         )
 
     origin_issue_ref = origin_issue_ref_from_thread(thread)
-    frontend_project = config.project
-    frontend_title = f"Integrate agreed contract from negotiation {thread_id}"
-    backend_title = f"Implement agreed contract from negotiation {thread_id}"
+    initiator_side = _normalized_side(thread[0].side)
+    counterpart_side = _other_side(initiator_side)
+    projects = {initiator_side: config.project, counterpart_side: to_project}
+    titles = {
+        PROVIDER_SIDE: f"Implement agreed contract from negotiation {thread_id}",
+        CONSUMER_SIDE: f"Integrate agreed contract from negotiation {thread_id}",
+    }
 
-    frontend = issue_creator.create_issue(
-        project=frontend_project,
-        title=frontend_title,
-        body=frontend_issue_body(
+    provider = issue_creator.create_issue(
+        project=projects[PROVIDER_SIDE],
+        title=titles[PROVIDER_SIDE],
+        body=provider_issue_body(
             thread_id=thread_id,
             origin_issue_ref=origin_issue_ref,
-            backend_issue_ref="pending",
+            consumer_issue_ref="pending",
             contract=contract,
         ),
         priority=priority,
         author=author_agent,
     )
-    backend = issue_creator.create_issue(
-        project=to_project,
-        title=backend_title,
-        body=backend_issue_body(
+    consumer = issue_creator.create_issue(
+        project=projects[CONSUMER_SIDE],
+        title=titles[CONSUMER_SIDE],
+        body=consumer_issue_body(
             thread_id=thread_id,
             origin_issue_ref=origin_issue_ref,
-            frontend_issue_ref=frontend.ref,
+            provider_issue_ref=provider.ref,
             contract=contract,
         ),
         priority=priority,
         author=author_agent,
+        depends_on=(f"{projects[PROVIDER_SIDE]}#issue:{_require_issue_id(provider)}",),
     )
     issue_creator.update_issue_body(
-        project=frontend_project,
-        issue_id=_require_issue_id(frontend),
-        body=frontend_issue_body(
+        project=projects[PROVIDER_SIDE],
+        issue_id=_require_issue_id(provider),
+        body=provider_issue_body(
             thread_id=thread_id,
             origin_issue_ref=origin_issue_ref,
-            backend_issue_ref=backend.ref,
+            consumer_issue_ref=consumer.ref,
             contract=contract,
         ),
     )
 
     refs = NegotiationIssueRefs(
-        backend_issue_ref=backend.ref,
-        frontend_issue_ref=frontend.ref,
+        backend_issue_ref=provider.ref,
+        frontend_issue_ref=consumer.ref,
     )
     store.set_issue_refs(thread_id, refs)
     return NegotiationFinalizationResult(
@@ -316,76 +328,100 @@ def run_negotiation(
     *,
     issue: Issue,
     to_project: str,
-    frontend_agent: str,
-    backend_agent: str,
+    config: IssuekitConfig,
+    cwd: Path,
+    store: NegotiationStore,
+    initiator_side: str | None = None,
+    provider_agent: str | None = None,
+    consumer_agent: str | None = None,
     max_rounds: int = DEFAULT_MAX_ROUNDS,
     timeout: float = 120.0,
     model: str | None = None,
     reasoning_effort: str | None = None,
-    config: IssuekitConfig,
-    cwd: Path,
-    backend_cwd: Path | None = None,
-    store: NegotiationStore,
+    counterpart_cwd: Path | None = None,
     runner: AgentRunner | None = None,
+    frontend_agent: str | None = None,
+    backend_agent: str | None = None,
+    backend_cwd: Path | None = None,
 ) -> NegotiationResult:
-    """Drive a bounded frontend/backend negotiation to a terminal outcome."""
+    """Drive a bounded provider/consumer negotiation to a terminal outcome."""
 
     if max_rounds < 1:
         raise ValueError("max_rounds must be at least 1.")
     runner = runner or AgentRunner()
     seed = _seed_text(issue, config=config, to_project=to_project)
     run_records: list[RoundRun] = []
+    legacy_mode = initiator_side is None
+    if legacy_mode:
+        initiator_side = "frontend"
+        provider_agent = backend_agent
+        consumer_agent = frontend_agent
+        counterpart_cwd = backend_cwd
+    if initiator_side not in (PROVIDER_SIDE, CONSUMER_SIDE, "frontend"):
+        raise ValueError("initiator_side must be provider or consumer.")
+    if provider_agent is None or consumer_agent is None:
+        raise ValueError("provider_agent and consumer_agent are required.")
+    provider_side = "backend" if legacy_mode else PROVIDER_SIDE
+    consumer_side = "frontend" if legacy_mode else CONSUMER_SIDE
+    if legacy_mode:
+        initiator_side = consumer_side
     adapters = {
-        FRONTEND_SIDE: resolve_adapter(
-            frontend_agent,
+        provider_side: resolve_adapter(
+            provider_agent,
             config=config,
             model=model,
             reasoning_effort=reasoning_effort,
         ),
-        BACKEND_SIDE: resolve_adapter(
-            backend_agent,
+        consumer_side: resolve_adapter(
+            consumer_agent,
             config=config,
             model=model,
             reasoning_effort=reasoning_effort,
         ),
     }
     agents = {
-        FRONTEND_SIDE: frontend_agent,
-        BACKEND_SIDE: backend_agent,
+        provider_side: provider_agent,
+        consumer_side: consumer_agent,
     }
     side_cwds = {
-        FRONTEND_SIDE: cwd,
-        BACKEND_SIDE: backend_cwd or cwd,
+        initiator_side: cwd,
+        _other_side(initiator_side) if not legacy_mode else provider_side: counterpart_cwd or cwd,
     }
     resume_thread_id = _find_resumable_thread_id(store, issue=issue, config=config)
     if resume_thread_id is None:
         first = _run_side_turn(
             round_number=1,
-            side=FRONTEND_SIDE,
-            agent=agents[FRONTEND_SIDE],
-            adapter=adapters[FRONTEND_SIDE],
-            session_id=_new_round_session_id(adapters[FRONTEND_SIDE]),
+            side=initiator_side,
+            agent=agents[initiator_side],
+            adapter=adapters[initiator_side],
+            session_id=_new_round_session_id(adapters[initiator_side]),
             seed=seed,
             thread=[],
             issue=issue,
-            cwd=side_cwds[FRONTEND_SIDE],
+            cwd=side_cwds[initiator_side],
             timeout=timeout,
             runner=runner,
         )
         first_entry = store.create_thread(
-            side=FRONTEND_SIDE,
+            side=initiator_side,
             verdict=first.parsed.verdict,
-            title=_entry_title(FRONTEND_SIDE, first.parsed),
+            title=_entry_title(initiator_side, first.parsed),
             body=first.parsed.notes,
-            origin=entry_origin(issue, config=config, side=FRONTEND_SIDE, round_number=1),
+            origin=entry_origin(issue, config=config, side=initiator_side, round_number=1),
             contract=first.parsed.contract,
         )
         run_records.append(first.run)
         thread_id = first_entry.thread_id
-        thread = store.get_thread(thread_id)
+        thread = _thread_for_run(store.get_thread(thread_id), normalize_legacy=not legacy_mode)
     else:
         thread_id = resume_thread_id
-        thread = store.get_thread(thread_id)
+        thread = _thread_for_run(store.get_thread(thread_id), normalize_legacy=not legacy_mode)
+        if not legacy_mode and thread[0].side != initiator_side:
+            raise WorkflowError(
+                f"Negotiation thread {thread_id} was initiated by the {thread[0].side} "
+                f"side, not the requested {initiator_side} side.",
+                code="invalid_negotiation_side",
+            )
 
     outcome = _evaluate_convergence(thread)
     if outcome != "negotiating":
@@ -422,7 +458,7 @@ def run_negotiation(
             contract=turn.parsed.contract,
         )
         run_records.append(turn.run)
-        thread = store.get_thread(thread_id)
+        thread = _thread_for_run(store.get_thread(thread_id), normalize_legacy=not legacy_mode)
 
         outcome = _evaluate_convergence(thread)
         if outcome != "negotiating":
@@ -448,7 +484,7 @@ def inspect_thread(thread_id: str, *, store: NegotiationStore) -> NegotiationThr
         final_contract=_latest_contract(thread),
         agreed_contract=store.get_agreed_contract(thread_id),
         issue_refs=issue_refs,
-        entries=tuple(thread),
+        entries=tuple(_normalize_thread(thread)),
     )
 
 
@@ -700,9 +736,35 @@ def _seed_text(issue: Issue, *, config: IssuekitConfig, to_project: str) -> str:
 
 
 def _next_side(thread: list[NegotiationEntry]) -> str:
-    if not thread or thread[-1].side == BACKEND_SIDE:
-        return FRONTEND_SIDE
-    return BACKEND_SIDE
+    if not thread:
+        raise ValueError("A negotiation thread needs an initiating entry.")
+    if thread[-1].side == "frontend":
+        return "backend"
+    if thread[-1].side == "backend":
+        return "frontend"
+    return _other_side(_normalized_side(thread[-1].side))
+
+
+def _thread_for_run(
+    thread: list[NegotiationEntry], *, normalize_legacy: bool
+) -> list[NegotiationEntry]:
+    return _normalize_thread(thread) if normalize_legacy else thread
+
+
+def _normalize_thread(thread: list[NegotiationEntry]) -> list[NegotiationEntry]:
+    return [replace(entry, side=_normalized_side(entry.side)) for entry in thread]
+
+
+def _normalized_side(side: str) -> str:
+    return LEGACY_SIDES.get(side, side)
+
+
+def _other_side(side: str) -> str:
+    if side == PROVIDER_SIDE:
+        return CONSUMER_SIDE
+    if side == CONSUMER_SIDE:
+        return PROVIDER_SIDE
+    raise ValueError(f"Unknown negotiation side: {side}")
 
 
 def _latest_contract(thread: list[NegotiationEntry]) -> str | None:
