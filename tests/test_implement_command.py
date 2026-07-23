@@ -128,6 +128,16 @@ def test_implement_command_materializes_api_issue_and_submits_review(
     )
 
 
+def test_implement_command_uses_default_implementer(tmp_path: Path, monkeypatch, capsys) -> None:
+    client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
+    FakeRunner.calls.clear()
+    _configure_api(tmp_path, monkeypatch, client, extra_config="default_implementer = 'kimi'\n")
+    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", FakeRunner)
+
+    assert cli.main(["implement", "1"]) == 0
+    assert "agent=kimi" in capsys.readouterr().out
+
+
 def test_implement_command_blocks_wrong_work_branch_before_agent(
     tmp_path: Path,
     monkeypatch,

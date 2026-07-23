@@ -464,6 +464,19 @@ def resolve_reviewer(
     return resolved
 
 
+def resolve_implementer(
+    implementer: str | None,
+    config: IssuekitConfig,
+) -> str | None:
+    resolved = (implementer or config.default_implementer).strip()
+    if resolved:
+        _validate_assignee(resolved, config)
+        return resolved
+    if len(config.assignees) == 1:
+        return config.assignees[0]
+    return None
+
+
 def _resolve_auto_reviewer(config: IssuekitConfig, *, issue: Issue | None) -> str:
     if config.require_distinct_reviewer:
         implementer = issue.implementer if issue is not None else ""

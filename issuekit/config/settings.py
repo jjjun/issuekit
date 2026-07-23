@@ -93,6 +93,7 @@ class IssuekitConfig:
         "done",
     )
     default_reviewer: str = "claude"
+    default_implementer: str = ""
     require_distinct_reviewer: bool = False
     work_branch: str = ""
     gate_halfwidth_kana: bool = True
@@ -252,6 +253,11 @@ def load_config(cwd: Path | str = ".") -> IssuekitConfig:
     )
     _validate_not_disabled("default_reviewer", default_reviewer, disabled_agents)
     _validate_default_reviewer(default_reviewer, assignees)
+    default_implementer = str(
+        raw_config.get("default_implementer", IssuekitConfig.default_implementer)
+    ).strip()
+    _validate_not_disabled("default_implementer", default_implementer, disabled_agents)
+    _validate_default_implementer(default_implementer, assignees)
     work_branch = str(raw_config.get("work_branch", IssuekitConfig.work_branch)).strip()
     _validate_work_branch(work_branch)
     claim_sync_interval_sec = float(
@@ -304,6 +310,7 @@ def load_config(cwd: Path | str = ".") -> IssuekitConfig:
         assignees=assignees,
         stages=_string_tuple(raw_config.get("stages", IssuekitConfig.stages)),
         default_reviewer=default_reviewer,
+        default_implementer=default_implementer,
         require_distinct_reviewer=_bool_value(
             True
             if api_url
@@ -527,6 +534,17 @@ def _validate_default_reviewer(default_reviewer: str, assignees: tuple[str, ...]
         return
     if default_reviewer not in assignees:
         raise ValueError(f"Unknown default_reviewer: {default_reviewer}")
+
+
+def _validate_default_implementer(
+    default_implementer: str, assignees: tuple[str, ...]
+) -> None:
+    if not default_implementer:
+        return
+    if not is_valid_workflow_token(default_implementer):
+        raise ValueError(f"Invalid default_implementer token: {default_implementer}")
+    if default_implementer not in assignees:
+        raise ValueError(f"Unknown default_implementer: {default_implementer}")
 
 
 def _validate_project(project: str) -> None:

@@ -135,6 +135,44 @@ def test_claim_command_uses_api_claim_next(
     ]
 
 
+def test_claim_command_uses_default_implementer_when_assignee_is_omitted(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient([api_issue(5, "Ready", author="codex")])
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'demo'\n"
+        "default_implementer = 'claude'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["claim"]) == 0
+    assert "assignee=claude" in capsys.readouterr().out
+
+
+def test_claim_command_requires_assignee_without_default_implementer(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient([api_issue(5, "Ready", author="claude")])
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'demo'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["claim"]) == 1
+    assert "No implementer is configured" in capsys.readouterr().err
+    assert client.calls == []
+
+
 def test_claim_command_can_claim_specific_issue(
     tmp_path: Path,
     monkeypatch,

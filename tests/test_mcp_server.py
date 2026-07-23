@@ -617,6 +617,36 @@ def test_claim_next_task_claims_only_once(tmp_path: Path, monkeypatch: pytest.Mo
     assert second["status"] == "none"
 
 
+def test_claim_next_task_uses_default_implementer(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client = FakeIssuekitClient([api_issue(1, "First")])
+    _configure_api(
+        tmp_path,
+        monkeypatch,
+        client,
+        extra_config="default_implementer = 'claude'\n",
+    )
+    server = create_server(tmp_path)
+
+    claimed = _call(server, "claim_next_task", {})
+
+    assert claimed["assignee"] == "claude"
+
+
+def test_claim_next_task_requires_assignee_without_default_implementer(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client = FakeIssuekitClient([api_issue(1, "First")])
+    _configure_api(tmp_path, monkeypatch, client)
+    server = create_server(tmp_path)
+
+    with pytest.raises(Exception, match="No implementer is configured"):
+        _call(server, "claim_next_task", {})
+
+    assert client.calls == []
+
+
 def test_review_round_trip_and_approve(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     client = FakeIssuekitClient(
         [

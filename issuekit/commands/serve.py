@@ -42,7 +42,7 @@ from issuekit.workers.registry import (
     WorkerHeartbeat,
     try_post_worker_registration,
 )
-from issuekit.workflow import WorkflowError, claim_next, next_review
+from issuekit.workflow import WorkflowError, claim_next, next_review, resolve_implementer
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:
@@ -138,10 +138,11 @@ def run(args) -> int:
         print(str(exc), file=sys.stderr)
         return 1
 
-    agent = _resolve_agent(args.agent, config)
+    agent = resolve_implementer(args.agent, config)
     if agent is None:
         print(
-            "--agent is required unless exactly one assignee is configured.",
+            "No implementer is configured. Pass --agent, set default_implementer, "
+            "or configure exactly one enabled assignee.",
             file=sys.stderr,
         )
         return 1
@@ -547,14 +548,6 @@ def _log_reviewed(log_path: Path, reviewed_issue: Issue | None, decided_count: i
         status=reviewed_issue.issue_status,
         count=decided_count,
     )
-
-
-def _resolve_agent(agent: str | None, config: IssuekitConfig) -> str | None:
-    if agent:
-        return agent
-    if len(config.assignees) == 1:
-        return config.assignees[0]
-    return None
 
 
 def _triage_enabled(args, config: IssuekitConfig) -> bool:

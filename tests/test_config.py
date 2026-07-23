@@ -112,6 +112,23 @@ def test_repo_config_overrides_machine_and_merges_agent_keys(
     assert codex.approval_flag == "--full-auto"
 
 
+def test_default_implementer_uses_machine_config_unless_repo_overrides(
+    tmp_path: Path, monkeypatch
+) -> None:
+    machine_path = tmp_path / "machine.toml"
+    machine_path.write_text(
+        "assignees = ['codex', 'claude']\ndefault_implementer = 'claude'\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "issuekit.toml").write_text(
+        "default_implementer = 'codex'\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ISSUEKIT_CONFIG", str(machine_path))
+
+    assert load_config(tmp_path).default_implementer == "codex"
+
+
 def test_empty_issuekit_config_disables_machine_config(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("ISSUEKIT_CONFIG", "")
 
@@ -817,6 +834,30 @@ def test_load_config_rejects_unknown_default_reviewer(tmp_path: Path) -> None:
     )
 
     with pytest.raises(ValueError, match="Unknown default_reviewer"):
+        load_config(tmp_path)
+
+
+@pytest.mark.parametrize(
+    ("body", "message"),
+    [
+        ("default_implementer = 'bad value'\n", "Invalid default_implementer token"),
+        (
+            "assignees = ['codex']\ndefault_reviewer = 'codex'\n"
+            "default_implementer = 'claude'\n",
+            "Unknown default_implementer",
+        ),
+        (
+            "disabled_agents = ['codex']\ndefault_implementer = 'codex'\n",
+            "default_implementer references disabled agent: codex",
+        ),
+    ],
+)
+def test_load_config_validates_default_implementer(
+    tmp_path: Path, body: str, message: str
+) -> None:
+    (tmp_path / "issuekit.toml").write_text(body, encoding="utf-8", newline="\n")
+
+    with pytest.raises(ValueError, match=message):
         load_config(tmp_path)
 
 

@@ -784,6 +784,8 @@ def test_negotiate_cli_finalize_json_uses_mock_store(tmp_path, monkeypatch, caps
                 first.thread_id,
                 "--to",
                 "backend",
+                "--author-agent",
+                "codex",
                 "--mock",
                 "--json",
             ]

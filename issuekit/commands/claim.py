@@ -9,7 +9,7 @@ import sys
 from issuekit.commands._common import run_command
 from issuekit.config import load_config
 from issuekit.core import parse_issue_id_arg
-from issuekit.workflow import WorkflowError, claim_issue, claim_next
+from issuekit.workflow import WorkflowError, claim_issue, claim_next, resolve_implementer
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:
@@ -18,7 +18,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         help="Claim an issue for an assignee; defaults to the next eligible issue.",
     )
     claim_parser.add_argument("--id", help="Specific issue id to claim.")
-    claim_parser.add_argument("--assignee", required=True, help="Assignee to claim for.")
+    claim_parser.add_argument("--assignee", help="Assignee to claim for.")
     claim_parser.add_argument("--priority", choices=("high", "medium", "low"), help="Priority filter.")
     claim_parser.add_argument(
         "--allow-author-session",
@@ -46,9 +46,15 @@ def run(args) -> int:
     def action() -> int:
         issue_id = parse_issue_id_arg(args.id) if args.id else None
         config = load_config(Path.cwd())
+        assignee = resolve_implementer(args.assignee, config)
+        if assignee is None:
+            raise WorkflowError(
+                "No implementer is configured. Pass --assignee, set default_implementer, "
+                "or configure exactly one enabled assignee."
+            )
         if issue_id is None:
             issue = claim_next(
-                args.assignee,
+                assignee,
                 priority=args.priority,
                 config=config,
                 cwd=Path.cwd(),
@@ -59,7 +65,7 @@ def run(args) -> int:
         else:
             issue = claim_issue(
                 issue_id,
-                args.assignee,
+                assignee,
                 config=config,
                 cwd=Path.cwd(),
                 allow_author_guard_override=args.allow_author_session,
@@ -68,7 +74,7 @@ def run(args) -> int:
             )
 
         if issue is None:
-            print(f"status=none assignee={args.assignee}")
+            print(f"status=none assignee={assignee}")
             return 0
 
         print(

@@ -17,7 +17,7 @@ from issuekit.agentrun import AgentRunner
 from issuekit.commands._common import run_command
 from issuekit.config import IssuekitConfig, load_config
 from issuekit.proposals import ProposalError
-from issuekit.workflow import WorkflowError
+from issuekit.workflow import WorkflowError, resolve_implementer
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:
@@ -78,10 +78,11 @@ def run(args) -> int:
             file=sys.stderr,
         )
         return 1
-    agent = _resolve_agent(args.agent, config)
+    agent = resolve_implementer(args.agent, config)
     if agent is None:
         print(
-            "--agent is required unless exactly one assignee is configured.",
+            "No implementer is configured. Pass --agent, set default_implementer, "
+            "or configure exactly one enabled assignee.",
             file=sys.stderr,
         )
         return 1
@@ -134,14 +135,6 @@ def _run_list(args, config: IssuekitConfig) -> int:
         return 0
 
     return run_command(action, errors=(ValueError, WorkflowError, ProposalError))
-
-
-def _resolve_agent(agent: str | None, config: IssuekitConfig) -> str | None:
-    if agent:
-        return agent
-    if len(config.assignees) == 1:
-        return config.assignees[0]
-    return None
 
 
 def _print_checks(checks: list[dict]) -> None:

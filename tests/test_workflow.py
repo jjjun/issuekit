@@ -20,6 +20,7 @@ from issuekit.workflow import (
     reclaim_issue,
     readdress_issue,
     request_changes,
+    resolve_implementer,
     resolve_reviewer,
     submit_for_review,
 )
@@ -1247,6 +1248,18 @@ def test_distinct_reviewer_guard_names_recovery() -> None:
     assert "no configured reviewer is distinct from the issue implementer" in message
     assert "configure an assignee distinct from issue.implementer" in message
     assert "compares against `issue.implementer`, not the author" in message
+
+
+def test_resolve_implementer_uses_explicit_then_configured_then_single_assignee() -> None:
+    config = IssuekitConfig(
+        assignees=("codex", "claude"),
+        default_implementer="claude",
+    )
+
+    assert resolve_implementer("codex", config) == "codex"
+    assert resolve_implementer(None, config) == "claude"
+    assert resolve_implementer(None, IssuekitConfig(assignees=("kimi",))) == "kimi"
+    assert resolve_implementer(None, IssuekitConfig(assignees=("codex", "claude"))) is None
 
 
 def test_approve_allows_same_agent_different_worker_open_review(

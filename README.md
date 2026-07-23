@@ -376,6 +376,7 @@ assignees = ["codex", "claude"]
 disabled_agents = ["kimi"]
 stages = ["planned", "todo", "implementing", "review", "changes_requested", "done"]
 default_reviewer = "auto"
+default_implementer = "codex"
 require_distinct_reviewer = true
 work_branch = "main"
 gate_halfwidth_kana = true
@@ -392,6 +393,7 @@ assignees = ["codex", "claude"]
 disabled_agents = ["kimi"]
 stages = ["planned", "todo", "implementing", "review", "changes_requested", "done"]
 default_reviewer = "auto"
+default_implementer = "codex"
 require_distinct_reviewer = true
 work_branch = "main"
 gate_halfwidth_kana = true
@@ -410,6 +412,10 @@ machine and repository layers, while other values are replaced by the
 higher-precedence layer. Repository identity settings such as `project`,
 `work_branch`, `issues_dir`, and `profile_*` normally belong in repository
 config.
+
+Set `default_implementer` in machine config when one agent is the usual worker
+on that machine. Commands and MCP tools that omit an implementer use it before
+falling back to a single enabled assignee; repository config can override it.
 
 The mine-py server owns issue ids and reviewer policy. When `api_url` is set,
 issuekit always treats review handoff as `default_reviewer = "auto"` and
@@ -645,6 +651,11 @@ With `auto`, issuekit keeps the current review assignee when possible and
 otherwise uses a stable configured assignee. When `require_distinct_reviewer` is
 true, `auto` chooses an assignee that differs from the issue implementer and
 same-name review is rejected.
+
+`default_implementer` controls which configured assignee MCP and CLI
+implementation commands use when no implementer is specified. It must be one
+of the configured `assignees`; leave it empty to require an explicit choice
+when more than one enabled assignee is available.
 
 ## Orphaned Claim Detection
 

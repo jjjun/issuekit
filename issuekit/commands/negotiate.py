@@ -35,7 +35,7 @@ from issuekit.negotiation.prompts import NegotiationParseError
 from issuekit.proposals import ProposalError
 from issuekit.proposals.api import validate_target_project
 from issuekit.store import get_store
-from issuekit.workflow import WorkflowError
+from issuekit.workflow import WorkflowError, resolve_implementer
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:
@@ -81,7 +81,6 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     )
     negotiate_parser.add_argument(
         "--author-agent",
-        default="codex",
         help="Author agent for issues created by --finalize.",
     )
     negotiate_parser.add_argument(
@@ -118,6 +117,12 @@ def run(args) -> int:
         config = load_config(cwd)
         if args.finalize:
             _require_finalize_args(args)
+            author_agent = resolve_implementer(args.author_agent, config)
+            if author_agent is None:
+                raise WorkflowError(
+                    "No implementer is configured. Pass --author-agent, set "
+                    "default_implementer, or configure exactly one enabled assignee."
+                )
             if not args.mock:
                 _warn_target_validation(config, args.to)
             store = get_negotiation_store(config, use_mock=bool(args.mock))
@@ -125,7 +130,7 @@ def run(args) -> int:
             result = finalize_negotiation(
                 thread_id=args.finalize,
                 to_project=args.to,
-                author_agent=args.author_agent,
+                author_agent=author_agent,
                 priority=args.priority,
                 config=config,
                 store=store,

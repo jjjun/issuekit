@@ -51,6 +51,7 @@ from issuekit.workflow import (
     reclaim_issue as workflow_reclaim_issue,
     readdress_issue as workflow_readdress_issue,
     request_changes as workflow_request_changes,
+    resolve_implementer,
     submit_for_review as workflow_submit_for_review,
     WorkflowError,
 )
@@ -83,7 +84,7 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
         )
     )
     async def claim_next_task(
-        assignee: str = "codex",
+        assignee: str | None = None,
         priority: str | None = None,
         allow_author_session: bool = False,
         allow_any_branch: bool = False,
@@ -91,8 +92,14 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
         ctx: Context | None = None,
     ) -> dict[str, Any]:
         async with _api_store(root, ctx) as (config, config_root, store):
+            resolved_assignee = resolve_implementer(assignee, config)
+            if resolved_assignee is None:
+                raise WorkflowError(
+                    "No implementer is configured. Pass assignee, set default_implementer, "
+                    "or configure exactly one enabled assignee."
+                )
             issue = claim_next(
-                assignee,
+                resolved_assignee,
                 priority=priority,
                 config=config,
                 store=store,
@@ -103,7 +110,7 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
                 session=MCP_SESSION,
             )
         if issue is None:
-            return {"status": "none", "assignee": assignee}
+            return {"status": "none", "assignee": resolved_assignee}
         return issue_dict(issue, include_body=True)
 
     @server.tool(

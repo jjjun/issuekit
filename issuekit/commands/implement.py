@@ -18,7 +18,7 @@ from issuekit.config import load_config
 from issuekit.core import Issue, parse_issue_id_arg
 from issuekit.issues.session import new_session_token
 from issuekit.store import get_store
-from issuekit.workflow import WorkflowError, claim_issue
+from issuekit.workflow import WorkflowError, claim_issue, resolve_implementer
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:
@@ -29,7 +29,6 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     implement_parser.add_argument("id", help="Issue id to implement.")
     implement_parser.add_argument(
         "--agent",
-        required=True,
         help="Configured agent name to run.",
     )
     implement_parser.add_argument("--model", help="Optional model name passed to the agent.")
@@ -76,6 +75,12 @@ def run(args) -> int:
 
         cwd = Path.cwd()
         config = load_config(cwd)
+        agent = resolve_implementer(args.agent, config)
+        if agent is None:
+            raise WorkflowError(
+                "No implementer is configured. Pass --agent, set default_implementer, "
+                "or configure exactly one enabled assignee."
+            )
         issues_dir = config.issues_path(cwd)
         issue = get_store(config).get_issue(issue_id)
         if issue is None:
@@ -89,12 +94,12 @@ def run(args) -> int:
         )
         run_session = new_session_token("run")
         orchestration = AuthorOrchestrationContext(
-            implementer_agent=args.agent,
+            implementer_agent=agent,
             run_session=run_session,
         )
         claimed_issue = claim_issue(
             issue.id or issue_id,
-            args.agent,
+            agent,
             config=config,
             cwd=cwd,
             allow_author_guard_override=args.allow_author_session,
@@ -105,7 +110,7 @@ def run(args) -> int:
         )
         outcome = run_and_submit(
             claimed_issue,
-            agent=args.agent,
+            agent=agent,
             config=config,
             cwd=cwd,
             issues_dir=issues_dir,
@@ -119,8 +124,8 @@ def run(args) -> int:
             allow_any_branch=args.allow_any_branch,
             session=run_session,
             orchestration=orchestration,
-            submit_summary=_submit_summary(args.agent, cwd, config, issue.id or issue_id),
-            reporter=lambda issue, result: _print_run_report(issue, result, args.agent),
+            submit_summary=_submit_summary(agent, cwd, config, issue.id or issue_id),
+            reporter=lambda issue, result: _print_run_report(issue, result, agent),
             runner_factory=AgentRunner,
         )
 
