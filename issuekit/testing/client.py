@@ -34,7 +34,6 @@ class FakeIssuekitClient(FakeIssueSurface, FakeProposalSurface):
         self._next_thread_id = 1
         self._next_proposal_check_id = 1
         self.calls: list[JsonDict] = []
-        self.close_count = 0
         # Real IssuekitClient carries the target project; the fake defaults to the
         # canonical project and lets tests override it for profile routing.
         self.project = "issuekit"
@@ -81,7 +80,9 @@ class FakeIssuekitClient(FakeIssueSurface, FakeProposalSurface):
         with self._lock:
             return [deepcopy(profile) for _, profile in sorted(self._profiles.items())]
 
-    def register_catalog_project(self, project: str, *, summary: str | None = None) -> None:
+    def register_catalog_project(  # noqa: Vulture
+        self, project: str, *, summary: str | None = None
+    ) -> None:
         """Seed a project in the profile catalog so proposal target validation accepts it."""
         with self._lock:
             self._profiles[project] = {
@@ -96,12 +97,12 @@ class FakeIssuekitClient(FakeIssueSurface, FakeProposalSurface):
     def __enter__(self) -> "FakeIssuekitClient":
         return self
 
-    def __exit__(self, *exc_info: object) -> None:
+    def __exit__(self, *_: object) -> None:
         self.close()
         return None
 
     def close(self) -> None:
-        self.close_count += 1
+        pass
 
     def health(self) -> JsonDict:
         return {"status": "ok", "migration_revision": "test"}

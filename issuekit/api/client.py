@@ -105,5 +105,5 @@ class IssuekitClient(
     def __enter__(self) -> "IssuekitClient":
         return self
 
-    def __exit__(self, *exc_info: object) -> None:
+    def __exit__(self, *_: object) -> None:
         self.close()

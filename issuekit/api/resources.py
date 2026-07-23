@@ -496,6 +496,11 @@ class ProposalCheckResourceMixin:
         target_worker: str,
         project: str | None = None,
     ) -> JsonDict:
+        """Create a proposal check through the public server endpoint.
+
+        Issuekit normally polls checks created by the dashboard, but keeps this
+        endpoint available for API clients that need to create checks directly.
+        """
         target_project = project or self.project
         payload = self._authorized_request(
             "POST",

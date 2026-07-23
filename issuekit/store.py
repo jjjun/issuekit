@@ -59,7 +59,7 @@ class IssueStore(Protocol):
     def __enter__(self) -> "IssueStore":
         """Enter a store lifecycle context."""
 
-    def __exit__(self, *exc_info: object) -> None:
+    def __exit__(self, *_: object) -> None:
         """Exit a store lifecycle context."""
 
     def close(self) -> None:
@@ -116,7 +116,7 @@ class ApiStore:
     def __enter__(self) -> "ApiStore":
         return self
 
-    def __exit__(self, *exc_info: object) -> None:
+    def __exit__(self, *_: object) -> None:
         self.close()
 
     def read_all_issues(self) -> tuple[list[Issue], list[Issue], list[Issue]]:

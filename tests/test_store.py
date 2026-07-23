@@ -23,13 +23,21 @@ def test_get_store_uses_api_when_api_url_is_set() -> None:
 
 
 def test_api_store_context_manager_closes_only_owned_clients(monkeypatch) -> None:
-    owned_client = FakeIssuekitClient()
+    class TrackingClient(FakeIssuekitClient):
+        def __init__(self) -> None:
+            super().__init__()
+            self.close_count = 0
+
+        def close(self) -> None:
+            self.close_count += 1
+
+    owned_client = TrackingClient()
     monkeypatch.setattr("issuekit.store.IssuekitClient", lambda *args, **kwargs: owned_client)
 
     with ApiStore(IssuekitConfig(api_url="https://mine.example")):
         pass
 
-    injected_client = FakeIssuekitClient()
+    injected_client = TrackingClient()
     with ApiStore(IssuekitConfig(api_url="https://mine.example"), client=injected_client):
         pass
 

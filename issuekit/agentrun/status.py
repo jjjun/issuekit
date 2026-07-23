@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
@@ -65,7 +65,23 @@ class RunStatus:
         )
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        return {
+            "run_id": self.run_id,
+            "agent": self.agent,
+            "issue": self.issue,
+            "status": self.status,
+            "pid": self.pid,
+            "started_at": self.started_at,
+            "ended_at": self.ended_at,
+            "elapsed_sec": self.elapsed_sec,
+            "exit_code": self.exit_code,
+            "plan": self.plan,
+            "stdout_log": self.stdout_log,
+            "agent_log": self.agent_log,
+            "last_log_line": self.last_log_line,
+            "last_log_at": self.last_log_at,
+            "heartbeat_at": self.heartbeat_at,
+        }
 
     @property
     def is_active(self) -> bool:
