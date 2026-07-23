@@ -20,3 +20,6 @@ one. See [README.md](README.md) for the rules.
 - [Multiple proposals from one session need distinct origins](proposal-origin-dedup.md) -
   without `--from-issue`, a second propose to the same target is silently
   deduplicated by the implicit `#0` origin.
+- [Verification-only issues cannot go through implement/submit](verification-only-issues.md) -
+  a zero-diff agent run is not submitted and strands the claim; reclaim, then
+  close with the no-op `complete --force` path.
