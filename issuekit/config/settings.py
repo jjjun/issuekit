@@ -183,6 +183,7 @@ class IssuekitConfig:
                 output_format_flag="--output-format",
                 output_format="text",
                 model_flag="--model",
+                effort_argv=("--effort", "{value}"),
                 prompt_suffix=(
                     "Make minimal, additive diffs. Do not reformat, re-quote, "
                     "re-order imports, or rewrite/translate comments on lines "

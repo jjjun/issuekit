@@ -966,21 +966,36 @@ def test_load_config_merges_builtin_agent_overrides(tmp_path: Path) -> None:
     assert agents["claude"] == dict(IssuekitConfig.agents)["claude"]
 
 
-def test_load_config_rejects_reasoning_effort_without_effort_argv(tmp_path: Path) -> None:
+def test_load_config_reads_claude_reasoning_effort(tmp_path: Path) -> None:
     (tmp_path / "issuekit.toml").write_text(
         "[agents.claude]\nreasoning_effort = 'medium'\n",
         encoding="utf-8",
         newline="\n",
     )
 
-    with pytest.raises(ValueError, match="reasoning_effort requires"):
+    assert dict(load_config(tmp_path).agents)["claude"].reasoning_effort == "medium"
+
+
+def test_load_config_rejects_reasoning_effort_without_effort_argv(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "[agents.kimi]\nreasoning_effort = 'medium'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="agents.kimi.reasoning_effort requires agents.kimi.effort_argv.",
+    ):
         load_config(tmp_path)
 
 
 def test_load_config_reads_agent_role_overlays(tmp_path: Path) -> None:
     (tmp_path / "issuekit.toml").write_text(
         (
-            "[agents.claude]\nmodel = 'claude-sonnet-5'\neffort_argv = ['--effort', '{value}']\n"
+            "[agents.claude]\nmodel = 'claude-sonnet-5'\n"
             "[agents.claude.roles.reviewer]\n"
             "model = 'claude-opus-4-8'\nreasoning_effort = 'high'\n"
         ),
@@ -1011,8 +1026,8 @@ def test_load_config_reads_agent_role_overlays(tmp_path: Path) -> None:
             "only supports model and reasoning_effort",
         ),
         (
-            "[agents.claude.roles.reviewer]\nreasoning_effort = 'high'\n",
-            "roles.reviewer.reasoning_effort requires agents.claude.effort_argv",
+            "[agents.kimi.roles.reviewer]\nreasoning_effort = 'medium'\n",
+            "agents.kimi.roles.reviewer.reasoning_effort requires agents.kimi.effort_argv.",
         ),
     ],
 )

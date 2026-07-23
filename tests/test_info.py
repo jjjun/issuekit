@@ -168,15 +168,16 @@ def test_info_surfaces_resolved_agent_role_overlays(
     _configure_api(tmp_path, monkeypatch, _issue_client())
     with (tmp_path / "issuekit.toml").open("a", encoding="utf-8", newline="\n") as handle:
         handle.write(
-            "[agents.claude]\nmodel = 'claude-sonnet-5'\n"
+            "[agents.claude]\nmodel = 'claude-sonnet-5'\nreasoning_effort = 'medium'\n"
             "[agents.claude.roles.reviewer]\nmodel = 'claude-opus-4-8'\n"
         )
 
     cli.main(["info", "--json"])
     payload = json.loads(capsys.readouterr().out)
 
+    assert payload["agentConfigs"]["claude"]["reasoningEffort"] == "medium"
     assert payload["agentConfigs"]["claude"]["roleOverlays"] == {
-        "reviewer": {"model": "claude-opus-4-8", "reasoningEffort": None}
+        "reviewer": {"model": "claude-opus-4-8", "reasoningEffort": "medium"}
     }
 
 

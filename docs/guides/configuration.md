@@ -173,7 +173,8 @@ Role overlays accept only `model` and `reasoning_effort`, and take precedence
 over the agent default but not explicit per-run values. This lets one agent
 name use different settings for implementation and review within one `serve`
 loop. An agent must define `effort_argv` to support `reasoning_effort`; the
-built-in Codex adapter uses `("-c", "model_reasoning_effort={value}")`.
+built-in Codex adapter uses `("-c", "model_reasoning_effort={value}")` and the
+built-in Claude adapter uses `("--effort", "{value}")`.
 
 ## Work branch guard
 

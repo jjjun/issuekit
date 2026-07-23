@@ -374,6 +374,14 @@ def test_claude_adapter_argv_appends_model_when_supplied() -> None:
     assert argv[6:] == ["--model", "claude-opus-4-8"]
 
 
+def test_claude_adapter_argv_appends_reasoning_effort_when_supplied() -> None:
+    adapter = resolve_adapter(
+        "claude", model="claude-opus-4-8", reasoning_effort="high"
+    )
+    argv = adapter.build_argv("prompt", Path("/plan.md"))
+    assert argv[6:] == ["--model", "claude-opus-4-8", "--effort", "high"]
+
+
 def test_config_adapter_appends_session_flag_only_when_resumable() -> None:
     config = IssuekitConfig(
         agents=(

@@ -70,7 +70,8 @@ defaults with `[agents.codex] model = "gpt-5.6"` and
 `[agents.codex.model_prompts]` entries append model-specific guidance and their
 keys must match the exact model id string. Per-run values override configured
 defaults. A reasoning effort setting requires an `effort_argv` template; the
-built-in Codex adapter uses `("-c", "model_reasoning_effort={{value}}")`.
+built-in Codex adapter uses `("-c", "model_reasoning_effort={{value}}")` and the
+built-in Claude adapter uses `("--effort", "{{value}}")`.
 Serve-level overrides apply to every agent launched; use per-agent overlays
 for mixed-agent setups, or `[agents.<name>.roles.<role>]` model and
 reasoning-effort overlays when one agent serves multiple roles.

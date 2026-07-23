@@ -27,6 +27,7 @@ def test_default_config_includes_claude() -> None:
     assert agents_dict["claude"].adapter is None
     assert agents_dict["claude"].resumable is True
     assert agents_dict["claude"].session_flag == "--session-id"
+    assert agents_dict["claude"].effort_argv == ("--effort", "{value}")
 
 
 def test_resolve_adapter_returns_kimi() -> None:
@@ -65,6 +66,12 @@ def test_claude_adapter_argv_includes_model() -> None:
     argv = adapter.build_argv("prompt", Path("/plan.md"))
     assert "--model" in argv
     assert argv[argv.index("--model") + 1] == "claude-opus-4-8"
+
+
+def test_claude_adapter_argv_includes_reasoning_effort() -> None:
+    adapter = resolve_adapter("claude", reasoning_effort="medium")
+    argv = adapter.build_argv("prompt", Path("/plan.md"))
+    assert argv[-2:] == ["--effort", "medium"]
 
 
 def test_claude_adapter_parse_output_returns_streams() -> None:
@@ -192,13 +199,19 @@ def test_resolve_adapter_applies_role_overlay_before_agent_default() -> None:
                     headless_argv=("-p",),
                     model_flag="--model",
                     model="claude-sonnet-5",
+                    effort_argv=("--effort", "{value}"),
                 ),
             ),
         ),
         agent_role_overlays=(
             (
                 "claude",
-                (("reviewer", RoleOverlay(model="claude-opus-4-8")),),
+                (
+                    (
+                        "reviewer",
+                        RoleOverlay(model="claude-opus-4-8", reasoning_effort="high"),
+                    ),
+                ),
             ),
         ),
     )
@@ -213,13 +226,17 @@ def test_resolve_adapter_applies_role_overlay_before_agent_default() -> None:
         "--model",
         "claude-sonnet-5",
     ]
-    assert reviewer.build_argv("prompt", Path("/plan.md"))[-2:] == [
+    assert reviewer.build_argv("prompt", Path("/plan.md"))[-4:] == [
         "--model",
         "claude-opus-4-8",
+        "--effort",
+        "high",
     ]
-    assert explicit.build_argv("prompt", Path("/plan.md"))[-2:] == [
+    assert explicit.build_argv("prompt", Path("/plan.md"))[-4:] == [
         "--model",
         "claude-haiku-4-5",
+        "--effort",
+        "high",
     ]
 
 
