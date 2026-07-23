@@ -63,7 +63,7 @@ unattended headless runs; stricter projects can set
 
 Agent-launching commands accept pass-through `--model <model-id>` and
 `--reasoning-effort <value>` overrides.
-This includes `implement`, `review`, `negotiate`, `serve`, `triage`, and
+This includes `implement`, `review`, `negotiate`, `request`, `serve`, `triage`, and
 `proposal-checks`; issuekit does not maintain a model allowlist. Set an agent's
 defaults with `[agents.codex] model = "gpt-5.6"` and
 `[agents.codex] reasoning_effort = "medium"`. The optional

@@ -116,6 +116,8 @@ def run_new_request(
     json_output: bool,
     dry_run: bool,
     timeout: float,
+    model: str | None,
+    reasoning_effort: str | None,
 ) -> int:
     require_router_config(config)
     state = load_state(cwd)
@@ -128,6 +130,8 @@ def run_new_request(
         qa_rounds=qa_rounds(record),
         force_final=len(qa_rounds(record)) >= config.router.max_clarify_rounds,
         timeout=timeout,
+        model=model,
+        reasoning_effort=reasoning_effort,
         runner_factory=AgentRunner,
         err=sys.stderr,
     )

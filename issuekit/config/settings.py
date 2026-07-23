@@ -35,7 +35,7 @@ PROFILE_SUMMARY_MAX_LEN = 500
 PROFILE_TAG_MAX_LEN = 40
 PROFILE_TAGS_MAX = 20
 AGENT_ROLES = frozenset({"author", "implementer", "pm", "reviewer", "triage"})
-ROLE_OVERLAY_ROLES = frozenset({"implementer", "reviewer", "triage"})
+ROLE_OVERLAY_ROLES = frozenset({"implementer", "reviewer", "router", "triage"})
 
 
 @dataclass(frozen=True)
@@ -831,7 +831,7 @@ def _agent_role_overlays(
         if role not in ROLE_OVERLAY_ROLES:
             raise ValueError(
                 f"Invalid agents.{agent_name}.roles role: {role}; supported roles: "
-                "implementer, reviewer, triage."
+                "implementer, reviewer, router, triage."
             )
         if not isinstance(raw_overlay, dict):
             raise ValueError(f"agents.{agent_name}.roles.{role} must be a table.")

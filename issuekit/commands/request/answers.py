@@ -40,6 +40,8 @@ def run_answer(
     json_output: bool,
     dry_run: bool,
     timeout: float,
+    model: str | None,
+    reasoning_effort: str | None,
 ) -> int:
     state = load_state(cwd)
     record = state.get(str(request_id))
@@ -63,6 +65,8 @@ def run_answer(
             json_output=json_output,
             dry_run=dry_run,
             timeout=timeout,
+            model=model,
+            reasoning_effort=reasoning_effort,
         )
     pending_questions = matched_inbox_questions(config, state, request_id=request_id)
     if target_project:
@@ -107,6 +111,8 @@ def run_pre_routing_answer(
     json_output: bool,
     dry_run: bool,
     timeout: float,
+    model: str | None,
+    reasoning_effort: str | None,
 ) -> int:
     require_router_config(config)
     qa = qa_rounds(record)
@@ -124,6 +130,8 @@ def run_pre_routing_answer(
         qa_rounds=qa,
         force_final=len(qa) >= config.router.max_clarify_rounds,
         timeout=timeout,
+        model=model,
+        reasoning_effort=reasoning_effort,
         runner_factory=AgentRunner,
         err=sys.stderr,
     )

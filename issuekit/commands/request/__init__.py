@@ -61,6 +61,14 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         default=600.0,
         help="Hard timeout for the router agent run in seconds.",
     )
+    request_parser.add_argument(
+        "--model",
+        help="Override the router agent model for this run.",
+    )
+    request_parser.add_argument(
+        "--reasoning-effort",
+        help="Override the router agent reasoning effort for this run.",
+    )
     request_parser.set_defaults(func=run)
 
 
@@ -116,6 +124,8 @@ def run(args) -> int:
                 json_output=args.json,
                 dry_run=args.dry_run,
                 timeout=float(args.timeout_sec),
+                model=args.model,
+                reasoning_effort=args.reasoning_effort,
             )
         if args.target:
             raise ValueError("--target can only be used with --answer or --link.")
@@ -128,6 +138,8 @@ def run(args) -> int:
             json_output=args.json,
             dry_run=args.dry_run,
             timeout=float(args.timeout_sec),
+            model=args.model,
+            reasoning_effort=args.reasoning_effort,
         )
 
     return run_command(

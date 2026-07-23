@@ -76,8 +76,8 @@ including built-in defaults, before relying on `--agent`.
 `[agent_roles]` selects protocol text only. Role-scoped model overlays such as
 `[agents.<name>.roles.<role>]` are resolved by the launch site instead:
 `issuekit review` passes `reviewer` and `issuekit implement` passes
-`implementer`. Model and effort selection is therefore unaffected by
-`[agent_roles]`.
+`implementer`, while `issuekit request` passes `router`. Model and effort
+selection is therefore unaffected by `[agent_roles]`.
 
 ## Environment and precedence
 
@@ -165,7 +165,7 @@ machine config.
 
 Agent-launching commands accept pass-through `--model <model-id>` and
 `--reasoning-effort <value>` overrides, including `implement`, `review`,
-`negotiate`, `serve`, `triage`, and `proposal-checks`. Issuekit does not
+`negotiate`, `request`, `serve`, `triage`, and `proposal-checks`. Issuekit does not
 restrict model ids; the selected agent CLI validates them. The `model` and
 `reasoning_effort` agent overlays set defaults, while `model_prompts` adds
 prompt text for keys matching the exact resolved model id. Explicit per-run
@@ -173,7 +173,7 @@ values take precedence over configured defaults. A serve override applies to
 every agent launched by that loop, so mixed-agent serve setups should configure
 `model` and `reasoning_effort` in each agent's overlay instead. An agent can
 also set model and reasoning-effort defaults for the `implementer`, `reviewer`,
-or `triage` role:
+`router`, or `triage` role:
 
 ```toml
 [tool.issuekit.agents.claude]

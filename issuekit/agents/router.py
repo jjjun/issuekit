@@ -143,6 +143,8 @@ def run_router(
     qa_rounds: Sequence[Mapping[str, str]] = (),
     force_final: bool = False,
     timeout: float = 600.0,
+    model: str | None = None,
+    reasoning_effort: str | None = None,
     runner_factory=None,
     err: TextIO | None = None,
 ) -> RouterDecision:
@@ -153,7 +155,13 @@ def run_router(
         raise WorkflowError("issuekit request requires [tool.issuekit.router] agent.")
     err = err or sys.stderr
     runner_factory = runner_factory or AgentRunner
-    adapter = resolve_adapter(agent, config=config)
+    adapter = resolve_adapter(
+        agent,
+        config=config,
+        model=model,
+        reasoning_effort=reasoning_effort,
+        role="router",
+    )
     candidates = list_candidate_profiles(config)
 
     prompt_filename = f"pm-request-{request_id}.md"

@@ -34,6 +34,7 @@
 | `issuekit outgoing --to <project> [--id <id>] [--status <status>]` | List proposals this project sent to a target project's inbox (read-only, self-scoped). |
 | `issuekit adopt <proposal-id> [--json]` | Adopt an incoming API proposal as a local issue and print the created API issue id. |
 | `issuekit discard <proposal-id>` | Discard an incoming API proposal. |
+| `issuekit request <text> [--model <model-id>] [--reasoning-effort <value>]` | Route a PM request to project proposal inboxes. |
 
 `issuekit info --json` includes `defaultReviewer`, the resolved
 `defaultImplementer`, its raw `configuredDefaultImplementer` value, and

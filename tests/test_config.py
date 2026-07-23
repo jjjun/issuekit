@@ -994,6 +994,8 @@ def test_load_config_reads_agent_role_overlays(tmp_path: Path) -> None:
             "[agents.claude]\nmodel = 'claude-sonnet-5'\n"
             "[agents.claude.roles.reviewer]\n"
             "model = 'claude-opus-4-8'\nreasoning_effort = 'high'\n"
+            "[agents.claude.roles.router]\n"
+            "model = 'claude-opus-4-8'\nreasoning_effort = 'high'\n"
         ),
         encoding="utf-8",
         newline="\n",
@@ -1002,7 +1004,8 @@ def test_load_config_reads_agent_role_overlays(tmp_path: Path) -> None:
     config = load_config(tmp_path)
 
     assert dict(dict(config.agent_role_overlays)["claude"]) == {
-        "reviewer": RoleOverlay(model="claude-opus-4-8", reasoning_effort="high")
+        "reviewer": RoleOverlay(model="claude-opus-4-8", reasoning_effort="high"),
+        "router": RoleOverlay(model="claude-opus-4-8", reasoning_effort="high"),
     }
 
 
@@ -1015,7 +1018,7 @@ def test_load_config_reads_agent_role_overlays(tmp_path: Path) -> None:
         ),
         (
             "[agents.claude.roles.author]\nmodel = 'claude'\n",
-            "supported roles: implementer, reviewer, triage",
+            "supported roles: implementer, reviewer, router, triage",
         ),
         (
             "[agents.claude.roles.reviewer]\nbinary = 'claude'\n",

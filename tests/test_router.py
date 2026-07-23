@@ -12,6 +12,7 @@ from issuekit import cli
 import issuekit.proposals.api as proposals_api
 from issuekit.agents import router
 from issuekit.agentrun import AgentResult
+from issuekit.agents.registry import resolve_adapter
 from issuekit.agents.router import RouterParseError, parse_router_output
 from issuekit.config import RouterPolicy, load_config
 from issuekit.proposals import ProposalError
@@ -136,6 +137,89 @@ def test_load_config_reads_router_policy(tmp_path: Path) -> None:
         max_targets=2,
         max_clarify_rounds=1,
     )
+
+
+def test_router_role_overlay_and_explicit_model_override(tmp_path: Path) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        (
+            "[router]\nagent = 'claude'\n"
+            "[agents.claude.roles.router]\n"
+            "model = 'claude-opus-4-8'\nreasoning_effort = 'high'\n"
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+    config = load_config(tmp_path)
+
+    overlay = resolve_adapter("claude", config=config, role="router")
+    explicit = resolve_adapter(
+        "claude", config=config, role="router", model="claude-haiku-4-5"
+    )
+
+    overlay_argv = overlay.build_argv("prompt", tmp_path / "plan.md")
+    explicit_argv = explicit.build_argv("prompt", tmp_path / "plan.md")
+    assert overlay_argv[overlay_argv.index("--model") + 1] == "claude-opus-4-8"
+    assert overlay_argv[-2:] == ["--effort", "high"]
+    assert explicit_argv[explicit_argv.index("--model") + 1] == "claude-haiku-4-5"
+
+
+def test_request_passes_overrides_to_each_pre_routing_router_run(
+    monkeypatch, tmp_path, capsys
+) -> None:
+    _clients, _runner = _setup(
+        monkeypatch,
+        tmp_path,
+        [
+            _route_block({"decision": "clarify", "question": "Which format?"}),
+            _route_block({"decision": "reject", "reason": "No owner."}),
+        ],
+    )
+    calls: list[dict] = []
+
+    def capture_adapter(*args, **kwargs):
+        calls.append(kwargs)
+        return object()
+
+    monkeypatch.setattr(router, "resolve_adapter", capture_adapter)
+
+    assert cli.main(
+        [
+            "request",
+            "Add export",
+            "--model",
+            "gpt-5.6",
+            "--reasoning-effort",
+            "high",
+        ]
+    ) == 0
+    capsys.readouterr()
+    assert cli.main(
+        [
+            "request",
+            "--answer",
+            "1",
+            "CSV",
+            "--model",
+            "gpt-5.6",
+            "--reasoning-effort",
+            "high",
+        ]
+    ) == 0
+
+    assert calls == [
+        {
+            "config": load_config(tmp_path),
+            "model": "gpt-5.6",
+            "reasoning_effort": "high",
+            "role": "router",
+        },
+        {
+            "config": load_config(tmp_path),
+            "model": "gpt-5.6",
+            "reasoning_effort": "high",
+            "role": "router",
+        },
+    ]
 
 
 def test_load_config_rejects_invalid_router_policy(tmp_path: Path) -> None:
