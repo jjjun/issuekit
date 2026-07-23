@@ -21,6 +21,7 @@ install it, and where to go next.
 | [Commands](guides/commands.md) | Full CLI command reference. |
 | [Configuration](guides/configuration.md) | Config file layers, precedence, agent overlays, reviewer and implementer policy. |
 | [Cross-project proposals](guides/cross-project-proposals.md) | Proposal inboxes, dependencies, refs, adoption and reply flow. |
+| [Cross-project negotiation](guides/negotiation.md) | Bounded agent conversations that settle a shared contract before implementation. |
 | [PM request router](guides/pm-request.md) | Route natural-language development requests to project proposal inboxes. |
 | [Directed addressing](guides/directed-addressing.md) | Repo, worker, and agent axes; `worker.repo@machine` targets. |
 | [Registry maintenance](guides/registry-maintenance.md) | Removing and pruning stale workers and repo catalog entries. |

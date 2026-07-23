@@ -99,6 +99,8 @@ def test_render_protocol_returns_each_agent_and_both() -> None:
     assert "Handoff protocol (triage)" in both
     assert "The implementer handles issuekit tasks" in both
     assert "The reviewer handles issuekit tasks" in both
+    assert "Cross-project negotiation is a bounded, agent-driven design conversation" in both
+    assert "Negotiation is CLI-only today; there is no MCP tool." in normalized_both
     both.encode("ascii")
 
 

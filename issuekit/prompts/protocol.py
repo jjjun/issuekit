@@ -98,6 +98,16 @@ report gets a distinct origin. The issuekit project triages its inbox
 continuously and adopts worthwhile reports as issues; check the outcome later
 with `issuekit outgoing --to issuekit`.
 
+Cross-project negotiation is a bounded, agent-driven design conversation
+between two sides that converges on a contract. Use `propose` when the change
+belongs to the other project and you can already specify it; use `negotiate`
+when the interface between two projects is undecided and must be settled before
+either side can be specified. After agreement, `issuekit negotiate --finalize`
+creates cross-linked implementation issues on both sides. Negotiation is
+CLI-only today; there is no MCP tool. Both sides run read-only. With
+`--backend-ref <ref>`, the backend side runs in that ref's checkout so it can
+inspect the real code.
+
 Local issues vs. cross-project proposals:
 
 - Use `issuekit author` only for work that originates in and belongs to the

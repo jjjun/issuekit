@@ -29,7 +29,7 @@
 | `issuekit repos remove <repo> [--json]` | Remove a repo catalog entry; the API refuses entries that still have references. |
 | `issuekit add-ref <name> --path <repo> [--scope local\|workspace]` | Register an optional local project alias. |
 | `issuekit list-refs` | List effective local project aliases and their source. |
-| `issuekit negotiate --from-issue <id> --to <project> --frontend-agent <agent> --backend-agent <agent> [--backend-ref <ref>]` | Drive a bounded cross-project design negotiation. |
+| `issuekit negotiate --from-issue <id> --to <project> --frontend-agent <agent> --backend-agent <agent> [--backend-ref <ref>]` | Drive a bounded cross-project design negotiation; see [Cross-project negotiation](negotiation.md). |
 | `issuekit propose --to <project> --title "..."` | Send a proposal to a project API inbox. |
 | `issuekit incoming [--json]` | List inbound API proposals. |
 | `issuekit outgoing --to <project> [--id <id>] [--status <status>]` | List proposals this project sent to a target project's inbox (read-only, self-scoped). |
@@ -41,12 +41,3 @@
 `defaultImplementer`, its raw `configuredDefaultImplementer` value, and
 effective `agentRoles` including built-in role fallbacks. The text output shows
 the same policy values and roles.
-
-`issuekit negotiate --backend-ref <ref>` resolves an effective local or
-workspace ref and runs only the backend agent from that checkout. The ref
-checkout must be clean before the negotiation starts. Both negotiation sides
-are read-only: a turn that changes its worktree is rejected and its output is
-ignored. The initiating checkout's configuration continues to govern the
-negotiation thread, agent selection, and resulting issues; the backend ref is
-only an inspection working directory and does not load its checkout's
-configuration or worker identity.
