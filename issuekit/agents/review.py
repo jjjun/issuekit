@@ -112,6 +112,7 @@ def run_review_and_decide(
         config=config,
         model=model,
         reasoning_effort=reasoning_effort,
+        role="reviewer",
     )
     diff_context = _collect_git_diff_context(cwd, issue=issue)
     if not diff_context.has_changed_files and not diff_context.has_handoff_evidence:

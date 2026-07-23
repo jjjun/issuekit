@@ -100,6 +100,7 @@ def run_and_submit(
         config=config,
         model=model,
         reasoning_effort=reasoning_effort,
+        role="implementer",
     )
     run_dir = cwd / ".agent-runs"
     plan_path = run_dir / f"issue-{issue_id}.md"

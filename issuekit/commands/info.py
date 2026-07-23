@@ -63,6 +63,14 @@ def run(args) -> int:
                 "approvalValue": run_config.approval_value,
                 "headlessArgv": list(run_config.headless_argv),
                 "modelPromptKeys": [model for model, _prompt in run_config.model_prompts],
+                "roleOverlays": {
+                    role: {
+                        "model": overlay.model or run_config.model,
+                        "reasoningEffort": overlay.reasoning_effort
+                        or run_config.reasoning_effort,
+                    }
+                    for role, overlay in dict(config.agent_role_overlays).get(name, ())
+                },
             }
             for name, run_config in config.agents
         },
@@ -123,6 +131,11 @@ def run(args) -> int:
             f"reasoning_effort={agent_config['reasoningEffort'] or '-'} "
             f"approval_flag={agent_config['approvalFlag'] or '-'}{approval_value_display}"
         )
+        for role, overlay in agent_config["roleOverlays"].items():
+            print(
+                f"  {role}: model={overlay['model'] or '-'} "
+                f"reasoning_effort={overlay['reasoningEffort'] or '-'}"
+            )
 
     print()
     print("Agent roles")

@@ -35,6 +35,7 @@ PROFILE_SUMMARY_MAX_LEN = 500
 PROFILE_TAG_MAX_LEN = 40
 PROFILE_TAGS_MAX = 20
 AGENT_ROLES = frozenset({"author", "implementer", "pm", "reviewer", "triage"})
+ROLE_OVERLAY_ROLES = frozenset({"implementer", "reviewer", "triage"})
 
 
 @dataclass(frozen=True)
@@ -43,6 +44,14 @@ class AgentPolicy:
 
     mojibake_gate: bool = False
     diff_shape_warn_deletions: int | None = None
+
+
+@dataclass(frozen=True)
+class RoleOverlay:
+    """Model settings that apply when an agent runs in one role."""
+
+    model: str | None = None
+    reasoning_effort: str | None = None
 
 
 @dataclass(frozen=True)
@@ -115,6 +124,7 @@ class IssuekitConfig:
     router: RouterPolicy = field(default_factory=RouterPolicy)
     agent_roles: dict[str, str] = field(default_factory=dict)
     disabled_agents: tuple[str, ...] = ()
+    agent_role_overlays: tuple[tuple[str, tuple[tuple[str, RoleOverlay], ...]], ...] = ()
     machine_config_path: Path | None = None
     repo_config_source: str = field(default="none", compare=False)
     agents: tuple[tuple[str, AgentRunConfig], ...] = (
@@ -244,9 +254,12 @@ def load_config(cwd: Path | str = ".") -> IssuekitConfig:
     disabled_agents = _load_disabled_agents(
         raw_config.get("disabled_agents", IssuekitConfig.disabled_agents)
     )
-    agents, agent_policies = _load_agents(raw_config.get("agents", {}))
+    agents, agent_policies, agent_role_overlays = _load_agents(raw_config.get("agents", {}))
     agents = _filter_disabled_agents(agents, disabled_agents)
     agent_policies = _filter_disabled_agent_policies(agent_policies, disabled_agents)
+    agent_role_overlays = _filter_disabled_agent_role_overlays(
+        agent_role_overlays, disabled_agents
+    )
     assignees = _load_assignees(raw_config, agents, disabled_agents)
     default_reviewer = (
         "auto"
@@ -352,6 +365,7 @@ def load_config(cwd: Path | str = ".") -> IssuekitConfig:
         router=router,
         agent_roles=agent_roles,
         disabled_agents=disabled_agents,
+        agent_role_overlays=agent_role_overlays,
         machine_config_path=machine_path if machine_path is not None and machine_path.is_file() else None,
         repo_config_source=repo_config_source,
         agents=agents,
@@ -528,6 +542,16 @@ def _filter_disabled_agent_policies(
     return tuple((name, policy) for name, policy in policies if name not in disabled)
 
 
+def _filter_disabled_agent_role_overlays(
+    overlays: tuple[tuple[str, tuple[tuple[str, RoleOverlay], ...]], ...],
+    disabled_agents: tuple[str, ...],
+) -> tuple[tuple[str, tuple[tuple[str, RoleOverlay], ...]], ...]:
+    if not disabled_agents:
+        return overlays
+    disabled = set(disabled_agents)
+    return tuple((name, roles) for name, roles in overlays if name not in disabled)
+
+
 def _dedupe_tokens(values: tuple[str, ...]) -> tuple[str, ...]:
     seen: set[str] = set()
     result: list[str] = []
@@ -587,14 +611,23 @@ def _validate_claim_sync_interval(value: float) -> None:
 
 def _load_agents(
     raw: dict[str, object],
-) -> tuple[tuple[tuple[str, AgentRunConfig], ...], tuple[tuple[str, AgentPolicy], ...]]:
+) -> tuple[
+    tuple[tuple[str, AgentRunConfig], ...],
+    tuple[tuple[str, AgentPolicy], ...],
+    tuple[tuple[str, tuple[tuple[str, RoleOverlay], ...]], ...],
+]:
     if not raw:
-        return IssuekitConfig.agents, IssuekitConfig.agent_policies
+        return (
+            IssuekitConfig.agents,
+            IssuekitConfig.agent_policies,
+            IssuekitConfig.agent_role_overlays,
+        )
     default_agents = IssuekitConfig.agents
     default_by_name = dict(default_agents)
     default_policies = dict(IssuekitConfig.agent_policies)
     configured: dict[str, AgentRunConfig] = {}
     configured_policies: dict[str, AgentPolicy] = {}
+    configured_role_overlays: dict[str, tuple[tuple[str, RoleOverlay], ...]] = {}
     new_agent_names: list[str] = []
     for name, cfg in raw.items():
         if not isinstance(cfg, dict):
@@ -603,6 +636,7 @@ def _load_agents(
         configured[name] = replace(base, **_agent_run_config_overrides(cfg))
         policy = default_policies.get(name, AgentPolicy())
         configured_policies[name] = replace(policy, **_agent_policy_overrides(cfg))
+        configured_role_overlays[name] = _agent_role_overlays(cfg, agent_name=name)
         if configured[name].reasoning_effort and not configured[name].effort_argv:
             raise ValueError(
                 f"agents.{name}.reasoning_effort requires agents.{name}.effort_argv."
@@ -619,7 +653,13 @@ def _load_agents(
         (name, configured_policies.get(name, default_policies.get(name, AgentPolicy())))
         for name, _run_config in result
     )
-    return tuple(result), policies
+    role_overlays = tuple(
+        (name, configured_role_overlays[name])
+        for name, _run_config in result
+        if name in configured_role_overlays and configured_role_overlays[name]
+    )
+    _validate_role_overlay_effort(role_overlays, result)
+    return tuple(result), policies, role_overlays
 
 
 def _load_worker(raw: object) -> WorkerIdentity | None:
@@ -779,6 +819,59 @@ def _agent_policy_overrides(cfg: dict[str, object]) -> dict[str, object]:
         for key, loader in loaders.items()
         if (value := cfg.get(key, _SENTINEL)) is not _SENTINEL
     }
+
+
+def _agent_role_overlays(
+    cfg: dict[str, object], *, agent_name: str
+) -> tuple[tuple[str, RoleOverlay], ...]:
+    raw_roles = cfg.get("roles")
+    if raw_roles is None:
+        return ()
+    if not isinstance(raw_roles, dict):
+        raise ValueError(f"agents.{agent_name}.roles must be a table.")
+    overlays: list[tuple[str, RoleOverlay]] = []
+    for raw_role, raw_overlay in raw_roles.items():
+        role = str(raw_role).strip()
+        if role not in ROLE_OVERLAY_ROLES:
+            raise ValueError(
+                f"Invalid agents.{agent_name}.roles role: {role}; supported roles: "
+                "implementer, reviewer, triage."
+            )
+        if not isinstance(raw_overlay, dict):
+            raise ValueError(f"agents.{agent_name}.roles.{role} must be a table.")
+        unexpected = set(raw_overlay) - {"model", "reasoning_effort"}
+        if unexpected:
+            key = sorted(unexpected)[0]
+            raise ValueError(
+                f"agents.{agent_name}.roles.{role} only supports model and reasoning_effort; "
+                f"got {key}."
+            )
+        overlays.append(
+            (
+                role,
+                RoleOverlay(
+                    model=optional_str(raw_overlay.get("model")),
+                    reasoning_effort=optional_str(raw_overlay.get("reasoning_effort")),
+                ),
+            )
+        )
+    return tuple(overlays)
+
+
+def _validate_role_overlay_effort(
+    overlays: tuple[tuple[str, tuple[tuple[str, RoleOverlay], ...]], ...],
+    agents: list[tuple[str, AgentRunConfig]],
+) -> None:
+    agent_configs = dict(agents)
+    for agent_name, role_overlays in overlays:
+        if agent_configs[agent_name].effort_argv:
+            continue
+        for role, overlay in role_overlays:
+            if overlay.reasoning_effort:
+                raise ValueError(
+                    f"agents.{agent_name}.roles.{role}.reasoning_effort requires "
+                    f"agents.{agent_name}.effort_argv."
+                )
 
 
 def _model_prompts(value: object) -> tuple[tuple[str, str], ...]:

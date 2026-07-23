@@ -72,7 +72,8 @@ keys must match the exact model id string. Per-run values override configured
 defaults. A reasoning effort setting requires an `effort_argv` template; the
 built-in Codex adapter uses `("-c", "model_reasoning_effort={{value}}")`.
 Serve-level overrides apply to every agent launched; use per-agent overlays
-when a mixed-agent serve setup needs different models or effort levels.
+for mixed-agent setups, or `[agents.<name>.roles.<role>]` model and
+reasoning-effort overlays when one agent serves multiple roles.
 
 Commands and MCP tools that omit an implementer resolve it as an explicit value,
 then `default_implementer`, then the single enabled assignee. They fail with a

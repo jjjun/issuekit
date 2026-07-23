@@ -138,6 +138,7 @@ def run_triage_author_cycle(
         config=config,
         model=model,
         reasoning_effort=reasoning_effort,
+        role="triage",
     )
     state = load_state(cwd)
     decisions: list[TriageDecision] = []

@@ -5,7 +5,7 @@ import pytest
 from issuekit.agentrun.adapters.kimi import KimiAdapter
 from issuekit.agents.registry import resolve_adapter
 from issuekit.agentrun import ConfigAgentAdapter
-from issuekit.config import AgentRunConfig, IssuekitConfig, load_config
+from issuekit.config import AgentRunConfig, IssuekitConfig, RoleOverlay, load_config
 
 
 def test_default_config_includes_kimi_and_codex() -> None:
@@ -180,6 +180,47 @@ def test_resolve_adapter_passes_model() -> None:
 def test_resolve_adapter_passes_reasoning_effort() -> None:
     adapter = resolve_adapter("codex", reasoning_effort="medium")
     assert adapter.reasoning_effort == "medium"
+
+
+def test_resolve_adapter_applies_role_overlay_before_agent_default() -> None:
+    config = IssuekitConfig(
+        agents=(
+            (
+                "claude",
+                AgentRunConfig(
+                    binary="claude",
+                    headless_argv=("-p",),
+                    model_flag="--model",
+                    model="claude-sonnet-5",
+                ),
+            ),
+        ),
+        agent_role_overlays=(
+            (
+                "claude",
+                (("reviewer", RoleOverlay(model="claude-opus-4-8")),),
+            ),
+        ),
+    )
+
+    implementer = resolve_adapter("claude", config=config, role="implementer")
+    reviewer = resolve_adapter("claude", config=config, role="reviewer")
+    explicit = resolve_adapter(
+        "claude", config=config, role="reviewer", model="claude-haiku-4-5"
+    )
+
+    assert implementer.build_argv("prompt", Path("/plan.md"))[-2:] == [
+        "--model",
+        "claude-sonnet-5",
+    ]
+    assert reviewer.build_argv("prompt", Path("/plan.md"))[-2:] == [
+        "--model",
+        "claude-opus-4-8",
+    ]
+    assert explicit.build_argv("prompt", Path("/plan.md"))[-2:] == [
+        "--model",
+        "claude-haiku-4-5",
+    ]
 
 
 def test_codex_adapter_argv_contains_exec() -> None:

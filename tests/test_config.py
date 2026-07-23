@@ -7,6 +7,7 @@ import pytest
 from issuekit.config import (
     AgentRunConfig,
     IssuekitConfig,
+    RoleOverlay,
     TriagePolicy,
     WorkerIdentity,
     load_config,
@@ -973,6 +974,54 @@ def test_load_config_rejects_reasoning_effort_without_effort_argv(tmp_path: Path
     )
 
     with pytest.raises(ValueError, match="reasoning_effort requires"):
+        load_config(tmp_path)
+
+
+def test_load_config_reads_agent_role_overlays(tmp_path: Path) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        (
+            "[agents.claude]\nmodel = 'claude-sonnet-5'\neffort_argv = ['--effort', '{value}']\n"
+            "[agents.claude.roles.reviewer]\n"
+            "model = 'claude-opus-4-8'\nreasoning_effort = 'high'\n"
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    config = load_config(tmp_path)
+
+    assert dict(dict(config.agent_role_overlays)["claude"]) == {
+        "reviewer": RoleOverlay(model="claude-opus-4-8", reasoning_effort="high")
+    }
+
+
+@pytest.mark.parametrize(
+    ("body", "message"),
+    [
+        (
+            "[agents.claude.roles.invalid]\nmodel = 'claude'\n",
+            "Invalid agents.claude.roles role: invalid",
+        ),
+        (
+            "[agents.claude.roles.author]\nmodel = 'claude'\n",
+            "supported roles: implementer, reviewer, triage",
+        ),
+        (
+            "[agents.claude.roles.reviewer]\nbinary = 'claude'\n",
+            "only supports model and reasoning_effort",
+        ),
+        (
+            "[agents.claude.roles.reviewer]\nreasoning_effort = 'high'\n",
+            "roles.reviewer.reasoning_effort requires agents.claude.effort_argv",
+        ),
+    ],
+)
+def test_load_config_validates_agent_role_overlays(
+    tmp_path: Path, body: str, message: str
+) -> None:
+    (tmp_path / "issuekit.toml").write_text(body, encoding="utf-8", newline="\n")
+
+    with pytest.raises(ValueError, match=message):
         load_config(tmp_path)
 
 

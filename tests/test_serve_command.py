@@ -33,6 +33,7 @@ class FakeRunner:
     calls: list[tuple[Path, Path, float, str | None, int | None, str | None]] = []
     models: list[str | None] = []
     reasoning_efforts: list[str | None] = []
+    resolved_models: list[str | None] = []
 
     def run(
         self,
@@ -47,6 +48,10 @@ class FakeRunner:
     ) -> FakeResult:
         self.models.append(adapter.model)
         self.reasoning_efforts.append(adapter.reasoning_effort)
+        argv = adapter.build_argv("prompt", Path("plan.md"))
+        self.resolved_models.append(
+            argv[argv.index("--model") + 1] if "--model" in argv else None
+        )
         self.calls.append(
             (
                 plan_path,
@@ -62,6 +67,7 @@ class FakeRunner:
 
 class ReviewApprovingRunner:
     calls: list[int | None] = []
+    resolved_models: list[str | None] = []
 
     def run(
         self,
@@ -75,6 +81,10 @@ class ReviewApprovingRunner:
         **kwargs,
     ) -> FakeResult:
         self.calls.append(issue_id)
+        argv = adapter.build_argv("prompt", Path("plan.md"))
+        self.resolved_models.append(
+            argv[argv.index("--model") + 1] if "--model" in argv else None
+        )
         return FakeResult(
             parsed={
                 "stdout": (

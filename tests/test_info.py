@@ -147,6 +147,7 @@ def test_info_surfaces_effective_agent_config_and_sources(
             "approvalValue": None,
             "headlessArgv": ["exec"],
             "modelPromptKeys": [],
+            "roleOverlays": {},
         },
         "claude": {
             "binary": "claude",
@@ -156,7 +157,26 @@ def test_info_surfaces_effective_agent_config_and_sources(
             "approvalValue": "bypassPermissions",
             "headlessArgv": ["-p"],
             "modelPromptKeys": [],
+            "roleOverlays": {},
         },
+    }
+
+
+def test_info_surfaces_resolved_agent_role_overlays(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    _configure_api(tmp_path, monkeypatch, _issue_client())
+    with (tmp_path / "issuekit.toml").open("a", encoding="utf-8", newline="\n") as handle:
+        handle.write(
+            "[agents.claude]\nmodel = 'claude-sonnet-5'\n"
+            "[agents.claude.roles.reviewer]\nmodel = 'claude-opus-4-8'\n"
+        )
+
+    cli.main(["info", "--json"])
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["agentConfigs"]["claude"]["roleOverlays"] == {
+        "reviewer": {"model": "claude-opus-4-8", "reasoningEffort": None}
     }
 
 

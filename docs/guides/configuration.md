@@ -157,9 +157,23 @@ restrict model ids; the selected agent CLI validates them. The `model` and
 prompt text for keys matching the exact resolved model id. Explicit per-run
 values take precedence over configured defaults. A serve override applies to
 every agent launched by that loop, so mixed-agent serve setups should configure
-`model` and `reasoning_effort` in each agent's overlay instead. An agent must
-define `effort_argv` to support `reasoning_effort`; the built-in Codex adapter
-uses `("-c", "model_reasoning_effort={value}")`.
+`model` and `reasoning_effort` in each agent's overlay instead. An agent can
+also set model and reasoning-effort defaults for the `implementer`, `reviewer`,
+or `triage` role:
+
+```toml
+[tool.issuekit.agents.claude]
+model = "claude-sonnet-5"
+
+[tool.issuekit.agents.claude.roles.reviewer]
+model = "claude-opus-4-8"
+```
+
+Role overlays accept only `model` and `reasoning_effort`, and take precedence
+over the agent default but not explicit per-run values. This lets one agent
+name use different settings for implementation and review within one `serve`
+loop. An agent must define `effort_argv` to support `reasoning_effort`; the
+built-in Codex adapter uses `("-c", "model_reasoning_effort={value}")`.
 
 ## Work branch guard
 
