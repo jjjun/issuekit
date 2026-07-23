@@ -25,8 +25,10 @@ _NON_MODULE_REFERENCES = {
 
 
 def _documentation_files(root: Path) -> tuple[Path, ...]:
-    return tuple(root / path for path in _DOCUMENTATION_PATHS) + tuple(
-        sorted((root / "issuekit/templates").glob("*.md"))
+    return (
+        tuple(root / path for path in _DOCUMENTATION_PATHS)
+        + tuple(sorted((root / "issuekit/templates").glob("*.md")))
+        + tuple(sorted((root / "docs").rglob("*.md")))
     )
 
 
@@ -34,6 +36,8 @@ def _module_reference_path(token: str, package_root: Path) -> Path | None:
     if any(character.isspace() for character in token):
         return None
     if token in _NON_MODULE_REFERENCES or token == "issuekit":
+        return None
+    if token.startswith(("./", "../")):
         return None
 
     if token.startswith("issuekit."):

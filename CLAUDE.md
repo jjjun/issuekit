@@ -10,6 +10,13 @@ This repo uses the issuekit multi-agent handoff. For the current steps, run
 Do not copy the steps here; issuekit is the source of truth. Launch your agent
 from the repo root so the MCP server resolves the repo configuration.
 
+## Documentation
+
+- Usage documentation lives in `docs/guides/`; start at `docs/README.md`.
+- `docs/agent-notes/` is agent working memory. Read it before starting a task
+  and write to it when you learn something operational that the guides and the
+  code do not already record. See `docs/agent-notes/README.md`.
+
 ## Project notes
 
 - Authors write proposals and implementation-ready issues, then stop.
