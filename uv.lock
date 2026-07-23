@@ -413,6 +413,7 @@ mcp = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "mcp" },
     { name = "pip-audit" },
     { name = "pytest" },
 ]
@@ -429,6 +430,7 @@ provides-extras = ["mcp"]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "mcp", specifier = ">=1.0" },
     { name = "pip-audit", specifier = ">=2.9,<3" },
     { name = "pytest", specifier = ">=9.0.3,<10" },
 ]

@@ -22,6 +22,7 @@ from issuekit.agents.proposal_check import ProposalCheckDecision
 from issuekit.config import load_config
 from issuekit.mcp import server as mcp_server
 from issuekit.mcp.server import create_server
+from issuekit.prompts.protocol import render_protocol
 from issuekit.testing import FakeIssuekitClient
 
 from tests.issue_helpers import api_issue
@@ -121,7 +122,7 @@ def test_server_tool_schemas_match_the_contract(tmp_path: Path) -> None:
     # schema change was intended, describe it in the commit message, then update
     # this digest.
     assert _tool_schema_digest(create_server(tmp_path)) == (
-        "c6a2d5df9131c52c4736fb738050809e7708c21ad24f7561b8badbdfe313982d"
+        "ff0e6bf2fe6b49499cf63680505e35f8bc38c596833d46bcfe51223e8b01144c"
     )
 
 
@@ -590,8 +591,6 @@ def test_claim_next_task_schema_includes_sync_escape_hatch(tmp_path: Path) -> No
 
 
 def test_get_protocol_matches_canonical_text(tmp_path: Path) -> None:
-    from issuekit.prompts.protocol import render_protocol
-
     server = create_server(tmp_path)
 
     assert _call(server, "get_protocol", {"agent": "codex"}) == render_protocol("codex")

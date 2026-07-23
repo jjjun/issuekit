@@ -12,3 +12,5 @@ one. See [README.md](README.md) for the rules.
 - [One agent maps to one default protocol role](agent-roles-single-default.md) -
   `--agent` returns the wrong protocol when an agent serves two roles; pass
   `--role` instead.
+- [MCP test coverage](mcp-test-coverage.md) - the default test environment
+  installs MCP; `ISSUEKIT_REQUIRE_MCP=1` makes its absence a hard failure.
