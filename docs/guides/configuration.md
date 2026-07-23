@@ -65,6 +65,20 @@ For example, when Claude is the implementer on that machine:
 claude = "implementer"
 ```
 
+Each agent has exactly one default role in this table; it cannot be configured
+with two. When one agent serves more than one role, request the non-default
+protocol explicitly with `issuekit protocol --role <role>` or
+`get_protocol(role=...)`. The explicit role always wins over the agent default,
+so prefer it whenever the role is known, including when `[agent_roles]` is
+unset. Run `issuekit info` to inspect the effective mapping under `Agent roles`,
+including built-in defaults, before relying on `--agent`.
+
+`[agent_roles]` selects protocol text only. Role-scoped model overlays such as
+`[agents.<name>.roles.<role>]` are resolved by the launch site instead:
+`issuekit review` passes `reviewer` and `issuekit implement` passes
+`implementer`. Model and effort selection is therefore unaffected by
+`[agent_roles]`.
+
 ## Environment and precedence
 
 At startup, issuekit also reads a repo-local `.env` file from the current repo

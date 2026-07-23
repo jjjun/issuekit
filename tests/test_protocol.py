@@ -8,36 +8,43 @@ def test_render_protocol_returns_each_agent_and_both() -> None:
     codex = render_protocol("codex")
     claude = render_protocol("claude")
     both = render_protocol(None)
+    normalized_codex = " ".join(codex.split())
+    normalized_claude = " ".join(claude.split())
+    normalized_both = " ".join(both.split())
 
-    for rendered in (codex, claude, both):
-        assert "Delegation cycle overview" in rendered
-        assert "author -> implement -> review cycle" in rendered
-        assert "open implement pool" in rendered
-        assert "open review pool" in rendered
-        assert "author role and implementer role must be different sessions" in rendered
-        assert "implementer and reviewer must be different sessions" in rendered
-        assert "author may also be the reviewer" in rendered
-        assert "Separation-of-duties guard reference" in rendered
+    for rendered, normalized in (
+        (codex, normalized_codex),
+        (claude, normalized_claude),
+        (both, normalized_both),
+    ):
+        assert "Delegation cycle overview" in normalized
+        assert "author -> implement -> review cycle" in normalized
+        assert "open implement pool" in normalized
+        assert "open review pool" in normalized
+        assert "author role and implementer role must be different sessions" in normalized
+        assert "implementer and reviewer must be different sessions" in normalized
+        assert "author may also be the reviewer" in normalized
+        assert "Separation-of-duties guard reference" in normalized
         assert "README.md#separation-of-duties-guards" in rendered
-        assert "Server author-implementer guard" in rendered
-        assert "Distinct-reviewer guard" in rendered
+        assert "Server author-implementer guard" in normalized
+        assert "Distinct-reviewer guard" in normalized
         assert "issuekit#162 and issuekit#163" in rendered
-        assert "belongs to another project" in rendered
+        assert "belongs to another project" in normalized
         assert "issuekit propose --to <project>" in rendered
-        assert "owns triage" in rendered
-        assert "dependency-first" in rendered
+        assert "owns triage" in normalized
+        assert "dependency-first" in normalized
         assert "--depends-on <project#N|project#issue:N|project#proposal:N>" in rendered
         assert "project#proposal:N" in rendered
         assert "issuekit implement <id> --agent <agent> --timeout-sec <n>" in rendered
-        assert "launches the configured agent" in rendered
-        assert "submits the completed work for review" in rendered
-        assert "sanctioned orchestration path" in rendered
-        assert "Prefer a clean worktree before orchestrating" in rendered
-        assert "Transport closed" in rendered
+        assert "launches the configured agent" in normalized
+        assert "submits the completed work for review" in normalized
+        assert "sanctioned orchestration path" in normalized
+        assert "Prefer a clean worktree before orchestrating" in normalized
+        assert "Transport closed" in normalized
         assert "issuekit info --json" in rendered
-        assert "Copyable CLI examples" in rendered
+        assert "Copyable CLI examples" in normalized
         assert 'issuekit author --title "Short title"' in rendered
-        assert "Author with upstream dependency" in rendered
+        assert "Author with upstream dependency" in normalized
         assert (
             'issuekit author --title "Short title" --body-file issue.md '
             "--priority medium --agent <agent> --depends-on upstream#proposal:123"
@@ -54,36 +61,37 @@ def test_render_protocol_returns_each_agent_and_both() -> None:
         assert "issuekit adopt 42 --priority medium --json" in rendered
         assert "issuekit outgoing --to <project> --json" in rendered
         assert "issuekit serve --agent <agent> --triage" in rendered
-        assert "Upstream feedback loop" in rendered
+        assert "Upstream feedback loop" in normalized
         assert "issuekit propose --to issuekit" in rendered
         assert "issuekit outgoing --to issuekit" in rendered
         assert "default_implementer" in rendered
         assert "[agent_roles]" in rendered
-        assert "always takes precedence over the agent default" in rendered
+        assert "one default role" in normalized
+        assert "always takes precedence over the agent default" in normalized
     assert "claim_next_task" in codex
-    assert "resolves the" in codex
-    assert "implementer from `default_implementer`" in codex
+    assert "resolves the" in normalized_codex
+    assert "implementer from `default_implementer`" in normalized_codex
     assert "`claim_next_task(assignee=\"<agent>\")` for an explicit implementer" in codex
     assert "submit_for_review" in codex
     assert 'submit_for_review(id, summary, branch, commit, reviewer=None)' in codex
     assert 'submit_for_review(id, summary, branch, commit, assignee="<agent>"' not in codex
-    assert "ASCII summary" in codex
-    assert "Write maintainable, idiomatic code" in codex
+    assert "ASCII summary" in normalized_codex
+    assert "Write maintainable, idiomatic code" in normalized_codex
     assert "dependency_state=waiting" in codex
-    assert "explicit claim returns a dependency warning" in codex
-    assert "otherwise obfuscate string literals" in codex
+    assert "explicit claim returns a dependency warning" in normalized_codex
+    assert "otherwise obfuscate string literals" in normalized_codex
     assert "`importlib`, `getattr`, `setattr`, or `globals()`" in codex
     assert "next_review" in claude
     assert "request_changes" in claude
-    assert "ASCII verification" in claude
-    assert "ASCII notes" in claude
+    assert "ASCII verification" in normalized_claude
+    assert "ASCII notes" in normalized_claude
     assert "issuekit approve <id> --verification <text>" in claude
     assert "issuekit complete <id>" in claude
-    assert "once it is available" not in claude
-    assert "work is incomplete" in claude
-    assert "readability and maintainability as review criteria" in claude
-    assert "gratuitous obfuscation" in claude
-    assert "unexplained style deviations" in claude
+    assert "once it is available" not in normalized_claude
+    assert "work is incomplete" in normalized_claude
+    assert "readability and maintainability as review criteria" in normalized_claude
+    assert "gratuitous obfuscation" in normalized_claude
+    assert "unexplained style deviations" in normalized_claude
     assert "Handoff protocol (author)" in both
     assert "Handoff protocol (implementer)" in both
     assert "Handoff protocol (pm)" in both

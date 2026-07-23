@@ -80,8 +80,9 @@ Commands and MCP tools that omit an implementer resolve it as an explicit value,
 then `default_implementer`, then the single enabled assignee. They fail with a
 clear message when more than one enabled assignee exists and no default is set.
 Use `[agent_roles]` to select the protocol text an agent receives from
-`issuekit protocol --agent <agent>` and `get_protocol(agent=...)`; `--role` or
-`role=` always takes precedence over the agent default.
+`issuekit protocol --agent <agent>` and `get_protocol(agent=...)`; each agent
+has one default role; `--role` or `role=` always takes precedence over the
+agent default.
 
 When a reviewer daemon is needed, run it from a separate registered checkout:
 `issuekit serve --agent <reviewer> --review`. For a one-shot agent review of a
