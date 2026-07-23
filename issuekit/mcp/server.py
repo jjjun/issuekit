@@ -12,11 +12,7 @@ from urllib.parse import unquote, urlparse
 from mcp.server.fastmcp import Context, FastMCP
 
 from issuekit import __version__
-from issuekit.agents.proposal_check import (
-    list_worker_proposal_checks,
-    run_proposal_check_cycle,
-)
-from issuekit.agentrun import AgentRunner
+from issuekit.agents.proposal_check import list_worker_proposal_checks
 from issuekit.guards.author import STOP_SENTINEL, create_author_guard, guard_dict
 from issuekit.commands.approve import approve_issue
 from issuekit.commands.edit import edit_issue
@@ -497,37 +493,6 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
             raw_id = proposal_id if proposal_id is not None else proposal_id_arg(proposal_file or "")
             with api_client(config) as client:
                 return client.discard_proposal(int(raw_id))
-
-    @server.tool(
-        description=(
-            "Deprecated compatibility tool. Use `issuekit serve --proposal-checks "
-            "--proposal-check-limit <n>` or `issuekit proposal-checks --agent <a> "
-            "--once` instead. Run one worker-side proposal-check cycle for this "
-            "registered checkout: poll checks addressed to this worker, evaluate with "
-            "an agent, post results, and adopt approved proposals. This tool will be "
-            "removed after the CLI workflow is proven in use."
-        )
-    )
-    async def run_proposal_checks(
-        agent: str,
-        timeout_sec: float = 600.0,
-        model: str | None = None,
-        reasoning_effort: str | None = None,
-        limit: int = 50,
-        ctx: Context | None = None,
-    ) -> list[dict[str, Any]]:
-        async with _api_config(root, ctx) as (config, config_root):
-            decisions = run_proposal_check_cycle(
-                config,
-                config_root,
-                agent=agent,
-                timeout=timeout_sec,
-                model=model,
-                reasoning_effort=reasoning_effort,
-                limit=limit,
-                runner_factory=AgentRunner,
-            )
-        return [decision.to_dict() for decision in decisions]
 
     @server.tool(
         description=(

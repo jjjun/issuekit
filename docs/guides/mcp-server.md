@@ -130,11 +130,10 @@ agent. Commands that launch other agents remain CLI orchestration: `implement`,
 negotiation can hold a stdio transport open for several agent turns, so running
 it from an MCP agent session makes a fragile transport failure more likely.
 
-`run_proposal_checks` predates this boundary. It was added under the
-mirror-the-CLI instruction in issuekit#158, which issuekit#295 has replaced.
-The tool is deprecated and retained temporarily for client compatibility;
-use `issuekit serve --proposal-checks --proposal-check-limit <n>` or
-`issuekit proposal-checks --agent <a> --once` instead. It will be removed once
-the CLI workflow has been proven in use. It is not precedent for exposing more
-agent-launching orchestration through MCP. Read-only negotiation thread
-inspection is available through `list_negotiation_threads`.
+Proposal checks are CLI-only: use `issuekit serve --proposal-checks
+--proposal-check-limit <n>` or `issuekit proposal-checks --agent <a> --once`.
+The removed `run_proposal_checks` tool was added under the mirror-the-CLI
+instruction in issuekit#158, which issuekit#295 has replaced. That former
+exception is not precedent for exposing more agent-launching orchestration
+through MCP. Read-only negotiation thread inspection is available through
+`list_negotiation_threads`.

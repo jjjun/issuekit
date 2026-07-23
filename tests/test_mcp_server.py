@@ -18,7 +18,6 @@ import issuekit.proposals.api as proposals_api
 from issuekit import store as store_module
 from issuekit.api import token_cache as token_cache_module
 from issuekit.workers import registry as worker_registry
-from issuekit.agents.proposal_check import ProposalCheckDecision
 from issuekit.config import load_config
 from issuekit.mcp import server as mcp_server
 from issuekit.mcp.server import create_server
@@ -54,16 +53,6 @@ def _tool_schema(server, name: str) -> dict[str, Any]:
         for tool in await server.list_tools():
             if tool.name == name:
                 return tool.inputSchema
-        raise AssertionError(f"tool not found: {name}")
-
-    return asyncio.run(run())
-
-
-def _tool_description(server, name: str) -> str:
-    async def run() -> str:
-        for tool in await server.list_tools():
-            if tool.name == name:
-                return tool.description
         raise AssertionError(f"tool not found: {name}")
 
     return asyncio.run(run())
@@ -124,7 +113,6 @@ def test_server_registers_expected_tools(tmp_path: Path) -> None:
         "list_negotiation_threads",
         "adopt_proposal",
         "discard_proposal",
-        "run_proposal_checks",
         "list_proposal_checks",
     }
 
@@ -134,17 +122,8 @@ def test_server_tool_schemas_match_the_contract(tmp_path: Path) -> None:
     # schema change was intended, describe it in the commit message, then update
     # this digest.
     assert _tool_schema_digest(create_server(tmp_path)) == (
-        "62e615e29a2268e03d43a1d518512e644c07a0f6eb8bd093de782b8515e72af0"
+        "2c0bea6a28b2f283d3d17180ea997e6676558b4153462dfb9d7fa5fc11c193bf"
     )
-
-
-def test_run_proposal_checks_is_deprecated(tmp_path: Path) -> None:
-    description = _tool_description(create_server(tmp_path), "run_proposal_checks")
-
-    assert "Deprecated compatibility tool." in description
-    assert "issuekit serve --proposal-checks --proposal-check-limit <n>" in description
-    assert "issuekit proposal-checks --agent <a> --once" in description
-    assert "Run one worker-side proposal-check cycle for this registered checkout" in description
 
 
 def test_health_tool_reports_config_and_local_state(
@@ -220,65 +199,6 @@ def test_health_tool_reports_token_cache_miss_for_resolved_url(
     assert status["token_cached"] is False
     assert status["token_expires_at"] is None
     assert status["errors"] == []
-
-
-def test_run_proposal_checks_tool_returns_decisions(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    (tmp_path / "issuekit.toml").write_text(
-        "api_url = 'https://mine.example'\nproject = 'demo'\n",
-        encoding="utf-8",
-        newline="\n",
-    )
-    seen: dict[str, Any] = {}
-
-    def fake_cycle(config, root, **kwargs):
-        seen["project"] = config.project
-        seen["root"] = root
-        seen.update(kwargs)
-        return [
-            ProposalCheckDecision(
-                check_id=2,
-                target_project="demo",
-                proposal_id=5,
-                verdict="reject",
-                comment="Out of scope.",
-            )
-        ]
-
-    monkeypatch.setattr("issuekit.mcp.server.run_proposal_check_cycle", fake_cycle)
-    server = create_server(tmp_path)
-
-    decisions = _call(
-        server,
-        "run_proposal_checks",
-        {
-            "agent": "codex",
-            "timeout_sec": 12.0,
-            "model": "gpt-5.6",
-            "reasoning_effort": "medium",
-            "limit": 3,
-        },
-    )
-
-    assert decisions == [
-        {
-            "check_id": 2,
-            "target_project": "demo",
-            "proposal_id": 5,
-            "verdict": "reject",
-            "comment": "Out of scope.",
-            "status": "answered",
-        }
-    ]
-    assert seen["project"] == "demo"
-    assert seen["root"] == tmp_path
-    assert seen["agent"] == "codex"
-    assert seen["timeout"] == 12.0
-    assert seen["model"] == "gpt-5.6"
-    assert seen["reasoning_effort"] == "medium"
-    assert seen["limit"] == 3
 
 
 def test_list_proposal_checks_tool_returns_raw_checks(
