@@ -24,9 +24,10 @@ agents for each side:
 issuekit negotiate --from-issue <id> --to <project> --frontend-agent <agent> --backend-agent <agent>
 ```
 
-The frontend agent runs in the initiating checkout. `--backend-ref <ref>`
-resolves an effective ref and moves only the backend agent into that ref's
-checkout, allowing it to inspect the counterpart code:
+The frontend agent runs in the initiating checkout. When a configured ref's
+checkout declares the target project, the backend agent uses that checkout
+automatically. Use `--backend-ref <ref>` to select a specific counterpart
+checkout instead; it must declare the same project as `--to`:
 
 ```powershell
 issuekit negotiate --from-issue <id> --to <project> --frontend-agent <agent> --backend-agent <agent> --backend-ref <ref>
@@ -34,9 +35,9 @@ issuekit negotiate --from-issue <id> --to <project> --frontend-agent <agent> --b
 
 The initiating checkout still supplies the configuration for the thread,
 agent selection, and issues created by finalization. The backend ref is only
-the backend agent's inspection directory; its checkout configuration and
-worker identity are not loaded. The backend-ref checkout must be clean before
-the run starts.
+the backend agent's inspection directory; its checkout configuration is read
+only to verify its declared project, and its worker identity is not loaded. The
+backend-ref checkout must be clean before the run starts.
 
 Both sides are read-only. If either turn modifies its worktree, issuekit
 discards that turn's output and the run fails.

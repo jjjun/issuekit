@@ -236,22 +236,84 @@ def test_negotiate_rejects_worktree_mutations_from_either_side(
         )
 
 
-def test_backend_ref_resolution_lists_known_refs_and_rejects_dirty_checkout(
-    tmp_path,
-) -> None:
+def _write_project_config(path: Path, project: str) -> None:
+    (path / "issuekit.toml").write_text(
+        f"project = {project!r}\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+
+def test_backend_ref_resolution_validates_project_and_rejects_dirty_checkout(tmp_path) -> None:
     backend_cwd = tmp_path / "backend"
     backend_cwd.mkdir()
+    _write_project_config(backend_cwd, "backend")
     add_ref("backend", backend_cwd, tmp_path)
 
-    assert _resolve_backend_cwd("backend", tmp_path) == backend_cwd.resolve()
+    assert _resolve_backend_cwd("backend", "backend", tmp_path) == backend_cwd.resolve()
     with pytest.raises(WorkflowError, match="Known refs: backend"):
-        _resolve_backend_cwd("missing", tmp_path)
+        _resolve_backend_cwd("missing", "backend", tmp_path)
 
     subprocess.run(["git", "init"], cwd=backend_cwd, check=True, capture_output=True)
     (backend_cwd / "dirty.txt").write_text("dirty\n", encoding="utf-8", newline="\n")
 
     with pytest.raises(WorkflowError, match="dirty checkout"):
-        _resolve_backend_cwd("backend", tmp_path)
+        _resolve_backend_cwd("backend", "backend", tmp_path)
+
+
+def test_backend_ref_resolution_rejects_different_project(tmp_path) -> None:
+    backend_cwd = tmp_path / "backend"
+    backend_cwd.mkdir()
+    _write_project_config(backend_cwd, "repom")
+    add_ref("backend", backend_cwd, tmp_path)
+
+    with pytest.raises(
+        WorkflowError,
+        match="project 'repom'.+requested project 'mine-py'",
+    ):
+        _resolve_backend_cwd("backend", "mine-py", tmp_path)
+
+
+def test_backend_ref_resolution_defaults_to_matching_project_ref(tmp_path) -> None:
+    backend_cwd = tmp_path / "backend"
+    backend_cwd.mkdir()
+    _write_project_config(backend_cwd, "mine-py")
+    add_ref("counterpart", backend_cwd, tmp_path)
+
+    assert _resolve_backend_cwd(None, "mine-py", tmp_path) == backend_cwd.resolve()
+
+
+def test_backend_ref_resolution_ignores_dirty_automatic_counterpart(tmp_path, capsys) -> None:
+    backend_cwd = tmp_path / "backend"
+    backend_cwd.mkdir()
+    _write_project_config(backend_cwd, "mine-py")
+    add_ref("counterpart", backend_cwd, tmp_path)
+    subprocess.run(["git", "init"], cwd=backend_cwd, check=True, capture_output=True)
+    (backend_cwd / "dirty.txt").write_text("dirty\n", encoding="utf-8", newline="\n")
+
+    assert _resolve_backend_cwd(None, "mine-py", tmp_path) == tmp_path
+    assert "Ignoring automatically resolved backend ref 'counterpart'" in capsys.readouterr().err
+
+
+def test_backend_ref_resolution_keeps_initiating_checkout_without_matching_ref(tmp_path) -> None:
+    other_cwd = tmp_path / "other"
+    other_cwd.mkdir()
+    _write_project_config(other_cwd, "other")
+    add_ref("other", other_cwd, tmp_path)
+
+    assert _resolve_backend_cwd(None, "mine-py", tmp_path) == tmp_path
+
+
+def test_backend_ref_resolution_accepts_project_alias(tmp_path) -> None:
+    backend_cwd = tmp_path / "backend"
+    backend_cwd.mkdir()
+    _write_project_config(backend_cwd, "js-mine")
+    add_ref("mine-js-monorepo", backend_cwd, tmp_path)
+
+    assert (
+        _resolve_backend_cwd("mine-js-monorepo", "js-mine", tmp_path)
+        == backend_cwd.resolve()
+    )
 
 
 def test_negotiate_uses_fresh_resumable_side_session_and_full_prompt(tmp_path) -> None:

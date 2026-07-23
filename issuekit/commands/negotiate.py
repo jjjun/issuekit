@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 import sys
+import tomllib
 
 from issuekit.commands._common import print_json
 from issuekit.agentrun import AgentRunner
@@ -149,7 +150,7 @@ def run(args) -> int:
             return 0
 
         _require_round_args(args)
-        backend_cwd = _resolve_backend_cwd(args.backend_ref, cwd)
+        backend_cwd = _resolve_backend_cwd(args.backend_ref, args.to, cwd)
         issue_id = parse_issue_id_arg(args.from_issue)
         max_rounds = int(args.max_rounds)
         if max_rounds < 1:
@@ -255,24 +256,99 @@ def _require_round_args(args) -> None:
         raise ValueError(f"{', '.join(missing)} required unless --finalize is used.")
 
 
-def _resolve_backend_cwd(backend_ref: str | None, cwd: Path) -> Path:
-    if backend_ref is None:
-        return cwd
-
+def _resolve_backend_cwd(
+    backend_ref: str | None,
+    to_project: str,
+    cwd: Path,
+) -> Path:
     refs = list_effective_refs(cwd)
-    entry = refs.get(backend_ref)
-    if entry is None:
-        known_refs = ", ".join(refs) or "(none)"
+    if backend_ref is not None:
+        entry = refs.get(backend_ref)
+        if entry is None:
+            known_refs = ", ".join(refs) or "(none)"
+            raise WorkflowError(
+                f"Unknown backend ref {backend_ref!r}. Known refs: {known_refs}."
+            )
+        return _validated_backend_cwd(backend_ref, entry.path, to_project, required=True)
+
+    for ref_name, entry in refs.items():
+        if _backend_project(entry.path) == to_project:
+            try:
+                return _validated_backend_cwd(ref_name, entry.path, to_project, required=False)
+            except WorkflowError as exc:
+                print(
+                    f"Ignoring automatically resolved backend ref {ref_name!r}: {exc}",
+                    file=sys.stderr,
+                )
+                return cwd
+    return cwd
+
+
+def _validated_backend_cwd(
+    backend_ref: str,
+    backend_cwd: Path,
+    to_project: str,
+    *,
+    required: bool,
+) -> Path:
+    backend_project = _backend_project(backend_cwd, required=required)
+    if backend_project != to_project:
         raise WorkflowError(
-            f"Unknown backend ref {backend_ref!r}. Known refs: {known_refs}."
+            f"Backend ref {backend_ref!r} points to project {backend_project!r}, "
+            f"not requested project {to_project!r}."
         )
 
-    backend_cwd = entry.path
     if git_status_short(backend_cwd):
         raise WorkflowError(
             f"Backend ref {backend_ref!r} points to a dirty checkout: {backend_cwd}."
         )
     return backend_cwd
+
+
+def _backend_project(backend_cwd: Path, *, required: bool = False) -> str | None:
+    try:
+        config_data = _backend_config_data(backend_cwd)
+    except (OSError, TypeError, ValueError) as exc:
+        if not required:
+            return None
+        raise WorkflowError(
+            f"Could not read issuekit configuration for backend checkout {backend_cwd}: {exc}"
+        ) from exc
+
+    if config_data is None:
+        if not required:
+            return None
+        raise WorkflowError(
+            f"Backend ref checkout {backend_cwd} has no readable issuekit configuration."
+        )
+
+    project = config_data.get("project")
+    if isinstance(project, str) and project.strip():
+        return project.strip()
+    if required:
+        raise WorkflowError(
+            f"Backend ref checkout {backend_cwd} does not declare a project in its "
+            "issuekit configuration."
+        )
+    return None
+
+
+def _backend_config_data(backend_cwd: Path) -> dict[str, object] | None:
+    # load_config validates all settings and reads machine-local state; this only
+    # needs the counterpart's declared project and must not inherit either.
+    pyproject_path = backend_cwd / "pyproject.toml"
+    if pyproject_path.exists():
+        with (backend_cwd / "pyproject.toml").open("rb") as config_file:
+            data = tomllib.load(config_file)
+        project_config = data.get("tool", {}).get("issuekit")
+        if project_config is not None:
+            return dict(project_config)
+
+    issuekit_path = backend_cwd / "issuekit.toml"
+    if not issuekit_path.exists():
+        return None
+    with issuekit_path.open("rb") as config_file:
+        return tomllib.load(config_file)
 
 
 def _print_human_result(result: NegotiationResult) -> None:
