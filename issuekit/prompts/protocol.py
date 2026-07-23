@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
+
 from issuekit.guards.separation import SEPARATION_GUARD_REFERENCE
 
 
@@ -503,6 +505,18 @@ _AGENT_ROLE = {
 }
 
 
+def effective_agent_roles(
+    agent_roles: dict[str, str] | None = None,
+    agent_names: Iterable[str] = (),
+) -> dict[str, str]:
+    """Return configured protocol roles with built-in defaults included."""
+    return (
+        {name: "implementer" for name in agent_names}
+        | _AGENT_ROLE
+        | (agent_roles or {})
+    )
+
+
 SERVER_INSTRUCTIONS = """# Role-specific instructions
 
 To see the full protocol steps for your role, call:
@@ -538,7 +552,7 @@ def render_protocol(
         except KeyError as exc:
             raise ValueError(f"unknown role: {role}") from exc
         return f"{CYCLE_PROTOCOL.rstrip()}\n\n{role_protocol}"
-    resolved_role = (agent_roles or {}).get(agent, _AGENT_ROLE.get(agent, "implementer"))
+    resolved_role = effective_agent_roles(agent_roles).get(agent, "implementer")
     return f"{CYCLE_PROTOCOL.rstrip()}\n\n{_ROLE_PROTOCOLS[resolved_role]}"
 
 

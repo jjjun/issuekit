@@ -58,6 +58,52 @@ def test_info_json_output(tmp_path: Path, monkeypatch, capsys) -> None:
     assert payload["activeIssues"][0]["ref"] == "demo#1"
     assert payload["activeIssues"][0]["stage"] is None
     assert payload["incomingProposals"] == []
+    assert payload["defaultReviewer"] == "auto"
+    assert payload["configuredDefaultImplementer"] is None
+    assert payload["defaultImplementer"] is None
+    assert payload["agentRoles"] == {
+        "kimi": "implementer",
+        "codex": "implementer",
+        "claude": "reviewer",
+    }
+
+
+def test_info_surfaces_implementer_policy_and_agent_roles(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    _configure_api(tmp_path, monkeypatch, _issue_client())
+    with (tmp_path / "issuekit.toml").open("a", encoding="utf-8", newline="\n") as handle:
+        handle.write(
+            "assignees = ['codex']\ndefault_implementer = 'codex'\n"
+            "[agent_roles]\ncodex = 'reviewer'\n"
+        )
+
+    cli.main(["info", "--json"])
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["configuredDefaultImplementer"] == "codex"
+    assert payload["defaultImplementer"] == "codex"
+    assert payload["agentRoles"] == {
+        "kimi": "implementer",
+        "codex": "reviewer",
+        "claude": "reviewer",
+    }
+
+
+def test_info_surfaces_single_assignee_implementer_fallback(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    _configure_api(tmp_path, monkeypatch, _issue_client())
+    with (tmp_path / "issuekit.toml").open("a", encoding="utf-8", newline="\n") as handle:
+        handle.write("assignees = ['codex']\n")
+
+    cli.main(["info"])
+    text = capsys.readouterr().out
+
+    assert "Default reviewer: auto" in text
+    assert "Default implementer: codex" in text
+    assert "Configured default implementer: -" in text
+    assert "Agent roles\n- kimi: implementer\n- codex: implementer\n- claude: reviewer" in text
 
 
 def test_info_json_surfaces_enabled_agents(tmp_path: Path, monkeypatch, capsys) -> None:

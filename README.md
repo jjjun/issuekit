@@ -204,7 +204,7 @@ copying the steps.
 
 | Command | Purpose |
 |---------|---------|
-| `issuekit info [--json]` | Show API tracker status. |
+| `issuekit info [--json]` | Show API tracker status and effective agent configuration. |
 | `issuekit validate` | Check API connectivity and issue response shape. |
 | `issuekit complete <id> --summary "..." --verification "..." [--force]` | Complete an issue through the API; use `--force` to close an active no-op, duplicate, obsolete, or anchor issue without claim and review ceremony. |
 | `issuekit approve <id> --verification "..." [--reviewer claude]` | Approve a review-stage issue and move it to completed. |
@@ -236,6 +236,11 @@ copying the steps.
 | `issuekit outgoing --to <project> [--id <id>] [--status <status>]` | List proposals this project sent to a target project's inbox (read-only, self-scoped). |
 | `issuekit adopt <proposal-id> [--json]` | Adopt an incoming API proposal as a local issue and print the created API issue id. |
 | `issuekit discard <proposal-id>` | Discard an incoming API proposal. |
+
+`issuekit info --json` includes `defaultReviewer`, the resolved
+`defaultImplementer`, its raw `configuredDefaultImplementer` value, and
+effective `agentRoles` including built-in role fallbacks. The text output shows
+the same policy values and roles.
 
 ## Cross-Project Proposals
 

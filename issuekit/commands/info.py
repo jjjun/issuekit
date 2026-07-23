@@ -10,8 +10,10 @@ from issuekit.guards.author import guard_dict, read_author_guard
 from issuekit.config import load_config
 from issuekit.core import issue_dict
 from issuekit.issues.display import dependency_detail_lines, dependency_marker
+from issuekit.prompts.protocol import effective_agent_roles
 from issuekit.proposals.api import api_client
 from issuekit.store import get_store
+from issuekit.workflow import resolve_implementer
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:
@@ -32,6 +34,7 @@ def run(args) -> int:
         )
     incoming_proposals = _incoming_proposals(config)
     author_guard = read_author_guard(Path.cwd())
+    enabled_agents = [name for name, _run_config in config.agents]
     summary = {
         "counts": {
             "active": len(active_issues),
@@ -41,8 +44,12 @@ def run(args) -> int:
         "latestCompletedId": latest_completed_id,
         "worker": config.worker_key(),
         "workerPresent": config.worker is not None,
-        "enabledAgents": [name for name, _run_config in config.agents],
+        "enabledAgents": enabled_agents,
         "disabledAgents": list(config.disabled_agents),
+        "defaultReviewer": config.default_reviewer,
+        "configuredDefaultImplementer": config.default_implementer or None,
+        "defaultImplementer": resolve_implementer(None, config),
+        "agentRoles": effective_agent_roles(config.agent_roles, enabled_agents),
         "machineConfigPath": (
             str(config.machine_config_path) if config.machine_config_path is not None else None
         ),
@@ -92,6 +99,12 @@ def run(args) -> int:
     print(f"- Worker: {summary['worker'] or '-'}")
     print(f"- Machine config: {summary['machineConfigPath'] or '-'}")
     print(f"- Repository config: {summary['repoConfigSource']}")
+    print(f"- Default reviewer: {summary['defaultReviewer'] or '-'}")
+    print(f"- Default implementer: {summary['defaultImplementer'] or '-'}")
+    print(
+        "- Configured default implementer: "
+        f"{summary['configuredDefaultImplementer'] or '-'}"
+    )
     if summary["authorGuard"]:
         guard = summary["authorGuard"]
         print(
@@ -110,6 +123,11 @@ def run(args) -> int:
             f"reasoning_effort={agent_config['reasoningEffort'] or '-'} "
             f"approval_flag={agent_config['approvalFlag'] or '-'}{approval_value_display}"
         )
+
+    print()
+    print("Agent roles")
+    for name, role in summary["agentRoles"].items():
+        print(f"- {name}: {role}")
 
     if summary["disabledAgents"]:
         print()
