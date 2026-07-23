@@ -4,13 +4,24 @@
 |---------|---------|
 | `issuekit info [--json]` | Show API tracker status and effective agent configuration. |
 | `issuekit validate` | Check API connectivity and issue response shape. |
+| `issuekit login [--user <username>]` | Authenticate to the API as the configured or specified user. |
+| `issuekit logout` | Clear the saved API authentication session. |
+| `issuekit profile [--project <name>] [--all] [--json]` | Show the stored profile for the local or specified project, or list all remote project profiles. |
+| `issuekit author --title "..." (--body "..." \| --body-file <path>) --agent <agent> [--priority high\|medium\|low] [--assign <agent>] [--depends-on <ref>] [--project <name>] [--direct-local-author] [--origin-project <name>] [--json]` | Create a new API-backed issue with an implementation-ready body. |
+| `issuekit edit <id> [--title "..."] [--body "..." \| --body-file <path> \| --append "..." \| --append-file <path>] [--priority high\|medium\|low] [--depends-on <ref>] [--force] [--json]` | Update an issue's title, body, priority, or dependency references. |
+| `issuekit author-guard show\|check\|clear` | Diagnose or recover the local author-session separation-of-duties guard; see [Separation of duties](separation-of-duties.md). |
 | `issuekit complete <id> --summary "..." --verification "..." [--force]` | Complete an issue through the API; use `--force` to close an active no-op, duplicate, obsolete, or anchor issue without claim and review ceremony. |
 | `issuekit approve <id> --verification "..." [--reviewer claude]` | Approve a review-stage issue and move it to completed. |
 | `issuekit claim --assignee codex` | Claim the next active issue for an implementer. |
 | `issuekit claim --id <id> --assignee codex` | Claim a specific active issue for an implementer. |
-| `issuekit submit-review <id> --summary "..." [--assignee codex] [--reviewer claude]` | Submit implemented work to a reviewer. |
+| `issuekit claims [--worker <worker>] [--stage <stage>] [--json]` | List issue claims, optionally filtered by worker or workflow stage. |
+| `issuekit implement <id> [--agent <agent>] [--model <model-id>] [--reasoning-effort <value>] [--timeout-sec <seconds>] [--follow] [--allow-no-changes] [--allow-author-session] [--allow-any-branch] [--no-sync]` | Claim and run a configured implementer agent for an issue. |
+| `issuekit submit-review <id> --summary "..." [--reviewer claude]` | Submit implemented work to a reviewer. |
+| `issuekit review <id> --agent <agent> [--model <model-id>] [--reasoning-effort <value>] [--timeout-sec <seconds>] [--follow]` | Run a configured reviewer agent for a review-stage issue. |
 | `issuekit request-changes <id> --notes "..." [--assignee codex] [--reviewer claude]` | Return a reviewed issue to implementation. |
 | `issuekit queue --assignee claude [--stage review]` | List active issues for an assignee. |
+| `issuekit runs [<run-id>] [--active] [--json]` | Inspect an agent run or list runs, optionally limited to active ones. |
+| `issuekit serve [--agent <agent>] [--model <model-id>] [--reasoning-effort <value>] [--interval <seconds>] [--priority high\|medium\|low] [--once] [--triage] [--review] [--proposal-checks] [--proposal-check-limit <n>] [--max-issues <n>] [--timeout-sec <seconds>] [--allow-any-branch] [--no-sync]` | Launch an agent loop that pulls from the implement pool by default, or the review pool with `--review`. |
 | `issuekit orphans [--stale-after-sec <n>] [--json]` | List implementing issues whose claiming worker is gone or has stopped heartbeating. |
 | `issuekit reclaim <id> [--force] [--reason "..."] [--json]` | Return an orphaned or stale implementing claim to the implement pool. |
 | `issuekit readdress <id> [--reason "..."] [--json]` | Return a directed issue to the repo pool. |
@@ -30,11 +41,14 @@
 | `issuekit add-ref <name> --path <repo> [--scope local\|workspace]` | Register an optional local project alias. |
 | `issuekit list-refs` | List effective local project aliases and their source. |
 | `issuekit negotiate --from-issue <id> --to <project> --frontend-agent <agent> --backend-agent <agent> [--backend-ref <ref>]` | Drive a bounded cross-project design negotiation; see [Cross-project negotiation](negotiation.md). |
+| `issuekit threads [<thread-id>] [--status negotiating\|agreed\|blocked] [--mock] [--json]` | Inspect or list cross-project negotiation threads; see [Cross-project negotiation](negotiation.md). |
 | `issuekit propose --to <project> --title "..."` | Send a proposal to a project API inbox. |
 | `issuekit incoming [--json]` | List inbound API proposals. |
 | `issuekit outgoing --to <project> [--id <id>] [--status <status>]` | List proposals this project sent to a target project's inbox (read-only, self-scoped). |
 | `issuekit adopt <proposal-id> [--json]` | Adopt an incoming API proposal as a local issue and print the created API issue id. |
 | `issuekit discard <proposal-id>` | Discard an incoming API proposal. |
+| `issuekit proposal-checks [--agent <agent>] [--model <model-id>] [--reasoning-effort <value>] [--list \| --once] [--status pending\|answered] [--timeout-sec <seconds>] [--limit <n>] [--offset <n>] [--json]` | List or run proposal checks addressed to this worker. |
+| `issuekit triage --once [--model <model-id>] [--reasoning-effort <value>] [--timeout-sec <seconds>] [--json]` | Launch a single agent triage loop that pulls pending inbound proposals. |
 | `issuekit request [<text>] [--answer <request-id>] [--status [<request-id>]] [--inbox] [--target <project>] [--link <request-id>] [--json] [--dry-run] [--timeout-sec <seconds>] [--model <model-id>] [--reasoning-effort <value>]` | Route a PM request to project proposal inboxes; see [PM request router](pm-request.md). |
 
 `issuekit info --json` includes `defaultReviewer`, the resolved
