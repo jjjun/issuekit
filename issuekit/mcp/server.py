@@ -41,6 +41,8 @@ from issuekit.proposals.api import (
     send_proposal,
 )
 from issuekit.issues.session import new_session_token
+from issuekit.negotiation import NegotiationThreadSummary, ThreadStatus, get_negotiation_store
+from issuekit.negotiation.engine import inspect_thread
 from issuekit.store import get_store
 from issuekit.api.token_cache import read_cached_token
 from issuekit.workers.registry import list_api_workers, remove_api_repo, remove_api_worker
@@ -444,6 +446,30 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
         async with _api_config(root, ctx) as (config, _config_root):
             return list_outgoing_proposals(config, to=to, status=status)
 
+    @server.tool(
+        description=(
+            "Inspect persisted negotiation threads without launching agents. Pass thread_id "
+            "for entries and finalization state, or status to filter the thread list."
+        )
+    )
+    async def list_negotiation_threads(
+        thread_id: str | None = None,
+        status: str | None = None,
+        mock: bool = False,
+        ctx: Context | None = None,
+    ) -> dict[str, Any] | list[dict[str, object]]:
+        if status not in (None, "negotiating", "agreed", "blocked"):
+            raise ValueError("status must be negotiating, agreed, or blocked.")
+        async with _api_config(root, ctx) as (config, _config_root):
+            store = get_negotiation_store(config, use_mock=mock)
+            if thread_id:
+                return inspect_thread(thread_id, store=store).to_dict()
+            thread_status = ThreadStatus(status) if status else None
+            return [
+                _negotiation_thread_summary_dict(summary)
+                for summary in store.list_threads(status=thread_status)
+            ]
+
     @server.tool(description="Adopt an incoming proposal as a local active issue.")
     async def adopt_proposal(
         proposal_id: int | None = None,
@@ -523,6 +549,18 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
             )
 
     return server
+
+
+def _negotiation_thread_summary_dict(
+    summary: NegotiationThreadSummary,
+) -> dict[str, object]:
+    return {
+        "thread_id": summary.thread_id,
+        "status": summary.status.value,
+        "agreed_contract": summary.agreed_contract,
+        "issue_refs": summary.issue_refs.to_dict() if summary.issue_refs else None,
+        "updated": summary.updated,
+    }
 
 
 async def _health_status(root: Path, ctx: Context | None = None) -> dict[str, Any]:

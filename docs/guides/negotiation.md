@@ -10,7 +10,10 @@ Use `issuekit propose` instead when the change belongs to another project and
 you can already specify the requested work. Negotiation is for an undecided
 shared interface, not a replacement for a well-scoped proposal.
 
-Negotiation is CLI-only; the MCP server does not expose a negotiation tool.
+Negotiation is CLI-only because it launches multiple long-running agent turns;
+holding an MCP stdio transport open for that orchestration is fragile. The MCP
+server does provide the read-only `list_negotiation_threads` tool for inspecting
+persisted thread state.
 
 ## Start a thread
 

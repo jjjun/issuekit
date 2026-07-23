@@ -22,6 +22,7 @@ from issuekit.agents.proposal_check import ProposalCheckDecision
 from issuekit.config import load_config
 from issuekit.mcp import server as mcp_server
 from issuekit.mcp.server import create_server
+from issuekit.negotiation import MockNegotiationStore, ThreadStatus, Verdict
 from issuekit.prompts.protocol import render_protocol
 from issuekit.testing import FakeIssuekitClient
 
@@ -110,6 +111,7 @@ def test_server_registers_expected_tools(tmp_path: Path) -> None:
         "propose",
         "list_incoming",
         "list_outgoing",
+        "list_negotiation_threads",
         "adopt_proposal",
         "discard_proposal",
         "run_proposal_checks",
@@ -122,7 +124,7 @@ def test_server_tool_schemas_match_the_contract(tmp_path: Path) -> None:
     # schema change was intended, describe it in the commit message, then update
     # this digest.
     assert _tool_schema_digest(create_server(tmp_path)) == (
-        "ff0e6bf2fe6b49499cf63680505e35f8bc38c596833d46bcfe51223e8b01144c"
+        "62e615e29a2268e03d43a1d518512e644c07a0f6eb8bd093de782b8515e72af0"
     )
 
 
@@ -328,6 +330,74 @@ def test_list_proposal_checks_tool_returns_raw_checks(
             },
         },
     ]
+
+
+def test_list_negotiation_threads_reads_mock_store_without_api_client(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'demo'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    store = MockNegotiationStore(None)
+    entry = store.create_thread(
+        side="frontend",
+        verdict=Verdict.propose,
+        title="Contract",
+        body="Proposed contract.",
+        origin="demo#1",
+        contract="Contract text.",
+    )
+    store.append_entry(
+        entry.thread_id,
+        side="backend",
+        verdict=Verdict.agree,
+        title="Contract",
+        body="Agreed contract.",
+        origin="backend#2",
+        contract="Contract text.",
+    )
+    store.set_status(
+        entry.thread_id,
+        ThreadStatus.agreed,
+        agreed_contract="Contract text.",
+    )
+    seen: dict[str, Any] = {}
+
+    def fake_store(config, *, use_mock):
+        seen["project"] = config.project
+        seen["use_mock"] = use_mock
+        return store
+
+    monkeypatch.setattr(mcp_server, "get_negotiation_store", fake_store)
+    server = create_server(tmp_path)
+
+    summaries = _call(
+        server,
+        "list_negotiation_threads",
+        {"status": "agreed", "mock": True},
+    )
+    inspection = _call(
+        server,
+        "list_negotiation_threads",
+        {"thread_id": entry.thread_id, "mock": True},
+    )
+
+    assert summaries == [
+        {
+            "thread_id": entry.thread_id,
+            "status": "agreed",
+            "agreed_contract": "Contract text.",
+            "issue_refs": None,
+            "updated": entry.created,
+        }
+    ]
+    assert inspection["thread_id"] == entry.thread_id
+    assert inspection["status"] == "agreed"
+    assert len(inspection["entries"]) == 2
+    assert seen == {"project": "demo", "use_mock": True}
 
 
 def test_list_workers_returns_catalog(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

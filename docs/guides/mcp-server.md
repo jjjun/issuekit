@@ -121,3 +121,16 @@ from a checkout with:
 ```powershell
 uv run --group mcp issuekit-mcp
 ```
+
+## MCP boundary
+
+The MCP surface is for tracker reads and state changes performed by the calling
+agent. Commands that launch other agents remain CLI orchestration: `implement`,
+`review`, `serve`, `triage`, `request`, and `negotiate`. In particular,
+negotiation can hold a stdio transport open for several agent turns, so running
+it from an MCP agent session makes a fragile transport failure more likely.
+
+`run_proposal_checks` is the deliberate exception: it launches an agent for a
+bounded worker-side check cycle. It is not precedent for exposing general
+agent-launching orchestration through MCP. Read-only negotiation thread
+inspection is available through `list_negotiation_threads`.

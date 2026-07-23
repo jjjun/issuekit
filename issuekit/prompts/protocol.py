@@ -104,7 +104,9 @@ belongs to the other project and you can already specify it; use `negotiate`
 when the interface between two projects is undecided and must be settled before
 either side can be specified. After agreement, `issuekit negotiate --finalize`
 creates cross-linked implementation issues on both sides. Negotiation is
-CLI-only today; there is no MCP tool. Both sides run read-only. With
+CLI-only because it launches multiple long-running agent turns and holding an
+MCP stdio transport open for that orchestration is fragile. MCP provides only
+read-only negotiation thread inspection. Both sides run read-only. With
 `--backend-ref <ref>`, the backend side runs in that ref's checkout so it can
 inspect the real code.
 
