@@ -37,6 +37,8 @@ def test_claim_sync_blocks_dirty_checkout(
     assert "Claim-sync guard blocks claim issue #1" in message
     assert str(tmp_path.resolve()) in message
     assert "dirty working tree" in message
+    assert "Commit or stash inspected changes before claiming" in message
+    assert "--no-sync" in message
     assert excinfo.value.code == "claim_sync_guard"
 
 
@@ -140,6 +142,27 @@ def test_claim_sync_fetch_failure_blocks_claim(
     assert "git fetch origin main failed" in message
     assert str(tmp_path.resolve()) in message
     assert "network unavailable" in message
+    assert "Resolve the Git failure and retry" in message
+    assert "--no-sync" in message
+
+
+def test_claim_sync_status_failure_names_recovery_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("issuekit.guards.claim_sync.git_status_short", lambda cwd: None)
+
+    with pytest.raises(WorkflowError) as excinfo:
+        enforce_claim_sync(
+            tmp_path,
+            config=IssuekitConfig(work_branch="main"),
+            action="claim-next",
+        )
+
+    message = str(excinfo.value)
+    assert "Repair the checkout and retry" in message
+    assert "--no-sync" in message
+    assert excinfo.value.code == "claim_sync_guard"
 
 
 def test_claim_sync_skips_fetch_when_current_branch_is_not_work_branch(

@@ -30,12 +30,14 @@ def enforce_claim_sync(
     if status is None:
         _raise(
             f"Claim-sync guard blocks {action}: git status failed in checkout "
-            f"{checkout}. Inspect the checkout before claiming.",
+            f"{checkout}. Repair the checkout and retry, or pass --no-sync to "
+            "deliberately skip the guard.",
         )
     if status:
         _raise(
             f"Claim-sync guard blocks {action}: checkout {checkout} has a dirty "
-            "working tree. Inspect leftover changes before claiming."
+            "working tree. Commit or stash inspected changes before claiming, or "
+            "pass --no-sync to deliberately skip the guard."
         )
 
     branch = config.work_branch
@@ -91,7 +93,8 @@ def _git_failure_message(
             detail = f" Output: {output}"
     return (
         f"Claim-sync guard blocks {action}: {' '.join(command)} failed in checkout "
-        f"{checkout}.{detail}"
+        f"{checkout}.{detail} Resolve the Git failure and retry, or pass --no-sync "
+        "to deliberately skip the guard."
     )
 
 

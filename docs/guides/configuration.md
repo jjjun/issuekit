@@ -210,6 +210,22 @@ to grow later to an allowed branch list or glob such as
 See [Separation-of-duties guards](separation-of-duties.md) for the full guard
 table.
 
+## Claim-sync guard
+
+When `work_branch` is set, issuekit also checks that the checkout is clean
+before `claim`, `implement`, or `serve` claims work. On the configured work
+branch with an `origin` remote, it fetches that branch and fast-forwards the
+checkout before claiming. `claim_sync` defaults to `true`; set it to `false`
+to disable this guard. `claim_sync_interval_sec` defaults to `60` and limits
+how often a successful fetch runs for the same checkout and branch.
+
+The guard does not run without `work_branch`. It blocks a dirty checkout, a
+failed `git status`, or a failed fetch or fast-forward so the operator can fix
+the checkout and retry. After inspecting a known-safe situation, such as
+leftover work from a timed-out implement run, pass `--no-sync` to `claim`,
+`implement`, or `serve` to deliberately skip this guard for that command; the
+MCP `claim_next_task` tool accepts `no_sync` for the same purpose.
+
 ## Encoding checks
 
 The agent submit mojibake gate checks half-width katakana by default, matching
