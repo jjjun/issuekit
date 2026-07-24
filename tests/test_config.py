@@ -155,6 +155,78 @@ def test_machine_config_rejects_worker(tmp_path: Path, monkeypatch) -> None:
         load_config(tmp_path)
 
 
+def test_machine_config_ignores_newer_role_overlay(tmp_path: Path, monkeypatch) -> None:
+    machine_path = tmp_path / "machine.toml"
+    machine_path.write_text(
+        "[agents.claude.roles.router]\nmodel = 'claude-opus-4-8'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setenv("ISSUEKIT_CONFIG", str(machine_path))
+    monkeypatch.setattr(
+        "issuekit.config.settings.ROLE_OVERLAY_ROLES",
+        frozenset({"implementer", "reviewer", "triage"}),
+    )
+
+    with pytest.warns(UserWarning, match="agents.claude.roles.router"):
+        config = load_config(tmp_path)
+
+    assert "claude" not in dict(config.agent_role_overlays)
+
+
+def test_repo_config_rejects_unknown_role_overlay(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "[agents.claude.roles.router]\nmodel = 'claude-opus-4-8'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setattr(
+        "issuekit.config.settings.ROLE_OVERLAY_ROLES",
+        frozenset({"implementer", "reviewer", "triage"}),
+    )
+
+    with pytest.raises(ValueError, match="Invalid agents.claude.roles role: router"):
+        load_config(tmp_path)
+
+
+def test_machine_config_ignores_unknown_top_level_and_agent_settings(
+    tmp_path: Path, monkeypatch
+) -> None:
+    machine_path = tmp_path / "machine.toml"
+    machine_path.write_text(
+        "unknown = 'value'\n[agents.claude]\nunknown = 'value'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setenv("ISSUEKIT_CONFIG", str(machine_path))
+
+    with pytest.warns(UserWarning) as warnings_record:
+        config = load_config(tmp_path)
+
+    assert [str(warning.message) for warning in warnings_record] == [
+        f"Ignoring unsupported machine config setting unknown in {machine_path}.",
+        f"Ignoring unsupported machine config setting agents.claude.unknown in {machine_path}.",
+    ]
+    assert dict(config.agents)["claude"] == dict(IssuekitConfig.agents)["claude"]
+
+
+def test_machine_config_ignores_invalid_triage_default_priority(
+    tmp_path: Path, monkeypatch
+) -> None:
+    machine_path = tmp_path / "machine.toml"
+    machine_path.write_text(
+        "[triage]\ndefault_priority = 'invalid'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setenv("ISSUEKIT_CONFIG", str(machine_path))
+
+    with pytest.warns(UserWarning, match="triage.default_priority = invalid"):
+        config = load_config(tmp_path)
+
+    assert config.triage.default_priority == TriagePolicy.default_priority
+
+
 def test_default_machine_config_path_uses_xdg_config_home(
     tmp_path: Path, monkeypatch
 ) -> None:
