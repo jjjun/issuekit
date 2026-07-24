@@ -2,9 +2,10 @@
 
 When ``[tool.issuekit.triage] author_agent`` is configured, ``serve --triage``
 and ``issuekit triage --once`` run the configured agent against each
-policy-matching pending proposal and let it make a three-way decision: adopt
-the proposal as an implementation-ready issue (appending an authored spec),
-reply to the origin project for clarification, or discard it as out of scope.
+policy-matching pending proposal and let it adopt the proposal as an
+implementation-ready issue (appending an authored spec), reply to the origin
+project for clarification, discard it as out of scope, or adopt and send a
+targeted follow-up to the origin.
 
 The agent run is an author-type session: it inspects the checkout read-only and
 never implements or mutates tracker state. This module applies the parsed
@@ -14,7 +15,7 @@ decision through the existing proposal helpers; the agent only emits JSON.
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 import hashlib
 import re
@@ -49,9 +50,10 @@ from issuekit.proposals.api import (
 from issuekit.workflow import WorkflowError
 
 
-_DECISIONS = {"adopt", "reply", "discard"}
+_DECISIONS = {"adopt", "adopt_and_reply", "reply", "discard"}
 _DECISION_FIELD = {
     "adopt": "spec_markdown",
+    "adopt_and_reply": "spec_markdown",
     "reply": "question",
     "discard": "reason",
 }
@@ -71,6 +73,7 @@ class TriageDecision:
     decision: str
     detail: str
     issue_id: int | None = None
+    reply_ref: str | None = None
     error: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
@@ -82,6 +85,8 @@ class TriageDecision:
         }
         if self.issue_id is not None:
             data["issue_id"] = self.issue_id
+        if self.reply_ref is not None:
+            data["reply_ref"] = self.reply_ref
         if self.error is not None:
             data["error"] = self.error
         return data
@@ -106,7 +111,18 @@ def _decision_from_json(raw: dict[str, object]) -> dict[str, str]:
         )
     if has_non_ascii(f"{decision}\n{value}"):
         raise TriageAuthorParseError("Triage fields must be ASCII-only.")
-    return {"decision": decision, field: value.strip()}
+    parsed = {"decision": decision, field: value.strip()}
+    if decision == "adopt_and_reply":
+        reply_markdown = raw.get("reply_markdown")
+        if not isinstance(reply_markdown, str) or not reply_markdown.strip():
+            raise TriageAuthorParseError(
+                "Triage decision 'adopt_and_reply' requires a non-empty "
+                "'reply_markdown'."
+            )
+        if has_non_ascii(reply_markdown):
+            raise TriageAuthorParseError("Triage fields must be ASCII-only.")
+        parsed["reply_markdown"] = reply_markdown.strip()
+    return parsed
 
 
 def run_triage_author_cycle(
@@ -267,7 +283,7 @@ def _apply_decision(
     origin = str(proposal.get("origin", ""))
     decision = parsed["decision"]
     try:
-        if decision == "adopt":
+        if decision in {"adopt", "adopt_and_reply"}:
             spec = parsed["spec_markdown"]
             outcome = adopt_proposal_with_append(
                 config,
@@ -282,12 +298,34 @@ def _apply_decision(
                 state=state,
                 emit=emit,
             )
+            reply_ref = None
+            if decision == "adopt_and_reply" and not proposal.get("reply_to"):
+                try:
+                    reply_ref = _send_reply(
+                        proposal,
+                        parsed["reply_markdown"],
+                        config=config,
+                        cwd=cwd,
+                        from_issue=str(outcome["issue_id"]),
+                    )
+                except ProposalError as exc:
+                    return TriageDecision(
+                        proposal_id=proposal_id,
+                        origin=origin,
+                        decision=decision,
+                        detail=str(outcome.get("issue_ref") or ""),
+                        issue_id=outcome.get("issue_id"),
+                        error=str(exc),
+                    )
+            elif decision == "adopt_and_reply":
+                emit("triage_author_reply_suppressed", proposal=proposal_id)
             return TriageDecision(
                 proposal_id=proposal_id,
                 origin=origin,
-                decision="adopt",
+                decision="adopt" if reply_ref is None else decision,
                 detail=str(outcome.get("issue_ref") or ""),
                 issue_id=outcome.get("issue_id"),
+                reply_ref=reply_ref,
             )
         if decision == "reply":
             question = parsed["question"]
@@ -406,6 +444,7 @@ def _send_reply(
     *,
     config: IssuekitConfig,
     cwd: Path,
+    from_issue: str | None = None,
 ) -> str:
     origin_project = origin_destination(str(proposal.get("origin", "")))
     original_title = str(proposal.get("title", "")).strip() or f"proposal #{proposal['id']}"
@@ -416,10 +455,15 @@ def _send_reply(
         title=title,
         body=question,
         body_file=None,
-        from_issue=None,
+        from_issue=from_issue,
         reply=None,
     )
-    sent = send_proposal(config, reply)
+    sent = send_proposal(
+        config,
+        replace(reply, reply_to=str(proposal.get("origin", ""))),
+    )
+    if sent.get("idempotent_existing") or sent.get("payload_mismatch"):
+        raise ProposalError(str(sent.get("warning") or "Reply proposal was not sent."))
     return f"{origin_project}#{sent.get('id')}"
 
 
@@ -432,6 +476,7 @@ def _render_triage_prompt(proposal: Mapping[str, Any]) -> str:
     return TRIAGE_PROMPT.render(
         proposal_id=proposal["id"],
         origin=proposal.get("origin", ""),
+        reply_to=proposal.get("reply_to") or "(none)",
         title=proposal.get("title", ""),
         blocking=bool(proposal.get("blocking", False)),
         depends_on=depends_text,

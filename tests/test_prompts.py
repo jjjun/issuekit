@@ -17,6 +17,7 @@ SPEC_CONTEXTS = {
     "triage": {
         "proposal_id": 1,
         "origin": "source#1@abc",
+        "reply_to": "(none)",
         "title": "Add endpoint",
         "blocking": False,
         "depends_on": "(none)",

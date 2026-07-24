@@ -10,6 +10,7 @@ import subprocess
 import pytest
 
 import issuekit.proposals.api as proposals_api
+from issuekit import store as store_module
 from issuekit.agents import triage_author
 from issuekit.agentrun import AgentResult
 from issuekit.agents.triage_author import (
@@ -94,6 +95,7 @@ def _setup(monkeypatch, tmp_path, *, proposals, outputs, author_agent="codex", e
     client = FakeIssuekitClient(proposals=proposals)
     client.register_catalog_project("mine-py")
     monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *a, **k: client)
+    monkeypatch.setattr(store_module, "IssuekitClient", lambda *a, **k: client)
     monkeypatch.setattr(triage_author, "resolve_adapter", lambda *a, **k: object())
     runner = FakeRunner(outputs)
     monkeypatch.chdir(tmp_path)
@@ -164,6 +166,151 @@ def test_triage_author_adopt_appends_spec(monkeypatch, tmp_path) -> None:
     assert issue_id is not None
     assert client.get_issue(issue_id)["body"] == "Please.\n\n## Spec\n\nBuild it."
     assert ("triage_author_decision", {"proposal": 5, "decision": "adopt", "issue": issue_id}) in events
+
+
+def test_triage_author_adopt_and_reply_sends_linked_follow_up(monkeypatch, tmp_path) -> None:
+    client, runner, config, events, log = _setup(
+        monkeypatch,
+        tmp_path,
+        proposals=[
+            {"id": 5, "origin": "mine-py#3@abc", "title": "Do a thing", "body": "Please."}
+        ],
+        outputs=[
+            _triage_block(
+                decision="adopt_and_reply",
+                spec_markdown="## Spec\n\nBuild it.",
+                reply_markdown="Send the compatibility findings next.",
+            )
+        ],
+    )
+
+    decisions = run_triage_author_cycle(
+        config, tmp_path, runner_factory=lambda: runner, log=log
+    )
+
+    assert [d.decision for d in decisions] == ["adopt_and_reply"]
+    assert client.get_proposal(5)["status"] == "adopted"
+    reply = client.get_proposal(6)
+    assert reply["body"] == "Send the compatibility findings next."
+    assert reply["reply_to"] == "mine-py#3@abc"
+    assert reply["origin"].startswith(f"issuekit#{decisions[0].issue_id}@")
+    assert decisions[0].reply_ref == "mine-py#6"
+    assert (
+        "triage_author_decision",
+        {"proposal": 5, "decision": "adopt_and_reply", "issue": decisions[0].issue_id},
+    ) in events
+
+
+def test_triage_author_adopt_and_reply_does_not_reply_to_a_reply(monkeypatch, tmp_path) -> None:
+    client, runner, config, events, log = _setup(
+        monkeypatch,
+        tmp_path,
+        proposals=[
+            {
+                "id": 5,
+                "origin": "mine-py#3@abc",
+                "reply_to": "issuekit#4@def",
+                "title": "Do a thing",
+                "body": "Please.",
+            }
+        ],
+        outputs=[
+            _triage_block(
+                decision="adopt_and_reply",
+                spec_markdown="## Spec\n\nBuild it.",
+                reply_markdown="This must not be sent.",
+            )
+        ],
+    )
+
+    decisions = run_triage_author_cycle(
+        config, tmp_path, runner_factory=lambda: runner, log=log
+    )
+
+    assert [d.decision for d in decisions] == ["adopt"]
+    assert client.get_proposal(5)["status"] == "adopted"
+    assert decisions[0].reply_ref is None
+    assert ("triage_author_reply_suppressed", {"proposal": 5}) in events
+    with pytest.raises(Exception, match="not found"):
+        client.get_proposal(6)
+
+
+def test_triage_author_adopt_and_reply_uses_each_adopted_issue_as_origin(
+    monkeypatch, tmp_path
+) -> None:
+    client, runner, config, _events, log = _setup(
+        monkeypatch,
+        tmp_path,
+        proposals=[
+            {"id": 5, "origin": "mine-py#3@abc", "title": "First", "body": "Please."},
+            {"id": 6, "origin": "mine-py#4@abc", "title": "Second", "body": "Please."},
+        ],
+        outputs=[
+            _triage_block(
+                decision="adopt_and_reply",
+                spec_markdown="## Spec\n\nBuild it.",
+                reply_markdown="Send the first finding.",
+            ),
+            _triage_block(
+                decision="adopt_and_reply",
+                spec_markdown="## Spec\n\nBuild it.",
+                reply_markdown="Send the second finding.",
+            ),
+        ],
+        extra="max_adoptions_per_cycle = 2\n",
+    )
+
+    decisions = run_triage_author_cycle(
+        config, tmp_path, runner_factory=lambda: runner, log=log
+    )
+
+    replies = [client.get_proposal(proposal_id) for proposal_id in (7, 8)]
+    assert [decision.reply_ref for decision in decisions] == ["mine-py#7", "mine-py#8"]
+    assert replies[0]["origin"] != replies[1]["origin"]
+    assert {reply["origin"].split("@", 1)[0] for reply in replies} == {
+        f"issuekit#{decision.issue_id}" for decision in decisions
+    }
+
+
+def test_triage_author_adopt_and_reply_reports_idempotent_reply_as_error(
+    monkeypatch, tmp_path
+) -> None:
+    client, runner, config, events, log = _setup(
+        monkeypatch,
+        tmp_path,
+        proposals=[
+            {"id": 5, "origin": "mine-py#3@abc", "title": "Do a thing", "body": "Please."}
+        ],
+        outputs=[
+            _triage_block(
+                decision="adopt_and_reply",
+                spec_markdown="## Spec\n\nBuild it.",
+                reply_markdown="Send the compatibility findings next.",
+            )
+        ],
+    )
+    monkeypatch.setattr(
+        triage_author,
+        "send_proposal",
+        lambda *_args, **_kwargs: {
+            "id": 6,
+            "idempotent_existing": True,
+            "payload_mismatch": True,
+            "warning": "Proposal was not sent.",
+        },
+    )
+
+    decisions = run_triage_author_cycle(
+        config, tmp_path, runner_factory=lambda: runner, log=log
+    )
+
+    assert client.get_proposal(5)["status"] == "adopted"
+    assert decisions[0].decision == "adopt_and_reply"
+    assert decisions[0].issue_id == 1
+    assert decisions[0].detail == "issuekit#1"
+    assert decisions[0].reply_ref is None
+    assert decisions[0].error == "Proposal was not sent."
+    assert ("triage_author_error", {"proposal": 5, "error": "Proposal was not sent."}) in events
 
 
 def test_triage_author_forwards_model_to_adapter(monkeypatch, tmp_path) -> None:
@@ -425,6 +572,7 @@ def test_triage_author_reply_sends_and_skips_next_cycle(monkeypatch, tmp_path) -
     assert reply["title"] == "Re: issuekit#8: Vague ask"
     assert reply["body"] == "What endpoint do you mean?"
     assert reply["origin"].startswith("issuekit#")
+    assert reply["reply_to"] == "mine-py#2@abc"
     # detail records the destination-project ref of the sent Re: proposal.
     assert first[0].detail == "mine-py#9"
     state_path = tmp_path / ".agent-runs" / "triage-author-state.json"

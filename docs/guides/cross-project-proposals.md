@@ -122,6 +122,16 @@ issuekit adopt 42
 issuekit discard 43
 ```
 
+Adoption notes supplied with `issuekit adopt --append-file` are recorded only
+on the receiving project's adopted issue. They do not reach the proposal
+sender. When automated triage adopts a proposal and the sender must take a
+specific follow-up action, it can use `adopt_and_reply` to send that action
+back as a linked proposal. This is only for necessary follow-up, not routine
+adoption notification. A proposal that is already a reply is adopted without
+another automatic reply, preventing reply loops.
+Discard decisions remain pull-based: they do not automatically notify the
+sender, which can inspect the outcome with `issuekit outgoing --to <project>`.
+
 To reply after implementing an adopted issue, run:
 
 ```powershell

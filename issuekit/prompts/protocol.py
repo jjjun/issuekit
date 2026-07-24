@@ -97,6 +97,10 @@ MCP `propose` tool). Include reproduction steps or the concrete gap, and pass
 report gets a distinct origin. The issuekit project triages its inbox
 continuously and adopts worthwhile reports as issues; check the outcome later
 with `issuekit outgoing --to issuekit`.
+Adoption notes are recorded only on the receiving project's issue and never
+reach the sender; anything the sender must act on requires a proposal.
+Automated triage can use `adopt_and_reply` for a required follow-up; discard
+does not notify.
 
 Cross-project negotiation is a bounded, agent-driven design conversation
 between two sides that converges on a contract. Use `propose` when the change

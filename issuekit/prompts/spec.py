@@ -113,6 +113,7 @@ TRIAGE_PROMPT = PromptSpec(
     branch_key="decision",
     required_keys_by_branch={
         "adopt": ("decision", "spec_markdown"),
+        "adopt_and_reply": ("decision", "spec_markdown", "reply_markdown"),
         "reply": ("decision", "question"),
         "discard": ("decision", "reason"),
     },

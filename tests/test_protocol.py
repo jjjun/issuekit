@@ -64,6 +64,7 @@ def test_render_protocol_returns_each_agent_and_both() -> None:
         assert "Upstream feedback loop" in normalized
         assert "issuekit propose --to issuekit" in rendered
         assert "issuekit outgoing --to issuekit" in rendered
+        assert "Adoption notes are recorded only on the receiving project's issue" in normalized
         assert "default_implementer" in rendered
         assert "[agent_roles]" in rendered
         assert "one default role" in normalized

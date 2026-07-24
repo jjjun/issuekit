@@ -8,6 +8,7 @@ approve, complete, or otherwise mutate tracker or issue lifecycle state.
 
 Proposal title: $title
 Origin: $origin
+Reply-to: $reply_to
 Blocking: $blocking
 Depends-on: $depends_on
 
@@ -22,6 +23,10 @@ Decide exactly one of:
   Include verified or corrected factual claims about this codebase and
   resolved design decisions for any open choices, including implementation
   order when several pending proposals interact.
+- adopt_and_reply: adopt the proposal and send reply_markdown to the origin
+  only when the origin must take a follow-up action. Do not choose this for a
+  proposal that already has a Reply-to value; replies never generate automatic
+  replies, which prevents reply loops.
 - reply: the request intent is unclear. Ask one concrete question that
   the origin project must answer before this can be adopted.
 - discard: the request does not belong to this project. Explain why so
@@ -33,8 +38,9 @@ $ignored_text_instruction
 $ascii_only_rule
 ```triage
 {
-  "decision": "adopt-or-reply-or-discard",
+  "decision": "adopt-or-adopt_and_reply-or-reply-or-discard",
   "spec_markdown": "Implementation-ready spec when decision is adopt.",
+  "reply_markdown": "Required sender follow-up when decision is adopt_and_reply.",
   "question": "One clarifying question when decision is reply.",
   "reason": "Why it does not belong here when decision is discard."
 }

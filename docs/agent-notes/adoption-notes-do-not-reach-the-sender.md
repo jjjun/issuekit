@@ -5,10 +5,12 @@ issue in the receiving project**. Nothing is sent back to the origin project.
 The sender's only way to see the outcome is to poll `issuekit outgoing --to
 <project>` themselves.
 
-The three-way triage decision is adopt, reply, or discard. Only `reply` sends a
-proposal back to the origin, and it is defined as asking one clarifying
-question *before* adoption, so it blocks the adopt. There is no
-"adopt and tell the sender" path.
+The triage decisions are adopt, adopt_and_reply, reply, or discard.
+`adopt_and_reply` sends a linked follow-up only when the sender must act; it
+never replies automatically to a proposal that is itself a reply. Ordinary
+adoption notes still do not reach the sender.
+Discard decisions remain pull-based; they are visible through `issuekit
+outgoing` but do not send automatic notifications.
 
 ## The failure this causes
 
