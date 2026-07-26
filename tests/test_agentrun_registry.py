@@ -91,25 +91,13 @@ def test_resolve_adapter_unknown_raises() -> None:
 
 
 def test_resolve_adapter_disabled_agent_raises_clear_error() -> None:
-    config = IssuekitConfig(
-        disabled_agents=("kimi",),
-        agents=(
-            ("codex", AgentRunConfig(binary="codex", headless_argv=("exec",))),
-        ),
-    )
+    config = IssuekitConfig(disabled_agents=("kimi",))
 
     with pytest.raises(ValueError, match="Agent disabled by config: kimi"):
         resolve_adapter("kimi", config=config)
 
 
 def test_config_agent_adapter_uses_only_run_config() -> None:
-    config = IssuekitConfig(
-        disabled_agents=("kimi",),
-        agents=(
-            ("codex", AgentRunConfig(binary="codex", headless_argv=("exec",))),
-        ),
-    )
-
     adapter = ConfigAgentAdapter("kimi", AgentRunConfig(binary="kimi"))
 
     assert adapter.agent_name == "kimi"

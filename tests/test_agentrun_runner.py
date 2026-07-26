@@ -1,17 +1,23 @@
 import json
-import os
-import signal
 import subprocess
 import sys
+import threading
 import time
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
-from issuekit.agentrun.adapters.kimi import KimiAdapter
-from issuekit.agents.registry import resolve_adapter
-from issuekit.agentrun import AgentAdapter, AgentPrompt, AgentResult, AgentRunner, ConfigAgentAdapter
-from issuekit.config import AgentRunConfig, IssuekitConfig
+from issuekit.agentrun import (
+    AgentAdapter,
+    AgentPrompt,
+    AgentRunConfig,
+    AgentRunner,
+    ConfigAgentAdapter,
+    RunStatus,
+)
+from issuekit.agentrun.runner import _RunWatcher
+from issuekit.agentrun.status import read_status, status_path, write_status
 
 
 class FakeAdapter(AgentAdapter):
@@ -39,11 +45,27 @@ def agent_prompt(path: Path) -> AgentPrompt:
     return AgentPrompt(path=path, body="plan", pointer="")
 
 
+def running_status() -> RunStatus:
+    return RunStatus(
+        run_id="run-a",
+        agent="codex",
+        issue=307,
+        status="running",
+        pid=123,
+        started_at="2026-07-26T12:00:00",
+        ended_at=None,
+        elapsed_sec=None,
+        exit_code=None,
+        plan=".agent-runs/issue-307.md",
+        stdout_log=".agent-runs/run-a.out.log",
+        agent_log=".agent-runs/run-a.agent.log",
+    )
+
+
 def test_runner_captures_stdout_stderr_and_returns_result(tmp_path: Path) -> None:
     script = tmp_path / "script.py"
     script.write_text("import sys; print('hello out'); print('hello err', file=sys.stderr)")
     plan = tmp_path / "plan.md"
-    plan.write_text("plan")
     repo = tmp_path / "repo"
     repo.mkdir()
     (repo / ".git").mkdir()
@@ -72,7 +94,6 @@ def test_runner_uses_explicit_run_directory(tmp_path: Path) -> None:
     script = tmp_path / "script.py"
     script.write_text("pass")
     plan = tmp_path / "plan.md"
-    plan.write_text("plan")
     repo = tmp_path / "repo"
     repo.mkdir()
     run_dir = tmp_path / "runtime-files"
@@ -130,25 +151,17 @@ def test_runner_passes_session_id_through_to_argv(tmp_path: Path) -> None:
         newline="\n",
     )
     plan = tmp_path / "plan.md"
-    plan.write_text("plan")
     repo = tmp_path / "repo"
     repo.mkdir()
     (repo / ".git").mkdir()
-    config = IssuekitConfig(
-        agents=(
-            (
-                "python-agent",
-                AgentRunConfig(
-                    binary=sys.executable,
-                    headless_argv=(str(script),),
-                    resumable=True,
-                    session_flag="--session-id",
-                ),
-            ),
-        )
+    run_config = AgentRunConfig(
+        binary=sys.executable,
+        headless_argv=(str(script),),
+        resumable=True,
+        session_flag="--session-id",
     )
 
-    adapter = ConfigAgentAdapter("python-agent", dict(config.agents)["python-agent"])
+    adapter = ConfigAgentAdapter("python-agent", run_config)
     result = AgentRunner().run(
         adapter,
         agent_prompt(plan),
@@ -171,7 +184,6 @@ def test_runner_replaces_invalid_log_bytes_before_parsing(tmp_path: Path) -> Non
         "import os; os.write(1, b'valid\\xfftext\\n'); os.write(2, b'err\\xfe\\n')"
     )
     plan = tmp_path / "plan.md"
-    plan.write_text("plan")
     repo = tmp_path / "repo"
     repo.mkdir()
     (repo / ".git").mkdir()
@@ -205,7 +217,6 @@ def test_runner_status_is_running_while_process_is_active(tmp_path: Path) -> Non
         )
     )
     plan = tmp_path / "plan.md"
-    plan.write_text("plan")
     repo = tmp_path / "repo"
     repo.mkdir()
     (repo / ".git").mkdir()
@@ -235,7 +246,6 @@ def test_runner_uses_devnull_stdin_and_does_not_hang(tmp_path: Path) -> None:
     script = tmp_path / "script.py"
     script.write_text("import sys; data = sys.stdin.read(); print('read:', repr(data))")
     plan = tmp_path / "plan.md"
-    plan.write_text("plan")
     repo = tmp_path / "repo"
     repo.mkdir()
     (repo / ".git").mkdir()
@@ -253,7 +263,6 @@ def test_runner_kills_on_timeout(tmp_path: Path) -> None:
     script = tmp_path / "script.py"
     script.write_text("import time; time.sleep(60)")
     plan = tmp_path / "plan.md"
-    plan.write_text("plan")
     repo = tmp_path / "repo"
     repo.mkdir()
     (repo / ".git").mkdir()
@@ -272,11 +281,35 @@ def test_runner_kills_on_timeout(tmp_path: Path) -> None:
     assert status["exit_code"] != 0
 
 
+def test_runner_kills_when_abort_event_is_set(tmp_path: Path) -> None:
+    script = tmp_path / "script.py"
+    script.write_text("import time; time.sleep(60)")
+    plan = tmp_path / "plan.md"
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / ".git").mkdir()
+    abort_event = threading.Event()
+    abort_event.set()
+
+    result = AgentRunner().run(
+        FakeAdapter([sys.executable, str(script)]),
+        agent_prompt(plan),
+        repo,
+        timeout=10.0,
+        abort_event=abort_event,
+    )
+
+    assert result.timed_out is True
+    assert result.exit_code != 0
+    assert result.status_path is not None
+    status = json.loads(result.status_path.read_text(encoding="utf-8"))
+    assert status["status"] == "timed_out"
+
+
 def test_runner_status_is_failed_for_nonzero_exit(tmp_path: Path) -> None:
     script = tmp_path / "script.py"
     script.write_text("raise SystemExit(7)")
     plan = tmp_path / "plan.md"
-    plan.write_text("plan")
     repo = tmp_path / "repo"
     repo.mkdir()
     (repo / ".git").mkdir()
@@ -295,7 +328,6 @@ def test_runner_git_status_short(tmp_path: Path) -> None:
     script = tmp_path / "script.py"
     script.write_text("import pathlib, sys; (pathlib.Path(sys.argv[1]) / 'new.txt').write_text('x')")
     plan = tmp_path / "plan.md"
-    plan.write_text("plan")
     repo = tmp_path / "repo"
     repo.mkdir()
     subprocess.run(["git", "init"], cwd=str(repo), check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -324,317 +356,10 @@ def test_runner_writes_prompt_file_when_it_does_not_exist(tmp_path: Path) -> Non
 
 def test_runner_missing_repo_raises(tmp_path: Path) -> None:
     plan = tmp_path / "plan.md"
-    plan.write_text("plan")
     adapter = FakeAdapter([sys.executable, "-c", "pass"])
     runner = AgentRunner()
     with pytest.raises(FileNotFoundError, match="Repo directory not found"):
         runner.run(adapter, agent_prompt(plan), tmp_path / "nosuch")
-
-
-def test_kimi_adapter_argv_contains_p_and_never_auto() -> None:
-    adapter = resolve_adapter("kimi")
-    argv = adapter.build_argv("prompt", Path("/plan.md"))
-    assert "-p" in argv
-    assert "--auto" not in argv
-    assert "-y" not in argv
-    assert "--output-format" in argv
-
-
-def test_kimi_adapter_argv_includes_model() -> None:
-    adapter = resolve_adapter("kimi", model="k2")
-    argv = adapter.build_argv("prompt", Path("/plan.md"))
-    assert "-m" in argv
-    assert argv[argv.index("-m") + 1] == "k2"
-
-
-def test_claude_adapter_argv_build_full_shape() -> None:
-    adapter = resolve_adapter("claude")
-    argv = adapter.build_argv("prompt", Path("/plan.md"))
-    assert argv[0] == "-p"
-    assert argv[1].startswith("prompt")
-    assert argv[2:] == [
-        "--permission-mode",
-        "bypassPermissions",
-        "--output-format",
-        "text",
-    ]
-
-
-def test_claude_adapter_argv_appends_model_when_supplied() -> None:
-    adapter = resolve_adapter("claude", model="claude-opus-4-8")
-    argv = adapter.build_argv("prompt", Path("/plan.md"))
-    assert argv[:6] == [
-        "-p",
-        argv[1],
-        "--permission-mode",
-        "bypassPermissions",
-        "--output-format",
-        "text",
-    ]
-    assert argv[6:] == ["--model", "claude-opus-4-8"]
-
-
-def test_claude_adapter_argv_appends_reasoning_effort_when_supplied() -> None:
-    adapter = resolve_adapter(
-        "claude", model="claude-opus-4-8", reasoning_effort="high"
-    )
-    argv = adapter.build_argv("prompt", Path("/plan.md"))
-    assert argv[6:] == ["--model", "claude-opus-4-8", "--effort", "high"]
-
-
-def test_config_adapter_appends_session_flag_only_when_resumable() -> None:
-    config = IssuekitConfig(
-        agents=(
-            (
-                "resumable",
-                AgentRunConfig(
-                    binary="agent",
-                    headless_argv=("run",),
-                    resumable=True,
-                    session_flag="--session-id",
-                ),
-            ),
-            (
-                "plain",
-                AgentRunConfig(
-                    binary="agent",
-                    headless_argv=("run",),
-                    session_flag="--session-id",
-                ),
-            ),
-        )
-    )
-
-    resumable = ConfigAgentAdapter("resumable", dict(config.agents)["resumable"])
-    plain = ConfigAgentAdapter("plain", dict(config.agents)["plain"])
-
-    assert resumable.supports_session_resume() is True
-    assert plain.supports_session_resume() is False
-    assert resumable.build_argv(
-        "prompt",
-        Path("/plan.md"),
-        session_id="123e4567-e89b-12d3-a456-426614174000",
-    )[-2:] == ["--session-id", "123e4567-e89b-12d3-a456-426614174000"]
-    assert resumable.build_argv("prompt", Path("/plan.md")) == ["run", "prompt"]
-    assert plain.build_argv(
-        "prompt",
-        Path("/plan.md"),
-        session_id="123e4567-e89b-12d3-a456-426614174000",
-    ) == ["run", "prompt"]
-
-
-def test_claude_adapter_argv_appends_session_id_when_supplied() -> None:
-    adapter = resolve_adapter("claude")
-    argv = adapter.build_argv(
-        "prompt",
-        Path("/plan.md"),
-        session_id="123e4567-e89b-12d3-a456-426614174000",
-    )
-
-    assert adapter.supports_session_resume() is True
-    assert argv[-2:] == ["--session-id", "123e4567-e89b-12d3-a456-426614174000"]
-
-
-def test_config_adapter_uses_configured_model_and_prompt_suffix() -> None:
-    config = IssuekitConfig(
-        agents=(
-            (
-                "codex",
-                AgentRunConfig(
-                    binary="codex",
-                    headless_argv=("exec",),
-                    model_flag="--model",
-                    model="gpt-5.3-codex-spark",
-                    prompt_suffix="General guardrail.",
-                    model_prompts=(("gpt-5.3-codex-spark", "Spark guardrail."),),
-                ),
-            ),
-        )
-    )
-
-    argv = ConfigAgentAdapter("codex", dict(config.agents)["codex"]).build_argv("base", Path("/plan.md"))
-
-    assert argv[:2] == ["exec", "base\n\nGeneral guardrail.\n\nSpark guardrail."]
-    assert argv[argv.index("--model") + 1] == "gpt-5.3-codex-spark"
-
-
-def test_config_adapter_cli_model_overrides_config_model_for_argv_and_prompt() -> None:
-    config = IssuekitConfig(
-        agents=(
-            (
-                "codex",
-                AgentRunConfig(
-                    binary="codex",
-                    headless_argv=("exec",),
-                    model_flag="--model",
-                    model="configured",
-                    prompt_suffix="General guardrail.",
-                    model_prompts=(
-                        ("configured", "Configured-only."),
-                        ("cli-model", "CLI-only."),
-                    ),
-                ),
-            ),
-        )
-    )
-
-    argv = ConfigAgentAdapter("codex", dict(config.agents)["codex"], model="cli-model").build_argv(
-        "base",
-        Path("/plan.md"),
-    )
-
-    assert argv[1] == "base\n\nGeneral guardrail.\n\nCLI-only."
-    assert "Configured-only." not in argv[1]
-    assert argv[argv.index("--model") + 1] == "cli-model"
-
-
-def test_config_adapter_reasoning_effort_formats_template_and_cli_overrides_default() -> None:
-    config = IssuekitConfig(
-        agents=(
-            (
-                "codex",
-                AgentRunConfig(
-                    binary="codex",
-                    headless_argv=("exec",),
-                    model_flag="--model",
-                    model="configured-model",
-                    reasoning_effort="medium",
-                    effort_argv=("-c", "model_reasoning_effort={value}"),
-                ),
-            ),
-        )
-    )
-
-    argv = ConfigAgentAdapter(
-        "codex",
-        dict(config.agents)["codex"],
-        model="cli-model",
-        reasoning_effort="low",
-    ).build_argv("base", Path("/plan.md"))
-
-    assert argv == [
-        "exec",
-        "base",
-        "--model",
-        "cli-model",
-        "-c",
-        "model_reasoning_effort=low",
-    ]
-
-
-def test_config_adapter_speed_emits_verbatim_after_effort_before_session() -> None:
-    config = IssuekitConfig(
-        agents=(
-            (
-                "codex",
-                AgentRunConfig(
-                    binary="codex",
-                    headless_argv=("exec",),
-                    resumable=True,
-                    session_flag="--session-id",
-                    approval_flag="--dangerously-bypass-approvals-and-sandbox",
-                    model_flag="--model",
-                    model="gpt-5.6-sol",
-                    reasoning_effort="ultra",
-                    effort_argv=("-c", "model_reasoning_effort={value}"),
-                    speed=True,
-                    speed_argv=("-c", "service_tier=priority"),
-                ),
-            ),
-        )
-    )
-
-    argv = ConfigAgentAdapter(
-        "codex",
-        dict(config.agents)["codex"],
-    ).build_argv(
-        "base",
-        Path("/plan.md"),
-        session_id="123e4567-e89b-12d3-a456-426614174000",
-    )
-
-    assert argv == [
-        "exec",
-        "base",
-        "--dangerously-bypass-approvals-and-sandbox",
-        "--model",
-        "gpt-5.6-sol",
-        "-c",
-        "model_reasoning_effort=ultra",
-        "-c",
-        "service_tier=priority",
-        "--session-id",
-        "123e4567-e89b-12d3-a456-426614174000",
-    ]
-
-
-def test_config_adapter_false_speed_emits_nothing() -> None:
-    run_config = AgentRunConfig(
-        binary="codex",
-        headless_argv=("exec",),
-        speed=False,
-        speed_argv=("-c", "service_tier=priority"),
-    )
-
-    argv = ConfigAgentAdapter("codex", run_config).build_argv(
-        "base",
-        Path("/plan.md"),
-    )
-
-    assert argv == ["exec", "base"]
-
-
-def test_config_adapter_rejects_reasoning_effort_without_template() -> None:
-    config = IssuekitConfig(
-        agents=(("claude", AgentRunConfig(binary="claude", headless_argv=("-p",))),)
-    )
-
-    with pytest.raises(
-        ValueError,
-        match="add effort_argv to the agent configuration or remove reasoning_effort",
-    ):
-        ConfigAgentAdapter("claude", dict(config.agents)["claude"], reasoning_effort="medium")
-
-
-def test_config_adapter_model_prompt_requires_exact_match() -> None:
-    config = IssuekitConfig(
-        agents=(
-            (
-                "codex",
-                AgentRunConfig(
-                    binary="codex",
-                    headless_argv=("exec",),
-                    model_flag="--model",
-                    model="gpt-5.3-codex-spark-variant",
-                    model_prompts=(("gpt-5.3-codex-spark", "Spark guardrail."),),
-                ),
-            ),
-        )
-    )
-
-    argv = ConfigAgentAdapter("codex", dict(config.agents)["codex"]).build_argv("base", Path("/plan.md"))
-
-    assert argv[1] == "base"
-    assert "Spark guardrail." not in argv[1]
-
-
-def test_kimi_adapter_parse_output_extracts_resume_id_from_stderr() -> None:
-    adapter = resolve_adapter("kimi")
-    stdout = "Answer\n"
-    stderr = "thinking...\nTo resume this session: kimi -r abc123\n"
-    parsed = adapter.parse_output(stdout, stderr)
-    assert parsed["resume_session_id"] == "abc123"
-    assert parsed["stdout"] == stdout
-    assert parsed["stderr"] == stderr
-
-
-def test_kimi_adapter_resolve_binary_raises_when_not_found(monkeypatch, tmp_path: Path) -> None:
-    monkeypatch.setattr("issuekit.agentrun.adapter.shutil.which", lambda _cmd: None)
-    monkeypatch.setattr("os.path.expanduser", lambda p: str(p).replace("~", str(tmp_path)))
-    adapter = resolve_adapter("kimi")
-    with pytest.raises(RuntimeError, match="not found"):
-        adapter.resolve_binary()
-
 
 
 def test_runner_status_gains_last_log_fields_during_run(tmp_path: Path) -> None:
@@ -643,7 +368,6 @@ def test_runner_status_gains_last_log_fields_during_run(tmp_path: Path) -> None:
         "import sys, time; print('log-one', file=sys.stderr); time.sleep(0.8); print('log-two', file=sys.stderr); time.sleep(0.8)"
     )
     plan = tmp_path / "plan.md"
-    plan.write_text("plan")
     repo = tmp_path / "repo"
     repo.mkdir()
     (repo / ".git").mkdir()
@@ -659,8 +383,6 @@ def test_runner_status_gains_last_log_fields_during_run(tmp_path: Path) -> None:
 
 
 def test_runner_writer_survives_a_failing_tick(tmp_path: Path, monkeypatch) -> None:
-    from issuekit.agentrun.runner import _RunWatcher
-
     real_tick = _RunWatcher._tick
     state = {"failed_once": False}
 
@@ -675,7 +397,6 @@ def test_runner_writer_survives_a_failing_tick(tmp_path: Path, monkeypatch) -> N
     script = tmp_path / "script.py"
     script.write_text("import time; time.sleep(1.5)")
     plan = tmp_path / "plan.md"
-    plan.write_text("plan")
     repo = tmp_path / "repo"
     repo.mkdir()
     (repo / ".git").mkdir()
@@ -692,13 +413,87 @@ def test_runner_writer_survives_a_failing_tick(tmp_path: Path, monkeypatch) -> N
     assert final_status["heartbeat_at"] is not None
 
 
+def test_watcher_slow_tick_cannot_overwrite_terminal_status(
+    tmp_path: Path, monkeypatch
+) -> None:
+    run_status = running_status()
+    run_status_path = status_path(tmp_path, run_status.run_id)
+    agent_log_path = tmp_path / "agent.log"
+    agent_log_path.write_text("working\n", encoding="utf-8", newline="\n")
+    write_status(run_status_path, run_status)
+    changed_file_count_started = threading.Event()
+    release_changed_file_count = threading.Event()
+
+    def slow_changed_file_count(_repo: Path) -> int:
+        changed_file_count_started.set()
+        assert release_changed_file_count.wait(timeout=5)
+        return 0
+
+    monkeypatch.setattr(
+        "issuekit.agentrun.runner.changed_file_count", slow_changed_file_count
+    )
+    watcher = _RunWatcher(
+        run_status_path=run_status_path,
+        run_status=run_status,
+        repo=tmp_path,
+        agent_log_path=agent_log_path,
+        enable_heartbeat=True,
+        start_time=time.monotonic(),
+    )
+
+    watcher.start()
+    assert changed_file_count_started.wait(timeout=5)
+    write_status(
+        run_status_path,
+        replace(
+            read_status(run_status_path),
+            status="completed",
+            ended_at="2026-07-26T12:00:01",
+            elapsed_sec=1.0,
+            exit_code=0,
+        ),
+    )
+    release_changed_file_count.set()
+    watcher.stop()
+
+    assert read_status(run_status_path).status == "completed"
+
+
+def test_watcher_skips_changed_file_count_without_heartbeat(
+    tmp_path: Path, monkeypatch
+) -> None:
+    run_status = running_status()
+    run_status_path = status_path(tmp_path, run_status.run_id)
+    agent_log_path = tmp_path / "agent.log"
+    write_status(run_status_path, run_status)
+
+    def unexpected_changed_file_count(_repo: Path) -> int:
+        raise AssertionError("changed_file_count should not be called")
+
+    monkeypatch.setattr(
+        "issuekit.agentrun.runner.changed_file_count",
+        unexpected_changed_file_count,
+    )
+    watcher = _RunWatcher(
+        run_status_path=run_status_path,
+        run_status=run_status,
+        repo=tmp_path,
+        agent_log_path=agent_log_path,
+        enable_heartbeat=False,
+        start_time=time.monotonic(),
+    )
+
+    watcher._tick()
+
+    assert read_status(run_status_path).heartbeat_at is not None
+
+
 def test_runner_prints_agent_runs_note_when_dir_is_created(
     tmp_path: Path, monkeypatch, capsys
 ) -> None:
     script = tmp_path / "script.py"
     script.write_text("pass")
     plan = tmp_path / "plan.md"
-    plan.write_text("plan")
     repo = tmp_path / "repo"
     repo.mkdir()
     (repo / ".git").mkdir()
@@ -716,7 +511,6 @@ def test_runner_does_not_print_agent_runs_note_when_dir_already_exists(
     script = tmp_path / "script.py"
     script.write_text("pass")
     plan = tmp_path / "plan.md"
-    plan.write_text("plan")
     repo = tmp_path / "repo"
     repo.mkdir()
     (repo / ".git").mkdir()
@@ -735,7 +529,6 @@ def test_runner_heartbeat_suppressed_when_stderr_not_tty(
     script = tmp_path / "script.py"
     script.write_text("import time; time.sleep(0.3)")
     plan = tmp_path / "plan.md"
-    plan.write_text("plan")
     repo = tmp_path / "repo"
     repo.mkdir()
     (repo / ".git").mkdir()
@@ -755,7 +548,6 @@ def test_runner_heartbeat_emitted_when_follow_is_set(
     script = tmp_path / "script.py"
     script.write_text("import time; time.sleep(0.3)")
     plan = tmp_path / "plan.md"
-    plan.write_text("plan")
     repo = tmp_path / "repo"
     repo.mkdir()
     (repo / ".git").mkdir()

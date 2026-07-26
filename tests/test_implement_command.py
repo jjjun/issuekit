@@ -4,6 +4,7 @@ import subprocess
 
 from issuekit import cli
 from issuekit import store as store_module
+from issuekit.agentrun import AgentPrompt
 from issuekit.testing import FakeIssuekitClient
 
 from tests.issue_helpers import api_issue
@@ -22,13 +23,15 @@ class FakeResult:
 
 
 class FakeRunner:
-    calls: list[tuple[object, Path, Path, float, str | None, int | None, str | None]] = []
+    calls: list[
+        tuple[object, AgentPrompt, Path, float, str | None, int | None, str | None]
+    ] = []
     issuekit_sessions: list[str | None] = []
 
     def run(
         self,
         adapter,
-        plan_path: Path,
+        prompt: AgentPrompt,
         repo: Path,
         timeout: float,
         agent_name: str | None = None,
@@ -39,7 +42,7 @@ class FakeRunner:
         self.calls.append(
             (
                 adapter,
-                plan_path,
+                prompt,
                 repo,
                 timeout,
                 agent_name,
@@ -235,7 +238,7 @@ def test_implement_command_mojibake_gate_blocks_submit(
     _init_git_repo(tmp_path)
 
     class MojibakeRunner(FakeRunner):
-        def run(self, adapter, plan_path, repo, timeout, **kwargs) -> FakeResult:
+        def run(self, adapter, prompt: AgentPrompt, repo, timeout, **kwargs) -> FakeResult:
             (repo / "code.py").write_text(
                 "comment = '\u7e67\uff62\u7e5d\u4e5d\u0393'\n", encoding="utf-8", newline="\n"
             )
@@ -265,7 +268,7 @@ def test_implement_command_mojibake_gate_blocks_non_ascii_path(
     _init_git_repo(tmp_path)
 
     class MojibakeRunner(FakeRunner):
-        def run(self, adapter, plan_path, repo, timeout, **kwargs) -> FakeResult:
+        def run(self, adapter, prompt: AgentPrompt, repo, timeout, **kwargs) -> FakeResult:
             (repo / "日本語.py").write_text(
                 "comment = '\u7e67\uff62\u7e5d\u4e5d\u0393'\n", encoding="utf-8", newline="\n"
             )
@@ -290,7 +293,7 @@ def test_implement_command_mojibake_gate_allows_legitimate_japanese(
     _init_git_repo(tmp_path)
 
     class JapaneseRunner(FakeRunner):
-        def run(self, adapter, plan_path, repo, timeout, **kwargs) -> FakeResult:
+        def run(self, adapter, prompt: AgentPrompt, repo, timeout, **kwargs) -> FakeResult:
             (repo / "code.py").write_text(
                 "title = '\u95be\u5024'\nvalue = 2\n", encoding="utf-8", newline="\n"
             )
@@ -313,7 +316,7 @@ def test_implement_command_mojibake_gate_blocks_unconfirmed_changed_text(
     _init_git_repo(tmp_path)
 
     class LossyRunner(FakeRunner):
-        def run(self, adapter, plan_path, repo, timeout, **kwargs) -> FakeResult:
+        def run(self, adapter, prompt: AgentPrompt, repo, timeout, **kwargs) -> FakeResult:
             (repo / "code.py").write_text(
                 "value = 1\ntitle = '\u7e5d\u30fb\u305b\u7e5d\u533b\u3044\u7e5d\u4e5d\u03931'\n",
                 encoding="utf-8",
@@ -348,7 +351,7 @@ def test_implement_command_mojibake_gate_allows_excluded_legitimate_japanese(
     _init_git_repo(tmp_path)
 
     class JapaneseRunner(FakeRunner):
-        def run(self, adapter, plan_path, repo, timeout, **kwargs) -> FakeResult:
+        def run(self, adapter, prompt: AgentPrompt, repo, timeout, **kwargs) -> FakeResult:
             (repo / "titles" / "anime.py").write_text(
                 "title = '\u87f2\u5e2b'\n", encoding="utf-8", newline="\n"
             )
@@ -378,7 +381,7 @@ def test_implement_command_mojibake_gate_blocks_confirmed_excluded_text(
     _init_git_repo(tmp_path)
 
     class MojibakeRunner(FakeRunner):
-        def run(self, adapter, plan_path, repo, timeout, **kwargs) -> FakeResult:
+        def run(self, adapter, prompt: AgentPrompt, repo, timeout, **kwargs) -> FakeResult:
             (repo / "titles" / "anime.py").write_text(
                 "title = '\u7e67\uff62\u7e5d\u4e5d\u0393'\n",
                 encoding="utf-8",
@@ -405,7 +408,7 @@ def test_implement_command_mojibake_gate_ignores_unchanged_corruption(
     _init_git_repo(tmp_path)
 
     class UnchangedCorruptionRunner(FakeRunner):
-        def run(self, adapter, plan_path, repo, timeout, **kwargs) -> FakeResult:
+        def run(self, adapter, prompt: AgentPrompt, repo, timeout, **kwargs) -> FakeResult:
             (repo / "code.py").write_text(
                 "comment = '\u8389'\nvalue = 2\n", encoding="utf-8", newline="\n"
             )
@@ -438,7 +441,7 @@ def test_implement_command_mojibake_gate_allows_configured_halfwidth_kana(
     _init_git_repo(tmp_path)
 
     class HalfwidthKanaRunner(FakeRunner):
-        def run(self, adapter, plan_path, repo, timeout, **kwargs) -> FakeResult:
+        def run(self, adapter, prompt: AgentPrompt, repo, timeout, **kwargs) -> FakeResult:
             (repo / "code.py").write_text(
                 "comment = '\uff71'\n",
                 encoding="utf-8",
@@ -463,7 +466,7 @@ def test_implement_command_blocks_when_git_has_no_implementation_changes(
     _init_git_repo(tmp_path)
 
     class CleanRunner(FakeRunner):
-        def run(self, adapter, plan_path, repo, timeout, **kwargs) -> FakeResult:
+        def run(self, adapter, prompt: AgentPrompt, repo, timeout, **kwargs) -> FakeResult:
             return FakeResult(status_short="")
 
     monkeypatch.setattr("issuekit.commands.implement.AgentRunner", CleanRunner)
@@ -487,7 +490,7 @@ def test_implement_command_accepts_agent_side_review_when_no_changes(
     _init_git_repo(tmp_path)
 
     class AgentSubmittingRunner(FakeRunner):
-        def run(self, adapter, plan_path, repo, timeout, **kwargs) -> FakeResult:
+        def run(self, adapter, prompt: AgentPrompt, repo, timeout, **kwargs) -> FakeResult:
             client.submit(1, summary="Submitted by agent.")
             return FakeResult(status_short="")
 
@@ -513,7 +516,7 @@ def test_implement_command_allows_no_change_submit_with_flag(
     _init_git_repo(tmp_path)
 
     class CleanRunner(FakeRunner):
-        def run(self, adapter, plan_path, repo, timeout, **kwargs) -> FakeResult:
+        def run(self, adapter, prompt: AgentPrompt, repo, timeout, **kwargs) -> FakeResult:
             return FakeResult(status_short="")
 
     monkeypatch.setattr("issuekit.commands.implement.AgentRunner", CleanRunner)
@@ -564,7 +567,7 @@ def test_implement_command_does_not_submit_failed_run(
     _configure_api(tmp_path, monkeypatch, client)
 
     class FailingRunner(FakeRunner):
-        def run(self, adapter, plan_path, repo, timeout, **kwargs) -> FakeResult:
+        def run(self, adapter, prompt: AgentPrompt, repo, timeout, **kwargs) -> FakeResult:
             return FakeResult(exit_code=2, status_short=" M tracked.py")
 
     monkeypatch.setattr("issuekit.commands.implement.AgentRunner", FailingRunner)

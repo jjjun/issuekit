@@ -12,7 +12,7 @@ import pytest
 import issuekit.proposals.api as proposals_api
 from issuekit import store as store_module
 from issuekit.agents import triage_author
-from issuekit.agentrun import AgentResult
+from issuekit.agentrun import AgentPrompt, AgentResult
 from issuekit.agents.triage_author import (
     TriageAuthorParseError,
     parse_triage_output,
@@ -44,8 +44,8 @@ class FakeRunner:
         self._outputs = list(outputs)
         self.calls: list[dict] = []
 
-    def run(self, adapter, plan_path, repo, **kwargs) -> AgentResult:
-        self.calls.append({"plan_path": plan_path, "repo": repo, **kwargs})
+    def run(self, adapter, prompt: AgentPrompt, repo, **kwargs) -> AgentResult:
+        self.calls.append({"prompt": prompt, "repo": repo, **kwargs})
         text = self._outputs.pop(0) if self._outputs else ""
         return AgentResult(
             exit_code=0,
@@ -746,9 +746,9 @@ def test_triage_author_rejects_content_only_worktree_mutations(
     changed_path.write_text("value = 2\n", encoding="utf-8", newline="\n")
 
     class MutatingRunner(FakeRunner):
-        def run(self, adapter, plan_path, repo, **kwargs):
+        def run(self, adapter, prompt: AgentPrompt, repo, **kwargs):
             changed_path.write_text("value = 3\n", encoding="utf-8", newline="\n")
-            return super().run(adapter, plan_path, repo, **kwargs)
+            return super().run(adapter, prompt, repo, **kwargs)
 
     runner = MutatingRunner([_triage_block(decision="discard", reason="Not applicable.")])
 

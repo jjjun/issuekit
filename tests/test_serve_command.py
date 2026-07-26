@@ -9,6 +9,7 @@ from types import SimpleNamespace
 from issuekit import cli
 import issuekit.proposals.api as proposals_api
 from issuekit import store as store_module
+from issuekit.agentrun import AgentPrompt
 from issuekit.workers import registry as worker_registry
 from issuekit.commands import serve
 from issuekit.testing import FakeIssuekitClient
@@ -30,7 +31,9 @@ class FakeResult:
 
 
 class FakeRunner:
-    calls: list[tuple[Path, Path, float, str | None, int | None, str | None]] = []
+    calls: list[
+        tuple[AgentPrompt, Path, float, str | None, int | None, str | None]
+    ] = []
     models: list[str | None] = []
     reasoning_efforts: list[str | None] = []
     resolved_models: list[str | None] = []
@@ -38,7 +41,7 @@ class FakeRunner:
     def run(
         self,
         adapter,
-        plan_path: Path,
+        prompt: AgentPrompt,
         repo: Path,
         timeout: float,
         agent_name: str | None = None,
@@ -54,7 +57,7 @@ class FakeRunner:
         )
         self.calls.append(
             (
-                plan_path,
+                prompt,
                 repo,
                 timeout,
                 agent_name,
@@ -72,7 +75,7 @@ class ReviewApprovingRunner:
     def run(
         self,
         adapter,
-        plan_path: Path,
+        prompt: AgentPrompt,
         repo: Path,
         timeout: float,
         agent_name: str | None = None,
@@ -104,7 +107,7 @@ class ProposalCheckRunner:
     def run(
         self,
         adapter,
-        plan_path: Path,
+        prompt: AgentPrompt,
         repo: Path,
         timeout: float,
         agent_name: str | None = None,
@@ -114,7 +117,7 @@ class ProposalCheckRunner:
     ) -> FakeResult:
         self.calls.append(
             {
-                "plan_path": plan_path,
+                "prompt": prompt,
                 "repo": repo,
                 "timeout": timeout,
                 "agent_name": agent_name,
@@ -137,7 +140,7 @@ class RecoveryErrorThenRunner:
     def run(
         self,
         adapter,
-        plan_path: Path,
+        prompt: AgentPrompt,
         repo: Path,
         timeout: float,
         agent_name: str | None = None,

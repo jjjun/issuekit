@@ -32,14 +32,18 @@ class KimiAdapter(ConfigAgentAdapter):
         )
 
     def parse_output(self, stdout: str, stderr: str) -> dict[str, str]:
-        result: dict[str, str] = {
-            "stdout": stdout,
-            "stderr": stderr,
-        }
+        result = super().parse_output(stdout, stderr)
+        marker = "To resume this session:"
         for line in reversed(stderr.splitlines()):
-            if line.startswith("To resume this session:"):
-                parts = line.split()
-                if parts:
-                    result["resume_session_id"] = parts[-1]
+            if line.startswith(marker):
+                command = line.removeprefix(marker).strip()
+                executable, separator, session_id = command.rpartition(" -r ")
+                if (
+                    executable
+                    and separator
+                    and session_id
+                    and not any(char.isspace() for char in session_id)
+                ):
+                    result["resume_session_id"] = session_id
                 break
         return result

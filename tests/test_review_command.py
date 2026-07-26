@@ -675,9 +675,11 @@ def test_review_command_blocks_verdict_when_agent_mutates_worktree(
     code_path.write_text("value = 2\n", encoding="utf-8", newline="\n")
 
     class MutatingRunner(ApprovingRunner):
-        def run(self, adapter, plan_path, repo, timeout, **kwargs) -> FakeResult:
+        def run(
+            self, adapter, prompt: AgentPrompt, repo, timeout, **kwargs
+        ) -> FakeResult:
             code_path.write_text("value = 3\n", encoding="utf-8", newline="\n")
-            return super().run(adapter, plan_path, repo, timeout, **kwargs)
+            return super().run(adapter, prompt, repo, timeout, **kwargs)
 
     monkeypatch.setattr("issuekit.commands.review.AgentRunner", MutatingRunner)
 

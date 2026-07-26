@@ -86,8 +86,7 @@ class ConfigAgentAdapter(AgentAdapter):
         plan_path: Path,
         session_id: str | None = None,
     ) -> list[str]:
-        resolved_model = self.model or self.run_config.model
-        resolved_effort = self.reasoning_effort or self.run_config.reasoning_effort
+        resolved_model, resolved_effort = self.effective_runtime()
         prompt = self._append_prompt_suffixes(prompt, resolved_model)
         argv = list(self.run_config.headless_argv)
         argv.append(prompt)
@@ -152,21 +151,17 @@ def build_adapter(
     reasoning_effort: str | None = None,
 ) -> AgentAdapter:
     """Build an AgentAdapter from runtime configuration."""
+    adapter_class: type[ConfigAgentAdapter] = ConfigAgentAdapter
     if run_config.adapter:
         from issuekit.agentrun.adapters.registry import resolve_custom_adapter
 
-        adapter_class = resolve_custom_adapter(run_config.adapter)
-        if adapter_class is None:
+        custom_adapter_class = resolve_custom_adapter(run_config.adapter)
+        if custom_adapter_class is None:
             raise ValueError(
                 f"Unknown adapter '{run_config.adapter}' for agent: {agent_name}"
             )
-        return adapter_class(
-            agent_name,
-            run_config=run_config,
-            model=model,
-            reasoning_effort=reasoning_effort,
-        )
-    return ConfigAgentAdapter(
+        adapter_class = custom_adapter_class
+    return adapter_class(
         agent_name,
         run_config=run_config,
         model=model,

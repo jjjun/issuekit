@@ -18,10 +18,10 @@ def resolve_adapter(
     """Resolve a configured agent into a runtime adapter."""
 
     config = config or IssuekitConfig()
+    if agent_name in config.disabled_agents:
+        raise ValueError(f"Agent disabled by config: {agent_name}")
     run_config = dict(config.agents).get(agent_name)
     if run_config is None:
-        if agent_name in config.disabled_agents:
-            raise ValueError(f"Agent disabled by config: {agent_name}")
         raise ValueError(f"Unknown agent: {agent_name}")
     role_overlay = dict(dict(config.agent_role_overlays).get(agent_name, ())).get(role)
     if role_overlay is not None:

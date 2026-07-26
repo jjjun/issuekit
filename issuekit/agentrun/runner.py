@@ -75,7 +75,7 @@ class _RunWatcher:
 
     def stop(self) -> None:
         self._stop_event.set()
-        self._thread.join(timeout=2.0)
+        self._thread.join()
 
     def _loop(self) -> None:
         while not self._stop_event.is_set():
@@ -89,7 +89,6 @@ class _RunWatcher:
     def _tick(self) -> None:
         last_line = self._read_last_log_line(self.agent_log_path)
         now = datetime.now().replace(microsecond=0).isoformat()
-        changed = self._changed_file_count(self.repo)
 
         self.run_status = replace(
             self.run_status,
@@ -100,6 +99,7 @@ class _RunWatcher:
         write_status(self.run_status_path, self.run_status)
 
         if self.enable_heartbeat:
+            changed = changed_file_count(self.repo)
             elapsed = time.monotonic() - self.start_time
             minutes, seconds = divmod(int(elapsed), 60)
             line_text = last_line or "-"
@@ -124,10 +124,6 @@ class _RunWatcher:
         if not data:
             return None
         return last_nonempty_line(data.decode("utf-8", errors="replace"))
-
-    @staticmethod
-    def _changed_file_count(repo: Path) -> int:
-        return changed_file_count(repo)
 
 
 class AgentRunner:
@@ -198,7 +194,6 @@ class AgentRunner:
 
         enable_heartbeat = sys.stderr.isatty() or follow
         start = time.monotonic()
-        watcher: _RunWatcher | None = None
         with open(stdout_path, "w", encoding="utf-8") as out_f, open(
             agent_log_path, "w", encoding="utf-8"
         ) as log_f:
@@ -237,16 +232,11 @@ class AgentRunner:
                     timeout=timeout,
                     abort_event=abort_event,
                 )
-            except subprocess.TimeoutExpired:
-                timed_out = True
-                self._kill_process_group(proc)
-                exit_code = proc.returncode if proc.returncode is not None else -1
             finally:
-                if watcher is not None:
-                    watcher.stop()
-                    if enable_heartbeat:
-                        sys.stderr.write("\n")
-                        sys.stderr.flush()
+                watcher.stop()
+                if enable_heartbeat:
+                    sys.stderr.write("\n")
+                    sys.stderr.flush()
 
         elapsed = time.monotonic() - start
         terminal_status = self._terminal_status(exit_code, timed_out)
@@ -260,14 +250,11 @@ class AgentRunner:
         write_status(
             run_status_path,
             replace(
-                run_status,
+                current_status,
                 status=terminal_status,
                 ended_at=datetime.now().replace(microsecond=0).isoformat(),
                 elapsed_sec=elapsed,
                 exit_code=exit_code,
-                last_log_line=current_status.last_log_line,
-                last_log_at=current_status.last_log_at,
-                heartbeat_at=current_status.heartbeat_at,
             ),
         )
 
@@ -275,7 +262,7 @@ class AgentRunner:
         agent_log_text = agent_log_path.read_text(encoding="utf-8", errors="replace")
         parsed = adapter.parse_output(stdout_text, agent_log_text)
 
-        status_short = self._git_status_short(repo)
+        status_short = git_status_short(repo)
 
         return AgentResult(
             exit_code=exit_code,
@@ -336,23 +323,27 @@ class AgentRunner:
         abort_event: threading.Event | None,
     ) -> tuple[int, bool]:
         if abort_event is None:
-            return proc.wait(timeout=timeout), False
+            try:
+                return proc.wait(timeout=timeout), False
+            except subprocess.TimeoutExpired:
+                return self._terminate_process(proc)
 
         deadline = time.monotonic() + timeout
         while True:
             if abort_event.is_set():
-                self._kill_process_group(proc)
-                exit_code = proc.returncode if proc.returncode is not None else -1
-                return exit_code, True
+                return self._terminate_process(proc)
             remaining = deadline - time.monotonic()
             if remaining <= 0:
-                self._kill_process_group(proc)
-                exit_code = proc.returncode if proc.returncode is not None else -1
-                return exit_code, True
+                return self._terminate_process(proc)
             try:
                 return proc.wait(timeout=min(0.25, remaining)), False
             except subprocess.TimeoutExpired:
                 continue
+
+    def _terminate_process(self, proc: subprocess.Popen) -> tuple[int, bool]:
+        self._kill_process_group(proc)
+        exit_code = proc.returncode if proc.returncode is not None else -1
+        return exit_code, True
 
     def _kill_process_group(self, proc: subprocess.Popen) -> None:
         if os.name == "nt":
@@ -378,6 +369,3 @@ class AgentRunner:
                 except ProcessLookupError:
                     proc.kill()
                     proc.wait()
-
-    def _git_status_short(self, repo: Path) -> str | None:
-        return git_status_short(repo)
