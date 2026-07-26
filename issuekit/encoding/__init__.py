@@ -20,6 +20,15 @@ from issuekit.encoding.report import (
     code_point_text,
     print_mojibake_hit,
 )
+from issuekit.encoding.scan import (
+    SOURCE_EXTENSIONS,
+    MojibakeScanOptions,
+    MojibakeScanResult,
+    added_line_numbers,
+    changed_line_numbers,
+    changed_readable_paths,
+    scan_mojibake,
+)
 
 __all__ = [
     "ASCII_ONLY_HINT",
@@ -27,6 +36,12 @@ __all__ = [
     "ENCODING_ARTIFACT_PATTERN",
     "HALFWIDTH_KATAKANA_PATTERN",
     "NON_ASCII_PATTERN",
+    "SOURCE_EXTENSIONS",
+    "MojibakeScanOptions",
+    "MojibakeScanResult",
+    "added_line_numbers",
+    "changed_line_numbers",
+    "changed_readable_paths",
     "confirmed_mojibake_hits",
     "code_point",
     "code_point_context",
@@ -37,5 +52,6 @@ __all__ = [
     "line_number_at",
     "newline_offsets",
     "print_mojibake_hit",
+    "scan_mojibake",
     "sanitize_to_ascii",
 ]

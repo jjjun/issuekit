@@ -15,12 +15,12 @@ from issuekit.guards.author import AuthorOrchestrationContext
 from issuekit.config import IssuekitConfig
 from issuekit.core import Issue
 from issuekit.encoding import (
-    confirmed_mojibake_hits,
-    find_encoding_artifacts,
-    is_encoding_excluded_path,
-    line_number_at,
-    newline_offsets,
+    MojibakeScanOptions,
+    added_line_numbers as _added_line_numbers,
+    changed_line_numbers,
+    changed_readable_paths,
     print_mojibake_hit,
+    scan_mojibake,
 )
 from issuekit.gitutil import GitStatusEntry, git_root, git_status_entries, run_git
 from issuekit.prompts import render_review_feedback_prompt
@@ -219,6 +219,11 @@ def run_and_submit(
                 for hit in unconfirmed_hits:
                     print_mojibake_hit(hit, err, prefix="- ", context_prefix="  ")
                     print("  failed CP932 reverse confirmation", file=err)
+                print(
+                    "Reproduce this gate locally with "
+                    "`uv run issuekit check-encoding --gate`.",
+                    file=err,
+                )
                 if unconfirmed_hits:
                     print(
                         "To allow known-legitimate unconfirmed text, add its "
@@ -279,115 +284,35 @@ def _mojibake_touched_hits(
     include_halfwidth_katakana: bool,
     exclude_patterns: tuple[str, ...],
 ) -> tuple[list[dict[str, int | str]], list[dict[str, int | str]]]:
-    confirmed_hits: list[dict[str, int | str]] = []
-    unconfirmed_hits: list[dict[str, int | str]] = []
-    paths = tuple(
-        path
-        for path in snapshot.readable_paths
-        if any(
-            entry.path == path
-            and _entry_is_implementation_change(entry, repo, issues_dir)
-            for entry in snapshot.status_entries or ()
-        )
+    paths = changed_readable_paths(
+        repo,
+        snapshot.status_entries or (),
+        excluded_root=issues_dir,
+        readable_paths=snapshot.readable_paths,
     )
-    changed_lines_by_path = _changed_line_numbers(repo, paths)
-    changed_line_lookup_failed = changed_lines_by_path is None
-    changed_lines_by_path = changed_lines_by_path or {}
+    changed_lines_by_path = changed_line_numbers(repo, paths, git_runner=run_git)
     untracked_paths = {
         entry.path
         for entry in snapshot.status_entries or ()
         if entry.status == "??"
     }
-    for rel_path in paths:
-        path = repo / rel_path
-        try:
-            text = path.read_bytes().decode("utf-8")
-        except UnicodeDecodeError:
-            confirmed_hits.append(
-                {
-                    "file": rel_path.as_posix(),
-                    "line": 1,
-                    "column": 1,
-                    "code_point": "invalid UTF-8",
-                    "context": "unable to decode file as UTF-8",
-                    "recovered": "not applicable",
-                }
-            )
-            continue
-        # The submit gate defaults to the CLI's strict kana check, but projects
-        # with generated half-width katakana can set gate_halfwidth_kana = false.
-        offsets = newline_offsets(text)
-        changed_lines = changed_lines_by_path.get(rel_path, set())
-        if changed_line_lookup_failed or rel_path in untracked_paths:
-            changed_lines = set(range(1, len(offsets) + 2))
-        artifacts = [
-            (index, character)
-            for index, character in find_encoding_artifacts(
-                text,
-                include_halfwidth_katakana=include_halfwidth_katakana,
-            )
-            if line_number_at(offsets, index) in changed_lines
-        ]
-        confirmed, unconfirmed = confirmed_mojibake_hits(
-            rel_path.as_posix(),
-            text,
-            artifacts,
-            offsets=offsets,
-        )
-        confirmed_hits.extend(confirmed)
-        if not is_encoding_excluded_path(rel_path.as_posix(), exclude_patterns):
-            unconfirmed_hits.extend(unconfirmed)
-    return confirmed_hits, unconfirmed_hits
-
-
-def _changed_line_numbers(
-    repo: Path, rel_paths: tuple[Path, ...]
-) -> dict[Path, set[int]] | None:
-    if not rel_paths:
-        return {}
-    result = run_git(
-        [
-            "-c",
-            "core.quotepath=false",
-            "--no-pager",
-            "diff",
-            "--unified=0",
-            "HEAD",
-            "--",
-            *(rel_path.as_posix() for rel_path in rel_paths),
-        ],
+    result = scan_mojibake(
         repo,
+        paths,
+        options=MojibakeScanOptions(
+            failure_classes=frozenset({"confirmed", "unconfirmed"}),
+            include_halfwidth_katakana=include_halfwidth_katakana,
+            source_extensions=None,
+            line_scope="changed-lines",
+            exclude_patterns=exclude_patterns,
+            # Exclusions suppress false positives from known-legitimate text;
+            # confirmed reversible corruption still blocks every path.
+            excluded_hit_classes=frozenset({"unconfirmed"}),
+        ),
+        changed_lines_by_path=changed_lines_by_path,
+        whole_file_paths=untracked_paths,
     )
-    if result is None or result.returncode != 0:
-        # A failed diff cannot prove that a tracked file has no changed lines.
-        # The caller conservatively scans each complete readable file instead.
-        return None
-    return _added_line_numbers(result.stdout)
-
-
-def _added_line_numbers(diff: str) -> dict[Path, set[int]]:
-    changed_lines: dict[Path, set[int]] = {}
-    rel_path: Path | None = None
-    line_number: int | None = None
-    for line in diff.splitlines():
-        if line.startswith("diff --git "):
-            rel_path = None
-            line_number = None
-        elif line.startswith("+++ /dev/null"):
-            rel_path = None
-        elif line.startswith("+++ b/"):
-            rel_path = Path(line[6:])
-            changed_lines.setdefault(rel_path, set())
-        elif line.startswith("@@"):
-            plus_range = line.split(" ")[2]
-            start = plus_range[1:].split(",", 1)[0]
-            line_number = int(start)
-        elif rel_path is not None and line_number is not None and line.startswith("+"):
-            changed_lines[rel_path].add(line_number)
-            line_number += 1
-        elif line_number is not None and not line.startswith("-"):
-            line_number += 1
-    return changed_lines
+    return list(result.confirmed_hits), list(result.unconfirmed_hits)
 
 
 def _warn_heavy_deletions(

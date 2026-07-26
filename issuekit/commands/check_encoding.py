@@ -11,35 +11,17 @@ import sys
 from issuekit.commands._common import print_json
 from issuekit.config import load_config
 from issuekit.encoding import (
-    confirmed_mojibake_hits,
-    find_encoding_artifacts,
+    SOURCE_EXTENSIONS,
+    MojibakeScanOptions,
+    changed_line_numbers,
+    changed_readable_paths,
     is_encoding_excluded_path,
     print_mojibake_hit,
+    scan_mojibake,
 )
-from issuekit.gitutil import run_git
+from issuekit.gitutil import git_root, git_status_entries, run_git
 
 
-SOURCE_EXTENSIONS = {
-    "ts",
-    "tsx",
-    "js",
-    "jsx",
-    "mjs",
-    "cjs",
-    "json",
-    "md",
-    "mdx",
-    "css",
-    "scss",
-    "html",
-    "yml",
-    "yaml",
-    "py",
-    "toml",
-    "cfg",
-    "ini",
-    "txt",
-}
 BOM = b"\xef\xbb\xbf"
 
 
@@ -52,6 +34,11 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         "--json",
         action="store_true",
         help="Print JSON output.",
+    )
+    check_encoding_parser.add_argument(
+        "--gate",
+        action="store_true",
+        help="Reproduce the submit gate's mojibake verdict for the current worktree.",
     )
     check_encoding_parser.add_argument(
         "--no-mojibake",
@@ -119,10 +106,39 @@ def register(subparsers: argparse._SubParsersAction) -> None:
 
 def run(args) -> int:
     cwd = Path.cwd()
-    exclude_patterns = (*load_config(cwd).check_encoding_exclude, *args.exclude)
+    config = load_config(cwd)
+    gate = getattr(args, "gate", False)
+    if gate and _gate_incompatible_options(args):
+        print(
+            "check-encoding --gate cannot be combined with encoding-scan modifiers.",
+            file=sys.stderr,
+        )
+        return 2
+
+    exclude_patterns = (*config.check_encoding_exclude, *args.exclude)
     changed = getattr(args, "changed", False)
-    if changed:
+    changed_lines_by_path: dict[Path, set[int]] | None = None
+    whole_file_paths: set[Path] = set()
+    if gate:
+        entries = (
+            git_status_entries(cwd)
+            if git_root(cwd) == cwd.resolve()
+            else None
+        ) or ()
+        scan_paths = changed_readable_paths(
+            cwd,
+            entries,
+            excluded_root=config.issues_path(cwd),
+        )
+        changed_lines_by_path = changed_line_numbers(cwd, scan_paths)
+        whole_file_paths = {
+            entry.path for entry in entries if entry.status == "??"
+        }
+        source_files: list[str] = []
+        crlf_paths: list[str] | None = []
+    elif changed:
         changed_files = list_changed_files(cwd, getattr(args, "base", None))
+        scan_paths = tuple(Path(file) for file in changed_files)
         source_files = [
             file
             for file in changed_files
@@ -136,6 +152,7 @@ def run(args) -> int:
         ]
     else:
         tracked_files = list_tracked_files(cwd)
+        scan_paths = tuple(Path(file) for file in tracked_files)
         source_files = [
             file
             for file in tracked_files
@@ -150,6 +167,7 @@ def run(args) -> int:
     unconfirmed_mojibake_hits: list[dict[str, int | str]] = []
     stray_cr_files: dict[str, list[int]] = {}
     fixed_files: list[str] = []
+    mojibake_failed = False
     crlf_files = [] if args.no_crlf else [
         file
         for file in list_crlf_files(cwd, paths=crlf_paths)
@@ -167,28 +185,42 @@ def run(args) -> int:
                     path.write_bytes(content[len(BOM) :])
                     content = content[len(BOM) :]
                     fixed_files.append(file)
-            if not args.no_mojibake:
-                text = content.decode("utf-8", errors="ignore")
-                artifacts = find_encoding_artifacts(
-                    text,
-                    include_halfwidth_katakana=not args.no_halfwidth_kana,
-                )
-                confirmed_hits, unconfirmed_hits = confirmed_mojibake_hits(
-                    file,
-                    text,
-                    artifacts,
-                )
-                if confirmed_hits:
-                    mojibake_files.append(file)
-                    mojibake_hits.extend(confirmed_hits)
-                if args.show_unconfirmed_mojibake or args.fail_on_unconfirmed:
-                    unconfirmed_mojibake_hits.extend(unconfirmed_hits)
             if not args.no_stray_cr:
                 stray_cr_lines = _stray_carriage_return_lines(content)
                 if stray_cr_lines:
                     stray_cr_files[file] = stray_cr_lines
         except OSError:
             continue
+
+    if not args.no_mojibake:
+        failure_classes = {"confirmed"}
+        if gate or args.fail_on_unconfirmed:
+            failure_classes.add("unconfirmed")
+        scan_result = scan_mojibake(
+            cwd,
+            scan_paths,
+            options=MojibakeScanOptions(
+                failure_classes=frozenset(failure_classes),
+                include_halfwidth_katakana=(
+                    config.gate_halfwidth_kana
+                    if gate
+                    else not args.no_halfwidth_kana
+                ),
+                source_extensions=None if gate else SOURCE_EXTENSIONS,
+                line_scope="changed-lines" if gate else "whole-file",
+                exclude_patterns=exclude_patterns,
+                excluded_hit_classes=frozenset({"unconfirmed"}),
+            ),
+            changed_lines_by_path=changed_lines_by_path,
+            whole_file_paths=whole_file_paths,
+        )
+        mojibake_hits = list(scan_result.confirmed_hits)
+        mojibake_failed = scan_result.failed
+        mojibake_files = list(
+            dict.fromkeys(str(hit["file"]) for hit in mojibake_hits)
+        )
+        if gate or args.show_unconfirmed_mojibake or args.fail_on_unconfirmed:
+            unconfirmed_mojibake_hits = list(scan_result.unconfirmed_hits)
 
     remaining_bom_files = [] if args.fix else bom_files
     payload = {
@@ -205,12 +237,16 @@ def run(args) -> int:
 
     if (
         not remaining_bom_files
-        and not mojibake_files
-        and (not args.fail_on_unconfirmed or not unconfirmed_mojibake_hits)
+        and not mojibake_failed
         and not stray_cr_files
         and not crlf_files
     ):
         if not args.json:
+            if gate:
+                print(
+                    "Encoding submit gate passed: no mojibake in changed lines."
+                )
+                return 0
             for file in fixed_files:
                 print(f"Fixed BOM: {file}")
             completed_checks = ["UTF-8 BOM"]
@@ -292,9 +328,27 @@ def run(args) -> int:
             )
         _print_unconfirmed_mojibake_hits(
             unconfirmed_mojibake_hits,
-            failed=args.fail_on_unconfirmed,
+            failed=gate or args.fail_on_unconfirmed,
+            gate=gate,
         )
     return 1
+
+
+def _gate_incompatible_options(args) -> bool:
+    return any(
+        (
+            args.no_mojibake,
+            args.no_halfwidth_kana,
+            args.show_unconfirmed_mojibake,
+            args.fail_on_unconfirmed,
+            args.no_crlf,
+            args.no_stray_cr,
+            args.fix,
+            args.changed,
+            args.base is not None,
+            bool(args.exclude),
+        )
+    )
 
 
 def list_tracked_files(cwd: Path) -> list[str]:
@@ -415,18 +469,25 @@ def _print_unconfirmed_mojibake_hits(
     hits: list[dict[str, int | str]],
     *,
     failed: bool = False,
+    gate: bool = False,
 ) -> None:
     if not hits:
         return
-    headline = (
-        "Encoding check failed: "
-        f"{len(hits)} unconfirmed mojibake candidate(s) with --fail-on-unconfirmed."
-        if failed
-        else (
+    if gate:
+        headline = (
+            "Encoding submit gate failed: "
+            f"{len(hits)} unconfirmed mojibake candidate(s)."
+        )
+    elif failed:
+        headline = (
+            "Encoding check failed: "
+            f"{len(hits)} unconfirmed mojibake candidate(s) with --fail-on-unconfirmed."
+        )
+    else:
+        headline = (
             "Encoding audit: "
             f"{len(hits)} likely mojibake candidate(s) failed CP932 reverse confirmation."
         )
-    )
     print(
         headline,
         file=sys.stderr,

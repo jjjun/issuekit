@@ -287,6 +287,7 @@ def test_implement_command_mojibake_gate_blocks_submit(
     captured = capsys.readouterr()
     assert exit_code == 1
     assert "mojibake gate blocked submit_for_review" in captured.err
+    assert "uv run issuekit check-encoding --gate" in captured.err
     assert "- code.py:1:12: U+7E67" in captured.err
     assert "recovers to U+" in captured.err
     assert [call["method"] for call in client.calls] == ["claim"]
@@ -404,6 +405,39 @@ def test_implement_command_mojibake_gate_blocks_unconfirmed_changed_text(
     assert [call["method"] for call in client.calls] == ["claim"]
 
 
+def test_check_encoding_gate_matches_submit_gate_for_issue_308_tree(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
+    _configure_api(tmp_path, monkeypatch, client)
+    test_path = tmp_path / "tests" / "test_gitutil.py"
+    test_path.parent.mkdir()
+    test_path.write_text(
+        "value = 'clean'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    _init_git_repo(tmp_path)
+    gate_exit_codes: list[int] = []
+
+    class IncidentRunner(FakeRunner):
+        def run(self, adapter, prompt: AgentPrompt, repo, timeout, **kwargs) -> FakeResult:
+            (repo / "tests" / "test_gitutil.py").write_text(
+                "value = '\u8b4c'\n",
+                encoding="utf-8",
+                newline="\n",
+            )
+            gate_exit_codes.append(cli.main(["check-encoding", "--gate"]))
+            return FakeResult(status_short=" M tests/test_gitutil.py")
+
+    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", IncidentRunner)
+
+    assert cli.main(["implement", "1", "--agent", "codex"]) == 1
+    assert gate_exit_codes == [1]
+    assert [call["method"] for call in client.calls] == ["claim"]
+
+
 def test_implement_command_mojibake_gate_allows_excluded_legitimate_japanese(
     tmp_path: Path,
     monkeypatch,
@@ -436,7 +470,6 @@ def test_implement_command_mojibake_gate_allows_excluded_legitimate_japanese(
 def test_implement_command_mojibake_gate_blocks_confirmed_excluded_text(
     tmp_path: Path,
     monkeypatch,
-    capsys,
 ) -> None:
     client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
     _configure_api(
@@ -462,7 +495,62 @@ def test_implement_command_mojibake_gate_blocks_confirmed_excluded_text(
     monkeypatch.setattr("issuekit.commands.implement.AgentRunner", MojibakeRunner)
 
     assert cli.main(["implement", "1", "--agent", "codex"]) == 1
-    assert "recovers to U+" in capsys.readouterr().err
+    assert [call["method"] for call in client.calls] == ["claim"]
+
+
+def test_implement_command_mojibake_gate_scans_file_without_source_extension(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
+    _configure_api(tmp_path, monkeypatch, client)
+    (tmp_path / "script.sh").write_text(
+        "echo clean\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    _init_git_repo(tmp_path)
+
+    class MojibakeRunner(FakeRunner):
+        def run(self, adapter, prompt: AgentPrompt, repo, timeout, **kwargs) -> FakeResult:
+            (repo / "script.sh").write_text(
+                "echo '\u7e67\uff62\u7e5d\u4e5d\u0393'\n",
+                encoding="utf-8",
+                newline="\n",
+            )
+            return FakeResult(status_short=" M script.sh")
+
+    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", MojibakeRunner)
+
+    assert cli.main(["implement", "1", "--agent", "codex"]) == 1
+    assert "- script.sh:1:7: U+7E67" in capsys.readouterr().err
+    assert [call["method"] for call in client.calls] == ["claim"]
+
+
+def test_implement_command_mojibake_gate_reports_invalid_utf8(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
+    _configure_api(tmp_path, monkeypatch, client)
+    (tmp_path / "code.py").write_text(
+        "value = 'clean'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    _init_git_repo(tmp_path)
+
+    class InvalidUtf8Runner(FakeRunner):
+        def run(self, adapter, prompt: AgentPrompt, repo, timeout, **kwargs) -> FakeResult:
+            (repo / "code.py").write_bytes(b"value = '\xff'\n")
+            return FakeResult(status_short=" M code.py")
+
+    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", InvalidUtf8Runner)
+
+    assert cli.main(["implement", "1", "--agent", "codex"]) == 1
+    assert "- code.py:1:1: invalid UTF-8" in capsys.readouterr().err
     assert [call["method"] for call in client.calls] == ["claim"]
 
 

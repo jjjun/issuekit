@@ -366,7 +366,8 @@ commands. Run this protocol end to end:
    tests, and supporting project files needed for the task. Do not create or
    switch branches. When driven by `issuekit implement`, do not run git commit
    or git push; leave implementation changes unstaged for review.
-4. Run the relevant tests and `uv run issuekit check-encoding`.
+4. Run the relevant tests, `uv run issuekit check-encoding`, and
+   `uv run issuekit check-encoding --gate` before submitting.
 5. Call `submit_for_review(id, summary, branch, commit, reviewer=None)` with an
    ASCII summary and optional branch/commit metadata. Omit reviewer to use
    `default_reviewer`, or pass another configured assignee. If
@@ -427,6 +428,8 @@ When asked to write or plan an issue:
    `project#proposal:N` for not-yet-adopted proposals. When `ISSUEKIT_SESSION` is set,
    issuekit records that authoring session so a later same-name delegated
    implementer can be distinguished by session.
+   Include `uv run issuekit check-encoding --gate` in the Test Plan so the
+   implementer verifies the submit-gate verdict before submission.
 3. Leave the issue unstarted with no assignee unless a specific implementer is
    required.
 4. STOP_NOW. The command writes a local author-session guard for that issue.

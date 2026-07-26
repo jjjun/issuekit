@@ -580,3 +580,107 @@ def test_check_encoding_fix_exits_nonzero_when_mojibake_remains(
 
     assert cli.main(["check-encoding", "--fix"]) == 1
     assert (tmp_path / "bom.py").read_bytes() == b"print('ok')\n"
+
+
+def test_check_encoding_gate_reproduces_unconfirmed_submit_candidate(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    init_git_repo(tmp_path)
+    add_tracked(tmp_path, "tests/test_gitutil.py", b"value = 'clean'\n")
+    commit_all(tmp_path)
+    (tmp_path / "tests" / "test_gitutil.py").write_text(
+        "value = '\u8b4c'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["check-encoding"]) == 0
+    assert cli.main(["check-encoding", "--gate"]) == 1
+
+    captured = capsys.readouterr()
+    assert "tests/test_gitutil.py:1:10: U+8B4C" in captured.err
+    assert "Encoding submit gate failed" in captured.err
+
+
+def test_check_encoding_gate_scans_changed_files_without_source_extension(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    init_git_repo(tmp_path)
+    add_tracked(tmp_path, "script.sh", b"echo clean\n")
+    commit_all(tmp_path)
+    (tmp_path / "script.sh").write_text(
+        "echo '\u7e67\uff62\u7e5d\u4e5d\u0393'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["check-encoding"]) == 0
+    assert cli.main(["check-encoding", "--gate"]) == 1
+
+
+def test_check_encoding_exclusion_does_not_suppress_confirmed_hit(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    init_git_repo(tmp_path)
+    (tmp_path / "issuekit.toml").write_text(
+        "check_encoding_exclude = ['generated/**']\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    add_tracked(tmp_path, "generated/bad.py", b"value = 'clean'\n")
+    commit_all(tmp_path)
+    (tmp_path / "generated" / "bad.py").write_text(
+        "value = '\u7e67\uff62\u7e5d\u4e5d\u0393'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["check-encoding"]) == 1
+    assert cli.main(["check-encoding", "--gate"]) == 1
+
+
+def test_check_encoding_reports_invalid_utf8_in_default_and_gate_modes(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    init_git_repo(tmp_path)
+    add_tracked(tmp_path, "bad.py", b"value = 'clean'\n")
+    commit_all(tmp_path)
+    (tmp_path / "bad.py").write_bytes(b"value = '\xff'\n")
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["check-encoding"]) == 1
+    assert cli.main(["check-encoding", "--gate"]) == 1
+
+    captured = capsys.readouterr()
+    assert captured.err.count("bad.py:1:1: invalid UTF-8") == 2
+
+
+def test_check_encoding_gate_only_scans_changed_lines_of_tracked_files(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    init_git_repo(tmp_path)
+    add_tracked(
+        tmp_path,
+        "code.py",
+        "comment = '\u7e67\uff62\u7e5d\u4e5d\u0393'\nvalue = 1\n".encode("utf-8"),
+    )
+    commit_all(tmp_path)
+    (tmp_path / "code.py").write_text(
+        "comment = '\u7e67\uff62\u7e5d\u4e5d\u0393'\nvalue = 2\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["check-encoding"]) == 1
+    assert cli.main(["check-encoding", "--gate"]) == 0

@@ -25,7 +25,7 @@
 | `issuekit orphans [--stale-after-sec <n>] [--json]` | List implementing issues whose claiming worker is gone or has stopped heartbeating. |
 | `issuekit reclaim <id> [--force] [--reason "..."] [--json]` | Return an orphaned or stale implementing claim to the implement pool. |
 | `issuekit readdress <id> [--reason "..."] [--json]` | Return a directed issue to the repo pool. |
-| `issuekit check-encoding [--json] [--fail-on-unconfirmed]` | Check tracked source files for leading BOM bytes and likely mojibake. |
+| `issuekit check-encoding [--json] [--fail-on-unconfirmed] [--gate]` | Check tracked source files for encoding problems, or reproduce the submit-gate mojibake verdict with `--gate`. |
 | `issuekit protocol [--agent codex\|claude]` | Print the canonical handoff protocol. |
 | `issuekit init [--with-mcp]` | Install tracker templates, encoding hooks, and optional MCP handoff scaffolding. |
 | `issuekit setup [--force] [--json]` | Run per-repo MCP handoff scaffolding and setup diagnostics. |

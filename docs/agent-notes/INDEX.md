@@ -29,3 +29,6 @@ one. See [README.md](README.md) for the rules.
 - [Verification-only issues cannot go through implement/submit](verification-only-issues.md) -
   a zero-diff agent run is not submitted and strands the claim; reclaim, then
   close with the no-op `complete --force` path.
+- [Encoding check modes](encoding-check-modes.md) - use `check-encoding --gate`
+  to reproduce submit behavior; the default command intentionally has broader
+  whole-file and line-ending checks.

@@ -5,7 +5,13 @@ Run the normal project gates by hand before publishing changes:
 ```powershell
 uv run pytest
 uv run issuekit check-encoding
+uv run issuekit check-encoding --gate
 ```
+
+The default encoding check scans complete tracked source files for BOM, likely
+mojibake, stray carriage returns, and CRLF. The `--gate` mode separately
+reproduces the submit gate for the current worktree, including its changed-line
+scope and unconfirmed mojibake failures.
 
 Run the full suite, including MCP tests, with `uv run --with mcp pytest`.
 

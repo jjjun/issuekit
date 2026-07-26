@@ -25,7 +25,8 @@ from the repo root so the MCP server resolves the repo configuration.
   settings loaded from `.env` print a stderr notice.
 - Write all files as UTF-8 without a BOM and with LF line endings.
 - Build and test with `uv sync`, `uv run pytest`, and
-  `uv run issuekit check-encoding`.
+  `uv run issuekit check-encoding`. Before submit, also run
+  `uv run issuekit check-encoding --gate`.
 - The dependency audit is automated. Code tests run manually only via
   `workflow_dispatch`; do not add `push` or `pull_request` triggers to
   `.github/workflows/tests.yml`.

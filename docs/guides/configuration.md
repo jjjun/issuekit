@@ -236,13 +236,13 @@ MCP `claim_next_task` tool accepts `no_sync` for the same purpose.
 
 ## Encoding checks
 
-The agent submit mojibake gate checks half-width katakana by default, matching
-`issuekit check-encoding`. Set `gate_halfwidth_kana = false` only when touched
-generated files legitimately contain half-width katakana; other encoding-artifact
-checks remain enabled. The gate also honors `check_encoding_exclude` for
-unconfirmed hits: use a narrow repo-relative path glob for a tree with
-known-legitimate Japanese text. Confirmed corruption still blocks submission in
-every path.
+The agent submit mojibake gate checks half-width katakana by default. Run
+`issuekit check-encoding --gate` to reproduce its verdict for the current
+worktree. Set `gate_halfwidth_kana = false` only when touched generated files
+legitimately contain half-width katakana; other encoding-artifact checks remain
+enabled. The gate honors `check_encoding_exclude` for unconfirmed hits, so use
+only narrow repo-relative path globs for generated trees or known-legitimate
+text. Confirmed corruption still blocks submission in every path.
 
 For likely mojibake, `check-encoding` has three outcomes: confirmed candidates
 are reported, unconfirmed candidates are suppressed but available through
@@ -258,7 +258,8 @@ patterns for generated paths that `issuekit check-encoding` should skip. The
 agent submit mojibake gate also honors them for unconfirmed hits; confirmed
 mojibake remains blocked by that gate. The exclusions apply to BOM, mojibake,
 stray carriage-return, and CRLF checks. Use repeatable `--exclude PATTERN` flags
-for one-off exclusions.
+for one-off default scans. Gate mode uses the configured exclusions exactly and
+cannot be combined with scan modifiers.
 
 ## Registration and repo metadata
 
