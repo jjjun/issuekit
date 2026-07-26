@@ -41,8 +41,9 @@ surface.
 ## Add an agent
 
 For a config-only agent, add an `[agents.<name>]` table with the CLI `binary`,
-`headless_argv`, approval and output flags, `model_flag`, and `effort_argv`.
-The agent then uses `ConfigAgentAdapter`; no code change is required.
+`headless_argv`, approval and output flags, `model_flag`, `effort_argv`,
+`speed`, and `speed_argv`. The agent then uses `ConfigAgentAdapter`; no code
+change is required.
 
 Create a custom adapter only when its CLI needs behavior declarative
 configuration cannot express. For example,

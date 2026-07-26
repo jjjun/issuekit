@@ -105,6 +105,7 @@ def test_repo_config_overrides_machine_and_merges_agent_keys(
         (
             "issues_dir = 'machine/issues'\n[agents.codex]\n"
             "model = 'machine-model'\nreasoning_effort = 'medium'\n"
+            "speed = 'priority'\nspeed_argv = ['--speed', '{value}']\n"
         ),
         encoding="utf-8",
     )
@@ -120,6 +121,8 @@ def test_repo_config_overrides_machine_and_merges_agent_keys(
     assert config.issues_dir == "repo/issues"
     assert codex.model == "machine-model"
     assert codex.reasoning_effort == "medium"
+    assert codex.speed == "priority"
+    assert codex.speed_argv == ("--speed", "{value}")
     assert codex.approval_flag == "--full-auto"
 
 
@@ -978,6 +981,8 @@ def test_load_config_reads_agent_guardrail_fields(tmp_path: Path) -> None:
             "headless_argv = ['exec']\n"
             "model_flag = '--model'\n"
             "model = 'gpt-5.3-codex-spark'\n"
+            "speed = 'priority'\n"
+            "speed_argv = ['--speed', '{value}']\n"
             "prompt_suffix = 'Keep diffs small.'\n"
             "resumable = true\n"
             "session_flag = '--session-id'\n"
@@ -1006,6 +1011,8 @@ def test_load_config_reads_agent_guardrail_fields(tmp_path: Path) -> None:
         model_flag="--model",
         model="gpt-5.3-codex-spark",
         effort_argv=("-c", "model_reasoning_effort={value}"),
+        speed="priority",
+        speed_argv=("--speed", "{value}"),
         prompt_suffix="Keep diffs small.",
         model_prompts=(("gpt-5.3-codex-spark", "Spark-only guardrail."),),
     )
@@ -1041,6 +1048,8 @@ def test_load_config_merges_builtin_agent_overrides(tmp_path: Path) -> None:
         model=codex_default.model,
         reasoning_effort=codex_default.reasoning_effort,
         effort_argv=codex_default.effort_argv,
+        speed=codex_default.speed,
+        speed_argv=codex_default.speed_argv,
         prompt_suffix=codex_default.prompt_suffix,
         model_prompts=codex_default.model_prompts,
     )

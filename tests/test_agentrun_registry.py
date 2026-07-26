@@ -17,6 +17,8 @@ def test_default_config_includes_kimi_and_codex() -> None:
     assert agents_dict["kimi"].adapter == "kimi"
     assert agents_dict["codex"].binary == "codex"
     assert agents_dict["codex"].adapter is None
+    assert agents_dict["codex"].speed is None
+    assert agents_dict["codex"].speed_argv == ("-c", "service_tier={value}")
 
 
 def test_default_config_includes_claude() -> None:
@@ -226,6 +228,22 @@ def test_resolve_adapter_rejects_configured_reasoning_effort_without_template(
     with pytest.raises(
         ValueError,
         match="add effort_argv to the agent configuration or remove reasoning_effort",
+    ):
+        resolve_adapter("kimi", config=load_config(tmp_path))
+
+
+def test_resolve_adapter_rejects_configured_speed_without_template(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "[agents.kimi]\nspeed = 'priority'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="add speed_argv to the agent configuration or remove speed",
     ):
         resolve_adapter("kimi", config=load_config(tmp_path))
 

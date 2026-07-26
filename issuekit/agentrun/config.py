@@ -25,3 +25,5 @@ class AgentRunConfig:
     effort_argv: tuple[str, ...] = ()
     prompt_suffix: str | None = None
     model_prompts: tuple[tuple[str, str], ...] = ()
+    speed: str | None = None
+    speed_argv: tuple[str, ...] = ()

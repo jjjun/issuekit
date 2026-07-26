@@ -189,7 +189,10 @@ over the agent default but not explicit per-run values. This lets one agent
 name use different settings for implementation and review within one `serve`
 loop. An agent must define `effort_argv` to support `reasoning_effort`; the
 built-in Codex adapter uses `("-c", "model_reasoning_effort={value}")` and the
-built-in Claude adapter uses `("--effort", "{value}")`.
+built-in Claude adapter uses `("--effort", "{value}")`. The `speed` setting is
+a raw pass-through value and requires a `speed_argv` template. The built-in
+Codex adapter uses `("-c", "service_tier={value}")`; set `speed = "priority"`
+to select the Codex fast tier.
 
 By default, agent-launched implementation and review transitions report the
 effective model and reasoning effort to mine-py. Set `send_agent_runtime = false`

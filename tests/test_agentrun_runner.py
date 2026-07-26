@@ -522,6 +522,52 @@ def test_config_adapter_reasoning_effort_formats_template_and_cli_overrides_defa
     ]
 
 
+def test_config_adapter_speed_formats_after_effort_before_session() -> None:
+    config = IssuekitConfig(
+        agents=(
+            (
+                "codex",
+                AgentRunConfig(
+                    binary="codex",
+                    headless_argv=("exec",),
+                    resumable=True,
+                    session_flag="--session-id",
+                    approval_flag="--dangerously-bypass-approvals-and-sandbox",
+                    model_flag="--model",
+                    model="gpt-5.6-sol",
+                    reasoning_effort="ultra",
+                    effort_argv=("-c", "model_reasoning_effort={value}"),
+                    speed="priority",
+                    speed_argv=("-c", "service_tier={value}"),
+                ),
+            ),
+        )
+    )
+
+    argv = ConfigAgentAdapter(
+        "codex",
+        dict(config.agents)["codex"],
+    ).build_argv(
+        "base",
+        Path("/plan.md"),
+        session_id="123e4567-e89b-12d3-a456-426614174000",
+    )
+
+    assert argv == [
+        "exec",
+        "base",
+        "--dangerously-bypass-approvals-and-sandbox",
+        "--model",
+        "gpt-5.6-sol",
+        "-c",
+        "model_reasoning_effort=ultra",
+        "-c",
+        "service_tier=priority",
+        "--session-id",
+        "123e4567-e89b-12d3-a456-426614174000",
+    ]
+
+
 def test_config_adapter_rejects_reasoning_effort_without_template() -> None:
     config = IssuekitConfig(
         agents=(("claude", AgentRunConfig(binary="claude", headless_argv=("-p",))),)
