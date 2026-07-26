@@ -15,7 +15,7 @@ from issuekit.agentrun import AgentResult, AgentRunner
 from issuekit.commands.approve import approve_issue
 from issuekit.config import IssuekitConfig
 from issuekit.core import Issue, worker_keys_match
-from issuekit.encoding import ASCII_ONLY_HINT, has_non_ascii
+from issuekit.encoding import ASCII_ONLY_HINT, has_non_ascii, sanitize_to_ascii
 from issuekit.gitutil import git_status_short, run_git
 from issuekit.prompts import REVIEW_PROMPT, ReviewParseError
 from issuekit.store import get_store
@@ -161,7 +161,7 @@ def run_review_and_decide(
         return ReviewOutcome(issue=issue, result=result, verdict=_empty_verdict(), exit_code=1)
 
     try:
-        verdict = parse_review_output(stdout_text(result))
+        verdict = parse_review_output(stdout_text(result), err=err)
     except ReviewParseError as exc:
         raise ReviewRunParseError(exc, result) from exc
     owned_store = None
@@ -212,20 +212,35 @@ def run_review_and_decide(
             owned_store.close()
 
 
-def parse_review_output(stdout: str) -> ReviewVerdict:
+def parse_review_output(stdout: str, *, err: TextIO | None = None) -> ReviewVerdict:
     """Parse the newest well-formed review block from agent stdout."""
 
-    return _review_verdict_from_json(REVIEW_PROMPT.parse_json(stdout))
+    return _review_verdict_from_json(
+        REVIEW_PROMPT.parse_json(stdout),
+        err=err or sys.stderr,
+    )
 
 
-def _review_verdict_from_json(raw: dict[str, object]) -> ReviewVerdict:
+def _review_verdict_from_json(
+    raw: dict[str, object],
+    *,
+    err: TextIO,
+) -> ReviewVerdict:
     missing = [key for key in REVIEW_OUTPUT_KEYS if key not in raw]
     if missing:
         raise ReviewParseError(f"Review block is missing required key: {', '.join(missing)}.")
 
     verdict = _required_string(raw["verdict"], "verdict")
-    verification = _required_string(raw["verification"], "verification").strip()
-    notes = _required_string(raw["notes"], "notes").strip()
+    verification = _sanitize_review_field(
+        "verification",
+        _required_string(raw["verification"], "verification").strip(),
+        err=err,
+    )
+    notes = _sanitize_review_field(
+        "notes",
+        _required_string(raw["notes"], "notes").strip(),
+        err=err,
+    )
     if verdict not in _REVIEW_VERDICTS:
         raise ReviewParseError(f"Invalid review verdict: {verdict}")
     if verdict == "approve" and not verification:
@@ -233,8 +248,6 @@ def _review_verdict_from_json(raw: dict[str, object]) -> ReviewVerdict:
     if verdict == "request-changes" and not notes:
         raise ReviewParseError("Request-changes review verdict requires notes.")
     _validate_ascii_review_field("verdict", verdict)
-    _validate_ascii_review_field("verification", verification)
-    _validate_ascii_review_field("notes", notes)
     return ReviewVerdict(verdict=verdict, verification=verification, notes=notes)
 
 
@@ -249,6 +262,21 @@ def _validate_ascii_review_field(key: str, value: str) -> None:
         raise ReviewParseError(
             f"Review field {key} must be ASCII-only. {ASCII_ONLY_HINT}"
         )
+
+
+def _sanitize_review_field(key: str, value: str, *, err: TextIO) -> str:
+    if not has_non_ascii(value):
+        return value
+    sanitized = sanitize_to_ascii(value).strip()
+    marker = f"[{key} sanitized from non-ASCII]"
+    print(
+        f"WARNING: reviewer agent field {key} contained non-ASCII text; "
+        "sanitized before recording verdict.",
+        file=err,
+    )
+    if not sanitized:
+        return marker
+    return f"{sanitized}\n\n{marker}"
 
 
 def _ensure_registered_distinct_worker(

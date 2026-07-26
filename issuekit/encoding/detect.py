@@ -6,6 +6,7 @@ from bisect import bisect_right
 import fnmatch
 from pathlib import Path
 import re
+import unicodedata
 
 from issuekit.encoding.report import code_point, code_point_context, code_point_text
 
@@ -168,6 +169,40 @@ def _contains_c1_control_or_private_use_character(text: str) -> bool:
 
 def has_non_ascii(text: str) -> bool:
     return bool(NON_ASCII_PATTERN.search(text))
+
+
+_ASCII_PUNCTUATION_TRANSLATION = str.maketrans(
+    {
+        "\u2010": "-",
+        "\u2011": "-",
+        "\u2012": "-",
+        "\u2013": "-",
+        "\u2014": "-",
+        "\u2015": "-",
+        "\u2018": "'",
+        "\u2019": "'",
+        "\u201a": "'",
+        "\u201b": "'",
+        "\u201c": '"',
+        "\u201d": '"',
+        "\u201e": '"',
+        "\u201f": '"',
+        "\u2026": "...",
+        "\u2212": "-",
+    }
+)
+
+
+def sanitize_to_ascii(text: str) -> str:
+    """Fold compatible text to ASCII and drop characters that cannot be folded."""
+
+    if not has_non_ascii(text):
+        return text
+    normalized = unicodedata.normalize(
+        "NFKD",
+        text.translate(_ASCII_PUNCTUATION_TRANSLATION),
+    )
+    return normalized.encode("ascii", errors="ignore").decode("ascii")
 
 
 # Appended to ASCII-only rejection messages so agents can self-correct the

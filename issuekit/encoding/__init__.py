@@ -12,6 +12,7 @@ from issuekit.encoding.detect import (
     is_encoding_excluded_path,
     line_number_at,
     newline_offsets,
+    sanitize_to_ascii,
 )
 from issuekit.encoding.report import (
     code_point,
@@ -36,4 +37,5 @@ __all__ = [
     "line_number_at",
     "newline_offsets",
     "print_mojibake_hit",
+    "sanitize_to_ascii",
 ]

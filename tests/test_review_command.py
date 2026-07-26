@@ -73,6 +73,33 @@ class RequestChangesRunner(ApprovingRunner):
         )
 
 
+class NonAsciiApprovingRunner(ApprovingRunner):
+    def run(self, *args, **kwargs) -> FakeResult:
+        return FakeResult(
+            parsed={
+                "stdout": (
+                    "```review\n"
+                    '{"verdict":"approve","verification":"\u691c\u8a3c\u6e08\u307f","notes":""}\n'
+                    "```"
+                )
+            }
+        )
+
+
+class NonAsciiRequestChangesRunner(ApprovingRunner):
+    def run(self, *args, **kwargs) -> FakeResult:
+        return FakeResult(
+            parsed={
+                "stdout": (
+                    "```review\n"
+                    '{"verdict":"request-changes","verification":"",'
+                    '"notes":"Add tests \u2014 including edge cases."}\n'
+                    "```"
+                )
+            }
+        )
+
+
 class MalformedReviewRunner(ApprovingRunner):
     def run(self, *args, **kwargs) -> FakeResult:
         return FakeResult(parsed={"stdout": "The implementation looks good.\n"})
@@ -193,6 +220,41 @@ def test_review_command_approves_with_distinct_worker_identity(
     }
 
 
+def test_review_command_approves_with_sanitized_non_ascii_verification(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                1,
+                "Review me",
+                status="in_progress",
+                assignee="",
+                stage="review",
+                implementer="codex",
+                worker="machine/demo/implementer",
+                author="claude",
+            )
+        ]
+    )
+    _configure_registered_api(tmp_path, monkeypatch, client)
+    _create_reviewable_diff(tmp_path)
+    monkeypatch.setattr("issuekit.commands.review.AgentRunner", NonAsciiApprovingRunner)
+
+    exit_code = cli.main(["review", "1", "--agent", "codex"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "review_decision verdict=approve" in captured.out
+    assert "field verification contained non-ASCII text" in captured.err
+    assert client.get_issue(1)["status"] == "completed"
+    assert client.calls[-1]["body"]["verification"] == (
+        "[verification sanitized from non-ASCII]"
+    )
+
+
 def test_review_command_sends_runtime_on_both_verdicts(tmp_path: Path, monkeypatch) -> None:
     client = FakeIssuekitClient(
         [
@@ -274,6 +336,45 @@ def test_review_command_requests_changes(
                 "worker": "reviewer.demo",
         },
     }
+
+
+def test_review_command_requests_changes_with_sanitized_non_ascii_notes(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                1,
+                "Needs tests",
+                status="in_progress",
+                assignee="claude",
+                stage="review",
+                implementer="codex",
+                worker="machine/demo/implementer",
+                author="claude",
+            )
+        ]
+    )
+    _configure_registered_api(tmp_path, monkeypatch, client)
+    _create_reviewable_diff(tmp_path)
+    monkeypatch.setattr(
+        "issuekit.commands.review.AgentRunner",
+        NonAsciiRequestChangesRunner,
+    )
+
+    exit_code = cli.main(["review", "1", "--agent", "claude"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "review_decision verdict=request-changes" in captured.out
+    assert "field notes contained non-ASCII text" in captured.err
+    assert client.get_issue(1)["stage"] == "changes_requested"
+    assert client.calls[-1]["body"]["notes"] == (
+        "Add tests - including edge cases.\n\n"
+        "[notes sanitized from non-ASCII]"
+    )
 
 
 def test_review_command_rejects_same_worker_self_review(
@@ -534,13 +635,15 @@ def test_collect_git_diff_context_tolerates_missing_diff_stdout(
     assert context.suspicious_warnings == ()
 
 
-def test_parse_review_output_names_non_ascii_field() -> None:
-    with pytest.raises(review_agent.ReviewParseError, match="notes must be ASCII-only"):
-        review_agent.parse_review_output(
-            "```review\n"
-            '{"verdict":"request-changes","verification":"","notes":"\u76f4\u3057\u3066"}\n'
-            "```"
-        )
+def test_parse_review_output_sanitizes_non_ascii_field(capsys) -> None:
+    verdict = review_agent.parse_review_output(
+        "```review\n"
+        '{"verdict":"request-changes","verification":"","notes":"\u76f4\u3057\u3066"}\n'
+        "```"
+    )
+
+    assert verdict.notes == "[notes sanitized from non-ASCII]"
+    assert "field notes contained non-ASCII text" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize("filename", ["code.py", "変更.py"])

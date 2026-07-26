@@ -18,6 +18,16 @@ def test_encoding_artifact_detection() -> None:
     assert not encoding.find_encoding_artifacts("plain ascii")
 
 
+def test_sanitize_to_ascii_folds_punctuation_and_compatibility_forms() -> None:
+    assert encoding.sanitize_to_ascii("\u201cquoted\u201d \u2014 caf\u00e9") == '"quoted" - cafe'
+    assert encoding.sanitize_to_ascii("\uff26\uff55\uff4c\uff4c\uff57\uff49\uff44\uff54\uff48") == "Fullwidth"
+
+
+def test_sanitize_to_ascii_drops_unfoldable_text_and_preserves_ascii() -> None:
+    assert encoding.sanitize_to_ascii("\u76f4\u3057\u3066") == ""
+    assert encoding.sanitize_to_ascii("plain ASCII\nunchanged") == "plain ASCII\nunchanged"
+
+
 def test_encoding_artifact_reverted_generated_file_exclusions() -> None:
     """Keep issuekit#229's restoration of previously excluded mojibake characters."""
     assert encoding.find_encoding_artifacts("\u83f4")
