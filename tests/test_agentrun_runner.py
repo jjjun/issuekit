@@ -522,7 +522,7 @@ def test_config_adapter_reasoning_effort_formats_template_and_cli_overrides_defa
     ]
 
 
-def test_config_adapter_speed_formats_after_effort_before_session() -> None:
+def test_config_adapter_speed_emits_verbatim_after_effort_before_session() -> None:
     config = IssuekitConfig(
         agents=(
             (
@@ -537,8 +537,8 @@ def test_config_adapter_speed_formats_after_effort_before_session() -> None:
                     model="gpt-5.6-sol",
                     reasoning_effort="ultra",
                     effort_argv=("-c", "model_reasoning_effort={value}"),
-                    speed="priority",
-                    speed_argv=("-c", "service_tier={value}"),
+                    speed=True,
+                    speed_argv=("-c", "service_tier=priority"),
                 ),
             ),
         )
@@ -566,6 +566,22 @@ def test_config_adapter_speed_formats_after_effort_before_session() -> None:
         "--session-id",
         "123e4567-e89b-12d3-a456-426614174000",
     ]
+
+
+def test_config_adapter_false_speed_emits_nothing() -> None:
+    run_config = AgentRunConfig(
+        binary="codex",
+        headless_argv=("exec",),
+        speed=False,
+        speed_argv=("-c", "service_tier=priority"),
+    )
+
+    argv = ConfigAgentAdapter("codex", run_config).build_argv(
+        "base",
+        Path("/plan.md"),
+    )
+
+    assert argv == ["exec", "base"]
 
 
 def test_config_adapter_rejects_reasoning_effort_without_template() -> None:

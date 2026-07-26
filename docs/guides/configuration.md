@@ -190,9 +190,14 @@ name use different settings for implementation and review within one `serve`
 loop. An agent must define `effort_argv` to support `reasoning_effort`; the
 built-in Codex adapter uses `("-c", "model_reasoning_effort={value}")` and the
 built-in Claude adapter uses `("--effort", "{value}")`. The `speed` setting is
-a raw pass-through value and requires a `speed_argv` template. The built-in
-Codex adapter uses `("-c", "service_tier={value}")`; set `speed = "priority"`
-to select the Codex fast tier.
+a boolean switch; `true` emits the agent's `speed_argv` entries verbatim, while
+`false` or an absent setting emits nothing. The built-in templates carry each
+CLI's wire value: Codex uses `("-c", "service_tier=priority")`, and Claude uses
+`("--settings", '{"fastMode": true}')`. To select a different Codex service
+tier such as `flex`, override `speed_argv` with
+`["-c", "service_tier=flex"]`. Config shared with an older pinned issuekit may
+stringify the boolean and emit `service_tier=True`, so keep those pins current
+when migrating from `speed = "priority"` to `speed = true`.
 
 By default, agent-launched implementation and review transitions report the
 effective model and reasoning effort to mine-py. Set `send_agent_runtime = false`

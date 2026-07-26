@@ -154,7 +154,7 @@ class IssuekitConfig:
                 approval_flag="--dangerously-bypass-approvals-and-sandbox",
                 model_flag="--model",
                 effort_argv=("-c", "model_reasoning_effort={value}"),
-                speed_argv=("-c", "service_tier={value}"),
+                speed_argv=("-c", "service_tier=priority"),
                 prompt_suffix=(
                     "Make minimal, additive diffs. Do not reformat, re-quote, "
                     "re-order imports, or rewrite/translate comments on lines "
@@ -187,6 +187,7 @@ class IssuekitConfig:
                 output_format="text",
                 model_flag="--model",
                 effort_argv=("--effort", "{value}"),
+                speed_argv=("--settings", '{"fastMode": true}'),
                 prompt_suffix=(
                     "Make minimal, additive diffs. Do not reformat, re-quote, "
                     "re-order imports, or rewrite/translate comments on lines "
@@ -952,7 +953,7 @@ def _agent_run_config_overrides(cfg: dict[str, object]) -> dict[str, object]:
         "model": optional_str,
         "reasoning_effort": optional_str,
         "effort_argv": _string_tuple,
-        "speed": optional_str,
+        "speed": _bool_value,
         "speed_argv": _string_tuple,
         "prompt_suffix": optional_str,
         "model_prompts": _model_prompts,

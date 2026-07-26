@@ -17,8 +17,8 @@ def test_default_config_includes_kimi_and_codex() -> None:
     assert agents_dict["kimi"].adapter == "kimi"
     assert agents_dict["codex"].binary == "codex"
     assert agents_dict["codex"].adapter is None
-    assert agents_dict["codex"].speed is None
-    assert agents_dict["codex"].speed_argv == ("-c", "service_tier={value}")
+    assert agents_dict["codex"].speed is False
+    assert agents_dict["codex"].speed_argv == ("-c", "service_tier=priority")
 
 
 def test_default_config_includes_claude() -> None:
@@ -30,6 +30,8 @@ def test_default_config_includes_claude() -> None:
     assert agents_dict["claude"].resumable is True
     assert agents_dict["claude"].session_flag == "--session-id"
     assert agents_dict["claude"].effort_argv == ("--effort", "{value}")
+    assert agents_dict["claude"].speed is False
+    assert agents_dict["claude"].speed_argv == ("--settings", '{"fastMode": true}')
 
 
 def test_resolve_adapter_returns_kimi() -> None:
@@ -236,7 +238,7 @@ def test_resolve_adapter_rejects_configured_speed_without_template(
     tmp_path: Path,
 ) -> None:
     (tmp_path / "issuekit.toml").write_text(
-        "[agents.kimi]\nspeed = 'priority'\n",
+        "[agents.kimi]\nspeed = true\n",
         encoding="utf-8",
         newline="\n",
     )

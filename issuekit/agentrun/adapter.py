@@ -61,7 +61,7 @@ class ConfigAgentAdapter(AgentAdapter):
                 f"Agent '{agent_name}' config sets reasoning_effort but has no effort_argv; "
                 "add effort_argv to the agent configuration or remove reasoning_effort."
             )
-        if self.run_config.speed and not self.run_config.speed_argv:
+        if self.run_config.speed is True and not self.run_config.speed_argv:
             raise ValueError(
                 f"Agent '{agent_name}' config sets speed but has no speed_argv; "
                 "add speed_argv to the agent configuration or remove speed."
@@ -106,11 +106,8 @@ class ConfigAgentAdapter(AgentAdapter):
                 entry.format(value=resolved_effort)
                 for entry in self.run_config.effort_argv
             )
-        if self.run_config.speed:
-            argv.extend(
-                entry.format(value=self.run_config.speed)
-                for entry in self.run_config.speed_argv
-            )
+        if self.run_config.speed is True:
+            argv.extend(self.run_config.speed_argv)
         if (
             session_id
             and self.run_config.resumable

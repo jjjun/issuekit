@@ -105,7 +105,7 @@ def test_repo_config_overrides_machine_and_merges_agent_keys(
         (
             "issues_dir = 'machine/issues'\n[agents.codex]\n"
             "model = 'machine-model'\nreasoning_effort = 'medium'\n"
-            "speed = 'priority'\nspeed_argv = ['--speed', '{value}']\n"
+            "speed = 'on'\nspeed_argv = ['--speed', 'priority']\n"
         ),
         encoding="utf-8",
     )
@@ -121,8 +121,8 @@ def test_repo_config_overrides_machine_and_merges_agent_keys(
     assert config.issues_dir == "repo/issues"
     assert codex.model == "machine-model"
     assert codex.reasoning_effort == "medium"
-    assert codex.speed == "priority"
-    assert codex.speed_argv == ("--speed", "{value}")
+    assert codex.speed is True
+    assert codex.speed_argv == ("--speed", "priority")
     assert codex.approval_flag == "--full-auto"
 
 
@@ -981,8 +981,8 @@ def test_load_config_reads_agent_guardrail_fields(tmp_path: Path) -> None:
             "headless_argv = ['exec']\n"
             "model_flag = '--model'\n"
             "model = 'gpt-5.3-codex-spark'\n"
-            "speed = 'priority'\n"
-            "speed_argv = ['--speed', '{value}']\n"
+            "speed = true\n"
+            "speed_argv = ['--speed', 'priority']\n"
             "prompt_suffix = 'Keep diffs small.'\n"
             "resumable = true\n"
             "session_flag = '--session-id'\n"
@@ -1011,13 +1011,34 @@ def test_load_config_reads_agent_guardrail_fields(tmp_path: Path) -> None:
         model_flag="--model",
         model="gpt-5.3-codex-spark",
         effort_argv=("-c", "model_reasoning_effort={value}"),
-        speed="priority",
-        speed_argv=("--speed", "{value}"),
+        speed=True,
+        speed_argv=("--speed", "priority"),
         prompt_suffix="Keep diffs small.",
         model_prompts=(("gpt-5.3-codex-spark", "Spark-only guardrail."),),
     )
     assert dict(config.agent_policies)["codex"].mojibake_gate is True
     assert dict(config.agent_policies)["codex"].diff_shape_warn_deletions == 12
+
+
+def test_load_config_reads_false_speed(tmp_path: Path) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "[agents.codex]\nspeed = false\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    assert dict(load_config(tmp_path).agents)["codex"].speed is False
+
+
+def test_load_config_rejects_invalid_speed(tmp_path: Path) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "[agents.codex]\nspeed = 'priority'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    with pytest.raises(ValueError, match="Invalid boolean config value: priority"):
+        load_config(tmp_path)
 
 
 def test_load_config_merges_builtin_agent_overrides(tmp_path: Path) -> None:
