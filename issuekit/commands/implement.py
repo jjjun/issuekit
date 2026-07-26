@@ -82,7 +82,8 @@ def run(args) -> int:
                 "or configure exactly one enabled assignee."
             )
         issues_dir = config.issues_path(cwd)
-        issue = get_store(config).get_issue(issue_id)
+        with get_store(config) as store:
+            issue = store.get_issue(issue_id)
         if issue is None:
             print(f"Active issue #{issue_id} was not found.", file=sys.stderr)
             return 1

@@ -475,7 +475,6 @@ def test_serve_proposal_checks_backs_off_after_cycle_error(
         raise WorkflowError("temporary API failure")
 
     monkeypatch.setattr(serve, "run_proposal_check_cycle", fail_cycle)
-    monkeypatch.setattr(serve, "BACKOFF_INITIAL_SEC", 0.0)
 
     exit_code = serve._serve_loop(
         Args(),
@@ -755,7 +754,6 @@ def test_serve_recovery_error_continues_to_poll(
     RecoveryErrorThenRunner.calls.clear()
     _configure_registered_api(tmp_path, monkeypatch, client)
     monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", RecoveryErrorThenRunner)
-    monkeypatch.setattr(serve, "BACKOFF_INITIAL_SEC", 0.0)
 
     exit_code = cli.main(["serve", "--agent", "codex", "--max-issues", "1", "--interval", "0"])
 
@@ -904,7 +902,6 @@ def test_serve_backs_off_after_claim_error(monkeypatch, tmp_path: Path, capsys) 
         raise WorkflowError("temporary API failure")
 
     monkeypatch.setattr(serve, "claim_next", fail_claim)
-    monkeypatch.setattr(serve, "BACKOFF_INITIAL_SEC", 0.0)
     config = serve.IssuekitConfig()
 
     exit_code = serve._serve_loop(

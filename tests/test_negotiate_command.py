@@ -10,8 +10,6 @@ from issuekit.agentrun import AgentPrompt, AgentResult
 from issuekit.commands.negotiate import (
     MockIssueCreator,
     _resolve_counterpart_cwd,
-    entry_origin,
-    origin_issue_ref_from_thread,
     finalize_negotiation,
     inspect_thread,
     run_negotiation,
@@ -20,6 +18,11 @@ from issuekit.config import IssuekitConfig
 from issuekit.config.refs import add_ref
 from issuekit.core import Issue
 from issuekit.negotiation import MockNegotiationStore, ThreadStatus, Verdict
+from issuekit.negotiation.engine import (
+    ApiIssueCreator,
+    entry_origin,
+    origin_issue_ref_from_thread,
+)
 from issuekit.testing import FakeIssuekitClient
 from issuekit.workflow import WorkflowError
 
@@ -125,6 +128,24 @@ class CannedRunner:
             status_short="",
             status_path=repo / f"run-{index + 1}.status.json",
         )
+
+
+class CloseTrackingNegotiationStore(MockNegotiationStore):
+    def __init__(self) -> None:
+        super().__init__(None)
+        self.close_count = 0
+
+    def close(self) -> None:
+        self.close_count += 1
+
+
+class CloseTrackingClient(FakeIssuekitClient):
+    def __init__(self, issues=None) -> None:
+        super().__init__(issues)
+        self.close_count = 0
+
+    def close(self) -> None:
+        self.close_count += 1
 
 
 class WritingRunner(CannedRunner):
@@ -1138,6 +1159,152 @@ def test_inspect_thread_reports_contract_mismatch_for_non_matching_agreement() -
     assert payload["finalize_refusal"] == (
         "latest agree contract does not match a counterpart contract"
     )
+
+
+def test_api_issue_creator_closes_stores_on_success_and_error(monkeypatch) -> None:
+    stores = []
+
+    class Store:
+        def __init__(self) -> None:
+            self.close_count = 0
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            self.close_count += 1
+
+        def create_issue(self, **_kwargs):
+            return _issue()
+
+        def update_issue_body(self, _issue_id, *, body):
+            raise WorkflowError(f"update failed for {body}", code="request_failed")
+
+    def make_store(_config):
+        store = Store()
+        stores.append(store)
+        return store
+
+    monkeypatch.setattr("issuekit.negotiation.engine.get_store", make_store)
+    creator = ApiIssueCreator(
+        IssuekitConfig(api_url="https://mine.example", project="frontend")
+    )
+
+    assert creator.create_issue(
+        project="backend",
+        title="Backend work",
+        body="Implement it.",
+        priority="medium",
+        author="codex",
+    ) == _issue()
+    with pytest.raises(WorkflowError, match="update failed"):
+        creator.update_issue_body(
+            project="backend",
+            issue_id=108,
+            body="Updated body.",
+        )
+
+    assert [store.close_count for store in stores] == [1, 1]
+
+
+def test_negotiate_cli_closes_issue_and_negotiation_stores_on_error(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    from issuekit import store as store_module
+    from issuekit.commands import negotiate
+
+    client = CloseTrackingClient(
+        [api_issue(108, "Negotiate API contract", body="Need a list endpoint.")]
+    )
+    store = CloseTrackingNegotiationStore()
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'frontend'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.setattr(negotiate, "get_negotiation_store", lambda *args, **kwargs: store)
+
+    def fail_negotiation(**_kwargs):
+        raise WorkflowError("negotiation failed")
+
+    monkeypatch.setattr(negotiate, "run_negotiation", fail_negotiation)
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = cli.main(
+        [
+            "negotiate",
+            "--from-issue",
+            "108",
+            "--to",
+            "backend",
+            "--initiator-side",
+            "consumer",
+            "--provider-agent",
+            "claude",
+            "--consumer-agent",
+            "codex",
+            "--mock",
+        ]
+    )
+
+    assert exit_code == 1
+    assert "negotiation failed" in capsys.readouterr().err
+    assert client.close_count == 1
+    assert store.close_count == 1
+
+
+def test_negotiate_finalize_closes_negotiation_store_on_error(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    from issuekit.commands import negotiate
+
+    store = CloseTrackingNegotiationStore()
+    (tmp_path / "issuekit.toml").write_text(
+        "project = 'frontend'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setattr(negotiate, "get_negotiation_store", lambda *args, **kwargs: store)
+
+    def fail_finalization(**_kwargs):
+        raise WorkflowError("finalize failed")
+
+    monkeypatch.setattr(negotiate, "finalize_negotiation", fail_finalization)
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = cli.main(
+        [
+            "negotiate",
+            "--finalize",
+            "1",
+            "--to",
+            "backend",
+            "--author-agent",
+            "codex",
+            "--mock",
+        ]
+    )
+
+    assert exit_code == 1
+    assert "finalize failed" in capsys.readouterr().err
+    assert store.close_count == 1
+
+
+def test_threads_cli_closes_negotiation_store(tmp_path, monkeypatch, capsys) -> None:
+    from issuekit.commands import negotiate
+
+    store = CloseTrackingNegotiationStore()
+    monkeypatch.setattr(negotiate, "get_negotiation_store", lambda *args, **kwargs: store)
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["threads", "--mock", "--json"]) == 0
+    assert json.loads(capsys.readouterr().out) == []
+    assert store.close_count == 1
 
 
 def test_negotiate_cli_json_uses_mock_store_and_api_issue(tmp_path, monkeypatch, capsys) -> None:

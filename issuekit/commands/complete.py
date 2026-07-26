@@ -11,6 +11,7 @@ from issuekit.core import (
     Issue,
     parse_issue_id_arg,
 )
+from issuekit.store import managed_issue_store
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:
@@ -42,7 +43,6 @@ def run(args) -> int:
             issue_id,
             summary=summary,
             verification=verification,
-            reviewer=None,
             force=args.force,
             config=config,
         )
@@ -58,7 +58,6 @@ def complete_issue(
     *,
     summary: str = "",
     verification: str = "",
-    reviewer: str | None = None,
     force: bool = False,
     config: IssuekitConfig | None = None,
     store=None,
@@ -72,14 +71,8 @@ def complete_issue(
     )
 
     config = config or IssuekitConfig()
-    owned_store = None
-    if store is None:
-        from issuekit.store import get_store
-
-        owned_store = get_store(config)
-        store = owned_store
-    try:
-        return store.complete_issue(  # type: ignore[attr-defined]
+    with managed_issue_store(config, store) as active_store:
+        return active_store.complete_issue(  # type: ignore[attr-defined]
             issue_id,
             summary=summary,
             verification=verification,
@@ -87,6 +80,3 @@ def complete_issue(
             agent_model=agent_model,
             agent_reasoning_effort=agent_reasoning_effort,
         )
-    finally:
-        if owned_store is not None:
-            owned_store.close()

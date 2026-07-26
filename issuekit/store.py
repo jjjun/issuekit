@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Any, Protocol
+from contextlib import contextmanager
+from typing import Any, Iterator, Protocol
 
 from issuekit.api import IssuekitClient
 from issuekit.config import IssuekitConfig
@@ -491,6 +492,19 @@ class ApiStore:
             dependency_state=dependency_state,
             warning=warning,
         )
+
+
+@contextmanager
+def managed_issue_store(
+    config: IssuekitConfig,
+    store: IssueStore | None = None,
+) -> Iterator[IssueStore]:
+    """Yield an injected store or close a store created from config."""
+    if store is not None:
+        yield store
+        return
+    with get_store(config) as owned_store:
+        yield owned_store
 
 
 def get_store(config: IssuekitConfig) -> IssueStore:

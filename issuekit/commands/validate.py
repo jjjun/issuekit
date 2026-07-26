@@ -22,9 +22,9 @@ def register(subparsers: argparse._SubParsersAction) -> None:
 def run(_args) -> int:
     config = load_config(Path.cwd())
     try:
-        store = get_store(config)
-        _validate_health(store)
-        _, _, issues = store.read_all_issues()
+        with get_store(config) as store:
+            _validate_health(store)
+            _, _, issues = store.read_all_issues()
     except (WorkflowError, ValueError) as exc:
         print(f"Error: API validation failed: {exc}", file=sys.stderr)
         return 1

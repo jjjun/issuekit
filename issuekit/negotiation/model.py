@@ -75,6 +75,15 @@ class NegotiationThreadSummary:
 
 
 class NegotiationStore(Protocol):
+    def __enter__(self) -> "NegotiationStore":
+        """Enter a negotiation store lifecycle context."""
+
+    def __exit__(self, *_: object) -> None:
+        """Exit a negotiation store lifecycle context."""
+
+    def close(self) -> None:
+        """Release any store-owned resources."""
+
     def create_thread(
         self,
         *,

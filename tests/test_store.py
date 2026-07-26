@@ -1,6 +1,8 @@
+import pytest
+
 from issuekit.config import IssuekitConfig
 from issuekit.core import issue_dict
-from issuekit.store import ApiStore, get_store
+from issuekit.store import ApiStore, get_store, managed_issue_store
 from issuekit.testing import FakeIssuekitClient
 from issuekit.workflow import WorkflowError
 
@@ -43,6 +45,36 @@ def test_api_store_context_manager_closes_only_owned_clients(monkeypatch) -> Non
 
     assert owned_client.close_count == 1
     assert injected_client.close_count == 0
+
+
+def test_managed_issue_store_closes_only_factory_created_store(monkeypatch) -> None:
+    class TrackingStore:
+        def __init__(self) -> None:
+            self.close_count = 0
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            self.close()
+
+        def close(self) -> None:
+            self.close_count += 1
+
+    owned_store = TrackingStore()
+    monkeypatch.setattr("issuekit.store.get_store", lambda _config: owned_store)
+
+    with pytest.raises(RuntimeError, match="failed"):
+        with managed_issue_store(IssuekitConfig()) as active_store:
+            assert active_store is owned_store
+            raise RuntimeError("failed")
+
+    injected_store = TrackingStore()
+    with managed_issue_store(IssuekitConfig(), injected_store) as active_store:
+        assert active_store is injected_store
+
+    assert owned_store.close_count == 1
+    assert injected_store.close_count == 0
 
 
 def test_api_store_maps_json_to_issue_and_issue_dict() -> None:

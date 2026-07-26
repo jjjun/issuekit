@@ -162,19 +162,19 @@ class ApiIssueCreator:
         depends_on: tuple[str, ...] | None = None,
     ) -> Issue:
         project_config = replace(self.config, project=project)
-        store = get_store(project_config)
-        return store.create_issue(  # type: ignore[attr-defined]
-            title=title,
-            body=body,
-            priority=priority,
-            author=author,
-            depends_on=depends_on,
-        )
+        with get_store(project_config) as store:
+            return store.create_issue(  # type: ignore[attr-defined]
+                title=title,
+                body=body,
+                priority=priority,
+                author=author,
+                depends_on=depends_on,
+            )
 
     def update_issue_body(self, *, project: str, issue_id: int, body: str) -> Issue:
         project_config = replace(self.config, project=project)
-        store = get_store(project_config)
-        return store.update_issue_body(issue_id, body=body)  # type: ignore[attr-defined]
+        with get_store(project_config) as store:
+            return store.update_issue_body(issue_id, body=body)  # type: ignore[attr-defined]
 
 
 class MockIssueCreator:

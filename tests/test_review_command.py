@@ -105,6 +105,15 @@ class MalformedReviewRunner(ApprovingRunner):
         return FakeResult(parsed={"stdout": "The implementation looks good.\n"})
 
 
+class CloseTrackingClient(FakeIssuekitClient):
+    def __init__(self) -> None:
+        super().__init__()
+        self.close_count = 0
+
+    def close(self) -> None:
+        self.close_count += 1
+
+
 def _configure_registered_api(tmp_path: Path, monkeypatch, client: FakeIssuekitClient) -> None:
     (tmp_path / "issuekit.toml").write_text(
         "api_url = 'https://mine.example'\nproject = 'demo'\ndefault_reviewer = 'auto'\n",
@@ -137,6 +146,21 @@ def _init_git_repo(path: Path) -> None:
         check=True,
         stdout=subprocess.DEVNULL,
     )
+
+
+def test_review_command_closes_lookup_store_when_issue_is_missing(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = CloseTrackingClient()
+    _configure_registered_api(tmp_path, monkeypatch, client)
+
+    exit_code = cli.main(["review", "99", "--agent", "codex"])
+
+    assert exit_code == 1
+    assert "Active issue #99 was not found." in capsys.readouterr().err
+    assert client.close_count == 1
 
 
 def _create_reviewable_diff(path: Path) -> None:

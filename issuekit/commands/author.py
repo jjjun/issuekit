@@ -122,7 +122,7 @@ def run(args) -> int:
             output["stop"] = STOP_SENTINEL
             print_json(output)
             return 0
-        print(f"Authored issue: {_authored_ref(authored)}")
+        print(f"Authored issue: {authored.ref}")
         print(stop_message(guard))
         return 0
 
@@ -167,22 +167,22 @@ def author_issue(
         direct_local_author=direct_local_author,
         origin_project=origin_project,
     )
-    from issuekit.store import get_store
-
-    store = get_store(config)
     try:
         session = session or resolved_or_new_session_token("cli")
     except ValueError as exc:
         raise WorkflowError(str(exc), code="invalid_session") from exc
-    return store.create_issue(  # type: ignore[attr-defined]
-        title=title.strip(),
-        body=issue_body.strip(),
-        priority=priority,
-        author=agent,
-        assignee=assign,
-        session=session,
-        depends_on=dependency_refs or None,
-    )
+    from issuekit.store import get_store
+
+    with get_store(config) as store:
+        return store.create_issue(  # type: ignore[attr-defined]
+            title=title.strip(),
+            body=issue_body.strip(),
+            priority=priority,
+            author=agent,
+            assignee=assign,
+            session=session,
+            depends_on=dependency_refs or None,
+        )
 
 
 def _validate_author_input(
@@ -242,10 +242,6 @@ def _dedupe_warnings(warnings: list[str]) -> tuple[str, ...]:
         seen.add(warning)
         deduped.append(warning)
     return tuple(deduped)
-
-
-def _authored_ref(authored: Issue) -> str:
-    return authored.ref
 
 
 def _require_local_author_context(

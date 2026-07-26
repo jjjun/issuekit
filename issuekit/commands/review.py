@@ -54,7 +54,8 @@ def run(args) -> int:
         issue_id = parse_issue_id_arg(args.id)
         cwd = Path.cwd()
         config = load_config(cwd)
-        issue = get_store(config).get_issue(issue_id)
+        with get_store(config) as store:
+            issue = store.get_issue(issue_id)
         if issue is None:
             print(f"Active issue #{issue_id} was not found.", file=sys.stderr)
             return 1

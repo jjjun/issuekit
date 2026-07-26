@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
-import sys
 
 from issuekit.commands._common import print_json
 from issuekit.commands._common import run_command
@@ -79,14 +77,11 @@ def _run_local(config, cwd: Path, *, json_out: bool) -> int:
     local = load_project_profile(config, cwd)
     remote = _try_fetch_remote(config)
     if json_out:
-        print(
-            json.dumps(
-                {
-                    "local": local.to_payload() if local is not None else None,
-                    "remote": remote,
-                },
-                indent=2,
-            )
+        print_json(
+            {
+                "local": local.to_payload() if local is not None else None,
+                "remote": remote,
+            }
         )
         return 0
     if local is None:

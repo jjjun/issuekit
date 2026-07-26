@@ -18,7 +18,7 @@ from issuekit.core import Issue, worker_keys_match
 from issuekit.encoding import ASCII_ONLY_HINT, has_non_ascii, sanitize_to_ascii
 from issuekit.gitutil import GitStatusEntry, git_status_entries, git_status_short, run_git
 from issuekit.prompts import REVIEW_PROMPT, ReviewParseError
-from issuekit.store import get_store
+from issuekit.store import managed_issue_store
 from issuekit.workflow import WorkflowError, ensure_assigned_reviewer, request_changes
 
 
@@ -167,11 +167,7 @@ def run_review_and_decide(
         verdict = parse_review_output(stdout_text(result), err=err)
     except ReviewParseError as exc:
         raise ReviewRunParseError(exc, result) from exc
-    owned_store = None
-    if store is None:
-        owned_store = get_store(config)
-        store = owned_store
-    try:
+    with managed_issue_store(config, store) as active_store:
         agent_model, agent_reasoning_effort = adapter.effective_runtime()
         if not config.send_agent_runtime:
             agent_model = None
@@ -183,7 +179,7 @@ def run_review_and_decide(
                 verification=verdict.verification,
                 reviewer=agent,
                 config=config,
-                store=store,
+                store=active_store,
                 agent_model=agent_model,
                 agent_reasoning_effort=agent_reasoning_effort,
             )
@@ -194,7 +190,7 @@ def run_review_and_decide(
                 notes=verdict.notes,
                 reviewer=agent,
                 config=config,
-                store=store,
+                store=active_store,
                 agent_model=agent_model,
                 agent_reasoning_effort=agent_reasoning_effort,
             )
@@ -210,9 +206,6 @@ def run_review_and_decide(
             exit_code=0,
             decided_issue=decided,
         )
-    finally:
-        if owned_store is not None:
-            owned_store.close()
 
 
 def parse_review_output(stdout: str, *, err: TextIO | None = None) -> ReviewVerdict:

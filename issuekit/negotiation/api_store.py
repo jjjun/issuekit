@@ -31,11 +31,22 @@ class ApiNegotiationStore:
         client: IssuekitClient | None = None,
     ) -> None:
         self.config = config
+        self._owns_client = client is None
         self.client = client or IssuekitClient(
             config.api_url,
             project=config.project,
             timeout=config.api_timeout,
         )
+
+    def close(self) -> None:
+        if self._owns_client:
+            self.client.close()
+
+    def __enter__(self) -> "ApiNegotiationStore":
+        return self
+
+    def __exit__(self, *_: object) -> None:
+        self.close()
 
     def create_thread(
         self,

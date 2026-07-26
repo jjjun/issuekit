@@ -15,6 +15,7 @@ from issuekit.core import (
 )
 from issuekit.issues.session import current_session_token, validate_session_token
 from issuekit.gitutil import git_status_short
+from issuekit.store import managed_issue_store
 from issuekit.workflow import (
     WorkflowError,
     ensure_assigned_reviewer,
@@ -79,17 +80,13 @@ def approve_issue(
     )
 
     config = config or IssuekitConfig()
-    owned_store = None
-    if store is None:
-        from issuekit.store import get_store
-
-        owned_store = get_store(config)
-        store = owned_store
-    try:
-        resolved_reviewer = _resolve_api_approval_reviewer(store, issue_id, reviewer, config)
+    with managed_issue_store(config, store) as active_store:
+        resolved_reviewer = _resolve_api_approval_reviewer(
+            active_store, issue_id, reviewer, config
+        )
         worker = config.worker_key()
         resolved_session = _resolve_session(session)
-        return store.approve_issue(  # type: ignore[attr-defined]
+        return active_store.approve_issue(  # type: ignore[attr-defined]
             issue_id,
             summary=summary if summary is not None else "Approved.",
             verification=verification,
@@ -99,9 +96,6 @@ def approve_issue(
             agent_model=agent_model,
             agent_reasoning_effort=agent_reasoning_effort,
         )
-    finally:
-        if owned_store is not None:
-            owned_store.close()
 
 
 def _resolve_api_approval_reviewer(

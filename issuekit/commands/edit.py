@@ -11,6 +11,7 @@ from issuekit.commands._common import active_issue_not_found, require_ascii, run
 from issuekit.config import IssuekitConfig, load_config
 from issuekit.core import Issue, VALID_ISSUE_PRIORITIES, issue_dict, parse_issue_id_arg
 from issuekit.issues.dependencies import dependency_refs
+from issuekit.store import managed_issue_store
 from issuekit.workflow import WorkflowError
 
 
@@ -97,15 +98,9 @@ def edit_issue(
         depends_on=depends_on,
     )
     config = config or IssuekitConfig()
-    owned_store = None
-    if store is None:
-        from issuekit.store import get_store
 
-        owned_store = get_store(config)
-        store = owned_store
-
-    try:
-        existing = store.get_issue(issue_id)
+    with managed_issue_store(config, store) as active_store:
+        existing = active_store.get_issue(issue_id)
         if existing is None:
             raise ValueError(active_issue_not_found(issue_id))
         if existing.issue_status == "completed":
@@ -124,16 +119,13 @@ def edit_issue(
             append=append,
             append_file=append_file,
         )
-        return store.update_issue(
+        return active_store.update_issue(
             issue_id,
             title=title.strip() if title is not None else None,
             body=update_body,
             priority=priority,
             depends_on=_depends_on(depends_on) if depends_on is not None else None,
         )
-    finally:
-        if owned_store is not None:
-            owned_store.close()
 
 
 def _validate_edit_input(

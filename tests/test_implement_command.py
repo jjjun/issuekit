@@ -90,6 +90,15 @@ class FakeRunner:
         return FakeResult(parsed={"resume_session_id": "abc123"})
 
 
+class CloseTrackingClient(FakeIssuekitClient):
+    def __init__(self) -> None:
+        super().__init__()
+        self.close_count = 0
+
+    def close(self) -> None:
+        self.close_count += 1
+
+
 def _configure_api(
     tmp_path: Path,
     monkeypatch,
@@ -777,12 +786,14 @@ def test_implement_command_reports_missing_issue(
     monkeypatch,
     capsys,
 ) -> None:
-    _configure_api(tmp_path, monkeypatch, FakeIssuekitClient())
+    client = CloseTrackingClient()
+    _configure_api(tmp_path, monkeypatch, client)
 
     exit_code = cli.main(["implement", "99", "--agent", "kimi"])
 
     assert exit_code == 1
     assert "Active issue #99 was not found." in capsys.readouterr().err
+    assert client.close_count == 1
 
 
 def test_implement_rejects_invalid_issue_id(tmp_path: Path, monkeypatch, capsys) -> None:

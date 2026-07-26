@@ -107,20 +107,16 @@ def claim_next(
         no_sync=no_sync,
     )
 
-    owned_store = _ensure_store(config, store)
-    try:
+    with _managed_store(config, store) as active_store:
         worker = config.qualified_worker_key()
         resolved_session = _resolve_session(session)
-        return owned_store.claim_next(  # type: ignore[attr-defined]
+        return active_store.claim_next(  # type: ignore[attr-defined]
             assignee=assignee,
             priority=priority,
             worker=worker,
             allow_self_implement=not author_handoff_enforced(),
             session=resolved_session,
         )
-    finally:
-        if store is None:
-            owned_store.close()
 
 
 def claim_issue(
@@ -154,9 +150,8 @@ def claim_issue(
         allow_any_branch=allow_any_branch,
     )
 
-    owned_store = _ensure_store(config, store)
-    try:
-        previous_issue = owned_store.get_issue(issue_id)
+    with _managed_store(config, store) as active_store:
+        previous_issue = active_store.get_issue(issue_id)
         if not _is_same_worker_changes_continuation(previous_issue, config):
             enforce_claim_sync(
                 cwd,
@@ -167,16 +162,13 @@ def claim_issue(
         worker = config.qualified_worker_key()
         resolved_session = _resolve_session(session)
         _ensure_orchestration_session(orchestration, resolved_session)
-        return owned_store.claim_issue(  # type: ignore[attr-defined]
+        return active_store.claim_issue(  # type: ignore[attr-defined]
             issue_id,
             assignee=assignee,
             worker=worker,
             allow_self_implement=not author_handoff_enforced() and orchestration is None,
             session=resolved_session,
         )
-    finally:
-        if store is None:
-            owned_store.close()
 
 
 def reclaim_issue(
@@ -193,9 +185,8 @@ def reclaim_issue(
     if reason is not None:
         _validate_ascii_text(reason, "--reason")
 
-    owned_store = _ensure_store(config, store)
-    try:
-        previous = owned_store.get_issue(issue_id)
+    with _managed_store(config, store) as active_store:
+        previous = active_store.get_issue(issue_id)
         if previous is None:
             raise WorkflowError(f"Issue #{issue_id} was not found.", code="not_found")
         if previous.stage != "implementing":
@@ -226,7 +217,7 @@ def reclaim_issue(
 
         expected_worker = claim.worker if claim is not None else previous.worker or None
         actor = _reclaim_actor(config)
-        issue = owned_store.reclaim_issue(  # type: ignore[attr-defined]
+        issue = active_store.reclaim_issue(  # type: ignore[attr-defined]
             issue_id,
             expected_worker=expected_worker,
             actor=actor,
@@ -240,9 +231,6 @@ def reclaim_issue(
             actor=actor,
             audit_reason=reason,
         )
-    finally:
-        if store is None:
-            owned_store.close()
 
 
 def readdress_issue(
@@ -256,9 +244,8 @@ def readdress_issue(
     if reason is not None:
         _validate_ascii_text(reason, "--reason")
 
-    owned_store = _ensure_store(config, store)
-    try:
-        previous = owned_store.get_issue(issue_id)
+    with _managed_store(config, store) as active_store:
+        previous = active_store.get_issue(issue_id)
         if previous is None:
             raise WorkflowError(f"Issue #{issue_id} was not found.", code="not_found")
         target_worker = previous.target_worker
@@ -268,7 +255,7 @@ def readdress_issue(
                 code="invalid_transition",
             )
         actor = _reclaim_actor(config)
-        issue = owned_store.readdress_issue(  # type: ignore[attr-defined]
+        issue = active_store.readdress_issue(  # type: ignore[attr-defined]
             issue_id,
             expected_target_worker=target_worker,
             actor=actor,
@@ -281,9 +268,6 @@ def readdress_issue(
             actor=actor,
             audit_reason=reason,
         )
-    finally:
-        if store is None:
-            owned_store.close()
 
 
 def submit_for_review(
@@ -324,11 +308,10 @@ def submit_for_review(
         action=f"submit issue #{issue_id} for review",
         allow_any_branch=allow_any_branch,
     )
-    owned_store = _ensure_store(config, store)
-    try:
+    with _managed_store(config, store) as active_store:
         resolved_session = _resolve_session(session)
         _ensure_orchestration_session(orchestration, resolved_session)
-        return owned_store.submit_for_review(  # type: ignore[attr-defined]
+        return active_store.submit_for_review(  # type: ignore[attr-defined]
             issue_id,
             summary=summary,
             branch=branch,
@@ -338,9 +321,6 @@ def submit_for_review(
             agent_model=agent_model,
             agent_reasoning_effort=agent_reasoning_effort,
         )
-    finally:
-        if store is None:
-            owned_store.close()
 
 
 def request_changes(
@@ -360,11 +340,10 @@ def request_changes(
         _validate_assignee(assignee, config)
     _validate_stage("changes_requested", config)
     _validate_ascii_text(notes, "--notes")
-    owned_store = _ensure_store(config, store)
-    try:
+    with _managed_store(config, store) as active_store:
         worker = config.worker_key()
         resolved_session = _resolve_session(session)
-        return owned_store.request_changes(  # type: ignore[attr-defined]
+        return active_store.request_changes(  # type: ignore[attr-defined]
             issue_id,
             notes=notes,
             reviewer=reviewer,
@@ -374,9 +353,6 @@ def request_changes(
             agent_model=agent_model,
             agent_reasoning_effort=agent_reasoning_effort,
         )
-    finally:
-        if store is None:
-            owned_store.close()
 
 
 def next_review(
@@ -388,25 +364,21 @@ def next_review(
 ) -> Issue | None:
     """Return the next issue waiting for a reviewer."""
     config = config or IssuekitConfig()
-    owned_store = _ensure_store(config, store)
-    try:
+    with _managed_store(config, store) as active_store:
         if reviewer is None and config.default_reviewer == AUTO_REVIEWER:
-            issues = owned_store.find_for(None, "review")  # type: ignore[attr-defined]
+            issues = active_store.find_for(None, "review")  # type: ignore[attr-defined]
             return issues[0] if issues else None
 
         resolved = resolve_reviewer(reviewer, config)
-        issues = owned_store.find_for(resolved, "review")  # type: ignore[attr-defined]
+        issues = active_store.find_for(resolved, "review")  # type: ignore[attr-defined]
         if include_open:
-            open_issues = owned_store.find_for(None, "review")  # type: ignore[attr-defined]
+            open_issues = active_store.find_for(None, "review")  # type: ignore[attr-defined]
             issues.extend(issue for issue in open_issues if not issue.assignee)
             issues = sorted(
                 {issue.id or 0: issue for issue in issues}.values(),
                 key=lambda issue: (issue.id or 0, issue.ref),
             )
         return issues[0] if issues else None
-    finally:
-        if store is None:
-            owned_store.close()
 
 
 def find_for(
@@ -422,12 +394,8 @@ def find_for(
     if stage:
         _validate_stage(stage, config)
 
-    owned_store = _ensure_store(config, store)
-    try:
-        return owned_store.find_for(assignee, stage)
-    finally:
-        if store is None:
-            owned_store.close()
+    with _managed_store(config, store) as active_store:
+        return active_store.find_for(assignee, stage)
 
 
 def ensure_assigned_reviewer(
@@ -530,12 +498,11 @@ def _reclaim_actor(config: IssuekitConfig) -> str:
     return config.worker_key() or "issuekit"
 
 
-def _ensure_store(config: IssuekitConfig, store):
-    if store is not None:
-        return store
-    from issuekit.store import get_store
+def _managed_store(config: IssuekitConfig, store):
+    # Local import: issuekit.store imports WorkflowError from this module.
+    from issuekit.store import managed_issue_store
 
-    return get_store(config)
+    return managed_issue_store(config, store)
 
 
 def _is_same_worker_changes_continuation(

@@ -311,6 +311,42 @@ def test_mock_store_rejects_invalid_verdict(tmp_path) -> None:
         )
 
 
+def test_negotiation_store_context_managers_close_only_owned_clients(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    class CloseTrackingClient(FakeIssuekitClient):
+        def __init__(self) -> None:
+            super().__init__()
+            self.close_count = 0
+
+        def close(self) -> None:
+            self.close_count += 1
+
+    owned_client = CloseTrackingClient()
+    monkeypatch.setattr(
+        "issuekit.negotiation.api_store.IssuekitClient",
+        lambda *args, **kwargs: owned_client,
+    )
+    with ApiNegotiationStore(
+        IssuekitConfig(api_url="https://mine.example", project="target")
+    ):
+        pass
+
+    injected_client = CloseTrackingClient()
+    with ApiNegotiationStore(
+        IssuekitConfig(api_url="https://mine.example", project="target"),
+        client=injected_client,
+    ):
+        pass
+
+    with MockNegotiationStore(tmp_path / "negotiations.json"):
+        pass
+
+    assert owned_client.close_count == 1
+    assert injected_client.close_count == 0
+
+
 def test_api_negotiation_store_round_trips_via_fake_client() -> None:
     client = FakeIssuekitClient()
     store = ApiNegotiationStore(

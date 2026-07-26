@@ -24,7 +24,7 @@ from issuekit.encoding import (
 )
 from issuekit.gitutil import GitStatusEntry, git_root, git_status_entries, run_git
 from issuekit.prompts import render_review_feedback_prompt
-from issuekit.store import get_store
+from issuekit.store import managed_issue_store
 from issuekit.workflow import submit_for_review
 
 
@@ -156,15 +156,10 @@ def run_and_submit(
             file=out,
         )
 
-    owned_store = None
-    if store is None:
-        owned_store = get_store(config)
-        store = owned_store
-
-    try:
+    with managed_issue_store(config, store) as active_store:
         implementation_entries = _implementation_entries(snapshot, cwd, issues_dir)
         if snapshot.root == cwd.resolve() and not implementation_entries:
-            current_issue = store.get_issue(issue_id)
+            current_issue = active_store.get_issue(issue_id)
             if current_issue is not None and current_issue.stage == "review":
                 print(
                     "Issue is already at review after the agent run; treating it as submitted.",
@@ -236,7 +231,7 @@ def run_and_submit(
             issue_id,
             summary=submit_summary or f"Implemented by {agent} via issuekit implement.",
             config=config,
-            store=store,
+            store=active_store,
             cwd=cwd,
             allow_author_guard_override=allow_author_guard_override,
             allow_any_branch=allow_any_branch,
@@ -251,9 +246,6 @@ def run_and_submit(
             exit_code=0,
             reviewed_issue=reviewed_issue,
         )
-    finally:
-        if owned_store is not None:
-            owned_store.close()
 
 
 def review_feedback_prompt(issue_body: str) -> str | None:

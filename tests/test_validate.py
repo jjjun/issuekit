@@ -11,6 +11,15 @@ from issuekit.workflow import WorkflowError
 from tests.issue_helpers import api_issue
 
 
+class CloseTrackingClient(FakeIssuekitClient):
+    def __init__(self, issues=None) -> None:
+        super().__init__(issues)
+        self.close_count = 0
+
+    def close(self) -> None:
+        self.close_count += 1
+
+
 def test_validate_requires_api_url_by_default(tmp_path: Path, monkeypatch, capsys) -> None:
     monkeypatch.chdir(tmp_path)
 
@@ -27,7 +36,7 @@ def test_validate_api_mode_checks_connectivity_and_shape(
     monkeypatch,
     capsys,
 ) -> None:
-    client = FakeIssuekitClient([api_issue(1, "First")])
+    client = CloseTrackingClient([api_issue(1, "First")])
     (tmp_path / "issuekit.toml").write_text(
         "api_url = 'https://mine.example'\n",
         encoding="utf-8",
@@ -41,6 +50,7 @@ def test_validate_api_mode_checks_connectivity_and_shape(
     captured = capsys.readouterr()
     assert exit_code == 0
     assert "API validation passed (1 issues)." in captured.out
+    assert client.close_count == 1
 
 
 def test_validate_api_mode_fails_on_malformed_issue_response(
@@ -48,19 +58,17 @@ def test_validate_api_mode_fails_on_malformed_issue_response(
     monkeypatch,
     capsys,
 ) -> None:
-    class MalformedClient:
-        def health(self):
-            return {"status": "ok", "migration_revision": "test"}
-
+    class MalformedClient(CloseTrackingClient):
         def list_all_issues(self, **kwargs):
             return [{"id": 1, "status": "active"}]
 
+    client = MalformedClient()
     (tmp_path / "issuekit.toml").write_text(
         "api_url = 'https://mine.example'\n",
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: MalformedClient())
+    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
     monkeypatch.chdir(tmp_path)
 
     exit_code = cli.main(["validate"])
@@ -69,6 +77,7 @@ def test_validate_api_mode_fails_on_malformed_issue_response(
     assert exit_code == 1
     assert "API validation failed" in captured.err
     assert "missing required field" in captured.err
+    assert client.close_count == 1
 
 
 def test_validate_api_mode_fails_when_health_revision_is_missing(
@@ -76,19 +85,17 @@ def test_validate_api_mode_fails_when_health_revision_is_missing(
     monkeypatch,
     capsys,
 ) -> None:
-    class MissingRevisionClient:
+    class MissingRevisionClient(CloseTrackingClient):
         def health(self):
             return {"status": "ok"}
 
-        def list_all_issues(self, **kwargs):
-            return [api_issue(1, "First")]
-
+    client = MissingRevisionClient([api_issue(1, "First")])
     (tmp_path / "issuekit.toml").write_text(
         "api_url = 'https://mine.example'\n",
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: MissingRevisionClient())
+    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
     monkeypatch.chdir(tmp_path)
 
     exit_code = cli.main(["validate"])
@@ -97,6 +104,7 @@ def test_validate_api_mode_fails_when_health_revision_is_missing(
     assert exit_code == 1
     assert "API validation failed" in captured.err
     assert "Health response did not include migration_revision" in captured.err
+    assert client.close_count == 1
 
 
 def test_validate_health_missing_revision_uses_schema_drift_code() -> None:
@@ -132,19 +140,17 @@ def test_validate_api_mode_reports_health_request_errors(
     monkeypatch,
     capsys,
 ) -> None:
-    class HealthErrorClient:
+    class HealthErrorClient(CloseTrackingClient):
         def health(self):
             raise WorkflowError("health endpoint was unavailable", code="http_404")
 
-        def list_all_issues(self, **kwargs):
-            return [api_issue(1, "First")]
-
+    client = HealthErrorClient([api_issue(1, "First")])
     (tmp_path / "issuekit.toml").write_text(
         "api_url = 'https://mine.example'\n",
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: HealthErrorClient())
+    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
     monkeypatch.chdir(tmp_path)
 
     exit_code = cli.main(["validate"])
@@ -153,3 +159,4 @@ def test_validate_api_mode_reports_health_request_errors(
     assert exit_code == 1
     assert "API validation failed" in captured.err
     assert "health endpoint was unavailable" in captured.err
+    assert client.close_count == 1

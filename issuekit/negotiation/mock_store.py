@@ -38,6 +38,15 @@ class MockNegotiationStore:
         self._next_entry_id = 1
         self._load()
 
+    def close(self) -> None:
+        pass
+
+    def __enter__(self) -> "MockNegotiationStore":
+        return self
+
+    def __exit__(self, *_: object) -> None:
+        self.close()
+
     def create_thread(
         self,
         *,

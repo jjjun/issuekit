@@ -20,8 +20,6 @@ from issuekit.agents.triage_author import run_triage_author_cycle
 from issuekit.config import IssuekitConfig, load_config
 from issuekit.commands.serve_loop import (
     Backoff,
-    BACKOFF_INITIAL_SEC,
-    BACKOFF_MAX_SEC,
     PollResult,
     ShutdownController,
     close_store as _close_store,

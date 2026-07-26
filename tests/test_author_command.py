@@ -1,10 +1,24 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from issuekit import cli
 from issuekit import store as store_module
+from issuekit.commands.author import author_issue
+from issuekit.config import IssuekitConfig
 from issuekit.guards.author import read_author_guard
 from issuekit.testing import FakeIssuekitClient
+from issuekit.workflow import WorkflowError
+
+
+class CloseTrackingClient(FakeIssuekitClient):
+    def __init__(self) -> None:
+        super().__init__()
+        self.close_count = 0
+
+    def close(self) -> None:
+        self.close_count += 1
 
 
 def _configure_api(tmp_path: Path, monkeypatch, client: FakeIssuekitClient) -> None:
@@ -34,7 +48,7 @@ def _configure_api_project(
 
 
 def test_author_command_creates_issue_via_api(tmp_path: Path, monkeypatch, capsys) -> None:
-    client = FakeIssuekitClient()
+    client = CloseTrackingClient()
     body_file = tmp_path / "plan.md"
     body_file.write_text(
         "## Problem\n\nSomething is missing.\n\n## Test Plan\n\n- uv run pytest\n",
@@ -78,6 +92,68 @@ def test_author_command_creates_issue_via_api(tmp_path: Path, monkeypatch, capsy
             "session": guard.author_session,
         },
     }
+    assert client.close_count == 1
+
+
+def test_author_resolves_session_before_opening_store(tmp_path: Path, monkeypatch) -> None:
+    opened = False
+
+    def fail_session(_prefix):
+        raise ValueError("invalid session")
+
+    def open_store(_config):
+        nonlocal opened
+        opened = True
+        raise AssertionError("store should not be opened")
+
+    monkeypatch.setattr(
+        "issuekit.commands.author.resolved_or_new_session_token",
+        fail_session,
+    )
+    monkeypatch.setattr(store_module, "get_store", open_store)
+
+    with pytest.raises(WorkflowError, match="invalid session"):
+        author_issue(
+            title="Test session",
+            body="Body",
+            body_file=None,
+            priority="medium",
+            agent="codex",
+            config=IssuekitConfig(api_url="https://mine.example"),
+            cwd=tmp_path,
+            direct_local_author=True,
+        )
+
+    assert opened is False
+
+
+def test_author_closes_store_when_create_fails(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    class FailingClient(CloseTrackingClient):
+        def create_issue(self, *_args, **_kwargs):
+            raise WorkflowError("create failed", code="request_failed")
+
+    client = FailingClient()
+    _configure_api(tmp_path, monkeypatch, client)
+
+    exit_code = cli.main(
+        [
+            "author",
+            "--title",
+            "Failing issue",
+            "--body",
+            "Body",
+            "--agent",
+            "codex",
+        ]
+    )
+
+    assert exit_code == 1
+    assert "create failed" in capsys.readouterr().err
+    assert client.close_count == 1
 
 
 def test_author_command_requires_local_project_context(

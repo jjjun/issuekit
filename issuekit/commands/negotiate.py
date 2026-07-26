@@ -27,9 +27,7 @@ from issuekit.negotiation.engine import (
     NegotiationFinalizationResult,
     NegotiationResult,
     NegotiationThreadInspection,
-    entry_origin,
     finalize_refusal_reason,
-    origin_issue_ref_from_thread,
     finalize_negotiation,
     inspect_thread,
     run_negotiation,
@@ -137,17 +135,17 @@ def run(args) -> int:
                 )
             if not args.mock:
                 _warn_target_validation(config, args.to)
-            store = get_negotiation_store(config, use_mock=bool(args.mock))
             creator: IssueCreator = MockIssueCreator() if args.mock else ApiIssueCreator(config)
-            result = finalize_negotiation(
-                thread_id=args.finalize,
-                to_project=args.to,
-                author_agent=author_agent,
-                priority=args.priority,
-                config=config,
-                store=store,
-                issue_creator=creator,
-            )
+            with get_negotiation_store(config, use_mock=bool(args.mock)) as store:
+                result = finalize_negotiation(
+                    thread_id=args.finalize,
+                    to_project=args.to,
+                    author_agent=author_agent,
+                    priority=args.priority,
+                    config=config,
+                    store=store,
+                    issue_creator=creator,
+                )
             if args.json:
                 print_json(result.to_dict())
             else:
@@ -163,28 +161,29 @@ def run(args) -> int:
         if not args.mock:
             _warn_target_validation(config, args.to)
 
-        issue = get_store(config).get_issue(issue_id)
+        with get_store(config) as issue_store:
+            issue = issue_store.get_issue(issue_id)
         if issue is None:
             print(f"Active issue #{issue_id} was not found.", file=sys.stderr)
             return 1
 
-        store = get_negotiation_store(config, use_mock=bool(args.mock))
-        result = run_negotiation(
-            issue=issue,
-            to_project=args.to,
-            initiator_side=args.initiator_side,
-            provider_agent=args.provider_agent,
-            consumer_agent=args.consumer_agent,
-            max_rounds=max_rounds,
-            timeout=float(args.timeout_sec),
-            model=args.model,
-            reasoning_effort=args.reasoning_effort,
-            config=config,
-            cwd=cwd,
-            counterpart_cwd=counterpart_cwd,
-            store=store,
-            runner=AgentRunner(),
-        )
+        with get_negotiation_store(config, use_mock=bool(args.mock)) as store:
+            result = run_negotiation(
+                issue=issue,
+                to_project=args.to,
+                initiator_side=args.initiator_side,
+                provider_agent=args.provider_agent,
+                consumer_agent=args.consumer_agent,
+                max_rounds=max_rounds,
+                timeout=float(args.timeout_sec),
+                model=args.model,
+                reasoning_effort=args.reasoning_effort,
+                config=config,
+                cwd=cwd,
+                counterpart_cwd=counterpart_cwd,
+                store=store,
+                runner=AgentRunner(),
+            )
         if args.json:
             print_json(result.to_dict())
         else:
@@ -214,22 +213,22 @@ def _warn_target_validation(config: IssuekitConfig, target_project: str) -> None
 def run_threads(args) -> int:
     def action() -> int:
         config = load_config(Path.cwd())
-        store = get_negotiation_store(config, use_mock=bool(args.mock))
-        status = ThreadStatus(args.status) if args.status else None
-        if args.thread_id:
-            inspection = inspect_thread(args.thread_id, store=store)
-            if args.json:
-                print_json(inspection.to_dict())
-            else:
-                _print_human_thread_inspection(inspection)
-            return 0
+        with get_negotiation_store(config, use_mock=bool(args.mock)) as store:
+            status = ThreadStatus(args.status) if args.status else None
+            if args.thread_id:
+                inspection = inspect_thread(args.thread_id, store=store)
+                if args.json:
+                    print_json(inspection.to_dict())
+                else:
+                    _print_human_thread_inspection(inspection)
+                return 0
 
-        summaries = store.list_threads(status=status)
-        if args.json:
-            print_json([_thread_summary_to_dict(summary) for summary in summaries])
-        else:
-            _print_human_thread_summaries(summaries)
-        return 0
+            summaries = store.list_threads(status=status)
+            if args.json:
+                print_json([_thread_summary_to_dict(summary) for summary in summaries])
+            else:
+                _print_human_thread_summaries(summaries)
+            return 0
 
     return run_command(
         action,
