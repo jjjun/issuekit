@@ -11,7 +11,7 @@ import issuekit.proposals.api as proposals_api
 from issuekit import store as store_module
 from issuekit.agentrun import AgentPrompt
 from issuekit.workers import registry as worker_registry
-from issuekit.commands import serve
+from issuekit.commands import serve, serve_loop
 from issuekit.testing import FakeIssuekitClient
 from issuekit.workflow import WorkflowError
 
@@ -202,6 +202,17 @@ def _create_reviewable_diff(path: Path) -> None:
     (path / "code.py").write_text("value = 1\n", encoding="utf-8", newline="\n")
     _init_git_repo(path)
     (path / "code.py").write_text("value = 2\n", encoding="utf-8", newline="\n")
+
+
+def test_backoff_uses_current_initial_value(monkeypatch) -> None:
+    monkeypatch.setattr(serve_loop, "BACKOFF_INITIAL_SEC", 4.0)
+
+    backoff = serve_loop.Backoff()
+    assert backoff.current == 4.0
+
+    backoff.step()
+    backoff.reset()
+    assert backoff.current == 4.0
 
 
 def test_serve_once_empty_queue_exits_without_agent(
@@ -754,6 +765,7 @@ def test_serve_recovery_error_continues_to_poll(
     RecoveryErrorThenRunner.calls.clear()
     _configure_registered_api(tmp_path, monkeypatch, client)
     monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", RecoveryErrorThenRunner)
+    monkeypatch.setattr(serve_loop, "BACKOFF_INITIAL_SEC", 0.0)
 
     exit_code = cli.main(["serve", "--agent", "codex", "--max-issues", "1", "--interval", "0"])
 

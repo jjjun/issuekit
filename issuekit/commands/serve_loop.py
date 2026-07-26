@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 import sys
@@ -24,7 +24,7 @@ BACKOFF_MAX_SEC = 60.0
 
 @dataclass
 class Backoff:
-    current: float = BACKOFF_INITIAL_SEC
+    current: float = field(default_factory=lambda: BACKOFF_INITIAL_SEC)
 
     def step(self) -> None:
         self.current = min(self.current * 2, BACKOFF_MAX_SEC)
