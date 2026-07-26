@@ -13,15 +13,7 @@ import os
 
 import httpx
 
-from .base import (
-    JsonBody,
-    JsonDict,
-    LOGIN_GUIDANCE,
-    ClientTransportMixin,
-    ensure_dict,
-    profile_rows,
-    worker_rows,
-)
+from .base import ClientTransportMixin
 from .resources import (
     IssueResourceMixin,
     ProfileResourceMixin,

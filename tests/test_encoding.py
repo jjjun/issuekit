@@ -122,7 +122,7 @@ def test_added_line_numbers_ignores_deleted_file_headers() -> None:
         "-y\n"
     )
 
-    assert run_claimed._added_line_numbers(diff) == {Path("a.txt"): {1}}
+    assert encoding.added_line_numbers(diff) == {Path("a.txt"): {1}}
 
 
 def test_implementation_snapshot_uses_raw_non_ascii_status_paths(tmp_path, monkeypatch) -> None:

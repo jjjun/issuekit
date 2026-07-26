@@ -16,7 +16,6 @@ from issuekit.config import IssuekitConfig
 from issuekit.core import Issue
 from issuekit.encoding import (
     MojibakeScanOptions,
-    added_line_numbers as _added_line_numbers,
     changed_line_numbers,
     changed_readable_paths,
     print_mojibake_hit,

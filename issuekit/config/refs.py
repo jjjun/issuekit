@@ -9,7 +9,6 @@ from pathlib import Path
 
 from issuekit.core import is_valid_workflow_token
 from .local import (
-    LOCAL_CONFIG_NAME,
     LocalConfigError,
     load_toml,
     read_local_config,

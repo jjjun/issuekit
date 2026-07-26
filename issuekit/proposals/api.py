@@ -14,7 +14,6 @@ from issuekit.config import IssuekitConfig, load_config
 from issuekit.core import Issue, parse_issue_id_arg, parse_target_address
 from issuekit.encoding import ASCII_ONLY_HINT, has_non_ascii
 from issuekit.issues.dependencies import (
-    DEPENDENCY_REF_PATTERN,
     bare_ref_collision_warnings,
     dependency_refs,
 )

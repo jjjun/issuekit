@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 import re
 import sys
-from typing import Any, TextIO
+from typing import TextIO
 
 from issuekit.agents.readonly import prompt_from_spec, require_clean_run, run_readonly_evaluation
 from issuekit.agents.registry import resolve_adapter
