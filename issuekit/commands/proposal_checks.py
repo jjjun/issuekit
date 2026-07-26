@@ -97,7 +97,6 @@ def run(args) -> int:
             reasoning_effort=args.reasoning_effort,
             limit=int(args.limit),
             runner_factory=AgentRunner,
-            out=sys.stdout,
             err=sys.stderr,
         )
         if args.json:

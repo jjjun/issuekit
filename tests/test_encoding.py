@@ -4,7 +4,7 @@ import issuekit.agents.run_claimed as run_claimed
 
 from issuekit import encoding
 from issuekit.commands.check_encoding import _stray_carriage_return_lines
-from issuekit.gitutil import GitResult
+from issuekit.gitutil import GitResult, GitStatusEntry
 
 
 def test_encoding_artifact_detection() -> None:
@@ -60,18 +60,26 @@ def test_mojibake_gate_batches_changed_line_and_tracked_path_queries(
 
     def fake_run_git(args, cwd):
         calls.append(list(args))
-        if args[3] == "diff":
-            return GitResult(
-                returncode=0,
-                stdout="+++ b/changed.py\n@@ -0,0 +1 @@\n+value = 'changed'\n",
-                stderr="",
-            )
-        return GitResult(returncode=0, stdout="changed.py\0unchanged.py\0", stderr="")
+        return GitResult(
+            returncode=0,
+            stdout="+++ b/changed.py\n@@ -0,0 +1 @@\n+value = 'changed'\n",
+            stderr="",
+        )
 
-    monkeypatch.setattr(run_claimed, "_touched_implementation_paths", lambda *args: paths)
     monkeypatch.setattr(run_claimed, "run_git", fake_run_git)
+    snapshot = run_claimed.ImplementationChangeSnapshot(
+        root=tmp_path,
+        status_entries=(
+            GitStatusEntry(status=" M", path=Path("changed.py")),
+            GitStatusEntry(status=" M", path=Path("unchanged.py")),
+            GitStatusEntry(status="??", path=Path("new.py")),
+        ),
+        changed_paths=paths,
+        readable_paths=paths,
+    )
 
     confirmed, unconfirmed = run_claimed._mojibake_touched_hits(
+        snapshot,
         tmp_path,
         tmp_path / ".issues",
         include_halfwidth_katakana=True,
@@ -92,8 +100,7 @@ def test_mojibake_gate_batches_changed_line_and_tracked_path_queries(
             "changed.py",
             "unchanged.py",
             "new.py",
-        ],
-        ["ls-files", "-z", "--", "changed.py", "unchanged.py", "new.py"],
+        ]
     ]
 
 
@@ -118,15 +125,21 @@ def test_added_line_numbers_ignores_deleted_file_headers() -> None:
     assert run_claimed._added_line_numbers(diff) == {Path("a.txt"): {1}}
 
 
-def test_touched_paths_uses_raw_non_ascii_status_paths(tmp_path, monkeypatch) -> None:
+def test_implementation_snapshot_uses_raw_non_ascii_status_paths(tmp_path, monkeypatch) -> None:
     calls: list[tuple[Path, bool, str]] = []
 
     def fake_git_status_short(cwd, *, strip, untracked_files):
         calls.append((cwd, strip, untracked_files))
         return " M 日本語.py\n"
 
+    status = fake_git_status_short(tmp_path, strip=False, untracked_files="all")
+    parsed = GitStatusEntry(status=status[:2], path=Path(status[3:].strip()))
+    (tmp_path / parsed.path).write_text("value = 1\n", encoding="utf-8", newline="\n")
     monkeypatch.setattr(run_claimed, "git_root", lambda repo: tmp_path.resolve())
-    monkeypatch.setattr(run_claimed, "git_status_short", fake_git_status_short)
+    monkeypatch.setattr(run_claimed, "git_status_entries", lambda repo: (parsed,))
 
-    assert run_claimed._touched_paths(tmp_path) == (Path("日本語.py"),)
+    snapshot = run_claimed._implementation_change_snapshot(tmp_path)
+
+    assert snapshot.changed_paths == (Path("日本語.py"),)
+    assert snapshot.readable_paths == snapshot.changed_paths
     assert calls == [(tmp_path, False, "all")]

@@ -4,10 +4,46 @@ import subprocess
 
 from issuekit import cli
 from issuekit import store as store_module
+from issuekit.agents import run_claimed as run_claimed_agent
+from issuekit.agents.run_claimed import review_feedback_prompt
 from issuekit.agentrun import AgentPrompt
+from issuekit.gitutil import GitStatusEntry
 from issuekit.testing import FakeIssuekitClient
 
 from tests.issue_helpers import api_issue
+
+
+def test_review_feedback_prompt_stops_at_immediate_next_section() -> None:
+    assert (
+        review_feedback_prompt(
+            "## Review Feedback\n\n## Implementation Notes\n\nDo not include this."
+        )
+        is None
+    )
+
+
+def test_rename_across_issues_directory_is_an_implementation_change(
+    tmp_path: Path,
+) -> None:
+    issues_dir = tmp_path / "issues"
+    snapshot = run_claimed_agent.ImplementationChangeSnapshot(
+        root=tmp_path,
+        status_entries=(
+            GitStatusEntry(
+                status="R ",
+                path=Path("issues/moved.py"),
+                original_path=Path("code.py"),
+            ),
+        ),
+        changed_paths=(Path("issues/moved.py"), Path("code.py")),
+        readable_paths=(Path("issues/moved.py"),),
+    )
+
+    assert run_claimed_agent._implementation_entries(
+        snapshot,
+        tmp_path,
+        issues_dir,
+    )
 
 
 @dataclass(frozen=True)
@@ -256,6 +292,40 @@ def test_implement_command_mojibake_gate_blocks_submit(
     assert [call["method"] for call in client.calls] == ["claim"]
 
 
+def test_implement_command_mojibake_gate_scans_full_file_when_diff_fails(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
+    _configure_api(tmp_path, monkeypatch, client)
+    (tmp_path / "code.py").write_text("print('clean')\n", encoding="utf-8", newline="\n")
+    _init_git_repo(tmp_path)
+
+    class MojibakeRunner(FakeRunner):
+        def run(self, adapter, prompt: AgentPrompt, repo, timeout, **kwargs) -> FakeResult:
+            (repo / "code.py").write_text(
+                "comment = '\u7e67\uff62\u7e5d\u4e5d\u0393'\n",
+                encoding="utf-8",
+                newline="\n",
+            )
+            return FakeResult(status_short=" M code.py")
+
+    original_run_git = run_claimed_agent.run_git
+
+    def fail_changed_line_diff(args, cwd, **kwargs):
+        if "diff" in args and "--unified=0" in args:
+            return None
+        return original_run_git(args, cwd, **kwargs)
+
+    monkeypatch.setattr(run_claimed_agent, "run_git", fail_changed_line_diff)
+    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", MojibakeRunner)
+
+    assert cli.main(["implement", "1", "--agent", "codex"]) == 1
+    assert "mojibake gate blocked submit_for_review" in capsys.readouterr().err
+    assert [call["method"] for call in client.calls] == ["claim"]
+
+
 def test_implement_command_mojibake_gate_blocks_non_ascii_path(
     tmp_path: Path,
     monkeypatch,
@@ -477,6 +547,27 @@ def test_implement_command_blocks_when_git_has_no_implementation_changes(
     assert exit_code == 1
     assert "agent produced no implementation changes; not submitting for review" in captured.err
     assert [call["method"] for call in client.calls] == ["claim"]
+
+
+def test_implement_command_submits_deletion_only_change(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    client = FakeIssuekitClient([api_issue(1, "Delete old code", author="claude")])
+    _configure_api(tmp_path, monkeypatch, client)
+    deleted_path = tmp_path / "obsolete.py"
+    deleted_path.write_text("obsolete = True\n", encoding="utf-8", newline="\n")
+    _init_git_repo(tmp_path)
+
+    class DeletingRunner(FakeRunner):
+        def run(self, adapter, prompt: AgentPrompt, repo, timeout, **kwargs) -> FakeResult:
+            deleted_path.unlink()
+            return FakeResult(status_short=" D obsolete.py")
+
+    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", DeletingRunner)
+
+    assert cli.main(["implement", "1", "--agent", "codex"]) == 0
+    assert [call["method"] for call in client.calls] == ["claim", "submit"]
 
 
 def test_implement_command_accepts_agent_side_review_when_no_changes(

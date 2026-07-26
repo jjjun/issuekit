@@ -6,12 +6,14 @@ import json
 import hashlib
 from pathlib import Path
 import subprocess
+import threading
 
 import pytest
 
 import issuekit.proposals.api as proposals_api
 from issuekit import store as store_module
 from issuekit.agents import triage_author
+from issuekit.agents import triage_state
 from issuekit.agentrun import AgentPrompt, AgentResult
 from issuekit.agents.triage_author import (
     TriageAuthorParseError,
@@ -92,6 +94,7 @@ def _init_git_repo(path: Path) -> None:
 
 def _setup(monkeypatch, tmp_path, *, proposals, outputs, author_agent="codex", extra=""):
     _write_config(tmp_path, author_agent=author_agent, extra=extra)
+    _init_git_repo(tmp_path)
     client = FakeIssuekitClient(proposals=proposals)
     client.register_catalog_project("mine-py")
     monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *a, **k: client)
@@ -576,7 +579,7 @@ def test_triage_author_reply_sends_and_skips_next_cycle(monkeypatch, tmp_path) -
     # detail records the destination-project ref of the sent Re: proposal.
     assert first[0].detail == "mine-py#9"
     state_path = tmp_path / ".agent-runs" / "triage-author-state.json"
-    assert json.loads(state_path.read_text(encoding="utf-8"))["8"]["body_sha"]
+    assert json.loads(state_path.read_text(encoding="utf-8"))["8"]["fingerprint"]
 
     # Second cycle: same body -> the replied proposal is skipped, agent not re-run.
     second = run_triage_author_cycle(
@@ -610,6 +613,135 @@ def test_triage_author_reply_reruns_when_body_changes(monkeypatch, tmp_path) -> 
     assert [d.decision for d in second] == ["adopt"]
     assert len(runner.calls) == 2
     assert client.get_proposal(8)["status"] == "adopted"
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("title", "A clearer title"),
+        ("blocking", True),
+        ("depends_on", ["mine-py#proposal:9"]),
+    ],
+)
+def test_triage_author_reply_reruns_when_prompt_field_changes(
+    monkeypatch,
+    tmp_path,
+    field,
+    value,
+) -> None:
+    client, runner, config, _events, log = _setup(
+        monkeypatch,
+        tmp_path,
+        proposals=[
+            {"id": 8, "origin": "mine-py#2@abc", "title": "Vague ask", "body": "help"}
+        ],
+        outputs=[
+            _triage_block(decision="reply", question="Please clarify."),
+            _triage_block(decision="discard", reason="No longer applicable."),
+        ],
+    )
+
+    run_triage_author_cycle(config, tmp_path, runner_factory=lambda: runner, log=log)
+    client._proposals[8][field] = value
+    second = run_triage_author_cycle(
+        config,
+        tmp_path,
+        runner_factory=lambda: runner,
+        log=log,
+    )
+
+    assert [decision.decision for decision in second] == ["discard"]
+    assert len(runner.calls) == 2
+
+
+def test_triage_author_migrates_matching_legacy_reply_state(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    body = "help"
+    _client, runner, config, _events, log = _setup(
+        monkeypatch,
+        tmp_path,
+        proposals=[
+            {"id": 8, "origin": "mine-py#2@abc", "title": "Vague ask", "body": body}
+        ],
+        outputs=[_triage_block(decision="discard", reason="Must not run.")],
+    )
+    _write_skip_state(tmp_path, 8, body)
+
+    assert run_triage_author_cycle(
+        config,
+        tmp_path,
+        runner_factory=lambda: runner,
+        log=log,
+    ) == []
+    stored = json.loads(
+        (tmp_path / ".agent-runs" / "triage-author-state.json").read_text(
+            encoding="utf-8"
+        )
+    )["8"]
+    assert stored["fingerprint"]
+    assert "body_sha" not in stored
+    assert runner.calls == []
+
+
+def test_triage_author_stops_before_next_item_when_aborted(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    _client, _runner, config, _events, log = _setup(
+        monkeypatch,
+        tmp_path,
+        proposals=[
+            {"id": 1, "origin": "mine-py#1@abc", "title": "One", "body": "a"},
+            {"id": 2, "origin": "mine-py#2@abc", "title": "Two", "body": "b"},
+        ],
+        outputs=[],
+    )
+    abort_event = threading.Event()
+
+    class AbortingRunner(FakeRunner):
+        def run(self, adapter, prompt: AgentPrompt, repo, **kwargs) -> AgentResult:
+            result = super().run(adapter, prompt, repo, **kwargs)
+            abort_event.set()
+            return result
+
+    runner = AbortingRunner(
+        [_triage_block(decision="discard", reason="First only.")]
+    )
+
+    decisions = run_triage_author_cycle(
+        config,
+        tmp_path,
+        runner_factory=lambda: runner,
+        log=log,
+        abort_event=abort_event,
+    )
+
+    assert [decision.proposal_id for decision in decisions] == [1]
+    assert len(runner.calls) == 1
+
+
+def test_triage_state_save_is_atomic_and_skips_unchanged_write(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    replacements: list[tuple[Path, Path]] = []
+    original_replace = triage_state.os.replace
+
+    def record_replace(source, destination):
+        replacements.append((Path(source), Path(destination)))
+        original_replace(source, destination)
+
+    monkeypatch.setattr(triage_state.os, "replace", record_replace)
+    state = {"8": {"fingerprint": "abc", "replied_at": "now"}}
+
+    triage_state.save_state(tmp_path, state)
+    triage_state.save_state(tmp_path, state)
+
+    assert len(replacements) == 1
+    assert replacements[0][0].parent == replacements[0][1].parent
+    assert not list(replacements[0][1].parent.glob("*.tmp"))
 
 
 def test_triage_author_parse_failure_leaves_pending(monkeypatch, tmp_path) -> None:

@@ -384,6 +384,7 @@ def test_serve_proposal_checks_once_processes_pending_check(
         )
     ]
     _configure_registered_api(tmp_path, monkeypatch, client)
+    _init_git_repo(tmp_path)
     monkeypatch.setattr("issuekit.agents.proposal_check.resolve_adapter", lambda *a, **k: object())
     monkeypatch.setattr(serve, "AgentRunner", ProposalCheckRunner)
 
@@ -620,6 +621,7 @@ def test_serve_triage_uses_author_agent_when_configured(
     def fake_author_cycle(config, cwd, **kwargs):
         calls["author"] += 1
         assert kwargs.get("log") is not None
+        assert kwargs.get("abort_event") is not None
         return []
 
     def fake_mechanical(config):

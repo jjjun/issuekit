@@ -67,7 +67,6 @@ def run(args) -> int:
             model=args.model,
             reasoning_effort=args.reasoning_effort,
             runner_factory=AgentRunner,
-            out=sys.stdout,
             err=sys.stderr,
         )
         if args.json:

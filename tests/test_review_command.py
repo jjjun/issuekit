@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 import subprocess
 
@@ -589,6 +589,102 @@ def test_review_command_allows_handoff_evidence_without_local_diff(
     assert client.get_issue(1)["status"] == "completed"
 
 
+def test_body_handoff_evidence_requires_content_and_keeps_continuations() -> None:
+    issue = replace(
+        _issue(),
+        body=(
+            "# Issue\n\n"
+            "Checks:\n"
+            "- uv run pytest\n"
+            "  uv run issuekit check-encoding\n\n"
+            "## Notes\n"
+            "not evidence\n"
+        ),
+    )
+
+    evidence = review_agent._handoff_evidence_text(issue)
+
+    assert "Checks:\n- uv run pytest\n  uv run issuekit check-encoding" in evidence
+    assert "not evidence" not in evidence
+    assert review_agent._handoff_evidence_text(
+        replace(_issue(), body="Checks:\n\n## Notes\nNothing.\n")
+    ) == ""
+
+
+def test_collect_git_diff_context_includes_untracked_text_and_binary(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / ".gitignore").write_text(".agent-runs/\n", encoding="utf-8", newline="\n")
+    (tmp_path / "tracked.py").write_text("value = 1\n", encoding="utf-8", newline="\n")
+    _init_git_repo(tmp_path)
+    (tmp_path / "new file.py").write_text("first\nsecond\n", encoding="utf-8", newline="\n")
+    (tmp_path / "asset.bin").write_bytes(b"\0binary")
+
+    context = review_agent._collect_git_diff_context(tmp_path)
+
+    assert context.has_changed_files is True
+    assert "--- /dev/null" in context.text
+    assert "+++ b/new file.py" in context.text
+    assert "+first\n+second" in context.text
+    assert "[untracked binary file: asset.bin]" in context.text
+
+
+def test_combined_review_evidence_applies_one_size_limit(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    (tmp_path / "new.py").write_text("new = True\n", encoding="utf-8", newline="\n")
+    monkeypatch.setattr(review_agent, "_MAX_DIFF_CHARS", 200)
+
+    evidence = review_agent._combined_diff_evidence(
+        tmp_path,
+        "+" + ("x" * 400),
+        (review_agent.GitStatusEntry(status="??", path=Path("new.py")),),
+    )
+
+    assert len(evidence) <= 200
+    assert "untracked file omitted by review context size limit: new.py" in evidence
+
+
+def test_large_untracked_file_is_omitted_without_reading(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    path = tmp_path / "large.bin"
+    path.write_bytes(b"x" * 201)
+    monkeypatch.setattr(review_agent, "_MAX_DIFF_CHARS", 200)
+    original_read_bytes = Path.read_bytes
+
+    def fail_read_bytes(self: Path) -> bytes:
+        if self == path:
+            raise AssertionError(f"unexpected read: {self}")
+        return original_read_bytes(self)
+
+    monkeypatch.setattr(Path, "read_bytes", fail_read_bytes)
+
+    assert review_agent._untracked_diff_section(tmp_path, path.relative_to(tmp_path)) == (
+        "[untracked file omitted by review context size limit: large.bin]"
+    )
+
+
+def test_reviewable_status_filters_only_agent_run_paths() -> None:
+    runtime_entry = review_agent.GitStatusEntry(
+        status="??",
+        path=Path(".agent-runs/review-issue-1.md"),
+    )
+
+    assert review_agent._has_reviewable_changed_files((runtime_entry,)) is False
+    assert review_agent._has_reviewable_changed_files(
+        (
+            review_agent.GitStatusEntry(
+                status="R ",
+                path=Path(".agent-runs/code.py"),
+                original_path=Path("code.py"),
+            ),
+        )
+    ) is True
+
+
 def test_review_prompt_surfaces_obfuscation_hints() -> None:
     diff_context = review_agent.ReviewDiffContext(
         text=(
@@ -599,15 +695,14 @@ def test_review_prompt_surfaces_obfuscation_hints() -> None:
         ),
         has_changed_files=True,
         suspicious_warnings=review_agent._suspicious_readability_warnings(
-            "importlib.import_module(\"basekit.\" + \"doc\")\n"
-            "getattr(_module, \"Doc\" + \"kerComposeGenerator\")\n"
-            "globals()[\"generate_\" + \"doc\"] = value\n"
+            "+importlib.import_module(\"basekit.\" + \"doc\")\n"
+            "+getattr(_module, \"Doc\" + \"kerComposeGenerator\")\n"
+            "+globals()[\"generate_\" + \"doc\"] = value\n"
         ),
     )
 
     prompt = review_agent._render_review_prompt(
         _issue(),
-        cwd=Path("."),
         diff_context=diff_context,
     )
 
@@ -615,6 +710,17 @@ def test_review_prompt_surfaces_obfuscation_hints() -> None:
     assert "string-concatenated import_module path" in prompt
     assert "string-concatenated getattr name" in prompt
     assert "globals() attribute injection" in prompt
+
+
+def test_readability_warnings_only_inspect_added_lines() -> None:
+    suspicious = 'globals()["generated"] = value'
+
+    assert review_agent._suspicious_readability_warnings(
+        f" {suspicious}\n-{suspicious}\n"
+    ) == ()
+    assert review_agent._suspicious_readability_warnings(f"+{suspicious}\n") == (
+        "globals() attribute injection",
+    )
 
 
 def test_collect_git_diff_context_tolerates_missing_diff_stdout(
@@ -625,6 +731,13 @@ def test_collect_git_diff_context_tolerates_missing_diff_stdout(
         review_agent,
         "git_status_short",
         lambda *args, **kwargs: " M code.py\n",
+    )
+    monkeypatch.setattr(
+        review_agent,
+        "git_status_entries",
+        lambda *args, **kwargs: (
+            review_agent.GitStatusEntry(status=" M", path=Path("code.py")),
+        ),
     )
     monkeypatch.setattr(review_agent, "_git_stdout", lambda *args, **kwargs: None)
 

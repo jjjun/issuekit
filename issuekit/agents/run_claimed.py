@@ -22,7 +22,7 @@ from issuekit.encoding import (
     newline_offsets,
     print_mojibake_hit,
 )
-from issuekit.gitutil import git_root, git_status_short, run_git
+from issuekit.gitutil import GitStatusEntry, git_root, git_status_entries, run_git
 from issuekit.prompts import render_review_feedback_prompt
 from issuekit.store import get_store
 from issuekit.workflow import submit_for_review
@@ -36,6 +36,16 @@ class RunOutcome:
     result: AgentResult
     exit_code: int
     reviewed_issue: Issue | None = None
+
+
+@dataclass(frozen=True)
+class ImplementationChangeSnapshot:
+    """Repository changes captured once after an implementation run."""
+
+    root: Path | None
+    status_entries: tuple[GitStatusEntry, ...] | None
+    changed_paths: tuple[Path, ...]
+    readable_paths: tuple[Path, ...]
 
 
 RunReporter = Callable[[Issue, AgentResult], None]
@@ -129,6 +139,7 @@ def run_and_submit(
     )
     if reporter is not None:
         reporter(issue, result)
+    snapshot = _implementation_change_snapshot(cwd)
 
     if result.timed_out:
         return RunOutcome(issue=issue, result=result, exit_code=124)
@@ -151,7 +162,8 @@ def run_and_submit(
         store = owned_store
 
     try:
-        if git_root(cwd) == cwd.resolve() and not _touched_implementation_paths(cwd, issues_dir):
+        implementation_entries = _implementation_entries(snapshot, cwd, issues_dir)
+        if snapshot.root == cwd.resolve() and not implementation_entries:
             current_issue = store.get_issue(issue_id)
             if current_issue is not None and current_issue.stage == "review":
                 print(
@@ -181,6 +193,7 @@ def run_and_submit(
         policy = dict(config.agent_policies).get(agent)
         if policy is not None and policy.diff_shape_warn_deletions is not None:
             _warn_heavy_deletions(
+                snapshot,
                 cwd,
                 issues_dir,
                 deletion_threshold=policy.diff_shape_warn_deletions,
@@ -188,6 +201,7 @@ def run_and_submit(
             )
         if policy is not None and policy.mojibake_gate:
             confirmed_hits, unconfirmed_hits = _mojibake_touched_hits(
+                snapshot,
                 cwd,
                 issues_dir,
                 include_halfwidth_katakana=config.gate_halfwidth_kana,
@@ -248,7 +262,7 @@ def review_feedback_prompt(issue_body: str) -> str | None:
 
     collected: list[str] = []
     for line in lines[start:]:
-        if line.startswith("## ") and collected:
+        if line.startswith("## "):
             break
         collected.append(line)
     notes = "\n".join(collected).strip()
@@ -258,6 +272,7 @@ def review_feedback_prompt(issue_body: str) -> str | None:
 
 
 def _mojibake_touched_hits(
+    snapshot: ImplementationChangeSnapshot,
     repo: Path,
     issues_dir: Path,
     *,
@@ -266,13 +281,25 @@ def _mojibake_touched_hits(
 ) -> tuple[list[dict[str, int | str]], list[dict[str, int | str]]]:
     confirmed_hits: list[dict[str, int | str]] = []
     unconfirmed_hits: list[dict[str, int | str]] = []
-    paths = _touched_implementation_paths(repo, issues_dir)
+    paths = tuple(
+        path
+        for path in snapshot.readable_paths
+        if any(
+            entry.path == path
+            and _entry_is_implementation_change(entry, repo, issues_dir)
+            for entry in snapshot.status_entries or ()
+        )
+    )
     changed_lines_by_path = _changed_line_numbers(repo, paths)
-    tracked_paths = _tracked_paths(repo, paths)
+    changed_line_lookup_failed = changed_lines_by_path is None
+    changed_lines_by_path = changed_lines_by_path or {}
+    untracked_paths = {
+        entry.path
+        for entry in snapshot.status_entries or ()
+        if entry.status == "??"
+    }
     for rel_path in paths:
         path = repo / rel_path
-        if not path.exists() or not path.is_file():
-            continue
         try:
             text = path.read_bytes().decode("utf-8")
         except UnicodeDecodeError:
@@ -291,7 +318,7 @@ def _mojibake_touched_hits(
         # with generated half-width katakana can set gate_halfwidth_kana = false.
         offsets = newline_offsets(text)
         changed_lines = changed_lines_by_path.get(rel_path, set())
-        if not changed_lines and rel_path not in tracked_paths:
+        if changed_line_lookup_failed or rel_path in untracked_paths:
             changed_lines = set(range(1, len(offsets) + 2))
         artifacts = [
             (index, character)
@@ -315,7 +342,7 @@ def _mojibake_touched_hits(
 
 def _changed_line_numbers(
     repo: Path, rel_paths: tuple[Path, ...]
-) -> dict[Path, set[int]]:
+) -> dict[Path, set[int]] | None:
     if not rel_paths:
         return {}
     result = run_git(
@@ -332,20 +359,10 @@ def _changed_line_numbers(
         repo,
     )
     if result is None or result.returncode != 0:
-        return {}
+        # A failed diff cannot prove that a tracked file has no changed lines.
+        # The caller conservatively scans each complete readable file instead.
+        return None
     return _added_line_numbers(result.stdout)
-
-
-def _tracked_paths(repo: Path, rel_paths: tuple[Path, ...]) -> set[Path]:
-    if not rel_paths:
-        return set()
-    result = run_git(
-        ["ls-files", "-z", "--", *(rel_path.as_posix() for rel_path in rel_paths)],
-        repo,
-    )
-    if result is None or result.returncode != 0:
-        return set()
-    return {Path(path) for path in result.stdout.split("\0") if path}
 
 
 def _added_line_numbers(diff: str) -> dict[Path, set[int]]:
@@ -373,39 +390,34 @@ def _added_line_numbers(diff: str) -> dict[Path, set[int]]:
     return changed_lines
 
 
-def _touched_implementation_paths(repo: Path, issues_dir: Path) -> tuple[Path, ...]:
-    return tuple(
-        rel_path
-        for rel_path in _touched_paths(repo)
-        if not _is_under_issues_dir(repo / rel_path, issues_dir)
-    )
-
-
 def _warn_heavy_deletions(
+    snapshot: ImplementationChangeSnapshot,
     repo: Path,
     issues_dir: Path,
     *,
     deletion_threshold: int,
     err: TextIO,
 ) -> None:
-    if git_root(repo) != repo.resolve():
+    if snapshot.root != repo.resolve():
         return
-    result = run_git(["--no-pager", "diff", "--numstat", "HEAD", "--"], repo)
+    implementation_entries = _implementation_entries(snapshot, repo, issues_dir)
+    if not implementation_entries:
+        return
+    result = run_git(["--no-pager", "diff", "--numstat", "-z", "HEAD", "--"], repo)
     if result is None:
         return
     if result.returncode != 0:
         return
 
-    for line in result.stdout.splitlines():
-        parts = line.split("\t", 2)
-        if len(parts) != 3:
+    for _added, deleted, paths in _numstat_records(result.stdout):
+        if not any(
+            entry.path in paths or entry.original_path in paths
+            for entry in implementation_entries
+        ):
             continue
-        _added, deleted, raw_path = parts
         if not deleted.isdigit() or int(deleted) <= deletion_threshold:
             continue
-        rel_path = Path(raw_path)
-        if _is_under_issues_dir(repo / rel_path, issues_dir):
-            continue
+        rel_path = paths[-1]
         print(
             "WARNING: heavy deletion diff detected: "
             f"{rel_path.as_posix()} deletes {deleted} lines "
@@ -414,26 +426,86 @@ def _warn_heavy_deletions(
         )
 
 
-def _touched_paths(repo: Path) -> tuple[Path, ...]:
-    if git_root(repo) != repo.resolve():
-        return ()
-    status_output = git_status_short(repo, strip=False, untracked_files="all")
-    if status_output is None:
-        return ()
+def _numstat_records(output: str) -> tuple[tuple[str, str, tuple[Path, ...]], ...]:
+    fields = output.split("\0")
+    if fields and not fields[-1]:
+        fields.pop()
+    records: list[tuple[str, str, tuple[Path, ...]]] = []
+    index = 0
+    while index < len(fields):
+        parts = fields[index].split("\t", 2)
+        if len(parts) != 3:
+            break
+        added, deleted, raw_path = parts
+        if raw_path:
+            paths = (Path(raw_path),)
+            index += 1
+        else:
+            if index + 2 >= len(fields):
+                break
+            paths = (Path(fields[index + 1]), Path(fields[index + 2]))
+            index += 3
+        records.append((added, deleted, paths))
+    return tuple(records)
 
-    paths: list[Path] = []
-    for line in status_output.splitlines():
-        if len(line) < 4:
-            continue
-        status = line[:2]
-        raw_path = line[3:]
-        if " -> " in raw_path:
-            raw_path = raw_path.rsplit(" -> ", 1)[1]
-        path = Path(raw_path.strip('"'))
-        if "D" in status and not (repo / path).exists():
-            continue
-        paths.append(path)
-    return tuple(paths)
+
+def _implementation_change_snapshot(repo: Path) -> ImplementationChangeSnapshot:
+    root = git_root(repo)
+    entries = git_status_entries(repo) if root == repo.resolve() else None
+    changed_paths: list[Path] = []
+    readable_paths: list[Path] = []
+    seen_changed: set[Path] = set()
+    seen_readable: set[Path] = set()
+    for entry in entries or ():
+        for path in (entry.path, entry.original_path):
+            if path is not None and path not in seen_changed:
+                seen_changed.add(path)
+                changed_paths.append(path)
+        current = repo / entry.path
+        if entry.path not in seen_readable and _is_readable_regular_file(current):
+            seen_readable.add(entry.path)
+            readable_paths.append(entry.path)
+    return ImplementationChangeSnapshot(
+        root=root,
+        status_entries=entries,
+        changed_paths=tuple(changed_paths),
+        readable_paths=tuple(readable_paths),
+    )
+
+
+def _is_readable_regular_file(path: Path) -> bool:
+    if path.is_symlink() or not path.is_file():
+        return False
+    try:
+        with path.open("rb") as stream:
+            stream.read(0)
+    except OSError:
+        return False
+    return True
+
+
+def _implementation_entries(
+    snapshot: ImplementationChangeSnapshot,
+    repo: Path,
+    issues_dir: Path,
+) -> tuple[GitStatusEntry, ...]:
+    return tuple(
+        entry
+        for entry in snapshot.status_entries or ()
+        if _entry_is_implementation_change(entry, repo, issues_dir)
+    )
+
+
+def _entry_is_implementation_change(
+    entry: GitStatusEntry,
+    repo: Path,
+    issues_dir: Path,
+) -> bool:
+    return any(
+        not _is_under_issues_dir(repo / path, issues_dir)
+        for path in (entry.path, entry.original_path)
+        if path is not None
+    )
 
 
 def _is_under_issues_dir(path: Path, issues_dir: Path) -> bool:

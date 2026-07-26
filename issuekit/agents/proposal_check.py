@@ -11,6 +11,7 @@ import threading
 from typing import Any, TextIO
 
 from issuekit.agents.proposal_eval import (
+    proposal_dependencies_text,
     run_readonly_proposal_evaluation,
 )
 from issuekit.agents.readonly import prompt_from_spec
@@ -66,7 +67,6 @@ def run_proposal_check_cycle(
     limit: int = 50,
     runner_factory=None,
     log: LogFn | None = None,
-    out: TextIO | None = None,
     err: TextIO | None = None,
     abort_event: threading.Event | None = None,
 ) -> list[ProposalCheckDecision]:
@@ -80,7 +80,6 @@ def run_proposal_check_cycle(
     if limit < 1:
         raise ValueError("limit must be greater than zero.")
 
-    out = out or sys.stdout
     err = err or sys.stderr
     emit = log or (lambda *args, **kwargs: None)
     runner_factory = runner_factory or AgentRunner
@@ -103,15 +102,13 @@ def run_proposal_check_cycle(
 
     decisions: list[ProposalCheckDecision] = []
     for check in checks:
+        if abort_event is not None and abort_event.is_set():
+            break
         check_id = int(check["id"])
-        target_project = str(check["target_project"])
-        proposal_id = int(check["proposal_id"])
         try:
-            with api_client(config, project=target_project) as client:
-                proposal = client.get_proposal(proposal_id)
-            parsed = _evaluate_check(
+            decision = _process_proposal_check(
                 check,
-                proposal,
+                config=config,
                 agent=agent,
                 adapter=adapter,
                 cwd=cwd,
@@ -120,69 +117,16 @@ def run_proposal_check_cycle(
                 err=err,
                 abort_event=abort_event,
             )
-            adopted_issue_ref = None
-            append_text = parsed.get("spec_markdown") or None
-            if parsed["verdict"] == "approve":
-                outcome = adopt_proposal_with_append(
-                    replace(config, project=target_project),
-                    proposal_id,
-                    priority=config.triage.default_priority,
-                    append_text=append_text,
-                )
-                adopted_issue_ref = _valid_adopted_issue_ref(
-                    outcome.get("issue_ref")
-                )
-            result = _post_result(
-                config,
-                check_id=check_id,
-                target_project=target_project,
-                verdict=parsed["verdict"],
-                comment=parsed["comment"],
-                adopted_issue_ref=adopted_issue_ref,
-            )
-            decisions.append(
-                ProposalCheckDecision(
-                    check_id=check_id,
-                    target_project=target_project,
-                    proposal_id=proposal_id,
-                    verdict=parsed["verdict"],
-                    comment=parsed["comment"],
-                    adopted_issue_ref=adopted_issue_ref,
-                    status=str(result.get("status", "answered")),
-                )
-            )
+            decisions.append(decision)
+            if decision.status == "already_decided":
+                emit("proposal_check_already_decided", check=check_id)
+                continue
             emit(
                 "proposal_check_decision",
                 check=check_id,
-                proposal=proposal_id,
-                verdict=parsed["verdict"],
-                adopted_issue_ref=adopted_issue_ref,
-            )
-        except WorkflowError as exc:
-            if exc.code == "already_decided":
-                decisions.append(
-                    ProposalCheckDecision(
-                        check_id=check_id,
-                        target_project=target_project,
-                        proposal_id=proposal_id,
-                        verdict="",
-                        comment="",
-                        status="already_decided",
-                    )
-                )
-                emit("proposal_check_already_decided", check=check_id)
-                continue
-            emit("proposal_check_error", check=check_id, error=str(exc))
-            decisions.append(
-                ProposalCheckDecision(
-                    check_id=check_id,
-                    target_project=target_project,
-                    proposal_id=proposal_id,
-                    verdict="error",
-                    comment="",
-                    status="error",
-                    error=str(exc),
-                )
+                proposal=decision.proposal_id,
+                verdict=decision.verdict,
+                adopted_issue_ref=decision.adopted_issue_ref,
             )
         except (
             FileNotFoundError,
@@ -191,19 +135,10 @@ def run_proposal_check_cycle(
             TimeoutError,
             ProposalError,
             ProposalCheckParseError,
+            WorkflowError,
         ) as exc:
             emit("proposal_check_error", check=check_id, error=str(exc))
-            decisions.append(
-                ProposalCheckDecision(
-                    check_id=check_id,
-                    target_project=target_project,
-                    proposal_id=proposal_id,
-                    verdict="error",
-                    comment="",
-                    status="error",
-                    error=str(exc),
-                )
-            )
+            decisions.append(_error_decision(check, exc))
     return decisions
 
 
@@ -247,34 +182,128 @@ def _poll_worker_checks(
     limit: int,
     offset: int,
 ) -> list[dict[str, Any]]:
-    seen: set[int] = set()
-    checks: list[dict[str, Any]] = []
+    streams: list[list[dict[str, Any]]] = []
+    needed = offset + limit
     for target_worker in worker_keys:
-        for check in client.poll_proposal_checks(
-            target_worker=target_worker,
-            status=status,
-            limit=limit,
-            offset=offset,
-        ):
-            check_id = int(check["id"])
-            if check_id in seen:
-                continue
-            seen.add(check_id)
-            checks.append(check)
-    return checks[:limit]
+        stream: list[dict[str, Any]] = []
+        worker_offset = 0
+        while len(stream) < needed:
+            page_limit = min(needed - len(stream), 500)
+            page = client.poll_proposal_checks(
+                target_worker=target_worker,
+                status=status,
+                limit=page_limit,
+                offset=worker_offset,
+            )
+            stream.extend(page)
+            if len(page) < page_limit:
+                break
+            worker_offset += len(page)
+        streams.append(stream)
+    return _merge_worker_check_streams(streams)[offset : offset + limit]
 
 
 def _list_worker_checks(client, worker_keys: tuple[str, ...]) -> list[dict[str, Any]]:
-    seen: set[int] = set()
-    checks: list[dict[str, Any]] = []
-    for target_worker in worker_keys:
-        for check in client.list_proposal_checks(target_worker=target_worker, status=None):
-            check_id = int(check["id"])
-            if check_id in seen:
-                continue
-            seen.add(check_id)
-            checks.append(check)
-    return checks
+    streams = [
+        client.list_proposal_checks(target_worker=target_worker, status=None)
+        for target_worker in worker_keys
+    ]
+    return _merge_worker_check_streams(streams)
+
+
+def _merge_worker_check_streams(
+    streams: list[list[dict[str, Any]]],
+) -> list[dict[str, Any]]:
+    by_id: dict[int, dict[str, Any]] = {}
+    for stream in streams:
+        for check in stream:
+            by_id.setdefault(int(check["id"]), check)
+    return [by_id[check_id] for check_id in sorted(by_id)]
+
+
+def _process_proposal_check(
+    check: Mapping[str, Any],
+    *,
+    config: IssuekitConfig,
+    agent: str,
+    adapter: object,
+    cwd: Path,
+    timeout: float,
+    runner_factory,
+    err: TextIO,
+    abort_event: threading.Event | None,
+) -> ProposalCheckDecision:
+    check_id = int(check["id"])
+    target_project = str(check["target_project"])
+    proposal_id = int(check["proposal_id"])
+    with api_client(config, project=target_project) as client:
+        proposal = client.get_proposal(proposal_id)
+    parsed = _evaluate_check(
+        check,
+        proposal,
+        agent=agent,
+        adapter=adapter,
+        cwd=cwd,
+        timeout=timeout,
+        runner_factory=runner_factory,
+        err=err,
+        abort_event=abort_event,
+    )
+    adopted_issue_ref = None
+    if parsed["verdict"] == "approve":
+        adopted_issue_ref = _recorded_adopted_issue_ref(proposal, target_project)
+        if adopted_issue_ref is None:
+            outcome = adopt_proposal_with_append(
+                replace(config, project=target_project),
+                proposal_id,
+                priority=config.triage.default_priority,
+                append_text=parsed.get("spec_markdown") or None,
+            )
+            adopted_issue_ref = _valid_adopted_issue_ref(outcome.get("issue_ref"))
+    try:
+        result = _post_result(
+            config,
+            check_id=check_id,
+            target_project=target_project,
+            verdict=parsed["verdict"],
+            comment=parsed["comment"],
+            adopted_issue_ref=adopted_issue_ref,
+        )
+    except WorkflowError as exc:
+        if exc.code != "already_decided":
+            raise
+        return ProposalCheckDecision(
+            check_id=check_id,
+            target_project=target_project,
+            proposal_id=proposal_id,
+            verdict="",
+            comment="",
+            status="already_decided",
+        )
+    return ProposalCheckDecision(
+        check_id=check_id,
+        target_project=target_project,
+        proposal_id=proposal_id,
+        verdict=parsed["verdict"],
+        comment=parsed["comment"],
+        adopted_issue_ref=adopted_issue_ref,
+        status=str(result.get("status", "answered")),
+    )
+
+
+def _error_decision(
+    check: Mapping[str, Any],
+    error: Exception,
+) -> ProposalCheckDecision:
+    return ProposalCheckDecision(
+        check_id=int(check["id"]),
+        target_project=str(check["target_project"]),
+        proposal_id=int(check["proposal_id"]),
+        verdict="error",
+        comment="",
+        status="error",
+        error=str(error),
+    )
 
 
 def parse_proposal_check_output(stdout: str) -> dict[str, str]:
@@ -373,15 +402,23 @@ def _valid_adopted_issue_ref(value: object) -> str | None:
     return value
 
 
+def _recorded_adopted_issue_ref(
+    proposal: Mapping[str, Any],
+    target_project: str,
+) -> str | None:
+    if proposal.get("status") != "adopted":
+        return None
+    try:
+        issue_number = int(proposal.get("adopted_issue_number"))
+    except (TypeError, ValueError):
+        return None
+    return _valid_adopted_issue_ref(f"{target_project}#{issue_number}")
+
+
 def _render_check_prompt(
     check: Mapping[str, Any],
     proposal: Mapping[str, Any],
 ) -> str:
-    depends_on = proposal.get("depends_on") or []
-    if isinstance(depends_on, (list, tuple)):
-        depends_text = ", ".join(str(ref) for ref in depends_on) or "(none)"
-    else:
-        depends_text = str(depends_on)
     return PROPOSAL_CHECK_PROMPT.render(
         check_id=check["id"],
         target_project=check.get("target_project", ""),
@@ -389,6 +426,6 @@ def _render_check_prompt(
         title=proposal.get("title", ""),
         origin=proposal.get("origin", ""),
         blocking=bool(proposal.get("blocking", False)),
-        depends_on=depends_text,
+        depends_on=proposal_dependencies_text(proposal),
         proposal_body=proposal.get("body", ""),
     )

@@ -264,7 +264,11 @@ def _serve_loop(
                 try:
                     if config.triage.author_agent:
                         _run_triage_author_cycle(
-                            args, config=config, cwd=cwd, log_path=log_path
+                            args,
+                            config=config,
+                            cwd=cwd,
+                            log_path=log_path,
+                            controller=controller,
                         )
                     else:
                         for outcome in auto_adopt_incoming_proposals(config):
@@ -391,7 +395,6 @@ def _serve_proposal_checks_loop(
                 limit=int(args.proposal_check_limit),
                 runner_factory=AgentRunner,
                 log=lambda event, **fields: _log(sys.stderr, log_path, event, **fields),
-                out=sys.stderr,
                 err=sys.stderr,
                 abort_event=controller.abort_event,
             )
@@ -555,7 +558,12 @@ def _triage_enabled(args, config: IssuekitConfig) -> bool:
 
 
 def _run_triage_author_cycle(
-    args, *, config: IssuekitConfig, cwd: Path, log_path: Path
+    args,
+    *,
+    config: IssuekitConfig,
+    cwd: Path,
+    log_path: Path,
+    controller: ShutdownController,
 ) -> None:
     def emit(event: str, **fields: object) -> None:
         _log(sys.stderr, log_path, event, **fields)
@@ -567,8 +575,8 @@ def _run_triage_author_cycle(
         model=getattr(args, "model", None),
         reasoning_effort=getattr(args, "reasoning_effort", None),
         log=emit,
-        out=sys.stderr,
         err=sys.stderr,
+        abort_event=controller.abort_event,
     )
 
 

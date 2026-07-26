@@ -18,19 +18,21 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
 import hashlib
+import json
 import re
 import sys
 import threading
 from typing import Any, TextIO
 
 from issuekit.agents.proposal_eval import (
+    proposal_dependencies_text,
     run_readonly_proposal_evaluation,
 )
 from issuekit.agents.readonly import prompt_from_spec
 from issuekit.agents.registry import resolve_adapter
 from issuekit.agentrun import AgentRunner
 from issuekit.agents.triage_state import (
-    STATE_FILENAME,
+    STATE_FILENAME as _STATE_FILENAME,
     load_state,
     now,
     save_state,
@@ -62,6 +64,9 @@ _SUPERSEDES_LINE_PATTERN = re.compile(
 )
 
 LogFn = Callable[..., None]
+
+# Compatibility re-export for callers that historically imported this name here.
+STATE_FILENAME = _STATE_FILENAME
 
 
 @dataclass(frozen=True)
@@ -134,8 +139,8 @@ def run_triage_author_cycle(
     reasoning_effort: str | None = None,
     runner_factory=None,
     log: LogFn | None = None,
-    out: TextIO | None = None,
     err: TextIO | None = None,
+    abort_event: threading.Event | None = None,
 ) -> list[TriageDecision]:
     """Run one agent-backed triage cycle over policy-matching pending proposals."""
 
@@ -144,7 +149,6 @@ def run_triage_author_cycle(
         raise WorkflowError(
             "triage-author mode requires [tool.issuekit.triage] author_agent."
         )
-    out = out or sys.stdout
     err = err or sys.stderr
     emit = log or (lambda *args, **kwargs: None)
     runner_factory = runner_factory or AgentRunner
@@ -165,13 +169,16 @@ def run_triage_author_cycle(
         pending = client.list_proposals(status="pending")
 
     for proposal in pending:
+        if abort_event is not None and abort_event.is_set():
+            break
         if evaluated >= limit:
             break
         if not matches_triage_policy(proposal, config):
             continue
         proposal_id = int(proposal["id"])
+        fingerprint = _proposal_fingerprint(proposal)
         body_sha = _body_sha(proposal.get("body", ""))
-        if _skip_replied(state, proposal_id, body_sha):
+        if _skip_replied(state, proposal_id, fingerprint, body_sha):
             emit("triage_author_skip", proposal=proposal_id, reason="replied")
             continue
 
@@ -181,11 +188,11 @@ def run_triage_author_cycle(
                 proposal,
                 agent=agent,
                 adapter=adapter,
-                config=config,
                 cwd=cwd,
                 timeout=timeout,
                 runner_factory=runner_factory,
                 err=err,
+                abort_event=abort_event,
             )
         except (
             FileNotFoundError,
@@ -213,7 +220,7 @@ def run_triage_author_cycle(
             config=config,
             cwd=cwd,
             state=state,
-            body_sha=body_sha,
+            fingerprint=fingerprint,
             emit=emit,
         )
         decisions.append(decision)
@@ -240,11 +247,11 @@ def _evaluate_proposal(
     *,
     agent: str,
     adapter,
-    config: IssuekitConfig,
     cwd: Path,
     timeout: float,
     runner_factory,
     err: TextIO,
+    abort_event: threading.Event | None,
 ) -> dict[str, str]:
     proposal_id = int(proposal["id"])
     stdout = run_readonly_proposal_evaluation(
@@ -265,6 +272,7 @@ def _evaluate_proposal(
         mutation_log_message=(
             "ERROR: triage-author run modified repository state; ignoring its output."
         ),
+        abort_event=abort_event,
     )
     return parse_triage_output(stdout)
 
@@ -276,7 +284,7 @@ def _apply_decision(
     config: IssuekitConfig,
     cwd: Path,
     state: dict[str, dict[str, str]],
-    body_sha: str,
+    fingerprint: str,
     emit: LogFn,
 ) -> TriageDecision:
     proposal_id = int(proposal["id"])
@@ -330,7 +338,11 @@ def _apply_decision(
         if decision == "reply":
             question = parsed["question"]
             issue_ref = _send_reply(proposal, question, config=config, cwd=cwd)
-            state[str(proposal_id)] = {"body_sha": body_sha, "replied_at": now()}
+            state[str(proposal_id)] = {
+                "fingerprint": fingerprint,
+                "replied_at": now(),
+            }
+            save_state(cwd, state)
             return TriageDecision(
                 proposal_id=proposal_id,
                 origin=origin,
@@ -468,18 +480,13 @@ def _send_reply(
 
 
 def _render_triage_prompt(proposal: Mapping[str, Any]) -> str:
-    depends_on = proposal.get("depends_on") or []
-    if isinstance(depends_on, (list, tuple)):
-        depends_text = ", ".join(str(ref) for ref in depends_on) or "(none)"
-    else:
-        depends_text = str(depends_on)
     return TRIAGE_PROMPT.render(
         proposal_id=proposal["id"],
         origin=proposal.get("origin", ""),
         reply_to=proposal.get("reply_to") or "(none)",
         title=proposal.get("title", ""),
         blocking=bool(proposal.get("blocking", False)),
-        depends_on=depends_text,
+        depends_on=proposal_dependencies_text(proposal),
         proposal_body=proposal.get("body", ""),
     )
 
@@ -487,13 +494,47 @@ def _render_triage_prompt(proposal: Mapping[str, Any]) -> str:
 
 
 def _skip_replied(
-    state: Mapping[str, Mapping[str, str]],
+    state: dict[str, dict[str, str]],
     proposal_id: int,
+    fingerprint: str,
     body_sha: str,
 ) -> bool:
     prior = state.get(str(proposal_id))
-    return bool(prior) and prior.get("body_sha") == body_sha
+    if not prior:
+        return False
+    if prior.get("fingerprint") == fingerprint:
+        return True
+    if "fingerprint" not in prior and prior.get("body_sha") == body_sha:
+        state[str(proposal_id)] = {
+            "fingerprint": fingerprint,
+            "replied_at": prior.get("replied_at", ""),
+        }
+        return True
+    return False
 
 
 def _body_sha(body: object) -> str:
     return hashlib.sha256(str(body).encode("utf-8")).hexdigest()
+
+
+def _proposal_fingerprint(proposal: Mapping[str, Any]) -> str:
+    depends_on = proposal.get("depends_on") or []
+    if isinstance(depends_on, (list, tuple)):
+        dependencies: object = [str(ref) for ref in depends_on]
+    else:
+        dependencies = str(depends_on)
+    prompt_fields = {
+        "origin": str(proposal.get("origin", "")),
+        "reply_to": str(proposal.get("reply_to") or ""),
+        "title": str(proposal.get("title", "")),
+        "blocking": bool(proposal.get("blocking", False)),
+        "depends_on": dependencies,
+        "body": str(proposal.get("body", "")),
+    }
+    canonical = json.dumps(
+        prompt_fields,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()

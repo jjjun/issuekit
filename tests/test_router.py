@@ -84,6 +84,7 @@ def _register_catalog_projects(
 
 def _setup(monkeypatch, tmp_path, outputs, *, profiles=None, extra_router: str = ""):
     _write_config(tmp_path, extra_router=extra_router)
+    _init_git_repo(tmp_path)
     profiles = profiles or [
         {
             "project": "api",
@@ -265,6 +266,30 @@ def test_parse_router_output_rejects_forward_target_dependency() -> None:
                             "depends_on": ["target:1"],
                         },
                         {"project": "ui", "title": "UI", "body": "Body."},
+                    ],
+                }
+            ),
+            candidates=candidates,
+            max_targets=3,
+        )
+
+
+@pytest.mark.parametrize("blocking", ["false", 0, 1, [], {}])
+def test_parse_router_output_requires_boolean_blocking(blocking: object) -> None:
+    candidates = [router.ProjectProfile("api", "", (), "")]
+
+    with pytest.raises(RouterParseError, match="JSON boolean"):
+        parse_router_output(
+            _route_block(
+                {
+                    "decision": "route",
+                    "targets": [
+                        {
+                            "project": "api",
+                            "title": "API",
+                            "body": "Body.",
+                            "blocking": blocking,
+                        }
                     ],
                 }
             ),

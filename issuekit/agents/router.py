@@ -11,9 +11,8 @@ from typing import Any, TextIO
 
 from issuekit.agents.readonly import prompt_from_spec, require_clean_run, run_readonly_evaluation
 from issuekit.agents.registry import resolve_adapter
-from issuekit.agentrun import AgentResult, AgentRunner
+from issuekit.agentrun import AgentRunner
 from issuekit.config import IssuekitConfig
-from issuekit.encoding import has_non_ascii
 from issuekit.issues.dependencies import DEPENDENCY_REF_EXPECTED, DEPENDENCY_REF_PATTERN
 from issuekit.prompts import ROUTER_PROMPT, RouterParseError
 from issuekit.proposals.api import api_client
@@ -41,14 +40,6 @@ class ProjectProfile:
                 "",
             ]
         )
-
-    def to_dict(self) -> dict[str, object]:
-        return {
-            "project": self.project,
-            "summary": self.summary,
-            "tags": list(self.tags),
-            "profile_md": self.profile_md,
-        }
 
 
 @dataclass(frozen=True)
@@ -229,7 +220,9 @@ def _decision_from_json(
             raise RouterParseError(f"Route target project has no candidate profile: {project}")
         title = _required_text(raw_target, "title", "route target")
         body = _required_text(raw_target, "body", "route target")
-        blocking = bool(raw_target.get("blocking", False))
+        blocking = raw_target.get("blocking", False)
+        if not isinstance(blocking, bool):
+            raise RouterParseError("Route target blocking must be a JSON boolean.")
         depends_on = _depends_on_tuple(raw_target.get("depends_on"), target_index=index)
         targets.append(
             RouteTarget(
@@ -250,8 +243,6 @@ def _required_text(raw: Mapping[str, object], field: str, decision: str) -> str:
             f"Route decision '{decision}' requires a non-empty '{field}'."
         )
     text = value.strip()
-    if has_non_ascii(text):
-        raise RouterParseError("Route fields must be ASCII-only.")
     return text
 
 

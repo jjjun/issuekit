@@ -10,6 +10,7 @@ from issuekit.gitutil import (
     git_root,
     git_short_head,
     git_status_short,
+    parse_git_status_z,
     run_git,
 )
 
@@ -41,6 +42,25 @@ def test_run_git_redirects_stdin_and_normalizes_result(
     assert captured["errors"] == "surrogateescape"
     assert captured["timeout"] == 7
     assert captured["stdin"] == subprocess.DEVNULL
+
+
+def test_parse_git_status_z_handles_all_path_shapes() -> None:
+    special = 'space "quote"\tline\n日本語.py'
+    entries = parse_git_status_z(
+        " D deleted.py\0"
+        f"?? {special}\0"
+        "R  renamed destination.py\0renamed source.py\0"
+        "C  copied destination.py\0copied source.py\0"
+        "?? .agent-runs/triage-author-state.json\0"
+    )
+
+    assert [(entry.status, entry.path, entry.original_path) for entry in entries] == [
+        (" D", Path("deleted.py"), None),
+        ("??", Path(special), None),
+        ("R ", Path("renamed destination.py"), Path("renamed source.py")),
+        ("C ", Path("copied destination.py"), Path("copied source.py")),
+        ("??", Path(".agent-runs/triage-author-state.json"), None),
+    ]
 
 
 def test_run_git_decodes_utf8_output_independent_of_locale(

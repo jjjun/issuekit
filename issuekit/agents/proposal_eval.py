@@ -11,6 +11,15 @@ from issuekit.agents.readonly import require_clean_run, run_readonly_evaluation
 from issuekit.agentrun import AgentPrompt
 
 
+def proposal_dependencies_text(proposal: Mapping[str, Any]) -> str:
+    """Format proposal dependencies exactly as agent prompts display them."""
+
+    depends_on = proposal.get("depends_on") or []
+    if isinstance(depends_on, (list, tuple)):
+        return ", ".join(str(ref) for ref in depends_on) or "(none)"
+    return str(depends_on)
+
+
 def run_readonly_proposal_evaluation(
     proposal: Mapping[str, Any],
     *,

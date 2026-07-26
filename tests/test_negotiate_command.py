@@ -26,6 +26,31 @@ from issuekit.workflow import WorkflowError
 from tests.issue_helpers import api_issue
 
 
+@pytest.fixture(autouse=True)
+def _initialize_readonly_repo(tmp_path: Path, request) -> None:
+    if "backend_ref_resolution" in request.node.name:
+        return
+    (tmp_path / ".gitignore").write_text(
+        ".agent-runs/\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    for args in (
+        ("init", "-q"),
+        ("add", "."),
+        (
+            "-c",
+            "user.name=Test",
+            "-c",
+            "user.email=test@example.com",
+            "commit",
+            "-qm",
+            "baseline",
+        ),
+    ):
+        subprocess.run(["git", *args], cwd=tmp_path, check=True)
+
+
 def _issue() -> Issue:
     return Issue(
         id=108,

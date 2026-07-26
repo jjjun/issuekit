@@ -16,7 +16,7 @@ from issuekit.commands.approve import approve_issue
 from issuekit.config import IssuekitConfig
 from issuekit.core import Issue, worker_keys_match
 from issuekit.encoding import ASCII_ONLY_HINT, has_non_ascii, sanitize_to_ascii
-from issuekit.gitutil import git_status_short, run_git
+from issuekit.gitutil import GitStatusEntry, git_status_entries, git_status_short, run_git
 from issuekit.prompts import REVIEW_PROMPT, ReviewParseError
 from issuekit.store import get_store
 from issuekit.workflow import WorkflowError, ensure_assigned_reviewer, request_changes
@@ -133,7 +133,7 @@ def run_review_and_decide(
             REVIEW_PROMPT,
             cwd=cwd,
             filename=review_filename,
-            body=_render_review_prompt(issue, cwd=cwd, diff_context=diff_context),
+            body=_render_review_prompt(issue, diff_context=diff_context),
         ),
         label="Reviewer",
         subject=f"issue #{issue_id}",
@@ -143,6 +143,13 @@ def run_review_and_decide(
     )
     result = run.result
 
+    if run.repository_modified:
+        print(
+            "ERROR: reviewer run modified repository state; not applying review verdict.",
+            file=err,
+        )
+        if run.repository_error:
+            print(f"ERROR: {run.repository_error}", file=err)
     if result.timed_out:
         return ReviewOutcome(issue=issue, result=result, verdict=_empty_verdict(), exit_code=124)
     if result.exit_code != 0:
@@ -154,10 +161,6 @@ def run_review_and_decide(
         )
 
     if run.repository_modified:
-        print(
-            "ERROR: reviewer run modified repository state; not applying review verdict.",
-            file=err,
-        )
         return ReviewOutcome(issue=issue, result=result, verdict=_empty_verdict(), exit_code=1)
 
     try:
@@ -316,23 +319,12 @@ def _ensure_registered_distinct_worker(
 def _render_review_prompt(
     issue: Issue,
     *,
-    cwd: Path,
-    diff_context: str | ReviewDiffContext | None = None,
+    diff_context: ReviewDiffContext,
 ) -> str:
-    if diff_context is None:
-        review_context = _collect_git_diff_context(cwd)
-    elif isinstance(diff_context, ReviewDiffContext):
-        review_context = diff_context
-    else:
-        review_context = ReviewDiffContext(
-            text=diff_context,
-            has_changed_files=bool(diff_context.strip()),
-            suspicious_warnings=_suspicious_readability_warnings(diff_context),
-        )
-    diff = review_context.text
+    diff = diff_context.text
     review_target = (
         "the implementation diff"
-        if review_context.has_changed_files
+        if diff_context.has_changed_files
         else "the submitted handoff evidence"
     )
     return REVIEW_PROMPT.render(
@@ -340,28 +332,29 @@ def _render_review_prompt(
         review_target=review_target,
         issue_body=issue.body,
         implementation_context=diff,
-        readability_hints=_readability_hint_section(review_context),
+        readability_hints=_readability_hint_section(diff_context),
         output_keys=", ".join(REVIEW_OUTPUT_KEYS),
         ascii_only_hint=ASCII_ONLY_HINT,
     )
 
 
 def _collect_git_diff_context(cwd: Path, *, issue: Issue | None = None) -> ReviewDiffContext:
+    status_entries = git_status_entries(cwd)
     status = git_status_short(cwd, strip=False, untracked_files="all")
     stat = _git_stdout(["--no-pager", "diff", "--stat", "HEAD", "--"], cwd) or ""
-    diff = (
+    tracked_diff = (
         _git_stdout(
             ["--no-pager", "diff", "--no-ext-diff", "--unified=80", "HEAD", "--"],
             cwd,
         )
         or ""
     )
-    if diff and len(diff) > _MAX_DIFF_CHARS:
-        diff = diff[:_MAX_DIFF_CHARS] + "\n\n[diff truncated]\n"
+    diff = _combined_diff_evidence(cwd, tracked_diff, status_entries or ())
     handoff_evidence = _handoff_evidence_text(issue) if issue is not None else ""
+    has_changed_files = _has_reviewable_changed_files(status_entries)
     no_diff_note = (
         ""
-        if _has_reviewable_changed_files(status)
+        if has_changed_files
         else "\n\nNo local implementation diff is available in this checkout."
     )
     text = "\n".join(
@@ -380,7 +373,7 @@ def _collect_git_diff_context(cwd: Path, *, issue: Issue | None = None) -> Revie
     ).strip()
     return ReviewDiffContext(
         text=text,
-        has_changed_files=_has_reviewable_changed_files(status),
+        has_changed_files=has_changed_files,
         has_handoff_evidence=bool(handoff_evidence.strip()),
         suspicious_warnings=_suspicious_readability_warnings(diff),
     )
@@ -405,9 +398,12 @@ _HANDOFF_METADATA_LABELS = {
 }
 
 _BODY_EVIDENCE_PATTERN = re.compile(
-    r"(?im)^\s*(handoff summary|branch|commit|verification|"
-    r"verification evidence|command evidence|commands run|checks|live host state)\s*:",
+    r"^\s*(handoff summary|branch|commit|verification|"
+    r"verification evidence|command evidence|commands run|checks|live host state)\s*:"
+    r"(?P<value>.*)$",
+    re.IGNORECASE,
 )
+_MARKDOWN_HEADING_PATTERN = re.compile(r"^\s*#{1,6}\s+")
 
 
 def _handoff_evidence_text(issue: Issue | None) -> str:
@@ -437,18 +433,34 @@ def _handoff_evidence_text(issue: Issue | None) -> str:
 
 
 def _body_handoff_evidence(body: str) -> str:
-    if not _BODY_EVIDENCE_PATTERN.search(body):
-        return ""
     lines = [line.rstrip() for line in body.splitlines()]
-    evidence_lines = [line for line in lines if _BODY_EVIDENCE_PATTERN.search(line)]
-    return "\n".join(evidence_lines)
+    sections: list[str] = []
+    index = 0
+    while index < len(lines):
+        match = _BODY_EVIDENCE_PATTERN.match(lines[index])
+        if match is None:
+            index += 1
+            continue
+        section = [lines[index]]
+        has_value = bool(match.group("value").strip())
+        index += 1
+        while index < len(lines):
+            if _MARKDOWN_HEADING_PATTERN.match(lines[index]):
+                break
+            if _BODY_EVIDENCE_PATTERN.match(lines[index]):
+                break
+            section.append(lines[index])
+            has_value = has_value or bool(lines[index].strip())
+            index += 1
+        while section and not section[-1].strip():
+            section.pop()
+        if has_value:
+            sections.append("\n".join(section))
+    return "\n".join(sections)
 
 
-def _readability_hint_section(context: str | ReviewDiffContext) -> str:
-    if isinstance(context, ReviewDiffContext):
-        warnings = context.suspicious_warnings
-    else:
-        warnings = _suspicious_readability_warnings(context)
+def _readability_hint_section(context: ReviewDiffContext) -> str:
+    warnings = context.suspicious_warnings
     if not warnings:
         return "Automated readability hints: none."
     return "\n".join(
@@ -460,27 +472,93 @@ def _readability_hint_section(context: str | ReviewDiffContext) -> str:
 
 
 def _suspicious_readability_warnings(diff: str) -> tuple[str, ...]:
+    added_text = "\n".join(
+        line[1:]
+        for line in diff.splitlines()
+        if line.startswith("+") and not line.startswith("+++")
+    )
     warnings: list[str] = []
     for pattern, label in _SUSPICIOUS_READABILITY_PATTERNS:
-        if pattern.search(diff):
+        if pattern.search(added_text):
             warnings.append(label)
     return tuple(warnings)
 
 
-def _has_reviewable_changed_files(status: str | None) -> bool:
-    if status is None:
+def _has_reviewable_changed_files(
+    entries: tuple[GitStatusEntry, ...] | None,
+) -> bool:
+    if entries is None:
         return False
-    for line in status.splitlines():
-        if len(line) < 4:
-            continue
-        raw_path = line[3:]
-        if " -> " in raw_path:
-            raw_path = raw_path.rsplit(" -> ", 1)[1]
-        path = Path(raw_path.strip('"'))
-        if path.parts and path.parts[0] == ".agent-runs":
+    for entry in entries:
+        paths = tuple(
+            path for path in (entry.path, entry.original_path) if path is not None
+        )
+        if paths and all(path.parts and path.parts[0] == ".agent-runs" for path in paths):
             continue
         return True
     return False
+
+
+def _combined_diff_evidence(
+    cwd: Path,
+    tracked_diff: str,
+    entries: tuple[GitStatusEntry, ...],
+) -> str:
+    untracked_sections = [
+        _untracked_diff_section(cwd, entry.path)
+        for entry in entries
+        if entry.status == "??"
+        and not (entry.path.parts and entry.path.parts[0] == ".agent-runs")
+    ]
+    parts = [part for part in (tracked_diff.strip(), *untracked_sections) if part]
+    combined = "\n\n".join(parts)
+    if len(combined) <= _MAX_DIFF_CHARS:
+        return combined
+
+    omitted = [
+        f"[untracked file omitted by review context size limit: {entry.path.as_posix()}]"
+        for entry in entries
+        if entry.status == "??"
+        and not (entry.path.parts and entry.path.parts[0] == ".agent-runs")
+    ]
+    marker_text = "\n".join(omitted)
+    suffix = "\n\n".join(part for part in ("[diff truncated]", marker_text) if part)
+    available = max(0, _MAX_DIFF_CHARS - len(suffix) - 2)
+    tracked = tracked_diff.strip()[:available]
+    return "\n\n".join(part for part in (tracked, suffix) if part)[:_MAX_DIFF_CHARS]
+
+
+def _untracked_diff_section(cwd: Path, rel_path: Path) -> str:
+    path_text = rel_path.as_posix()
+    path = cwd / rel_path
+    if path.is_symlink():
+        return f"[untracked symlink: {path_text}]"
+    try:
+        if not path.is_file():
+            return f"[untracked non-regular file: {path_text}]"
+        if path.stat().st_size > _MAX_DIFF_CHARS:
+            return f"[untracked file omitted by review context size limit: {path_text}]"
+        raw = path.read_bytes()
+    except OSError as exc:
+        return f"[untracked unreadable file: {path_text}: {exc}]"
+    if b"\0" in raw:
+        return f"[untracked binary file: {path_text}]"
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return f"[untracked binary file: {path_text}]"
+    lines = text.splitlines()
+    additions = "\n".join(f"+{line}" for line in lines)
+    return "\n".join(
+        (
+            f"diff --git a/{path_text} b/{path_text}",
+            "new file mode 100644",
+            "--- /dev/null",
+            f"+++ b/{path_text}",
+            f"@@ -0,0 +1,{len(lines)} @@",
+            additions,
+        )
+    ).rstrip()
 
 
 def _git_stdout(args: list[str], cwd: Path) -> str:

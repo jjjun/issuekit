@@ -18,6 +18,15 @@ class GitResult:
     stderr: str
 
 
+@dataclass(frozen=True)
+class GitStatusEntry:
+    """One NUL-delimited porcelain status record."""
+
+    status: str
+    path: Path
+    original_path: Path | None = None
+
+
 def run_git(
     args: Sequence[str],
     cwd: Path | str,
@@ -74,6 +83,64 @@ def git_status_short(
     if result is None or result.returncode != 0:
         return None
     return result.stdout.strip() if strip else result.stdout
+
+
+def parse_git_status_z(output: str) -> tuple[GitStatusEntry, ...]:
+    """Parse ``git status --porcelain=v1 -z`` output."""
+
+    records = output.split("\0")
+    if records and not records[-1]:
+        records.pop()
+    entries: list[GitStatusEntry] = []
+    index = 0
+    while index < len(records):
+        record = records[index]
+        if len(record) < 4 or record[2] != " ":
+            raise ValueError("Malformed NUL-delimited Git status record.")
+        status = record[:2]
+        path = Path(record[3:])
+        original_path = None
+        if "R" in status or "C" in status:
+            index += 1
+            if index >= len(records) or not records[index]:
+                raise ValueError("Git rename or copy status is missing its original path.")
+            original_path = Path(records[index])
+        entries.append(
+            GitStatusEntry(
+                status=status,
+                path=path,
+                original_path=original_path,
+            )
+        )
+        index += 1
+    return tuple(entries)
+
+
+def git_status_entries(
+    cwd: Path | str,
+    *,
+    untracked_files: str = "all",
+    timeout: float = 30,
+) -> tuple[GitStatusEntry, ...] | None:
+    """Return authoritative porcelain status entries, or None on failure."""
+
+    result = run_git(
+        [
+            "--no-pager",
+            "status",
+            "--porcelain=v1",
+            "-z",
+            f"--untracked-files={untracked_files}",
+        ],
+        cwd,
+        timeout=timeout,
+    )
+    if result is None or result.returncode != 0:
+        return None
+    try:
+        return parse_git_status_z(result.stdout)
+    except ValueError:
+        return None
 
 
 def git_root(cwd: Path | str, *, timeout: float = 30) -> Path | None:

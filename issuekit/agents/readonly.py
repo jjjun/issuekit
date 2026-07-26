@@ -9,7 +9,7 @@ import threading
 from typing import TextIO
 
 from issuekit.agentrun import AgentPrompt, AgentResult
-from issuekit.gitutil import git_current_branch, git_short_head, git_status_short
+from issuekit.gitutil import git_root, git_status_entries, run_git
 from issuekit.prompts import PromptSpec
 from issuekit.workflow import WorkflowError
 
@@ -22,6 +22,17 @@ class ReadonlyAgentRun:
     repository_modified: bool
     label: str
     subject: str
+    repository_error: str | None = None
+
+
+@dataclass(frozen=True)
+class RepositoryFingerprint:
+    """Git and durable workflow state required for read-only evaluation."""
+
+    worktree: tuple[tuple[str, str, str, str], ...]
+    head: str
+    branch: str
+    durable_state: tuple[tuple[str, str], ...]
 
 
 def prompt_from_spec(
@@ -71,12 +82,20 @@ def run_readonly_evaluation(
         follow=follow,
         abort_event=abort_event,
     )
-    fingerprint_after = repository_fingerprint(cwd)
+    repository_error = None
+    try:
+        fingerprint_after = repository_fingerprint(cwd)
+    except WorkflowError as exc:
+        fingerprint_after = None
+        repository_error = str(exc)
     return ReadonlyAgentRun(
         result=result,
-        repository_modified=fingerprint_before != fingerprint_after,
+        repository_modified=(
+            fingerprint_after is None or fingerprint_before != fingerprint_after
+        ),
         label=label,
         subject=subject,
+        repository_error=repository_error,
     )
 
 
@@ -88,6 +107,10 @@ def require_clean_run(
 ) -> str:
     """Return agent output after enforcing read-only execution requirements."""
 
+    if run.repository_modified:
+        print(mutation_log_message, file=err)
+        if run.repository_error:
+            print(f"ERROR: {run.repository_error}", file=err)
     if run.result.timed_out:
         raise TimeoutError(f"{run.label} agent timed out for {run.subject}.")
     if run.result.exit_code != 0:
@@ -95,40 +118,65 @@ def require_clean_run(
             f"{run.label} agent exited {run.result.exit_code} for {run.subject}."
         )
     if run.repository_modified:
-        print(mutation_log_message, file=err)
         raise WorkflowError(f"{run.label} agent modified repository state for {run.subject}.")
     return stdout_text(run.result)
 
 
-def worktree_fingerprint(cwd: Path) -> tuple[tuple[str, str, str], ...] | None:
+def worktree_fingerprint(cwd: Path) -> tuple[tuple[str, str, str, str], ...] | None:
     """Return status entries and content digests, excluding agent runtime files."""
 
-    status = git_status_short(cwd, strip=False, untracked_files="all")
-    if status is None:
+    status_entries = git_status_entries(cwd)
+    if status_entries is None:
         return None
-    entries: list[tuple[str, str, str]] = []
-    for line in status.splitlines():
-        if len(line) < 4:
+    entries: list[tuple[str, str, str, str]] = []
+    for entry in status_entries:
+        paths = tuple(
+            path for path in (entry.path, entry.original_path) if path is not None
+        )
+        if paths and all(path.parts and path.parts[0] == ".agent-runs" for path in paths):
             continue
-        raw_path = line[3:]
-        if " -> " in raw_path:
-            raw_path = raw_path.rsplit(" -> ", 1)[1]
-        path = Path(raw_path.strip('"'))
-        if path.parts and path.parts[0] == ".agent-runs":
-            continue
-        entries.append((line[:2], path.as_posix(), _file_digest(cwd / path)))
+        entries.append(
+            (
+                entry.status,
+                entry.path.as_posix(),
+                entry.original_path.as_posix() if entry.original_path is not None else "",
+                _file_digest(cwd / entry.path),
+            )
+        )
     return tuple(sorted(entries))
 
 
-def repository_fingerprint(
-    cwd: Path,
-) -> tuple[tuple[tuple[str, str, str], ...] | None, str | None, str | None]:
-    """Return worktree, HEAD, and branch state for a repository or non-git directory."""
+def repository_fingerprint(cwd: Path) -> RepositoryFingerprint:
+    """Return a complete baseline or fail closed with the missing component."""
 
-    return (
-        worktree_fingerprint(cwd),
-        git_short_head(cwd),
-        git_current_branch(cwd),
+    root = git_root(cwd)
+    if root is None:
+        raise WorkflowError(
+            "Cannot establish read-only repository fingerprint: "
+            "repository root snapshot failed."
+        )
+    worktree = worktree_fingerprint(cwd)
+    if worktree is None:
+        raise WorkflowError(
+            "Cannot establish read-only repository fingerprint: "
+            "worktree status snapshot failed."
+        )
+    head_result = run_git(["rev-parse", "--verify", "HEAD"], cwd)
+    if head_result is None or head_result.returncode != 0 or not head_result.stdout.strip():
+        raise WorkflowError(
+            "Cannot establish read-only repository fingerprint: HEAD snapshot failed."
+        )
+    branch_result = run_git(["symbolic-ref", "--quiet", "--short", "HEAD"], cwd)
+    if branch_result is None or branch_result.returncode not in {0, 1}:
+        raise WorkflowError(
+            "Cannot establish read-only repository fingerprint: branch snapshot failed."
+        )
+    branch = branch_result.stdout.strip() if branch_result.returncode == 0 else "(detached)"
+    return RepositoryFingerprint(
+        worktree=worktree,
+        head=head_result.stdout.strip(),
+        branch=branch,
+        durable_state=_durable_state_fingerprint(root),
     )
 
 
@@ -142,8 +190,31 @@ def stdout_text(result: AgentResult) -> str:
 
 def _file_digest(path: Path) -> str:
     try:
-        if not path.exists() or not path.is_file():
+        if not path.is_file():
             return ""
         return hashlib.sha256(path.read_bytes()).hexdigest()
     except OSError:
         return ""
+
+
+def _durable_state_fingerprint(cwd: Path) -> tuple[tuple[str, str], ...]:
+    run_dir = cwd / ".agent-runs"
+    paths = [
+        run_dir / "pm-requests.json",
+        run_dir / "triage-author-state.json",
+    ]
+    negotiations_dir = run_dir / "negotiations"
+    try:
+        paths.extend(path for path in negotiations_dir.rglob("*") if path.is_file())
+    except OSError:
+        pass
+    return tuple(
+        sorted(
+            (
+                path.relative_to(cwd).as_posix(),
+                _file_digest(path),
+            )
+            for path in paths
+            if path.is_file()
+        )
+    )

@@ -6,6 +6,7 @@ from dataclasses import replace
 import json
 from pathlib import Path
 import subprocess
+import threading
 
 import pytest
 
@@ -13,6 +14,7 @@ import issuekit.proposals.api as proposals_api
 from issuekit.agents import proposal_check
 from issuekit.agents.proposal_check import (
     ProposalCheckParseError,
+    list_worker_proposal_checks,
     parse_proposal_check_output,
     run_proposal_check_cycle,
 )
@@ -20,6 +22,7 @@ from issuekit.agentrun import AgentPrompt, AgentResult
 from issuekit.agents.registry import resolve_adapter
 from issuekit.config import AgentRunConfig, RoleOverlay, load_config
 from issuekit.testing import FakeIssuekitClient
+from issuekit.workflow import WorkflowError
 
 
 class FakeRunner:
@@ -82,6 +85,7 @@ def _init_git_repo(path: Path) -> None:
 
 def _setup(monkeypatch, tmp_path: Path, *, output: str):
     _write_config(tmp_path)
+    _init_git_repo(tmp_path)
     client = FakeIssuekitClient(
         proposals=[
             {
@@ -240,6 +244,46 @@ def test_proposal_check_approve_adopts_and_posts_issue_ref(monkeypatch, tmp_path
     }
 
 
+def test_proposal_check_retries_result_after_successful_adoption(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    client, runner, config = _setup(
+        monkeypatch,
+        tmp_path,
+        output=_check_block(verdict="approve", comment="Feasible."),
+    )
+    original_post_result = proposal_check._post_result
+    attempts = {"count": 0}
+
+    def fail_first_result(*args, **kwargs):
+        attempts["count"] += 1
+        if attempts["count"] == 1:
+            raise RuntimeError("result endpoint unavailable")
+        return original_post_result(*args, **kwargs)
+
+    monkeypatch.setattr(proposal_check, "_post_result", fail_first_result)
+    runner._outputs.append(_check_block(verdict="approve", comment="Feasible."))
+
+    first = run_proposal_check_cycle(
+        config,
+        tmp_path,
+        agent="codex",
+        runner_factory=lambda: runner,
+    )
+    second = run_proposal_check_cycle(
+        config,
+        tmp_path,
+        agent="codex",
+        runner_factory=lambda: runner,
+    )
+
+    assert first[0].status == "error"
+    assert second[0].status == "answered"
+    assert second[0].adopted_issue_ref == "target#1"
+    assert sum(call["method"] == "adopt_proposal" for call in client.calls) == 1
+
+
 def test_proposal_check_revise_posts_without_adopting(monkeypatch, tmp_path) -> None:
     client, runner, config = _setup(
         monkeypatch,
@@ -305,6 +349,32 @@ def test_duplicate_pollers_report_already_decided_from_result_guard(
     assert len(
         [call for call in client.calls if call["method"] == "post_proposal_check_result"]
     ) == 2
+
+
+def test_already_decided_outside_result_post_is_an_error(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    _client, runner, config = _setup(
+        monkeypatch,
+        tmp_path,
+        output=_check_block(verdict="reject", comment="Not used."),
+    )
+
+    def fail_evaluation(*args, **kwargs):
+        raise WorkflowError("stale evaluation", code="already_decided")
+
+    monkeypatch.setattr(proposal_check, "_evaluate_check", fail_evaluation)
+
+    decisions = run_proposal_check_cycle(
+        config,
+        tmp_path,
+        agent="codex",
+        runner_factory=lambda: runner,
+    )
+
+    assert decisions[0].status == "error"
+    assert decisions[0].error == "stale evaluation"
 
 
 def test_parse_proposal_check_output_rejects_non_ascii() -> None:
@@ -424,6 +494,69 @@ def test_cli_proposal_checks_list_status_json_uses_limit_offset(
             "offset": 0,
         },
     }
+
+
+def test_proposal_check_filtered_pagination_is_global_across_worker_keys(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    client, _runner, config = _setup(
+        monkeypatch,
+        tmp_path,
+        output=_check_block(verdict="reject", comment="Not used."),
+    )
+    client.create_proposal_check(
+        1,
+        target_worker="worker.target",
+        project="target",
+    )
+
+    checks = list_worker_proposal_checks(
+        config,
+        status="pending",
+        limit=1,
+        offset=1,
+    )
+
+    assert [check["id"] for check in checks] == [2]
+
+
+def test_proposal_check_stops_before_next_item_when_aborted(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    client, _runner, config = _setup(
+        monkeypatch,
+        tmp_path,
+        output=_check_block(verdict="reject", comment="Not used."),
+    )
+    client.create_proposal_check(
+        1,
+        target_worker="worker.target",
+        project="target",
+    )
+    abort_event = threading.Event()
+
+    class AbortingRunner(FakeRunner):
+        def run(self, adapter, prompt: AgentPrompt, repo, **kwargs) -> AgentResult:
+            result = super().run(adapter, prompt, repo, **kwargs)
+            abort_event.set()
+            return result
+
+    runner = AbortingRunner(
+        [_check_block(verdict="reject", comment="First only.")]
+    )
+
+    decisions = run_proposal_check_cycle(
+        config,
+        tmp_path,
+        agent="codex",
+        runner_factory=lambda: runner,
+        abort_event=abort_event,
+    )
+
+    assert [decision.check_id for decision in decisions] == [1]
+    assert len(runner.calls) == 1
 
 
 def test_cli_proposal_checks_list_and_once_are_mutually_exclusive(capsys) -> None:
