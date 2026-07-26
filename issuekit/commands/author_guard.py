@@ -6,9 +6,8 @@ import argparse
 from pathlib import Path
 import sys
 
-from issuekit.commands._common import print_json
+from issuekit.commands._common import print_json, run_command
 from issuekit.guards.author import clear_author_guard, guard_dict, read_author_guard, stop_message
-from issuekit.commands._common import run_command
 from issuekit.guards.separation import AUTHOR_GUARD_HELP
 from issuekit.workflow import WorkflowError
 

@@ -6,9 +6,8 @@ import argparse
 from pathlib import Path
 import sys
 
-from issuekit.commands._common import print_json
+from issuekit.commands._common import load_config_for_project_mutation, print_json
 from issuekit.guards.author import STOP_SENTINEL, create_author_guard, guard_dict, stop_message
-from issuekit.commands._common import load_config_for_project_mutation
 from issuekit.config import load_config
 from issuekit.core import VALID_ISSUE_PRIORITIES
 from issuekit.proposals import ProposalError

@@ -6,8 +6,12 @@ import argparse
 from collections.abc import Sequence
 from pathlib import Path
 
-from issuekit.commands._common import print_json
-from issuekit.commands._common import active_issue_not_found, require_ascii, run_command
+from issuekit.commands._common import (
+    active_issue_not_found,
+    print_json,
+    require_ascii,
+    run_command,
+)
 from issuekit.config import IssuekitConfig, load_config
 from issuekit.core import Issue, VALID_ISSUE_PRIORITIES, issue_dict, parse_issue_id_arg
 from issuekit.issues.dependencies import dependency_refs

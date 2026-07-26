@@ -7,9 +7,8 @@ from pathlib import Path
 import sys
 import tomllib
 
-from issuekit.commands._common import print_json
+from issuekit.commands._common import print_json, run_command
 from issuekit.agentrun import AgentRunner
-from issuekit.commands._common import run_command
 from issuekit.config import IssuekitConfig, load_config
 from issuekit.config.refs import RefError, list_effective_refs
 from issuekit.core import parse_issue_id_arg

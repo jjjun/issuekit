@@ -6,14 +6,13 @@ import argparse
 from pathlib import Path
 import sys
 
-from issuekit.commands._common import print_json
+from issuekit.commands._common import print_json, run_command
 from issuekit.agentrun import AgentRunner
 from issuekit.agents.triage_author import (
     TriageAuthorParseError,
     TriageDecision,
     run_triage_author_cycle,
 )
-from issuekit.commands._common import run_command
 from issuekit.config import load_config
 from issuekit.proposals import ProposalError
 from issuekit.workflow import WorkflowError

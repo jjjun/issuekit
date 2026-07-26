@@ -6,7 +6,7 @@ import argparse
 from pathlib import Path
 import sys
 
-from issuekit.commands._common import print_json
+from issuekit.commands._common import print_json, run_command
 from issuekit.agents.proposal_check import (
     ProposalCheckParseError,
     ProposalCheckDecision,
@@ -14,7 +14,6 @@ from issuekit.agents.proposal_check import (
     run_proposal_check_cycle,
 )
 from issuekit.agentrun import AgentRunner
-from issuekit.commands._common import run_command
 from issuekit.config import IssuekitConfig, load_config
 from issuekit.proposals import ProposalError
 from issuekit.workflow import WorkflowError, resolve_implementer

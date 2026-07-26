@@ -8,17 +8,17 @@ from pathlib import Path
 import re
 import sys
 
-from issuekit.commands._common import print_json
+from issuekit.commands._common import (
+    load_config_for_project_mutation,
+    print_json,
+    require_ascii,
+    run_command,
+)
 from issuekit.guards.author import (
     STOP_SENTINEL,
     create_author_guard,
     guard_dict,
     stop_message,
-)
-from issuekit.commands._common import (
-    load_config_for_project_mutation,
-    require_ascii,
-    run_command,
 )
 from issuekit.config import IssuekitConfig
 from issuekit.core import (

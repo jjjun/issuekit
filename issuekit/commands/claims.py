@@ -5,8 +5,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from issuekit.commands._common import print_json
-from issuekit.commands._common import run_command
+from issuekit.commands._common import print_json, run_command
 from issuekit.config import load_config
 from issuekit.workers.registry import (
     WorkerClaim,
