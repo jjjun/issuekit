@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 from contextlib import contextmanager
+from enum import StrEnum
 import os
 from pathlib import Path
 import signal
@@ -84,12 +85,13 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         action="store_true",
         help="Auto-adopt matching incoming proposals before each claim attempt.",
     )
-    serve_parser.add_argument(
+    serve_mode = serve_parser.add_mutually_exclusive_group()
+    serve_mode.add_argument(
         "--review",
         action="store_true",
         help="Poll the review pool and run this checkout's reviewer agent.",
     )
-    serve_parser.add_argument(
+    serve_mode.add_argument(
         "--proposal-checks",
         action="store_true",
         help="Poll pending proposal checks addressed to this worker.",
@@ -128,6 +130,30 @@ class ServeLockError(RuntimeError):
     """Raised when another live serve process holds the checkout lock."""
 
 
+class ServeMode(StrEnum):
+    IMPLEMENT = "implement"
+    REVIEW = "review"
+    PROPOSAL_CHECKS = "proposal_checks"
+
+
+_MODE_OPTIONS = {
+    ServeMode.REVIEW: "--review",
+    ServeMode.PROPOSAL_CHECKS: "--proposal-checks",
+}
+
+_MODE_REJECTED_OPTIONS = {
+    ServeMode.IMPLEMENT: {},
+    ServeMode.REVIEW: {
+        "triage": "--triage",
+        "priority": "--priority",
+    },
+    ServeMode.PROPOSAL_CHECKS: {
+        "triage": "--triage",
+        "priority": "--priority",
+    },
+}
+
+
 def run(args) -> int:
     cwd = Path.cwd()
     try:
@@ -157,17 +183,10 @@ def run(args) -> int:
     if args.max_issues is not None and args.max_issues < 1:
         print("--max-issues must be greater than zero.", file=sys.stderr)
         return 1
-    if args.review and args.triage:
-        print("--review cannot be combined with --triage.", file=sys.stderr)
-        return 1
-    if args.proposal_checks and args.triage:
-        print("--proposal-checks cannot be combined with --triage.", file=sys.stderr)
-        return 1
-    if args.proposal_checks and args.review:
-        print("--proposal-checks cannot be combined with --review.", file=sys.stderr)
-        return 1
-    if args.proposal_checks and args.priority is not None:
-        print("--proposal-checks cannot be combined with --priority.", file=sys.stderr)
+    mode = _resolve_mode(args)
+    conflict = _mode_option_conflict(args, mode)
+    if conflict is not None:
+        print(conflict, file=sys.stderr)
         return 1
     if args.proposal_check_limit < 1:
         print("--proposal-check-limit must be greater than zero.", file=sys.stderr)
@@ -188,6 +207,7 @@ def run(args) -> int:
             with _worker_heartbeat(config, cwd, log_path):
                 return _serve_loop(
                     args,
+                    mode=mode,
                     agent=agent,
                     config=config,
                     cwd=cwd,
@@ -205,6 +225,7 @@ def run(args) -> int:
 def _serve_loop(
     args,
     *,
+    mode: ServeMode,
     agent: str,
     config: IssuekitConfig,
     cwd: Path,
@@ -213,7 +234,7 @@ def _serve_loop(
     controller: ShutdownController,
 ) -> int:
     submitted_count = 0
-    if getattr(args, "proposal_checks", False):
+    if mode is ServeMode.PROPOSAL_CHECKS:
         return _serve_proposal_checks_loop(
             args,
             agent=agent,
@@ -226,7 +247,7 @@ def _serve_loop(
     store = get_store(config) if config.api_url else None
     recovery_store = None
     try:
-        if getattr(args, "review", False):
+        if mode is ServeMode.REVIEW:
             review_store = store
             store = None
             return _serve_review_loop(
@@ -357,6 +378,22 @@ def _serve_loop(
     finally:
         _close_store(store)
         _close_store(recovery_store)
+
+
+def _resolve_mode(args) -> ServeMode:
+    if args.review:
+        return ServeMode.REVIEW
+    if args.proposal_checks:
+        return ServeMode.PROPOSAL_CHECKS
+    return ServeMode.IMPLEMENT
+
+
+def _mode_option_conflict(args, mode: ServeMode) -> str | None:
+    mode_option = _MODE_OPTIONS.get(mode)
+    for attribute, option in _MODE_REJECTED_OPTIONS[mode].items():
+        if getattr(args, attribute):
+            return f"{mode_option} cannot be combined with {option}."
+    return None
 
 
 def _serve_proposal_checks_loop(

@@ -456,6 +456,41 @@ def test_serve_proposal_checks_once_idle_does_not_spawn_agent(
     assert "event=proposal_checks_idle attempt=1" in capsys.readouterr().err
 
 
+def test_serve_rejects_mutually_exclusive_modes(capsys) -> None:
+    exit_code = cli.main(
+        ["serve", "--agent", "codex", "--review", "--proposal-checks", "--once"]
+    )
+
+    assert exit_code == 2
+    error = capsys.readouterr().err
+    assert "--review" in error
+    assert "--proposal-checks" in error
+
+
+def test_serve_rejects_options_unsupported_by_mode(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient()
+    _configure_registered_api(tmp_path, monkeypatch, client)
+
+    for mode_option, rejected_option in (
+        ("--review", "--triage"),
+        ("--review", "--priority"),
+        ("--proposal-checks", "--triage"),
+        ("--proposal-checks", "--priority"),
+    ):
+        argv = ["serve", "--agent", "codex", mode_option, rejected_option]
+        if rejected_option == "--priority":
+            argv.append("high")
+
+        assert cli.main(argv) == 1
+        error = capsys.readouterr().err
+        assert mode_option in error
+        assert rejected_option in error
+
+
 def test_serve_proposal_checks_backs_off_after_cycle_error(
     monkeypatch,
     tmp_path: Path,
@@ -489,6 +524,7 @@ def test_serve_proposal_checks_backs_off_after_cycle_error(
 
     exit_code = serve._serve_loop(
         Args(),
+        mode=serve.ServeMode.PROPOSAL_CHECKS,
         agent="codex",
         config=serve.IssuekitConfig(api_url="https://mine.example"),
         cwd=tmp_path,
@@ -918,6 +954,7 @@ def test_serve_backs_off_after_claim_error(monkeypatch, tmp_path: Path, capsys) 
 
     exit_code = serve._serve_loop(
         Args(),
+        mode=serve.ServeMode.IMPLEMENT,
         agent="codex",
         config=config,
         cwd=tmp_path,
@@ -976,6 +1013,7 @@ def test_serve_loop_reuses_store_across_idle_polls(monkeypatch, tmp_path: Path) 
 
     exit_code = serve._serve_loop(
         Args(),
+        mode=serve.ServeMode.IMPLEMENT,
         agent="codex",
         config=config,
         cwd=tmp_path,
@@ -1055,6 +1093,7 @@ def test_serve_loop_claim_ignores_author_guard_outside_configured_cwd(
 
     exit_code = serve._serve_loop(
         Args(),
+        mode=serve.ServeMode.IMPLEMENT,
         agent="codex",
         config=config,
         cwd=loop_cwd,
