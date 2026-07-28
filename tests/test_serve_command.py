@@ -1,10 +1,13 @@
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import os
 import signal
 import subprocess
 import threading
 from types import SimpleNamespace
+
+import pytest
 
 from issuekit import cli
 import issuekit.proposals.api as proposals_api
@@ -910,6 +913,9 @@ def test_serve_resolves_configured_heartbeat_and_cli_override_takes_precedence(
         def __init__(self, config, cwd, *, interval, on_error) -> None:
             intervals.append(interval)
 
+        def beat(self) -> bool:
+            return True
+
         def start(self) -> None:
             pass
 
@@ -964,6 +970,151 @@ def test_serve_rejects_non_positive_heartbeat_override(
         == 1
     )
     assert "--heartbeat-interval must be greater than zero" in capsys.readouterr().err
+
+
+def test_serve_rejects_negative_max_heartbeat_failures(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    _configure_registered_api(tmp_path, monkeypatch, FakeIssuekitClient())
+
+    assert (
+        cli.main(
+            [
+                "serve",
+                "--agent",
+                "codex",
+                "--max-heartbeat-failures",
+                "-1",
+            ]
+        )
+        == 1
+    )
+    assert "--max-heartbeat-failures must be non-negative" in capsys.readouterr().err
+
+
+def test_worker_heartbeat_logs_failure_state_and_escalates_once(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    last_success = datetime.now(timezone.utc) - timedelta(seconds=301)
+
+    class FakeHeartbeat:
+        def __init__(self, config, cwd, *, interval, on_error) -> None:
+            self.on_error = on_error
+
+        def beat(self) -> bool:
+            self.on_error(
+                WorkflowError("registry offline"),
+                1,
+                last_success,
+            )
+            return False
+
+        def start(self) -> None:
+            self.on_error(WorkflowError("registry offline"), 2, last_success)
+            self.on_error(WorkflowError("registry offline"), 3, last_success)
+
+        def stop(self) -> None:
+            pass
+
+    monkeypatch.setattr(serve, "WorkerHeartbeat", FakeHeartbeat)
+    controller = serve_loop.ShutdownController.create()
+
+    with serve._worker_heartbeat(
+        SimpleNamespace(),
+        tmp_path,
+        tmp_path / "serve.log",
+        30.0,
+        controller,
+    ):
+        pass
+
+    err = capsys.readouterr().err
+    assert "event=worker_registry_error consecutive=1 last_success=" in err
+    assert "event=worker_registry_error consecutive=3 last_success=" in err
+    assert err.count("event=worker_registry_escalated") == 1
+
+
+def test_worker_heartbeat_initial_unexpected_exception_uses_failure_path(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    class FakeHeartbeat:
+        def __init__(self, config, cwd, *, interval, on_error) -> None:
+            self.on_error = on_error
+
+        def beat(self) -> bool:
+            raise RuntimeError("programming error")
+
+        def record_failure(self, exc: Exception) -> None:
+            self.on_error(exc, 1, None)
+
+        def start(self) -> None:
+            pass
+
+        def stop(self) -> None:
+            pass
+
+    monkeypatch.setattr(serve, "WorkerHeartbeat", FakeHeartbeat)
+    controller = serve_loop.ShutdownController.create()
+
+    with serve._worker_heartbeat(
+        SimpleNamespace(),
+        tmp_path,
+        tmp_path / "serve.log",
+        30.0,
+        controller,
+    ):
+        pass
+
+    assert (
+        "event=worker_registry_error consecutive=1 last_success=none "
+        "error=programming error"
+    ) in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("max_failures", "expected_requested"),
+    [(0, False), (2, True)],
+)
+def test_worker_heartbeat_failure_limit_requests_shutdown(
+    tmp_path: Path,
+    monkeypatch,
+    max_failures: int,
+    expected_requested: bool,
+) -> None:
+    class FakeHeartbeat:
+        def __init__(self, config, cwd, *, interval, on_error) -> None:
+            self.on_error = on_error
+
+        def beat(self) -> bool:
+            self.on_error(WorkflowError("registry offline"), 1, None)
+            return False
+
+        def start(self) -> None:
+            self.on_error(WorkflowError("registry offline"), 2, None)
+
+        def stop(self) -> None:
+            pass
+
+    monkeypatch.setattr(serve, "WorkerHeartbeat", FakeHeartbeat)
+    controller = serve_loop.ShutdownController.create()
+
+    with serve._worker_heartbeat(
+        SimpleNamespace(),
+        tmp_path,
+        tmp_path / "serve.log",
+        30.0,
+        controller,
+        max_failures=max_failures,
+    ):
+        pass
+
+    assert controller.requested is expected_requested
 
 
 def test_serve_warns_when_heartbeat_is_not_below_staleness_default(

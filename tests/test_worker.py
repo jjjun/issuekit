@@ -548,6 +548,105 @@ def test_add_cli_ignores_worker_registry_failure(
     assert "worker registry update failed" in captured.err
 
 
+def test_worker_heartbeat_tracks_consecutive_failures_and_resets(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from issuekit.workers import registry as worker_registry
+    from issuekit.workflow import WorkflowError
+
+    outcomes = iter((False, False, True, False))
+    errors: list[tuple[int, object]] = []
+
+    def post(config, cwd, *, on_error):
+        succeeded = next(outcomes)
+        if not succeeded:
+            on_error(WorkflowError("registry offline", code="request_failed"))
+        return succeeded
+
+    monkeypatch.setattr(worker_registry, "try_post_worker_registration", post)
+    heartbeat = worker_registry.WorkerHeartbeat(
+        IssuekitConfig(
+            api_url="https://mine.example",
+            project="demo",
+            worker=WorkerIdentity("machine", "demo", "checkout"),
+        ),
+        tmp_path,
+        on_error=lambda _exc, consecutive, last_success: errors.append(
+            (consecutive, last_success)
+        ),
+    )
+
+    assert heartbeat.beat() is False
+    assert heartbeat.beat() is False
+    assert heartbeat.consecutive_failures == 2
+    assert errors == [(1, None), (2, None)]
+
+    assert heartbeat.beat() is True
+    last_success = heartbeat.last_success
+    assert last_success is not None
+    assert heartbeat.consecutive_failures == 0
+
+    assert heartbeat.beat() is False
+    assert heartbeat.consecutive_failures == 1
+    assert errors[-1] == (1, last_success)
+
+
+def test_worker_heartbeat_run_continues_after_unexpected_exception(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from issuekit.workers import registry as worker_registry
+
+    errors: list[tuple[Exception, int]] = []
+    heartbeat = worker_registry.WorkerHeartbeat(
+        IssuekitConfig(),
+        tmp_path,
+        on_error=lambda exc, consecutive, _last_success: errors.append(
+            (exc, consecutive)
+        ),
+    )
+    waits = iter((False, False, True))
+    beats = iter((RuntimeError("programming error"), True))
+    beat_calls = 0
+
+    def wait(_interval):
+        return next(waits)
+
+    def beat():
+        nonlocal beat_calls
+        beat_calls += 1
+        outcome = next(beats)
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+    monkeypatch.setattr(heartbeat._stop, "wait", wait)
+    monkeypatch.setattr(heartbeat, "beat", beat)
+
+    heartbeat._run()
+
+    assert beat_calls == 2
+    assert len(errors) == 1
+    assert str(errors[0][0]) == "programming error"
+    assert errors[0][1] == 1
+
+
+def test_try_post_worker_registration_propagates_unexpected_exceptions(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from issuekit.workers import registry as worker_registry
+
+    def fail(*args, **kwargs):
+        raise RuntimeError("programming error")
+
+    monkeypatch.setattr(worker_registry, "post_worker_registration", fail)
+
+    with pytest.raises(RuntimeError, match="programming error"):
+        worker_registry.try_post_worker_registration(IssuekitConfig(), tmp_path)
+
+
 def test_add_cli_posts_configured_role_and_description(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -849,10 +948,14 @@ class FailingRegistryClient:
         return None
 
     def upsert_repo(self, **kwargs):
-        raise RuntimeError("registry offline")
+        from issuekit.workflow import WorkflowError
+
+        raise WorkflowError("registry offline", code="request_failed")
 
     def upsert_worker(self, **kwargs):
-        raise RuntimeError("registry offline")
+        from issuekit.workflow import WorkflowError
+
+        raise WorkflowError("registry offline", code="request_failed")
 
 
 def _init_git(path: Path, remote_url: str | None = None) -> None:

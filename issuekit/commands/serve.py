@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from enum import StrEnum
 import os
 from pathlib import Path
@@ -75,6 +76,12 @@ def register(subparsers: argparse._SubParsersAction) -> None:
             "Worker heartbeat interval in seconds; overrides "
             "worker_heartbeat_interval_sec."
         ),
+    )
+    serve_parser.add_argument(
+        "--max-heartbeat-failures",
+        type=int,
+        default=0,
+        help="Stop gracefully after this many consecutive heartbeat failures (default: 0, unlimited).",
     )
     serve_parser.add_argument(
         "--priority",
@@ -194,6 +201,9 @@ def run(args) -> int:
     if heartbeat_interval <= 0:
         print("--heartbeat-interval must be greater than zero.", file=sys.stderr)
         return 1
+    if args.max_heartbeat_failures < 0:
+        print("--max-heartbeat-failures must be non-negative.", file=sys.stderr)
+        return 1
     warn_if_staleness_not_wider(DEFAULT_STALE_AFTER_SEC, heartbeat_interval)
     if args.max_issues is not None and args.max_issues < 1:
         print("--max-issues must be greater than zero.", file=sys.stderr)
@@ -219,7 +229,14 @@ def run(args) -> int:
 
     try:
         with _serve_lock(lock_path), _signal_handlers(controller):
-            with _worker_heartbeat(config, cwd, log_path, heartbeat_interval):
+            with _worker_heartbeat(
+                config,
+                cwd,
+                log_path,
+                heartbeat_interval,
+                controller,
+                max_failures=args.max_heartbeat_failures,
+            ):
                 return _serve_loop(
                     args,
                     mode=mode,
@@ -636,17 +653,69 @@ def _worker_heartbeat(
     cwd: Path,
     log_path: Path,
     interval: float,
+    controller: ShutdownController,
+    *,
+    max_failures: int = 0,
+    stale_after_sec: float = DEFAULT_STALE_AFTER_SEC,
 ) -> Iterator[None]:
-    def on_error(exc: Exception) -> None:
-        _log(sys.stderr, log_path, "worker_registry_error", error=str(exc))
+    failure_started: datetime | None = None
+    escalated = False
 
-    try_post_worker_registration(config, cwd, on_error=on_error)
+    def on_error(
+        exc: Exception,
+        consecutive_failures: int,
+        last_success: datetime | None,
+    ) -> None:
+        nonlocal escalated, failure_started
+        now = datetime.now(timezone.utc)
+        if consecutive_failures == 0:
+            failure_started = None
+            escalated = False
+        elif consecutive_failures == 1:
+            failure_started = last_success or now
+            escalated = False
+        last_success_text = (
+            last_success.replace(microsecond=0).isoformat()
+            if last_success is not None
+            else "none"
+        )
+        _log(
+            sys.stderr,
+            log_path,
+            "worker_registry_error",
+            consecutive=consecutive_failures,
+            last_success=last_success_text,
+            error=str(exc),
+        )
+        failure_window_sec = (
+            (now - failure_started).total_seconds()
+            if failure_started is not None
+            else 0.0
+        )
+        if failure_window_sec > stale_after_sec and not escalated:
+            escalated = True
+            _log(
+                sys.stderr,
+                log_path,
+                "worker_registry_escalated",
+                consecutive=consecutive_failures,
+                last_success=last_success_text,
+                failure_window_sec=int(failure_window_sec),
+                stale_after_sec=stale_after_sec,
+            )
+        if max_failures > 0 and consecutive_failures == max_failures:
+            controller.request()
+
     heartbeat = WorkerHeartbeat(
         config,
         cwd,
         interval=interval,
         on_error=on_error,
     )
+    try:
+        heartbeat.beat()
+    except Exception as exc:
+        heartbeat.record_failure(exc)
     heartbeat.start()
     try:
         yield

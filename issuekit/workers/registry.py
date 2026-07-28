@@ -334,7 +334,7 @@ def try_post_worker_registration(
             canonical_url=canonical_url,
             on_error=on_error,
         )
-    except Exception as exc:
+    except (WorkflowError, WorkerRegistryConflict) as exc:
         if on_error is not None:
             on_error(exc)
         return False
@@ -347,14 +347,17 @@ class WorkerHeartbeat:
         cwd: Path | str,
         *,
         interval: float = WORKER_HEARTBEAT_INTERVAL_SEC,
-        on_error: Callable[[Exception], None] | None = None,
+        on_error: Callable[[Exception, int, datetime | None], None] | None = None,
     ) -> None:
         self.config = config
         self.cwd = Path(cwd)
         self.interval = interval
         self.on_error = on_error
+        self.consecutive_failures = 0
+        self.last_success: datetime | None = None
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
+        self._state_lock = threading.Lock()
 
     def start(self) -> None:
         if not self.config.api_url or self.config.worker is None:
@@ -369,9 +372,39 @@ class WorkerHeartbeat:
         if self._thread is not None:
             self._thread.join(timeout=5.0)
 
+    def beat(self) -> bool:
+        errors: list[Exception] = []
+        succeeded = try_post_worker_registration(
+            self.config,
+            self.cwd,
+            on_error=errors.append,
+        )
+        if succeeded:
+            with self._state_lock:
+                self.consecutive_failures = 0
+                self.last_success = datetime.now(timezone.utc)
+                last_success = self.last_success
+            if self.on_error is not None:
+                for exc in errors:
+                    self.on_error(exc, 0, last_success)
+        elif errors:
+            self.record_failure(errors[-1])
+        return succeeded
+
     def _run(self) -> None:
         while not self._stop.wait(max(0.0, self.interval)):
-            try_post_worker_registration(self.config, self.cwd, on_error=self.on_error)
+            try:
+                self.beat()
+            except Exception as exc:
+                self.record_failure(exc)
+
+    def record_failure(self, exc: Exception) -> None:
+        with self._state_lock:
+            self.consecutive_failures += 1
+            consecutive_failures = self.consecutive_failures
+            last_success = self.last_success
+        if self.on_error is not None:
+            self.on_error(exc, consecutive_failures, last_success)
 
 
 def _registration_error(
