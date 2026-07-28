@@ -19,6 +19,7 @@ install it, and where to go next.
 | [MCP server](guides/mcp-server.md) | Installing, scaffolding, and troubleshooting the handoff MCP server. |
 | [Handoff protocol](guides/handoff-protocol.md) | Where the canonical author/implementer/reviewer protocol text lives. |
 | [Commands](guides/commands.md) | Full CLI command reference. |
+| [Serve worker loop](guides/serve.md) | Running a checkout as a long-lived implementer, reviewer, proposal-check, or triage worker. |
 | [Configuration](guides/configuration.md) | Config file layers, precedence, agent overlays, reviewer and implementer policy. |
 | [Cross-project proposals](guides/cross-project-proposals.md) | Proposal inboxes, dependencies, refs, adoption and reply flow. |
 | [Cross-project negotiation](guides/negotiation.md) | Bounded agent conversations that settle a shared contract before implementation. |
