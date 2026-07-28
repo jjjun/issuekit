@@ -13,7 +13,8 @@ not the `target_worker` of directed work. Without `--dry-run`, the command asks
 you to type the candidate count before it deletes the workers.
 `last_seen` only refreshes while `serve` or the worker heartbeat is running, so
 quiet but live checkouts can look stale; start with `--dry-run` and use a
-generous `--stale-after-sec` before deleting.
+generous `--stale-after-sec` before deleting. The staleness window must be
+several configured worker heartbeat periods wide.
 
 If prune skips a stale worker because an issue is still directed to it, use
 `issuekit readdress <id>` first to return that issue to the repo pool. If prune

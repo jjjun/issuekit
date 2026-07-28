@@ -102,10 +102,12 @@ graceful stop.
 ## Worker heartbeat
 
 While serve runs, a daemon thread re-publishes this worker to the API catalog
-every 60 seconds, refreshing `last_seen`. That heartbeat is what keeps
-`issuekit orphans` from flagging a long agent run as stale, and what keeps
-`issuekit workers prune` (default staleness 300s) from removing a live but idle
-worker.
+every `worker_heartbeat_interval_sec` seconds (default 60), refreshing
+`last_seen`; `--heartbeat-interval <seconds>` overrides the configured value.
+That heartbeat is what keeps `issuekit orphans` from flagging a long agent run
+as stale, and what keeps `issuekit workers prune` (default staleness 300s) from
+removing a live but idle worker. Staleness windows must be several heartbeat
+periods wide.
 
 The heartbeat is best-effort. If publishing fails, serve logs
 `worker_registry_error` and keeps polling; it does not stop or retry faster.

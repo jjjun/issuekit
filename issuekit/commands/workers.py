@@ -6,6 +6,7 @@ import argparse
 from pathlib import Path
 
 from issuekit.commands._common import print_json, run_command
+from issuekit.commands._heartbeat import warn_if_staleness_not_wider
 from issuekit.config import load_config
 from issuekit.core import issue_dict, worker_display_from_row
 from issuekit.workflow import WorkflowError
@@ -113,6 +114,10 @@ def run_remove(args) -> int:
 def run_prune(args) -> int:
     def action() -> int:
         config = load_config(Path.cwd())
+        warn_if_staleness_not_wider(
+            args.stale_after_sec,
+            config.worker_heartbeat_interval_sec,
+        )
         preview = prune_api_workers(
             config,
             stale_after_sec=args.stale_after_sec,

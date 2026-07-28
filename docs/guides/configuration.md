@@ -16,6 +16,7 @@ require_distinct_reviewer = true
 work_branch = "main"
 gate_halfwidth_kana = true
 check_encoding_exclude = ["packages/*/src/generated/**"]
+worker_heartbeat_interval_sec = 60.0
 send_agent_runtime = true
 ```
 
@@ -33,6 +34,7 @@ require_distinct_reviewer = true
 work_branch = "main"
 gate_halfwidth_kana = true
 check_encoding_exclude = ["packages/*/src/generated/**"]
+worker_heartbeat_interval_sec = 60.0
 ```
 
 When both files exist, `[tool.issuekit]` in `pyproject.toml` takes precedence.
@@ -204,6 +206,12 @@ effective model and reasoning effort to mine-py. Set `send_agent_runtime = false
 when using a mine-py deployment older than mine-py#579: that server rejects the
 additional fields with HTTP 422, so the transition fails rather than omitting
 the runtime data.
+
+`worker_heartbeat_interval_sec` controls how often `issuekit serve` refreshes
+its worker registry entry and defaults to `60.0`. The
+`--heartbeat-interval <seconds>` serve option overrides it for one process.
+Staleness windows used by `issuekit workers prune` and `issuekit orphans` must
+be several heartbeat periods wide.
 
 ## Work branch guard
 

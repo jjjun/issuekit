@@ -22,9 +22,9 @@ from datetime import datetime, timezone
 from issuekit.config import IssuekitConfig
 from issuekit.core import Issue, worker_keys_from_row, worker_keys_match
 
-# The worker heartbeat posts every WORKER_HEARTBEAT_INTERVAL_SEC (60s). Wait for
-# several missed beats before flagging so a healthy but briefly-delayed worker
-# is not reported as stale.
+# The worker heartbeat posts at the configured worker_heartbeat_interval_sec,
+# which defaults to 60s. Wait for several missed beats before flagging so a
+# healthy but briefly-delayed worker is not reported as stale.
 DEFAULT_STALE_AFTER_SEC = 300.0
 
 IMPLEMENTING_STAGE = "implementing"

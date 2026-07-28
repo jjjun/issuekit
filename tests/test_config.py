@@ -329,6 +329,35 @@ def test_load_config_defaults_claim_sync_on(tmp_path: Path) -> None:
     assert config.claim_sync_interval_sec == 60.0
 
 
+def test_load_config_reads_worker_heartbeat_interval(tmp_path: Path) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "worker_heartbeat_interval_sec = 12.5\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    assert load_config(tmp_path).worker_heartbeat_interval_sec == 12.5
+
+
+def test_load_config_defaults_worker_heartbeat_interval(tmp_path: Path) -> None:
+    assert load_config(tmp_path).worker_heartbeat_interval_sec == 60.0
+
+
+@pytest.mark.parametrize("value", ["0", "-1"])
+def test_load_config_rejects_non_positive_worker_heartbeat_interval(
+    tmp_path: Path,
+    value: str,
+) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        f"worker_heartbeat_interval_sec = {value}\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    with pytest.raises(ValueError, match="worker_heartbeat_interval_sec"):
+        load_config(tmp_path)
+
+
 def test_load_config_rejects_negative_claim_sync_interval(tmp_path: Path) -> None:
     (tmp_path / "issuekit.toml").write_text(
         "claim_sync_interval_sec = -1\n",

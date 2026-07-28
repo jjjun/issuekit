@@ -148,6 +148,18 @@ def test_orphans_healthy_worker_within_window_is_not_flagged(
     assert "No orphaned or stale implementing claims." in capsys.readouterr().out
 
 
+def test_orphans_warns_when_staleness_is_not_wider_than_heartbeat(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _configure_api(tmp_path, monkeypatch, FakeIssuekitClient())
+
+    assert cli.main(["orphans", "--stale-after-sec", "60"]) == 0
+
+    assert "healthy worker may appear stale between beats" in capsys.readouterr().err
+
+
 def test_orphans_ignores_non_implementing_and_unclaimed(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

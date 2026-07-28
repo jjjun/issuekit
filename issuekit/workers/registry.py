@@ -14,11 +14,11 @@ from issuekit.config import IssuekitConfig
 from issuekit.core import Issue, worker_display_from_row, worker_keys_from_row, worker_keys_match
 from issuekit.config.project_profile import load_project_profile
 from issuekit.store import get_store
+from issuekit.worker_constants import WORKER_HEARTBEAT_INTERVAL_SEC
 from issuekit.workers.identity import canonical_git_origin_url
 from issuekit.workflow import WorkflowError
 
 
-WORKER_HEARTBEAT_INTERVAL_SEC = 60.0
 LOGGER = logging.getLogger(__name__)
 
 

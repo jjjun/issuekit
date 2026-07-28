@@ -17,6 +17,7 @@ from issuekit.core import (
 )
 from issuekit.agentrun.config import AgentRunConfig
 from issuekit.encoding import has_non_ascii
+from issuekit.worker_constants import WORKER_HEARTBEAT_INTERVAL_SEC
 from .dotenv import load_dotenv
 from .local import LocalConfigError, load_toml, read_local_config
 
@@ -111,6 +112,7 @@ class IssuekitConfig:
     check_encoding_exclude: tuple[str, ...] = ()
     claim_sync: bool = True
     claim_sync_interval_sec: float = 60.0
+    worker_heartbeat_interval_sec: float = WORKER_HEARTBEAT_INTERVAL_SEC
     send_agent_runtime: bool = True
     worker: WorkerIdentity | None = None
     worker_role: str = ""
@@ -287,6 +289,13 @@ def load_config(cwd: Path | str = ".") -> IssuekitConfig:
         )
     )
     _validate_claim_sync_interval(claim_sync_interval_sec)
+    worker_heartbeat_interval_sec = float(
+        raw_config.get(
+            "worker_heartbeat_interval_sec",
+            IssuekitConfig.worker_heartbeat_interval_sec,
+        )
+    )
+    _validate_worker_heartbeat_interval(worker_heartbeat_interval_sec)
     triage = _load_triage_policy(raw_config.get("triage", {}))
     router = _load_router_policy(raw_config.get("router", {}))
     agent_roles = _load_agent_roles(raw_config.get("agent_roles"))
@@ -351,6 +360,7 @@ def load_config(cwd: Path | str = ".") -> IssuekitConfig:
         ),
         claim_sync=_bool_value(raw_config.get("claim_sync", IssuekitConfig.claim_sync)),
         claim_sync_interval_sec=claim_sync_interval_sec,
+        worker_heartbeat_interval_sec=worker_heartbeat_interval_sec,
         send_agent_runtime=_bool_value(
             raw_config.get("send_agent_runtime", IssuekitConfig.send_agent_runtime)
         ),
@@ -767,6 +777,11 @@ def _validate_work_branch(work_branch: str) -> None:
 def _validate_claim_sync_interval(value: float) -> None:
     if value < 0:
         raise ValueError("claim_sync_interval_sec must be zero or greater.")
+
+
+def _validate_worker_heartbeat_interval(value: float) -> None:
+    if value <= 0:
+        raise ValueError("worker_heartbeat_interval_sec must be greater than zero.")
 
 
 def _load_agents(

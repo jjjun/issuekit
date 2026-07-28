@@ -900,6 +900,96 @@ def test_serve_uses_single_configured_assignee_when_agent_omitted(
     assert client.calls[2]["body"]["assignee"] == "codex"
 
 
+def test_serve_resolves_configured_heartbeat_and_cli_override_takes_precedence(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    intervals: list[float] = []
+
+    class FakeHeartbeat:
+        def __init__(self, config, cwd, *, interval, on_error) -> None:
+            intervals.append(interval)
+
+        def start(self) -> None:
+            pass
+
+        def stop(self) -> None:
+            pass
+
+    client = FakeIssuekitClient()
+    _configure_registered_api(
+        tmp_path,
+        monkeypatch,
+        client,
+        triage="worker_heartbeat_interval_sec = 12.5\n",
+    )
+    monkeypatch.setattr(serve, "WorkerHeartbeat", FakeHeartbeat)
+    monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", ExplodingRunner)
+
+    assert cli.main(["serve", "--agent", "codex", "--once"]) == 0
+    assert (
+        cli.main(
+            [
+                "serve",
+                "--agent",
+                "codex",
+                "--once",
+                "--heartbeat-interval",
+                "7.5",
+            ]
+        )
+        == 0
+    )
+    assert intervals == [12.5, 7.5]
+
+
+def test_serve_rejects_non_positive_heartbeat_override(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    _configure_registered_api(tmp_path, monkeypatch, FakeIssuekitClient())
+
+    assert (
+        cli.main(
+            [
+                "serve",
+                "--agent",
+                "codex",
+                "--once",
+                "--heartbeat-interval",
+                "0",
+            ]
+        )
+        == 1
+    )
+    assert "--heartbeat-interval must be greater than zero" in capsys.readouterr().err
+
+
+def test_serve_warns_when_heartbeat_is_not_below_staleness_default(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    _configure_registered_api(tmp_path, monkeypatch, FakeIssuekitClient())
+    monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", ExplodingRunner)
+
+    assert (
+        cli.main(
+            [
+                "serve",
+                "--agent",
+                "codex",
+                "--once",
+                "--heartbeat-interval",
+                "300",
+            ]
+        )
+        == 0
+    )
+    assert "healthy worker may appear stale between beats" in capsys.readouterr().err
+
+
 def test_serve_refuses_live_lock(
     tmp_path: Path,
     monkeypatch,

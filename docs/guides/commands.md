@@ -21,7 +21,7 @@
 | `issuekit request-changes <id> --notes "..." [--assignee codex] [--reviewer claude]` | Return a reviewed issue to implementation. |
 | `issuekit queue --assignee claude [--stage review]` | List active issues for an assignee. |
 | `issuekit runs [<run-id>] [--active] [--json]` | Inspect an agent run or list runs, optionally limited to active ones. |
-| `issuekit serve [--agent <agent>] [--model <model-id>] [--reasoning-effort <value>] [--interval <seconds>] [--priority high\|medium\|low] [--once] [--triage] [--review] [--proposal-checks] [--proposal-check-limit <n>] [--max-issues <n>] [--timeout-sec <seconds>] [--allow-any-branch] [--no-sync]` | Launch an agent loop that pulls from the implement pool by default, or the review pool with `--review`. |
+| `issuekit serve [--agent <agent>] [--model <model-id>] [--reasoning-effort <value>] [--interval <seconds>] [--heartbeat-interval <seconds>] [--priority high\|medium\|low] [--once] [--triage] [--review] [--proposal-checks] [--proposal-check-limit <n>] [--max-issues <n>] [--timeout-sec <seconds>] [--allow-any-branch] [--no-sync]` | Launch an agent loop that pulls from the implement pool by default, or the review pool with `--review`. |
 | `issuekit orphans [--stale-after-sec <n>] [--json]` | List implementing issues whose claiming worker is gone or has stopped heartbeating. |
 | `issuekit reclaim <id> [--force] [--reason "..."] [--json]` | Return an orphaned or stale implementing claim to the implement pool. |
 | `issuekit readdress <id> [--reason "..."] [--json]` | Return a directed issue to the repo pool. |

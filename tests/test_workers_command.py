@@ -271,6 +271,23 @@ def test_workers_prune_dry_run_filters_to_stale_issueless_untargeted_workers(
     assert "delete_worker" not in [call["method"] for call in client.calls]
 
 
+def test_workers_prune_warns_when_staleness_is_not_wider_than_heartbeat(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _configure_api(tmp_path, monkeypatch, FakeIssuekitClient())
+
+    assert (
+        cli.main(
+            ["workers", "prune", "--stale-after-sec", "60", "--dry-run"]
+        )
+        == 0
+    )
+
+    assert "healthy worker may appear stale between beats" in capsys.readouterr().err
+
+
 def test_workers_prune_requires_count_confirmation_before_delete(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

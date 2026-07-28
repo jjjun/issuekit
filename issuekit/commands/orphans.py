@@ -6,6 +6,7 @@ import argparse
 from pathlib import Path
 
 from issuekit.commands._common import print_json, run_command
+from issuekit.commands._heartbeat import warn_if_staleness_not_wider
 from issuekit.config import load_config
 from issuekit.issues.orphans import (
     DEFAULT_STALE_AFTER_SEC,
@@ -41,6 +42,10 @@ def register(subparsers: argparse._SubParsersAction) -> None:
 def run(args) -> int:
     def action() -> int:
         config = load_config(Path.cwd())
+        warn_if_staleness_not_wider(
+            args.stale_after_sec,
+            config.worker_heartbeat_interval_sec,
+        )
         claims = list_stale_claims(config, stale_after_sec=args.stale_after_sec)
         if args.json:
             print_json([stale_claim_dict(claim) for claim in claims])

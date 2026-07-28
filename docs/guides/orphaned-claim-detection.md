@@ -28,9 +28,10 @@ Orphaned or stale implementing claims: 1
 
 The `last_seen` heartbeat is refreshed by the `issuekit serve` worker loop (and
 on `issuekit add`), not by a one-shot `issuekit claim`/`issuekit implement`.
-A long-running implementer run through `serve` heartbeats every 60s and is not
-flagged; a manual one-shot implementer that holds a claim without running
-`serve` may show as `expired_heartbeat`.
+A long-running implementer run through `serve` heartbeats at the configured
+interval (default 60s) and is not flagged; a manual one-shot implementer that
+holds a claim without running `serve` may show as `expired_heartbeat`. Keep the
+staleness window several heartbeat periods wide.
 
 ## Recovery
 

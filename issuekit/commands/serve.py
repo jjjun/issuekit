@@ -19,6 +19,7 @@ from issuekit.agents.proposal_check import (
 from issuekit.agentrun import AgentRunner
 from issuekit.agents.triage_author import run_triage_author_cycle
 from issuekit.config import IssuekitConfig, load_config
+from issuekit.commands._heartbeat import warn_if_staleness_not_wider
 from issuekit.commands.serve_loop import (
     Backoff,
     PollResult,
@@ -33,14 +34,11 @@ from issuekit.commands.serve_loop import (
     should_recreate_store as _should_recreate_store,
 )
 from issuekit.core import Issue
+from issuekit.issues.orphans import DEFAULT_STALE_AFTER_SEC
 from issuekit.proposals import ProposalError
 from issuekit.proposals.api import auto_adopt_incoming_proposals
 from issuekit.store import get_store
-from issuekit.workers.registry import (
-    WORKER_HEARTBEAT_INTERVAL_SEC,
-    WorkerHeartbeat,
-    try_post_worker_registration,
-)
+from issuekit.workers.registry import WorkerHeartbeat, try_post_worker_registration
 from issuekit.workflow import WorkflowError, claim_next, next_review, resolve_implementer
 
 
@@ -69,6 +67,14 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         type=float,
         default=15.0,
         help="Idle poll interval in seconds.",
+    )
+    serve_parser.add_argument(
+        "--heartbeat-interval",
+        type=float,
+        help=(
+            "Worker heartbeat interval in seconds; overrides "
+            "worker_heartbeat_interval_sec."
+        ),
     )
     serve_parser.add_argument(
         "--priority",
@@ -180,6 +186,15 @@ def run(args) -> int:
     if args.interval < 0:
         print("--interval must be non-negative.", file=sys.stderr)
         return 1
+    heartbeat_interval = (
+        args.heartbeat_interval
+        if args.heartbeat_interval is not None
+        else config.worker_heartbeat_interval_sec
+    )
+    if heartbeat_interval <= 0:
+        print("--heartbeat-interval must be greater than zero.", file=sys.stderr)
+        return 1
+    warn_if_staleness_not_wider(DEFAULT_STALE_AFTER_SEC, heartbeat_interval)
     if args.max_issues is not None and args.max_issues < 1:
         print("--max-issues must be greater than zero.", file=sys.stderr)
         return 1
@@ -204,7 +219,7 @@ def run(args) -> int:
 
     try:
         with _serve_lock(lock_path), _signal_handlers(controller):
-            with _worker_heartbeat(config, cwd, log_path):
+            with _worker_heartbeat(config, cwd, log_path, heartbeat_interval):
                 return _serve_loop(
                     args,
                     mode=mode,
@@ -616,7 +631,12 @@ def _run_triage_author_cycle(
 
 
 @contextmanager
-def _worker_heartbeat(config: IssuekitConfig, cwd: Path, log_path: Path) -> Iterator[None]:
+def _worker_heartbeat(
+    config: IssuekitConfig,
+    cwd: Path,
+    log_path: Path,
+    interval: float,
+) -> Iterator[None]:
     def on_error(exc: Exception) -> None:
         _log(sys.stderr, log_path, "worker_registry_error", error=str(exc))
 
@@ -624,7 +644,7 @@ def _worker_heartbeat(config: IssuekitConfig, cwd: Path, log_path: Path) -> Iter
     heartbeat = WorkerHeartbeat(
         config,
         cwd,
-        interval=WORKER_HEARTBEAT_INTERVAL_SEC,
+        interval=interval,
         on_error=on_error,
     )
     heartbeat.start()
