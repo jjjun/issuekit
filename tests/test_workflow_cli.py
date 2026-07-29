@@ -4,13 +4,12 @@ import pytest
 
 from issuekit import cli
 from issuekit import store as store_module
-from issuekit.guards.author import read_author_guard
 from issuekit.commands.approve import approve_issue
 from issuekit.commands.complete import complete_issue
 from issuekit.config import IssuekitConfig
+from issuekit.guards.author import read_author_guard
 from issuekit.testing import FakeIssuekitClient
 from issuekit.workflow import WorkflowError
-
 from tests.issue_helpers import api_issue
 
 

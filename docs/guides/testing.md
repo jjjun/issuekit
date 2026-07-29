@@ -3,10 +3,14 @@
 Run the normal project gates by hand before publishing changes:
 
 ```powershell
+uv run ruff check
 uv run pytest
 uv run issuekit check-encoding
 uv run issuekit check-encoding --gate
 ```
+
+Ruff is the local lint gate. Run `uv run ruff check --fix` to apply its safe
+automatic fixes before resolving any remaining findings deliberately.
 
 The default encoding check scans complete tracked source files for BOM, likely
 mojibake, stray carriage returns, and CRLF. The `--gate` mode separately

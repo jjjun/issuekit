@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import argparse
-from pathlib import Path
 import sys
+from pathlib import Path
 
 from issuekit.commands._common import print_json, run_command
 from issuekit.guards.author import clear_author_guard, guard_dict, read_author_guard, stop_message

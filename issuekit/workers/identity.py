@@ -2,29 +2,28 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import json
 import os
-from pathlib import Path
 import platform
 import re
-from urllib.parse import urlparse
-from urllib.parse import urlsplit, urlunsplit
+from dataclasses import dataclass
+from pathlib import Path
+from urllib.parse import urlparse, urlsplit, urlunsplit
 
 from issuekit.config import WorkerIdentity
-from issuekit.core import is_valid_workflow_token, worker_key as current_worker_key
-from issuekit.gitutil import git_origin_url as _git_origin_url
-from issuekit.gitutil import git_root
 from issuekit.config.local import (
     LOCAL_CONFIG_NAME,
     LocalConfigError,
     ensure_gitignore_entries,
-    local_config_text,
     load_toml,
+    local_config_text,
     read_local_config,
     write_local_config,
 )
-
+from issuekit.core import is_valid_workflow_token
+from issuekit.core import worker_key as current_worker_key
+from issuekit.gitutil import git_origin_url as _git_origin_url
+from issuekit.gitutil import git_root
 
 WORKER_REGISTRY_ENV_VAR = "ISSUEKIT_WORKER_REGISTRY"
 

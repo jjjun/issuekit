@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 import json
-from pathlib import Path
 import re
+from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 import issuekit.proposals.api as proposals_api
@@ -13,7 +13,6 @@ from issuekit.agents.router import RouteTarget
 from issuekit.config import IssuekitConfig
 from issuekit.gitutil import git_short_head
 from issuekit.proposals import ProposalError
-
 
 STATE_FILENAME = "pm-requests.json"
 PROPOSAL_REF_PATTERN = re.compile(
@@ -53,7 +52,7 @@ def save_state(cwd: Path, state: dict[str, dict[str, Any]]) -> None:
 
 
 def now() -> str:
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+    return datetime.now(UTC).replace(microsecond=0).isoformat()
 
 
 def status_record(

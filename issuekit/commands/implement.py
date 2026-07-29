@@ -3,19 +3,19 @@
 from __future__ import annotations
 
 import argparse
-from pathlib import Path
 import sys
+from pathlib import Path
 
+from issuekit.agentrun import AgentResult, AgentRunner
 from issuekit.agents.run_claimed import (
     RunOutcome,
     review_feedback_prompt,
     run_and_submit,
 )
-from issuekit.agentrun import AgentResult, AgentRunner
-from issuekit.guards.author import AuthorOrchestrationContext, read_author_guard
 from issuekit.commands._common import run_command
 from issuekit.config import load_config
 from issuekit.core import Issue, parse_issue_id_arg
+from issuekit.guards.author import AuthorOrchestrationContext, read_author_guard
 from issuekit.issues.session import new_session_token
 from issuekit.store import get_store
 from issuekit.workflow import WorkflowError, claim_issue, resolve_implementer
@@ -143,11 +143,8 @@ def run(args) -> int:
 def _print_run_report(issue: Issue, result: AgentResult, agent: str) -> None:
     print(f"issue={issue.id} ref={issue.ref} agent={agent}")
     print(
-        "exit_code={exit_code} timed_out={timed_out} elapsed_sec={elapsed:.2f}".format(
-            exit_code=result.exit_code,
-            timed_out=str(result.timed_out).lower(),
-            elapsed=result.elapsed_sec,
-        )
+        f"exit_code={result.exit_code} timed_out={str(result.timed_out).lower()} "
+        f"elapsed_sec={result.elapsed_sec:.2f}"
     )
     print(f"stdout_log={result.stdout_path}")
     print(f"agent_log={result.agent_log_path}")

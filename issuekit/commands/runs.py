@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from datetime import datetime
 from pathlib import Path
-import sys
 
-from issuekit.commands._common import print_json
 from issuekit.agentrun.status import RunStatus, find_status, is_stale, list_statuses
-
+from issuekit.commands._common import print_json
 
 TAIL_LINES = 40
 
@@ -92,7 +91,7 @@ def _print_detail(run_dir: Path, run_id: str, *, json_output: bool) -> int:
 
 
 def _format_row(values: tuple[str, str, str, str, str, str], widths: list[int]) -> str:
-    return "  ".join(value.ljust(width) for value, width in zip(values, widths))
+    return "  ".join(value.ljust(width) for value, width in zip(values, widths, strict=True))
 
 
 def _format_elapsed(status: RunStatus) -> str:

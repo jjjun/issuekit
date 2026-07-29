@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 import time
+from pathlib import Path
 
 from issuekit.config import IssuekitConfig
 from issuekit.gitutil import git_current_branch, git_origin_url, git_status_short, run_git
-
 
 FETCH_TIMEOUT_SEC = 120.0
 _last_successful_fetch: dict[tuple[str, str, str], float] = {}

@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import argparse
-from pathlib import Path
 import sys
 import tomllib
+from pathlib import Path
 
-from issuekit.commands._common import print_json, run_command
 from issuekit.agentrun import AgentRunner
+from issuekit.commands._common import print_json, run_command
 from issuekit.config import IssuekitConfig, load_config
 from issuekit.config.refs import RefError, list_effective_refs
 from issuekit.core import parse_issue_id_arg
@@ -19,15 +19,15 @@ from issuekit.negotiation import (
     get_negotiation_store,
 )
 from issuekit.negotiation.engine import (
-    ApiIssueCreator,
     DEFAULT_MAX_ROUNDS,
+    ApiIssueCreator,
     IssueCreator,
     MockIssueCreator,
     NegotiationFinalizationResult,
     NegotiationResult,
     NegotiationThreadInspection,
-    finalize_refusal_reason,
     finalize_negotiation,
+    finalize_refusal_reason,
     inspect_thread,
     run_negotiation,
 )

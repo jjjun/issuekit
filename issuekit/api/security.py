@@ -2,16 +2,15 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 import base64
 import ipaddress
 import json
 import os
 import sys
 import time
+from collections.abc import Mapping
 from typing import Any
 from urllib.parse import urlparse
-
 
 _ALLOW_INSECURE_ENV = "ISSUEKIT_ALLOW_INSECURE"
 _WARNED_INSECURE_API_URLS: set[str] = set()

@@ -418,14 +418,14 @@ def test_api_store_create_thread_treats_same_payload_as_idempotent_retry() -> No
         IssuekitConfig(api_url="https://mine.example", project="target"),
         client=client,
     )
-    entry_kwargs = dict(
-        side="frontend",
-        verdict=Verdict.propose,
-        title="Initial",
-        body="Start.",
-        origin="source#1@abc:round-1",
-        contract="GET /items",
-    )
+    entry_kwargs = {
+        "side": "frontend",
+        "verdict": Verdict.propose,
+        "title": "Initial",
+        "body": "Start.",
+        "origin": "source#1@abc:round-1",
+        "contract": "GET /items",
+    }
 
     first = store.create_thread(**entry_kwargs)
     retry = store.create_thread(**entry_kwargs)

@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from types import SimpleNamespace
-import json
 
 from issuekit import cli
 from issuekit.commands import dev_tool

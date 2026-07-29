@@ -10,7 +10,6 @@ from issuekit.core import drop_none
 from issuekit.negotiation.model import validate_contract as validate_negotiation_contract
 from issuekit.workflow import WorkflowError
 
-
 JsonDict = dict[str, Any]
 
 

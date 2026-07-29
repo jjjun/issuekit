@@ -5,12 +5,11 @@ from __future__ import annotations
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from issuekit.config import IssuekitConfig, parse_bool_value
 from issuekit.config.local import LocalConfigError, read_local_config, write_local_config
-
 
 STOP_SENTINEL = "STOP_NOW"
 REQUIRED_NEXT_ACTION = "STOP"
@@ -73,7 +72,7 @@ def create_author_guard(
         author_agent=(author_agent or "unknown").strip() or "unknown",
         author_session=(author_session or "").strip(),
         worker=config.worker_key() or "",
-        created=datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        created=datetime.now(UTC).replace(microsecond=0).isoformat(),
     )
     local_config = read_local_config(cwd)
     write_local_config(

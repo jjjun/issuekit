@@ -2,19 +2,18 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-from datetime import datetime, timezone
 import json
 import os
-from pathlib import Path
 import tempfile
-
+from collections.abc import Mapping
+from datetime import UTC, datetime
+from pathlib import Path
 
 STATE_FILENAME = "triage-author-state.json"
 
 
 def now() -> str:
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+    return datetime.now(UTC).replace(microsecond=0).isoformat()
 
 
 def state_path(cwd: Path) -> Path:

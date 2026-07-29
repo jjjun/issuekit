@@ -6,7 +6,6 @@ from collections.abc import Mapping
 
 from issuekit.core import Issue
 
-
 ATTENTION_DEPENDENCY_STATES = {"waiting", "attention"}
 
 

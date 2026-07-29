@@ -3,17 +3,17 @@
 from __future__ import annotations
 
 import argparse
-from pathlib import Path
 import sys
+from pathlib import Path
 
-from issuekit.commands._common import print_json, run_command
+from issuekit.agentrun import AgentRunner
 from issuekit.agents.proposal_check import (
-    ProposalCheckParseError,
     ProposalCheckDecision,
+    ProposalCheckParseError,
     list_worker_proposal_checks,
     run_proposal_check_cycle,
 )
-from issuekit.agentrun import AgentRunner
+from issuekit.commands._common import print_json, run_command
 from issuekit.config import IssuekitConfig, load_config
 from issuekit.proposals import ProposalError
 from issuekit.workflow import WorkflowError, resolve_implementer
@@ -169,7 +169,7 @@ def _format_check_value(value: object) -> str:
 
 
 def _format_row(values: tuple[str, ...], widths: list[int]) -> str:
-    return "  ".join(value.ljust(width) for value, width in zip(values, widths))
+    return "  ".join(value.ljust(width) for value, width in zip(values, widths, strict=True))
 
 
 def _print_decisions(decisions: list[ProposalCheckDecision]) -> None:

@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
 import sys
-
+from pathlib import Path
 
 _ISSUEKIT_PREFIX = "ISSUEKIT_"
 _SENSITIVE_DOTENV_KEYS = {

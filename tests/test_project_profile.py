@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 import subprocess
+from pathlib import Path
 
 import pytest
 
-from issuekit.config import IssuekitConfig, TriagePolicy  # noqa: F401 (import parity)
-from issuekit.config import load_config
+from issuekit.config import IssuekitConfig, load_config
 from issuekit.config.project_profile import (
     PROFILE_MD_MAX_BYTES,
     ProjectProfile,

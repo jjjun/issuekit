@@ -1,23 +1,22 @@
-from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
-from pathlib import Path
 import os
 import signal
 import subprocess
 import threading
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
-from issuekit import cli
 import issuekit.proposals.api as proposals_api
+from issuekit import cli
 from issuekit import store as store_module
 from issuekit.agentrun import AgentPrompt
-from issuekit.workers import registry as worker_registry
 from issuekit.commands import serve, serve_loop
 from issuekit.testing import FakeIssuekitClient
+from issuekit.workers import registry as worker_registry
 from issuekit.workflow import WorkflowError
-
 from tests.issue_helpers import api_issue
 
 
@@ -999,7 +998,7 @@ def test_worker_heartbeat_logs_failure_state_and_escalates_once(
     monkeypatch,
     capsys,
 ) -> None:
-    last_success = datetime.now(timezone.utc) - timedelta(seconds=301)
+    last_success = datetime.now(UTC) - timedelta(seconds=301)
 
     class FakeHeartbeat:
         def __init__(self, config, cwd, *, interval, on_error) -> None:
@@ -1236,7 +1235,7 @@ def test_serve_loop_reuses_store_across_idle_polls(monkeypatch, tmp_path: Path) 
 
         def claim_next(self, **kwargs):
             self.claim_count += 1
-            return None
+            return
 
         def close(self) -> None:
             self.close_count += 1
@@ -1301,7 +1300,7 @@ def test_serve_loop_claim_ignores_author_guard_outside_configured_cwd(
 
         def claim_next(self, **kwargs):
             self.claim_count += 1
-            return None
+            return
 
         def close(self) -> None:
             self.close_count += 1

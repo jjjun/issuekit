@@ -1,7 +1,6 @@
 from pathlib import Path
 
 import issuekit.agents.run_claimed as run_claimed
-
 from issuekit import encoding
 from issuekit.commands.check_encoding import _stray_carriage_return_lines
 from issuekit.gitutil import GitResult, GitStatusEntry

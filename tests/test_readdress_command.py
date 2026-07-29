@@ -6,7 +6,6 @@ import pytest
 from issuekit import cli
 from issuekit import store as store_module
 from issuekit.testing import FakeIssuekitClient
-
 from tests.issue_helpers import api_issue
 
 

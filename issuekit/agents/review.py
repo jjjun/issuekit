@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from pathlib import Path
 import re
 import sys
 import threading
+from dataclasses import dataclass
+from pathlib import Path
 from typing import TextIO
 
+from issuekit.agentrun import AgentResult, AgentRunner
 from issuekit.agents.readonly import prompt_from_spec, run_readonly_evaluation, stdout_text
 from issuekit.agents.registry import resolve_adapter
-from issuekit.agentrun import AgentResult, AgentRunner
 from issuekit.commands.approve import approve_issue
 from issuekit.config import IssuekitConfig
 from issuekit.core import Issue, worker_keys_match
@@ -20,7 +20,6 @@ from issuekit.gitutil import GitStatusEntry, git_status_entries, git_status_shor
 from issuekit.prompts import REVIEW_PROMPT, ReviewParseError
 from issuekit.store import managed_issue_store
 from issuekit.workflow import WorkflowError, ensure_assigned_reviewer, request_changes
-
 
 REVIEW_OUTPUT_KEYS = REVIEW_PROMPT.required_keys
 _REVIEW_VERDICTS = {"approve", "request-changes"}

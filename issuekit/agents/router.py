@@ -2,21 +2,22 @@
 
 from __future__ import annotations
 
+import re
+import sys
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-import re
-import sys
 from typing import TextIO
 
+from issuekit.agentrun import AgentRunner
 from issuekit.agents.readonly import prompt_from_spec, require_clean_run, run_readonly_evaluation
 from issuekit.agents.registry import resolve_adapter
-from issuekit.agentrun import AgentRunner
 from issuekit.config import IssuekitConfig
 from issuekit.issues.dependencies import DEPENDENCY_REF_EXPECTED, DEPENDENCY_REF_PATTERN
 from issuekit.prompts import ROUTER_PROMPT, RouterParseError
 from issuekit.proposals.api import api_client
 from issuekit.workflow import WorkflowError
+
 _DECISIONS = {"route", "clarify", "reject"}
 _TARGET_PLACEHOLDER_PATTERN = re.compile(r"^target:(?P<index>[0-9]+)$")
 
@@ -242,8 +243,7 @@ def _required_text(raw: Mapping[str, object], field: str, decision: str) -> str:
         raise RouterParseError(
             f"Route decision '{decision}' requires a non-empty '{field}'."
         )
-    text = value.strip()
-    return text
+    return value.strip()
 
 
 def _depends_on_tuple(value: object, *, target_index: int) -> tuple[str, ...]:

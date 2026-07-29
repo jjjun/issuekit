@@ -9,7 +9,6 @@ from issuekit.commands._common import print_json, run_command
 from issuekit.commands._heartbeat import warn_if_staleness_not_wider
 from issuekit.config import load_config
 from issuekit.core import issue_dict, worker_display_from_row
-from issuekit.workflow import WorkflowError
 from issuekit.workers.registry import (
     WorkerListingError,
     WorkerPruneCandidate,
@@ -20,6 +19,7 @@ from issuekit.workers.registry import (
     prune_api_workers,
     remove_api_worker,
 )
+from issuekit.workflow import WorkflowError
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:

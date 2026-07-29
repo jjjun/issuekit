@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
 import hashlib
-from pathlib import Path
 import sys
 import uuid
+from dataclasses import dataclass, replace
+from pathlib import Path
 from typing import Protocol
 
+from issuekit.agentrun import AgentAdapter, AgentPrompt, AgentResult, AgentRunner
 from issuekit.agents.readonly import require_clean_run, run_readonly_evaluation
 from issuekit.agents.registry import resolve_adapter
-from issuekit.agentrun import AgentAdapter, AgentPrompt, AgentResult, AgentRunner
 from issuekit.config import IssuekitConfig
 from issuekit.core import Issue, last_nonempty_line
 from issuekit.negotiation.model import (
@@ -32,7 +32,6 @@ from issuekit.negotiation.prompts import (
 from issuekit.prompts import render_negotiation_round_pointer
 from issuekit.store import get_store
 from issuekit.workflow import WorkflowError
-
 
 PROVIDER_SIDE = "provider"
 CONSUMER_SIDE = "consumer"

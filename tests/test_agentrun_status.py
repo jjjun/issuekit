@@ -2,8 +2,6 @@ import json
 from datetime import datetime, timedelta
 from pathlib import Path
 
-import pytest
-
 from issuekit.agentrun import status as status_mod
 from issuekit.agentrun.status import (
     STALE_AFTER_SEC,
@@ -16,21 +14,21 @@ from issuekit.agentrun.status import (
 
 
 def _running_status(run_id: str = "run-a", **overrides) -> RunStatus:
-    base = dict(
-        run_id=run_id,
-        agent="codex",
-        issue=1,
-        status="running",
-        pid=123,
-        started_at="2026-06-17T12:00:00",
-        ended_at=None,
-        elapsed_sec=None,
-        exit_code=None,
-        plan="docs/issues/active/001_first.md",
-        stdout_log=f".agent-runs/{run_id}.out.log",
-        agent_log=f".agent-runs/{run_id}.agent.log",
-        heartbeat_at="2026-06-17T12:00:00",
-    )
+    base = {
+        "run_id": run_id,
+        "agent": "codex",
+        "issue": 1,
+        "status": "running",
+        "pid": 123,
+        "started_at": "2026-06-17T12:00:00",
+        "ended_at": None,
+        "elapsed_sec": None,
+        "exit_code": None,
+        "plan": "docs/issues/active/001_first.md",
+        "stdout_log": f".agent-runs/{run_id}.out.log",
+        "agent_log": f".agent-runs/{run_id}.agent.log",
+        "heartbeat_at": "2026-06-17T12:00:00",
+    }
     base.update(overrides)
     return RunStatus(**base)
 

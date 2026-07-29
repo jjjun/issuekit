@@ -5,7 +5,6 @@ from pathlib import Path
 
 import pytest
 
-
 _REPO_LOCAL_CONFIG = Path(__file__).resolve().parents[1] / "issuekit.local.toml"
 _ISSUEKIT_ENV_KEYS = (
     "ISSUEKIT_API_PASSWORD",

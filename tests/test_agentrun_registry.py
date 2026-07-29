@@ -2,9 +2,9 @@ from pathlib import Path
 
 import pytest
 
+from issuekit.agentrun import ConfigAgentAdapter
 from issuekit.agentrun.adapters.kimi import KimiAdapter
 from issuekit.agents.registry import resolve_adapter
-from issuekit.agentrun import ConfigAgentAdapter
 from issuekit.config import AgentRunConfig, IssuekitConfig, RoleOverlay, load_config
 
 

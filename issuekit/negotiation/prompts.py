@@ -13,7 +13,6 @@ from issuekit.prompts import (
     NegotiationParseError,
 )
 
-
 NEGOTIATION_OUTPUT_KEYS = NEGOTIATION_ROUND_PROMPT.required_keys
 
 

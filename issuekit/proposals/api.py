@@ -2,27 +2,27 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
-import re
 from typing import Any
 
 from issuekit.api import IssuekitClient
 from issuekit.config import IssuekitConfig, load_config
+from issuekit.config.refs import RefError, list_effective_refs
 from issuekit.core import Issue, parse_issue_id_arg, parse_target_address
 from issuekit.encoding import ASCII_ONLY_HINT, has_non_ascii
+from issuekit.gitutil import git_short_head
 from issuekit.issues.dependencies import (
     bare_ref_collision_warnings,
     dependency_refs,
 )
-from issuekit.gitutil import git_short_head
-from .model import Proposal, ProposalError, origin_destination
-from issuekit.config.refs import RefError, list_effective_refs
 from issuekit.store import get_store
 from issuekit.workflow import WorkflowError
 
+from .model import Proposal, ProposalError, origin_destination
 
 OUTGOING_PROPOSAL_STATUSES = ("pending", "adopted", "discarded")
 DEPENDENCY_REF_TOKEN_PATTERN = re.compile(

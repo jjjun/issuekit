@@ -1,18 +1,18 @@
 from __future__ import annotations
 
-from pathlib import Path
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
+from issuekit.agentrun import AgentPrompt, AgentResult
 from issuekit.agents import readonly
 from issuekit.agents.readonly import (
     prompt_from_spec,
     require_clean_run,
     run_readonly_evaluation,
 )
-from issuekit.agentrun import AgentPrompt, AgentResult
 from issuekit.prompts import TRIAGE_PROMPT
 from issuekit.workflow import WorkflowError
 

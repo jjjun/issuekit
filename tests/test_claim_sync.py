@@ -2,9 +2,9 @@ from pathlib import Path
 
 import pytest
 
-from issuekit.guards.claim_sync import enforce_claim_sync
 from issuekit.config import IssuekitConfig
 from issuekit.gitutil import GitResult
+from issuekit.guards.claim_sync import enforce_claim_sync
 from issuekit.workflow import WorkflowError
 
 

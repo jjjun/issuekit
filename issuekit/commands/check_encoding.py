@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import argparse
-from bisect import bisect_right
-from pathlib import Path
 import subprocess
 import sys
+from bisect import bisect_right
+from pathlib import Path
 
 from issuekit.commands._common import print_json
 from issuekit.config import load_config
@@ -20,7 +20,6 @@ from issuekit.encoding import (
     scan_mojibake,
 )
 from issuekit.gitutil import git_root, git_status_entries, run_git
-
 
 BOM = b"\xef\xbb\xbf"
 

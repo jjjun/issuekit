@@ -6,6 +6,15 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
+from issuekit.config import IssuekitConfig
+from issuekit.core import (
+    VALID_ISSUE_PRIORITIES,
+    Issue,
+    is_valid_workflow_token,
+    worker_keys_match,
+)
+from issuekit.encoding import ASCII_ONLY_HINT, has_non_ascii
+from issuekit.gitutil import git_current_branch
 from issuekit.guards.author import (
     AuthorOrchestrationContext,
     author_handoff_enforced,
@@ -13,17 +22,7 @@ from issuekit.guards.author import (
 )
 from issuekit.guards.branch import enforce_work_branch
 from issuekit.guards.claim_sync import enforce_claim_sync
-from issuekit.config import IssuekitConfig
-from issuekit.core import (
-    Issue,
-    VALID_ISSUE_PRIORITIES,
-    is_valid_workflow_token,
-    worker_keys_match,
-)
-from issuekit.encoding import ASCII_ONLY_HINT, has_non_ascii
-from issuekit.gitutil import git_current_branch
 from issuekit.issues.session import current_session_token, validate_session_token
-
 
 AUTO_REVIEWER = "auto"
 

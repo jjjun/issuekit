@@ -1,7 +1,7 @@
 import json
 import re
-from pathlib import Path
 import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -25,7 +25,6 @@ from issuekit.negotiation.engine import (
 )
 from issuekit.testing import FakeIssuekitClient
 from issuekit.workflow import WorkflowError
-
 from tests.issue_helpers import api_issue
 
 

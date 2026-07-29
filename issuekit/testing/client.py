@@ -9,7 +9,6 @@ from typing import Any
 from issuekit.testing.issues import FakeIssueSurface
 from issuekit.testing.proposals import FakeProposalSurface
 
-
 JsonDict = dict[str, Any]
 
 
@@ -80,7 +79,7 @@ class FakeIssuekitClient(FakeIssueSurface, FakeProposalSurface):
         with self._lock:
             return [deepcopy(profile) for _, profile in sorted(self._profiles.items())]
 
-    def register_catalog_project(  # noqa: Vulture
+    def register_catalog_project(
         self, project: str, *, summary: str | None = None
     ) -> None:
         """Seed a project in the profile catalog so proposal target validation accepts it."""
@@ -94,12 +93,12 @@ class FakeIssuekitClient(FakeIssueSurface, FakeProposalSurface):
                 "source_committed_at": None,
             }
 
-    def __enter__(self) -> "FakeIssuekitClient":
+    def __enter__(self) -> FakeIssuekitClient:
         return self
 
     def __exit__(self, *_: object) -> None:
         self.close()
-        return None
+        return
 
     def close(self) -> None:
         pass

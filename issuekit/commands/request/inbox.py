@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 import re
+from pathlib import Path
 from typing import Any
 
 import issuekit.proposals.api as proposals_api
@@ -16,7 +16,6 @@ from issuekit.commands.request.state import (
     status_record,
 )
 from issuekit.config import IssuekitConfig
-
 
 REPLY_TITLE_PATTERN = re.compile(
     r"^Re:\s*(?P<project>[A-Za-z0-9_.-]+)#(?P<id>[1-9][0-9]*):\s*(?P<title>.*)$"

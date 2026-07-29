@@ -1,5 +1,5 @@
-from collections.abc import Iterator
 import os
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -12,7 +12,6 @@ from issuekit.config import (
     WorkerIdentity,
     load_config,
 )
-
 
 _ENV_KEYS = (
     "ISSUEKIT_API_PASSWORD",

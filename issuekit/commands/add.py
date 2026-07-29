@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from dataclasses import replace
 from pathlib import Path
-import sys
 
 from issuekit.config import load_config
 from issuekit.core import is_valid_workflow_token

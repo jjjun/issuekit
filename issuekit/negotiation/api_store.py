@@ -42,7 +42,7 @@ class ApiNegotiationStore:
         if self._owns_client:
             self.client.close()
 
-    def __enter__(self) -> "ApiNegotiationStore":
+    def __enter__(self) -> ApiNegotiationStore:
         return self
 
     def __exit__(self, *_: object) -> None:

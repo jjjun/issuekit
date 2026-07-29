@@ -14,25 +14,27 @@ decision through the existing proposal helpers; the agent only emits JSON.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
-from dataclasses import dataclass, replace
-from pathlib import Path
 import hashlib
 import json
 import re
 import sys
 import threading
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass, replace
+from pathlib import Path
 from typing import Any, TextIO
 
+from issuekit.agentrun import AgentRunner
 from issuekit.agents.proposal_eval import (
     proposal_dependencies_text,
     run_readonly_proposal_evaluation,
 )
 from issuekit.agents.readonly import prompt_from_spec
 from issuekit.agents.registry import resolve_adapter
-from issuekit.agentrun import AgentRunner
 from issuekit.agents.triage_state import (
     STATE_FILENAME as _STATE_FILENAME,
+)
+from issuekit.agents.triage_state import (
     load_state,
     now,
     save_state,
@@ -50,7 +52,6 @@ from issuekit.proposals.api import (
     send_proposal,
 )
 from issuekit.workflow import WorkflowError
-
 
 _DECISIONS = {"adopt", "adopt_and_reply", "reply", "discard"}
 _DECISION_FIELD = {

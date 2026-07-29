@@ -3,15 +3,15 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 import subprocess
+from pathlib import Path
 
 import pytest
 
-from issuekit import cli
 import issuekit.proposals.api as proposals_api
-from issuekit.agents import router
+from issuekit import cli
 from issuekit.agentrun import AgentPrompt, AgentResult
+from issuekit.agents import router
 from issuekit.agents.registry import resolve_adapter
 from issuekit.agents.router import RouterParseError, parse_router_output
 from issuekit.config import RouterPolicy, load_config

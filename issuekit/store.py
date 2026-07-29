@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
-from typing import Any, Iterator, Protocol
+from typing import Any, Protocol
 
 from issuekit.api import IssuekitClient
 from issuekit.config import IssuekitConfig
@@ -14,7 +14,6 @@ from issuekit.core import (
     get_issue_heading,
 )
 from issuekit.workflow import WorkflowError
-
 
 REQUIRED_API_FIELDS = {
     "id",
@@ -57,7 +56,7 @@ OPTIONAL_API_METADATA_FIELDS = (
 
 
 class IssueStore(Protocol):
-    def __enter__(self) -> "IssueStore":
+    def __enter__(self) -> IssueStore:
         """Enter a store lifecycle context."""
 
     def __exit__(self, *_: object) -> None:
@@ -114,7 +113,7 @@ class ApiStore:
         if self._owns_client:
             self.client.close()
 
-    def __enter__(self) -> "ApiStore":
+    def __enter__(self) -> ApiStore:
         return self
 
     def __exit__(self, *_: object) -> None:

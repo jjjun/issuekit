@@ -2,8 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from issuekit.guards.branch import enforce_work_branch
 from issuekit.config import IssuekitConfig
+from issuekit.guards.branch import enforce_work_branch
 from issuekit.workflow import WorkflowError
 
 

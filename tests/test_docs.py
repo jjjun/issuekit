@@ -3,7 +3,6 @@
 import re
 from pathlib import Path
 
-
 _FENCED_CODE_BLOCK = re.compile(r"^```[^\n]*\n.*?^```[^\n]*$", re.MULTILINE | re.DOTALL)
 _BACKTICKED_TOKEN = re.compile(r"`+([^`\n]+)`+")
 _DOCUMENTATION_PATHS = (

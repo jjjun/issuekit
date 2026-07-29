@@ -2,21 +2,21 @@
 
 from __future__ import annotations
 
+import sys
+import threading
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-import sys
-import threading
 from types import FrameType
-from typing import Callable, Literal
+from typing import Literal
 
-from issuekit.agents.run_claimed import review_feedback_prompt, run_and_submit
 from issuekit.agents.review import ReviewParseError, run_review_and_decide
+from issuekit.agents.run_claimed import review_feedback_prompt, run_and_submit
 from issuekit.config import IssuekitConfig
 from issuekit.core import Issue
 from issuekit.store import get_store
 from issuekit.workflow import WorkflowError
-
 
 BACKOFF_INITIAL_SEC = 1.0
 BACKOFF_MAX_SEC = 60.0
@@ -43,7 +43,7 @@ class ShutdownController:
     on_signal: Callable[[int, int], None] | None = None
 
     @classmethod
-    def create(cls) -> "ShutdownController":
+    def create(cls) -> ShutdownController:
         return cls(event=threading.Event(), abort_event=threading.Event())
 
     @property

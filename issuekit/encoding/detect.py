@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from bisect import bisect_right
 import fnmatch
-from pathlib import Path
 import re
 import unicodedata
+from bisect import bisect_right
+from pathlib import Path
 
 from issuekit.encoding.report import code_point, code_point_context, code_point_text
 

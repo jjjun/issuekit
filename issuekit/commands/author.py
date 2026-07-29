@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import argparse
 import os
-from pathlib import Path
 import re
 import sys
+from pathlib import Path
 
 from issuekit.commands._common import (
     load_config_for_project_mutation,
@@ -14,21 +14,21 @@ from issuekit.commands._common import (
     require_ascii,
     run_command,
 )
+from issuekit.config import IssuekitConfig
+from issuekit.config.refs import RefError, current_repo_ref, list_effective_refs
+from issuekit.core import (
+    VALID_ISSUE_PRIORITIES,
+    Issue,
+    is_valid_workflow_token,
+    issue_dict,
+)
 from issuekit.guards.author import (
     STOP_SENTINEL,
     create_author_guard,
     guard_dict,
     stop_message,
 )
-from issuekit.config import IssuekitConfig
-from issuekit.core import (
-    Issue,
-    VALID_ISSUE_PRIORITIES,
-    issue_dict,
-    is_valid_workflow_token,
-)
 from issuekit.issues.dependencies import bare_ref_collision_warnings, dependency_refs
-from issuekit.config.refs import RefError, current_repo_ref, list_effective_refs
 from issuekit.issues.session import resolved_or_new_session_token
 from issuekit.workflow import WorkflowError
 

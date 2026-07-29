@@ -12,7 +12,6 @@ from typing import Any, Literal
 
 from issuekit.agentrun._coerce import optional_float, optional_int, optional_str
 
-
 RunStatusValue = Literal["running", "completed", "failed", "timed_out"]
 
 # Cadence of the background status writer loop (seconds).
@@ -45,7 +44,7 @@ class RunStatus:
     heartbeat_at: str | None = None
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "RunStatus":
+    def from_dict(cls, data: dict[str, Any]) -> RunStatus:
         return cls(
             run_id=str(data["run_id"]),
             agent=str(data["agent"]),

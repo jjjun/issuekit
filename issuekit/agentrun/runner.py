@@ -13,8 +13,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from issuekit.agentrun.adapter import AgentAdapter
 from issuekit.agentrun._coerce import last_nonempty_line
+from issuekit.agentrun.adapter import AgentAdapter
 from issuekit.agentrun.git import changed_file_count, git_status_short
 from issuekit.agentrun.status import (
     HEARTBEAT_INTERVAL_SEC,

@@ -5,8 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from issuekit import cli
 import issuekit.proposals.api as proposals_api
+from issuekit import cli
 from issuekit.testing import FakeIssuekitClient
 
 

@@ -1,30 +1,29 @@
 import pytest
 
 from issuekit import store as store_module
+from issuekit.commands.approve import approve_issue
+from issuekit.commands.complete import complete_issue
+from issuekit.config import IssuekitConfig, WorkerIdentity
+from issuekit.core import Issue
 from issuekit.guards.author import (
     ENFORCE_AUTHOR_HANDOFF_ENV,
     AuthorOrchestrationContext,
     create_author_guard,
     read_author_guard,
 )
-from issuekit.commands.approve import approve_issue
-from issuekit.commands.complete import complete_issue
-from issuekit.config import IssuekitConfig, WorkerIdentity
-from issuekit.core import Issue
 from issuekit.testing import FakeIssuekitClient
 from issuekit.workflow import (
     WorkflowError,
     claim_issue,
     claim_next,
     find_for,
-    reclaim_issue,
     readdress_issue,
+    reclaim_issue,
     request_changes,
     resolve_implementer,
     resolve_reviewer,
     submit_for_review,
 )
-
 from tests.issue_helpers import api_issue
 
 

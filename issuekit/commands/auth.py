@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import argparse
-from datetime import datetime, timezone
 import getpass
 import os
-from pathlib import Path
 import sys
+from datetime import UTC, datetime
+from pathlib import Path
 
 from issuekit.api import IssuekitClient
 from issuekit.config import load_config
@@ -92,4 +92,4 @@ def run_logout(_args) -> int:
 def _format_expiry(expiry: float | None) -> str:
     if expiry is None:
         return "at an unknown time"
-    return datetime.fromtimestamp(expiry, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    return datetime.fromtimestamp(expiry, tz=UTC).strftime("%Y-%m-%d %H:%M:%S UTC")

@@ -6,10 +6,11 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 from urllib.parse import quote
 
-from .base import JsonDict, ensure_dict, profile_rows, worker_rows
 from issuekit.core import drop_none
 from issuekit.issues.session import validate_session_token
 from issuekit.workflow import WorkflowError
+
+from .base import JsonDict, ensure_dict, profile_rows, worker_rows
 
 
 class IssueResourceMixin:

@@ -4,7 +4,6 @@ import pytest
 
 from issuekit import cli
 
-
 EXPECTED_COMMANDS = {
     "info",
     "add",

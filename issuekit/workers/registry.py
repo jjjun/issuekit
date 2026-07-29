@@ -2,22 +2,21 @@
 
 from __future__ import annotations
 
+import logging
+import threading
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from datetime import datetime, timezone
-import logging
+from datetime import UTC, datetime
 from pathlib import Path
-import threading
 
 from issuekit.api import IssuekitClient, JsonDict
 from issuekit.config import IssuekitConfig
-from issuekit.core import Issue, worker_display_from_row, worker_keys_from_row, worker_keys_match
 from issuekit.config.project_profile import load_project_profile
+from issuekit.core import Issue, worker_display_from_row, worker_keys_from_row, worker_keys_match
 from issuekit.store import get_store
 from issuekit.worker_constants import WORKER_HEARTBEAT_INTERVAL_SEC
 from issuekit.workers.identity import canonical_git_origin_url
 from issuekit.workflow import WorkflowError
-
 
 LOGGER = logging.getLogger(__name__)
 
@@ -221,7 +220,7 @@ def prune_api_workers(
             "Pruning workers requires api_url in issuekit.toml/[tool.issuekit] "
             "or ISSUEKIT_API_URL."
         )
-    current = now or datetime.now(timezone.utc)
+    current = now or datetime.now(UTC)
     workers = list_api_workers(config)
     with get_store(config) as store:
         issues = store.find_for()
@@ -382,7 +381,7 @@ class WorkerHeartbeat:
         if succeeded:
             with self._state_lock:
                 self.consecutive_failures = 0
-                self.last_success = datetime.now(timezone.utc)
+                self.last_success = datetime.now(UTC)
                 last_success = self.last_success
             if self.on_error is not None:
                 for exc in errors:
@@ -524,8 +523,8 @@ def _parse_timestamp(value: object) -> datetime | None:
     except ValueError:
         return None
     if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
 
 
 def _is_active_worker_claim(

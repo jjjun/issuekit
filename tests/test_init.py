@@ -2,6 +2,7 @@ from pathlib import Path
 
 from issuekit import cli
 
+
 def test_init_fresh_dir_gets_full_scaffold(tmp_path: Path, monkeypatch, capsys) -> None:
     monkeypatch.chdir(tmp_path)
 

@@ -2,18 +2,17 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from pathlib import Path
-from collections.abc import Callable
 import json
-from importlib import import_module
 import shutil
 import tomllib
+from collections.abc import Callable
+from dataclasses import dataclass
+from importlib import import_module
+from pathlib import Path
 
-from issuekit.guards.author import read_author_guard
 from issuekit.commands.init import CODEX_MCP_HEADER, HANDOFF_HEADER
 from issuekit.config import load_config
-
+from issuekit.guards.author import read_author_guard
 
 MCP_INSTALL_COMMAND = 'uv tool install "issuekit[mcp] @ <absolute-path-or-url>"'
 

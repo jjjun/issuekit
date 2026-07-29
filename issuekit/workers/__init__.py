@@ -31,7 +31,6 @@ from .registry import (
     worker_claim_dict,
 )
 
-
 __all__ = [
     "RepoRemovalResult",
     "WorkerClaim",

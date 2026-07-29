@@ -2,17 +2,16 @@
 
 from __future__ import annotations
 
+import json
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from importlib import resources
-import json
-import re
 from string import Template
 from types import MappingProxyType
 from typing import TypeVar
 
 from issuekit.encoding import has_non_ascii
-
 
 ParseErrorT = TypeVar("ParseErrorT", bound=RuntimeError)
 

@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
 import json
-from pathlib import Path
 import subprocess
 import threading
+from dataclasses import replace
+from pathlib import Path
 
 import pytest
 
 import issuekit.proposals.api as proposals_api
+from issuekit.agentrun import AgentPrompt, AgentResult
 from issuekit.agents import proposal_check
 from issuekit.agents.proposal_check import (
     ProposalCheckParseError,
@@ -18,7 +19,6 @@ from issuekit.agents.proposal_check import (
     parse_proposal_check_output,
     run_proposal_check_cycle,
 )
-from issuekit.agentrun import AgentPrompt, AgentResult
 from issuekit.agents.registry import resolve_adapter
 from issuekit.config import AgentRunConfig, RoleOverlay, load_config
 from issuekit.testing import FakeIssuekitClient

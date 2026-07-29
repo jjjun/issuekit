@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
-import re
 from typing import Any
-
 
 VALID_ISSUE_PRIORITIES = {"high", "medium", "low"}
 WORKFLOW_TOKEN_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]{0,31}$")
@@ -47,7 +46,7 @@ class TargetAddress:
         return self.worker
 
 
-def issue_dict(issue: "Issue", *, include_body: bool = False) -> dict[str, object]:
+def issue_dict(issue: Issue, *, include_body: bool = False) -> dict[str, object]:
     """Serialize an issue for JSON output.
 
     Shared by the MCP server and the CLI so both paths emit identical payloads.

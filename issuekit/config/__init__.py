@@ -21,7 +21,6 @@ from .settings import (
     resolve_machine_config_path,
 )
 
-
 __all__ = [
     "AgentPolicy",
     "AgentRunConfig",

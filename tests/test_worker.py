@@ -1,10 +1,11 @@
-from pathlib import Path
 import subprocess
+from pathlib import Path
 
 import pytest
 
 from issuekit import cli
 from issuekit.config import IssuekitConfig, WorkerIdentity, load_config
+from issuekit.config.refs import add_ref
 from issuekit.workers.identity import (
     WorkerRegistrationError,
     canonicalize_remote_url,
@@ -12,7 +13,6 @@ from issuekit.workers.identity import (
     register_worker,
     worker_key,
 )
-from issuekit.config.refs import add_ref
 
 
 @pytest.mark.parametrize(

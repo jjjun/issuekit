@@ -1,15 +1,14 @@
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-import subprocess
 
 from issuekit import cli
 from issuekit import store as store_module
+from issuekit.agentrun import AgentPrompt
 from issuekit.agents import run_claimed as run_claimed_agent
 from issuekit.agents.run_claimed import review_feedback_prompt
-from issuekit.agentrun import AgentPrompt
 from issuekit.gitutil import GitStatusEntry
 from issuekit.testing import FakeIssuekitClient
-
 from tests.issue_helpers import api_issue
 
 

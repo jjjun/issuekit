@@ -6,7 +6,6 @@ from collections.abc import Iterable
 
 from issuekit.guards.separation import SEPARATION_GUARD_REFERENCE
 
-
 CYCLE_PROTOCOL = f"""# Delegation cycle overview
 
 The canonical delegation cycle is:
@@ -534,7 +533,7 @@ def effective_agent_roles(
 ) -> dict[str, str]:
     """Return configured protocol roles with built-in defaults included."""
     return (
-        {name: "implementer" for name in agent_names}
+        dict.fromkeys(agent_names, "implementer")
         | _AGENT_ROLE
         | (agent_roles or {})
     )

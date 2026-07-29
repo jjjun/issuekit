@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import re
 
-
 SEPARATION_GUARD_REFERENCE = """Separation-of-duties guard reference:
 
 | Guard | Separates | Enforced by | Error string | Recovery |

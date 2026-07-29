@@ -18,7 +18,6 @@ from .branch import enforce_work_branch
 from .claim_sync import FETCH_TIMEOUT_SEC, enforce_claim_sync
 from .separation import AUTHOR_GUARD_HELP, SEPARATION_GUARD_REFERENCE, separation_guard_note
 
-
 __all__ = [
     "AUTHOR_GUARD_HELP",
     "ENFORCE_AUTHOR_HANDOFF_ENV",

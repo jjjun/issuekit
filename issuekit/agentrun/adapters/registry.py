@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from issuekit.agentrun.adapters.kimi import KimiAdapter
 from issuekit.agentrun.adapter import ConfigAgentAdapter
-
+from issuekit.agentrun.adapters.kimi import KimiAdapter
 
 ADAPTERS: dict[str, type[ConfigAgentAdapter]] = {
     "kimi": KimiAdapter,

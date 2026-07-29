@@ -1,13 +1,13 @@
-from pathlib import Path
 import json
 import subprocess
+from pathlib import Path
 
 from issuekit import cli
-from issuekit.guards.author import create_author_guard
-from issuekit.config import IssuekitConfig
-from issuekit.commands.init import init_repo
 from issuekit.commands import setup
+from issuekit.commands.init import init_repo
 from issuekit.commands.setup import command
+from issuekit.config import IssuekitConfig
+from issuekit.guards.author import create_author_guard
 
 
 def _force_mcp_available(monkeypatch) -> None:

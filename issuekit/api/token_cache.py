@@ -2,19 +2,19 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 import csv
 import io
 import json
 import os
-from pathlib import Path
 import subprocess
 import sys
+from collections.abc import Mapping
+from pathlib import Path
 from typing import Any
 
-from .security import is_expired, jwt_expiry
 from issuekit.workflow import WorkflowError
 
+from .security import is_expired, jwt_expiry
 
 _TOKEN_CACHE_ENV = "ISSUEKIT_TOKEN_CACHE"
 _WARNED_LOOSE_TOKEN_CACHE_PATHS: set[Path] = set()
@@ -213,8 +213,7 @@ def _current_windows_user_sid() -> str | None:
         result = subprocess.run(
             ["whoami", "/user", "/fo", "csv"],
             check=False,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            capture_output=True,
             text=True,
         )
     except (OSError, subprocess.SubprocessError):

@@ -8,10 +8,12 @@ client created here.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 import os
+from collections.abc import Mapping
 
 import httpx
+
+from issuekit.core import is_valid_workflow_token
 
 from .base import ClientTransportMixin
 from .resources import (
@@ -22,9 +24,7 @@ from .resources import (
     WorkerResourceMixin,
 )
 from .security import jwt_expiry
-from issuekit.core import is_valid_workflow_token
 from .token_cache import read_cached_token
-
 
 DEFAULT_HTTP_LIMITS = httpx.Limits(
     max_connections=5,
@@ -94,7 +94,7 @@ class IssuekitClient(
     def token_expiry(self) -> float | None:
         return self._token_expiry
 
-    def __enter__(self) -> "IssuekitClient":
+    def __enter__(self) -> IssuekitClient:
         return self
 
     def __exit__(self, *_: object) -> None:

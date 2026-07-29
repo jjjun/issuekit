@@ -2,18 +2,17 @@
 
 from __future__ import annotations
 
+import json
+import sys
 from collections.abc import Callable
 from dataclasses import replace
-import json
 from pathlib import Path
-import sys
 from typing import TypeVar
 
 from issuekit.config import IssuekitConfig, has_local_project_context, load_config
-from issuekit.encoding import ASCII_ONLY_HINT, has_non_ascii
 from issuekit.core import is_valid_workflow_token
+from issuekit.encoding import ASCII_ONLY_HINT, has_non_ascii
 from issuekit.workflow import WorkflowError
-
 
 T = TypeVar("T")
 CommandError = type[BaseException]

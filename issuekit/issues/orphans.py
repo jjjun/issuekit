@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from issuekit.config import IssuekitConfig
 from issuekit.core import Issue, worker_keys_from_row, worker_keys_match
@@ -60,8 +60,8 @@ def _parse_timestamp(value: object) -> datetime | None:
     except ValueError:
         return None
     if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
 
 
 def detect_stale_claims(
@@ -134,7 +134,7 @@ def list_stale_claims(
     from issuekit.store import get_store
     from issuekit.workers.registry import list_api_workers
 
-    current = now or datetime.now(timezone.utc)
+    current = now or datetime.now(UTC)
     workers = list_api_workers(config)
     with get_store(config) as store:
         issues = store.find_for()

@@ -3,15 +3,15 @@
 from __future__ import annotations
 
 import argparse
+import shutil
 from importlib import import_module
 from pathlib import Path
-import shutil
 
 from issuekit.commands._common import print_json
 from issuekit.commands.init import InitResult, init_repo
 from issuekit.commands.setup.actions import collect_setup_actions
-from issuekit.commands.setup.diagnostics import Diagnostic, collect_diagnostics as _collect_diagnostics
-
+from issuekit.commands.setup.diagnostics import Diagnostic
+from issuekit.commands.setup.diagnostics import collect_diagnostics as _collect_diagnostics
 
 CODEX_MCP_ADD_COMMAND = "codex mcp add issuekit -- issuekit-mcp"
 MCP_INSTALL_COMMAND = 'uv tool install "issuekit[mcp] @ <absolute-path-or-url>"'

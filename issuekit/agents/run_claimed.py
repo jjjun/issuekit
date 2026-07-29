@@ -2,16 +2,15 @@
 
 from __future__ import annotations
 
+import sys
+import threading
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-import sys
-import threading
 from typing import TextIO
 
-from issuekit.agents.registry import resolve_adapter
 from issuekit.agentrun import AgentPrompt, AgentResult, AgentRunner
-from issuekit.guards.author import AuthorOrchestrationContext
+from issuekit.agents.registry import resolve_adapter
 from issuekit.config import IssuekitConfig
 from issuekit.core import Issue
 from issuekit.encoding import (
@@ -22,6 +21,7 @@ from issuekit.encoding import (
     scan_mojibake,
 )
 from issuekit.gitutil import GitStatusEntry, git_root, git_status_entries, run_git
+from issuekit.guards.author import AuthorOrchestrationContext
 from issuekit.prompts import render_review_feedback_prompt
 from issuekit.store import managed_issue_store
 from issuekit.workflow import submit_for_review

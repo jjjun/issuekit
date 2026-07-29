@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import argparse
-from pathlib import Path
 import sys
+from pathlib import Path
 
 from issuekit.commands._common import active_issue_not_found, require_ascii, run_command
 from issuekit.config import IssuekitConfig, load_config
@@ -13,8 +13,8 @@ from issuekit.core import (
     is_valid_workflow_token,
     parse_issue_id_arg,
 )
-from issuekit.issues.session import current_session_token, validate_session_token
 from issuekit.gitutil import git_status_short
+from issuekit.issues.session import current_session_token, validate_session_token
 from issuekit.store import managed_issue_store
 from issuekit.workflow import (
     WorkflowError,

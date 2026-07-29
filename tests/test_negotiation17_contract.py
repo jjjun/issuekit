@@ -5,7 +5,6 @@ import os
 import httpx
 import pytest
 
-
 # Delete-safe live E2E artifact for negotiation thread 17 / issuekit#126 / mine-py#393.
 _RUN_LIVE_CONTRACTS = "ISSUEKIT_RUN_LIVE_CONTRACTS"
 _ISSUEKIT_API_URL = "ISSUEKIT_API_URL"

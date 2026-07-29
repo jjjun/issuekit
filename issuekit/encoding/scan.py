@@ -16,7 +16,6 @@ from issuekit.encoding.detect import (
 )
 from issuekit.gitutil import GitResult, GitStatusEntry, run_git
 
-
 HitClass = Literal["confirmed", "unconfirmed"]
 LineScope = Literal["whole-file", "changed-lines"]
 SOURCE_EXTENSIONS = frozenset(

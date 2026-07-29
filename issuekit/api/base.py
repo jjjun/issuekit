@@ -7,20 +7,20 @@ from typing import Any
 
 import httpx
 
+from issuekit.core import drop_none
+from issuekit.workflow import WorkflowError
+
 from .security import (
     is_expired,
     jwt_expiry,
     response_expiry,
     warn_insecure_api_url,
 )
-from issuekit.core import drop_none
 from .token_cache import (
     cached_token_miss_message,
     delete_cached_token,
     write_cached_token,
 )
-from issuekit.workflow import WorkflowError
-
 
 JsonDict = dict[str, Any]
 JsonBody = Mapping[str, Any] | Sequence[Mapping[str, Any]]

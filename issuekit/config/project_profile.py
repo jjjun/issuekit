@@ -16,7 +16,6 @@ from issuekit.config.settings import IssuekitConfig
 from issuekit.core import drop_none
 from issuekit.gitutil import run_git
 
-
 PROFILE_MD_MAX_BYTES = 16 * 1024
 
 

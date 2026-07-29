@@ -1,16 +1,15 @@
+import subprocess
 from dataclasses import dataclass, replace
 from pathlib import Path
-import subprocess
 
 import pytest
 
 from issuekit import cli
 from issuekit import store as store_module
-from issuekit.agents import review as review_agent
 from issuekit.agentrun import AgentPrompt
+from issuekit.agents import review as review_agent
 from issuekit.core import Issue
 from issuekit.testing import FakeIssuekitClient
-
 from tests.issue_helpers import api_issue
 
 

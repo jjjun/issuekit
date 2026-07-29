@@ -2,14 +2,13 @@ import json
 import subprocess
 from pathlib import Path
 
-from issuekit import cli
 import issuekit.proposals.api as proposals_api
-from issuekit.guards.author import read_author_guard
+from issuekit import cli
 from issuekit.config import IssuekitConfig, TriagePolicy
-from issuekit.proposals.api import _git_commit
+from issuekit.guards.author import read_author_guard
 from issuekit.proposals import ProposalError, origin_destination
+from issuekit.proposals.api import _git_commit
 from issuekit.testing import FakeIssuekitClient
-
 from tests.issue_helpers import api_issue
 
 

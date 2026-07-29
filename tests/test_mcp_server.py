@@ -9,22 +9,21 @@ from typing import Any
 import pytest
 
 if os.environ.get("ISSUEKIT_REQUIRE_MCP") == "1":
-    import mcp
+    pass
 else:
     pytest.importorskip("mcp")
 
-from issuekit import cli
 import issuekit.proposals.api as proposals_api
+from issuekit import cli
 from issuekit import store as store_module
 from issuekit.api import token_cache as token_cache_module
-from issuekit.workers import registry as worker_registry
 from issuekit.config import load_config
 from issuekit.mcp import server as mcp_server
 from issuekit.mcp.server import create_server
 from issuekit.negotiation import MockNegotiationStore, ThreadStatus, Verdict
 from issuekit.prompts.protocol import render_protocol
 from issuekit.testing import FakeIssuekitClient
-
+from issuekit.workers import registry as worker_registry
 from tests.issue_helpers import api_issue
 
 

@@ -19,3 +19,10 @@ the stopped process count.
 See [Testing](testing.md) for the gates to run before publishing changes, and
 [`issuekit/agentrun/README.md`](../../issuekit/agentrun/README.md) for the agent
 runtime boundary.
+
+Run the repository-owned Ruff configuration with:
+
+```powershell
+uv run ruff check
+uv run ruff check --fix
+```

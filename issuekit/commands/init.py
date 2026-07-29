@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 import argparse
+import json
 from dataclasses import dataclass
 from importlib import resources
-import json
 from pathlib import Path
 
 from issuekit.config import load_config
 from issuekit.config.local import ensure_gitignore_entries
-
 
 CODEX_MCP_HEADER = "[mcp_servers.issuekit]"
 HANDOFF_HEADER = "## Handoff protocol"

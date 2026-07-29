@@ -2,19 +2,19 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import json
 import os
+from dataclasses import dataclass
 from pathlib import Path
 
 from issuekit.core import is_valid_workflow_token
+
 from .local import (
     LocalConfigError,
     load_toml,
     read_local_config,
     write_local_config,
 )
-
 
 WORKSPACE_CONFIG_NAME = "issuekit.workspace.toml"
 WORKSPACE_ENV_VAR = "ISSUEKIT_WORKSPACE"

@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
 import re
-
+from collections.abc import Mapping, Sequence
 
 DEPENDENCY_REF_PATTERN = re.compile(
     r"^[A-Za-z0-9_.-]+#(?:(?:issue|proposal):)?[0-9]+$"

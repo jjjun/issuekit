@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 import os
 import re
 import uuid
-
+from collections.abc import Mapping
 
 ISSUEKIT_SESSION_ENV = "ISSUEKIT_SESSION"
 SESSION_TOKEN_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]{0,199}$")

@@ -2,26 +2,27 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
-from dataclasses import dataclass, replace
-from pathlib import Path
 import re
 import sys
 import threading
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass, replace
+from pathlib import Path
 from typing import Any, TextIO
 
+from issuekit.agentrun import AgentRunner
 from issuekit.agents.proposal_eval import (
     proposal_dependencies_text,
     run_readonly_proposal_evaluation,
 )
 from issuekit.agents.readonly import prompt_from_spec
 from issuekit.agents.registry import resolve_adapter
-from issuekit.agentrun import AgentRunner
 from issuekit.config import IssuekitConfig
 from issuekit.encoding import has_non_ascii
 from issuekit.prompts import PROPOSAL_CHECK_PROMPT, ProposalCheckParseError
 from issuekit.proposals.api import ProposalError, adopt_proposal_with_append, api_client
 from issuekit.workflow import WorkflowError
+
 PROPOSAL_CHECK_VERDICTS = {"approve", "reject", "revise"}
 PROPOSAL_CHECK_COMMENT_MAX = 100000
 ADOPTED_ISSUE_REF_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]{0,31}#[1-9][0-9]*$")

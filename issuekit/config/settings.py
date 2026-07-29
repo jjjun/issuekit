@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field, fields, replace
 import os
-from pathlib import Path
 import warnings
+from dataclasses import dataclass, field, fields, replace
+from pathlib import Path
 
+from issuekit.agentrun.config import AgentRunConfig
 from issuekit.core import (
     VALID_ISSUE_PRIORITIES,
     is_valid_workflow_token,
@@ -15,12 +16,11 @@ from issuekit.core import (
     qualified_worker_key,
     worker_key,
 )
-from issuekit.agentrun.config import AgentRunConfig
 from issuekit.encoding import has_non_ascii
 from issuekit.worker_constants import WORKER_HEARTBEAT_INTERVAL_SEC
+
 from .dotenv import load_dotenv
 from .local import LocalConfigError, load_toml, read_local_config
-
 
 _SENTINEL = object()
 
@@ -644,7 +644,7 @@ def _load_config_toml(path: Path) -> dict[str, object]:
 def _string_tuple(value: object) -> tuple[str, ...]:
     if isinstance(value, (list, tuple)):
         return tuple(str(item) for item in value)
-    return tuple(str(value).split()) if isinstance(value, str) else tuple()
+    return tuple(str(value).split()) if isinstance(value, str) else ()
 
 
 def _load_disabled_agents(value: object) -> tuple[str, ...]:

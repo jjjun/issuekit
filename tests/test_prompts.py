@@ -12,7 +12,6 @@ from issuekit.prompts import (
     render_review_feedback_prompt,
 )
 
-
 SPEC_CONTEXTS = {
     "triage": {
         "proposal_id": 1,

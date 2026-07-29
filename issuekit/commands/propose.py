@@ -3,13 +3,20 @@
 from __future__ import annotations
 
 import argparse
-from pathlib import Path
 import sys
+from pathlib import Path
 
 from issuekit.commands._common import load_config_for_project_mutation, print_json
-from issuekit.guards.author import STOP_SENTINEL, create_author_guard, guard_dict, stop_message
 from issuekit.config import load_config
+from issuekit.config.refs import (
+    RefError,
+    add_ref,
+    add_workspace_ref,
+    list_effective_refs,
+)
 from issuekit.core import VALID_ISSUE_PRIORITIES
+from issuekit.guards.author import STOP_SENTINEL, create_author_guard, guard_dict, stop_message
+from issuekit.issues.session import resolved_or_new_session_token
 from issuekit.proposals import ProposalError
 from issuekit.proposals.api import (
     ProposalAppendError,
@@ -21,13 +28,6 @@ from issuekit.proposals.api import (
     proposal_id_arg,
     send_proposal,
 )
-from issuekit.config.refs import (
-    RefError,
-    add_ref,
-    add_workspace_ref,
-    list_effective_refs,
-)
-from issuekit.issues.session import resolved_or_new_session_token
 from issuekit.workflow import WorkflowError
 
 

@@ -2,19 +2,18 @@
 
 from __future__ import annotations
 
-import json
 import hashlib
-from pathlib import Path
+import json
 import subprocess
 import threading
+from pathlib import Path
 
 import pytest
 
 import issuekit.proposals.api as proposals_api
 from issuekit import store as store_module
-from issuekit.agents import triage_author
-from issuekit.agents import triage_state
 from issuekit.agentrun import AgentPrompt, AgentResult
+from issuekit.agents import triage_author, triage_state
 from issuekit.agents.triage_author import (
     TriageAuthorParseError,
     parse_triage_output,

@@ -3,16 +3,15 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
-from pathlib import Path, PurePosixPath, PureWindowsPath
-from collections.abc import Callable, Sequence
 import json
 import platform
 import subprocess
 import sys
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 from issuekit.commands._common import print_json
-
 
 MCP_PROCESS_NAME = "issuekit-mcp.exe"
 MCP_PROCESS_NAME_POSIX = "issuekit-mcp"

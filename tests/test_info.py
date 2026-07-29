@@ -2,12 +2,11 @@ import json
 from pathlib import Path
 
 from issuekit import cli
-from issuekit.commands import info as info_command
 from issuekit import store as store_module
-from issuekit.guards.author import create_author_guard
+from issuekit.commands import info as info_command
 from issuekit.config import load_config
+from issuekit.guards.author import create_author_guard
 from issuekit.testing import FakeIssuekitClient
-
 from tests.issue_helpers import api_issue
 
 

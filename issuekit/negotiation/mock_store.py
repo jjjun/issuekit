@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import asdict
 from datetime import date
-import json
 from pathlib import Path
 from typing import Any
 
@@ -41,7 +41,7 @@ class MockNegotiationStore:
     def close(self) -> None:
         pass
 
-    def __enter__(self) -> "MockNegotiationStore":
+    def __enter__(self) -> MockNegotiationStore:
         return self
 
     def __exit__(self, *_: object) -> None:

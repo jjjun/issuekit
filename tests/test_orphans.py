@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from issuekit.core import Issue
 from issuekit.issues.orphans import (
@@ -10,8 +10,7 @@ from issuekit.issues.orphans import (
     stale_claim_dict,
 )
 
-
-NOW = datetime(2026, 7, 4, 12, 0, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 7, 4, 12, 0, 0, tzinfo=UTC)
 
 
 def _issue(
@@ -54,7 +53,7 @@ def _worker(worker: str, last_seen: str | None) -> dict[str, object]:
 
 
 def _iso(dt: datetime) -> str:
-    return dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return dt.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def test_no_live_worker_is_orphaned() -> None:

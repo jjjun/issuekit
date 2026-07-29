@@ -2,17 +2,17 @@
 
 from __future__ import annotations
 
+import sys
 from dataclasses import replace
 from pathlib import Path
-import sys
 from typing import Any
 
 import issuekit.proposals.api as proposals_api
 from issuekit.agentrun import AgentRunner
 from issuekit.agents.router import run_router
 from issuekit.commands.request.inbox import ambiguous_answer_message, matched_inbox_questions
-from issuekit.commands.request.routing import handle_decision, require_router_config
 from issuekit.commands.request.output import print_payload
+from issuekit.commands.request.routing import handle_decision, require_router_config
 from issuekit.commands.request.state import (
     amended_origin,
     compose_amended_body,

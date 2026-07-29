@@ -4,8 +4,8 @@ from pathlib import Path
 import pytest
 
 from issuekit import cli
-from issuekit.workers import registry as worker_registry
 from issuekit.testing import FakeIssuekitClient
+from issuekit.workers import registry as worker_registry
 from issuekit.workflow import WorkflowError
 
 

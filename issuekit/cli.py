@@ -3,15 +3,15 @@
 from __future__ import annotations
 
 import argparse
-from collections.abc import Sequence
 import sys
+from collections.abc import Sequence
 
 from issuekit.commands import (
     add,
     approve,
     auth,
-    author_guard,
     author,
+    author_guard,
     check_encoding,
     claim,
     claims,
@@ -24,8 +24,8 @@ from issuekit.commands import (
     init,
     negotiate,
     orphans,
-    proposal_checks,
     profile,
+    proposal_checks,
     propose,
     protocol,
     queue,
@@ -41,7 +41,6 @@ from issuekit.commands import (
     validate,
     workers,
 )
-
 
 COMMAND_MODULES = (
     info,

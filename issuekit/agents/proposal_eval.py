@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
+import threading
 from collections.abc import Mapping
 from pathlib import Path
-import threading
 from typing import Any, TextIO
 
-from issuekit.agents.readonly import require_clean_run, run_readonly_evaluation
 from issuekit.agentrun import AgentPrompt
+from issuekit.agents.readonly import require_clean_run, run_readonly_evaluation
 
 
 def proposal_dependencies_text(proposal: Mapping[str, Any]) -> str:

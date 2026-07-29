@@ -8,7 +8,6 @@ from typing import Any
 from issuekit.core import directed_target_matches, drop_none, worker_keys_match
 from issuekit.workflow import WorkflowError
 
-
 JsonDict = dict[str, Any]
 READY_STAGES = {"", "todo", "changes_requested"}
 CLAIMABLE_STATUSES = {"active", "in_progress"}
@@ -526,13 +525,12 @@ class FakeIssueSurface:
                 "list_workers",
                 body={"repo_id": repo_id, "project": project},
             )
-            rows = [
+            return [
                 deepcopy(worker)
                 for worker in self._workers.values()
                 if repo_id is None or worker.get("repo_id") == repo_id
                 if project is None or worker.get("project") == project
             ]
-            return rows
 
     def delete_worker(self, worker_id: str) -> JsonDict:
         with self._lock:

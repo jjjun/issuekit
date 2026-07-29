@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
+import json
+import tomllib
 from collections.abc import Mapping
 from dataclasses import dataclass
-import json
 from pathlib import Path
-import tomllib
-
 
 LOCAL_CONFIG_NAME = "issuekit.local.toml"
 LOCAL_GITIGNORE_ENTRIES = (LOCAL_CONFIG_NAME, ".agent-runs/")
@@ -201,7 +200,7 @@ def _disabled_agents(data: dict[str, object]) -> tuple[str, ...] | None:
 def _string_tuple(value: object) -> tuple[str, ...]:
     if isinstance(value, (list, tuple)):
         return tuple(str(item) for item in value)
-    return tuple(str(value).split()) if isinstance(value, str) else tuple()
+    return tuple(str(value).split()) if isinstance(value, str) else ()
 
 
 def _author_guard_table(data: dict[str, object]) -> dict[str, object] | None:

@@ -3,43 +3,57 @@
 from __future__ import annotations
 
 import argparse
-from contextlib import contextmanager
-from datetime import datetime, timezone
-from enum import StrEnum
 import os
-from pathlib import Path
 import signal
 import subprocess
 import sys
-from typing import Iterator
+from collections.abc import Iterator
+from contextlib import contextmanager
+from datetime import UTC, datetime
+from enum import StrEnum
+from pathlib import Path
 
+from issuekit.agentrun import AgentRunner
 from issuekit.agents.proposal_check import (
     ProposalCheckParseError,
     run_proposal_check_cycle,
 )
-from issuekit.agentrun import AgentRunner
 from issuekit.agents.triage_author import run_triage_author_cycle
-from issuekit.config import IssuekitConfig, load_config
 from issuekit.commands._heartbeat import warn_if_staleness_not_wider
 from issuekit.commands.serve_loop import (
     Backoff,
     PollResult,
     ShutdownController,
-    close_store as _close_store,
-    log_event as _log,
-    recreate_store as _recreate_store,
-    recover_orphaned_issues as _recover_orphaned_issues,
-    run_claimed_issue as _run_claimed_issue,
     run_poll_loop,
+)
+from issuekit.commands.serve_loop import (
+    close_store as _close_store,
+)
+from issuekit.commands.serve_loop import (
+    log_event as _log,
+)
+from issuekit.commands.serve_loop import (
+    recover_orphaned_issues as _recover_orphaned_issues,
+)
+from issuekit.commands.serve_loop import (
+    recreate_store as _recreate_store,
+)
+from issuekit.commands.serve_loop import (
+    run_claimed_issue as _run_claimed_issue,
+)
+from issuekit.commands.serve_loop import (
     run_review_issue as _run_review_issue,
+)
+from issuekit.commands.serve_loop import (
     should_recreate_store as _should_recreate_store,
 )
+from issuekit.config import IssuekitConfig, load_config
 from issuekit.core import Issue
 from issuekit.issues.orphans import DEFAULT_STALE_AFTER_SEC
 from issuekit.proposals import ProposalError
 from issuekit.proposals.api import auto_adopt_incoming_proposals
 from issuekit.store import get_store
-from issuekit.workers.registry import WorkerHeartbeat, try_post_worker_registration
+from issuekit.workers.registry import WorkerHeartbeat
 from issuekit.workflow import WorkflowError, claim_next, next_review, resolve_implementer
 
 
@@ -667,7 +681,7 @@ def _worker_heartbeat(
         last_success: datetime | None,
     ) -> None:
         nonlocal escalated, failure_started
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         if consecutive_failures == 0:
             failure_started = None
             escalated = False
@@ -735,7 +749,7 @@ def _serve_lock(lock_path: Path) -> Iterator[None]:
             if existing_pid is not None and _pid_is_live(existing_pid):
                 raise ServeLockError(
                     f"issuekit serve is already running for this checkout (pid {existing_pid})."
-                )
+                ) from None
             try:
                 lock_path.unlink()
             except FileNotFoundError:
