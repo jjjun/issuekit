@@ -80,6 +80,13 @@ def test_every_prompt_spec_renders_ascii_representative_context() -> None:
         assert rendered.isascii()
 
 
+@pytest.mark.parametrize("name", ["negotiation_round", "negotiation_round_resumed"])
+def test_negotiation_prompts_require_ascii_output(name: str) -> None:
+    rendered = PROMPT_SPECS[name].render(**SPEC_CONTEXTS[name])
+
+    assert "All text must be ASCII-only" in rendered
+
+
 def test_prompt_render_fails_on_missing_context_key() -> None:
     with pytest.raises(KeyError):
         PROMPT_SPECS["triage"].render(proposal_id=1)

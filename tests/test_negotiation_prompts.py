@@ -58,6 +58,7 @@ def test_render_round_prompt_includes_side_thread_budget_and_contract() -> None:
     assert '"verdict"' in prompt
     assert '"contract"' in prompt
     assert '"notes"' in prompt
+    assert "All text must be ASCII-only" in prompt
 
 
 def test_render_round_prompt_excludes_entry_bodies_and_repo_dumps() -> None:
@@ -128,10 +129,24 @@ def test_parse_round_output_round_trips_null_contract() -> None:
     assert parsed.verdict is Verdict.blocked
 
 
-def test_parse_round_output_rejects_non_ascii_fields() -> None:
+def test_parse_round_output_sanitizes_non_ascii_fields(capsys) -> None:
+    parsed = parse_round_output(
+        """```negotiation
+{"side":"frontend","verdict":"agree","contract":"GET /caf\u00e9","notes":"\u627f\u8a8d"}
+```"""
+    )
+
+    assert parsed.contract == "GET /cafe\n\n[contract sanitized from non-ASCII]"
+    assert parsed.notes == "[notes sanitized from non-ASCII]"
+    captured = capsys.readouterr()
+    assert "negotiation agent field contract contained non-ASCII text" in captured.err
+    assert "negotiation agent field notes contained non-ASCII text" in captured.err
+
+
+def test_parse_round_output_rejects_non_ascii_side() -> None:
     with pytest.raises(NegotiationParseError, match="ASCII-only"):
         parse_round_output(
             """```negotiation
-{"side":"frontend","verdict":"agree","contract":"GET /items","notes":"Caf\u00e9"}
+{"side":"caf\u00e9","verdict":"agree","contract":"GET /items","notes":"Accepted."}
 ```"""
         )

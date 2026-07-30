@@ -25,6 +25,7 @@ The JSON keys must be: $output_keys.
 The verdict must be one of: $verdict_values.
 The contract value must be a string or null.
 The notes value must be short free text.
+$ascii_only_rule
 ```negotiation
 {
   "side": "$side",
