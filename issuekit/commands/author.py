@@ -32,6 +32,8 @@ from issuekit.issues.dependencies import bare_ref_collision_warnings, dependency
 from issuekit.issues.session import resolved_or_new_session_token
 from issuekit.workflow import WorkflowError
 
+_MIN_BARE_REF_NAME_LENGTH = 4
+
 
 def register(subparsers: argparse._SubParsersAction) -> None:
     author_parser = subparsers.add_parser(
@@ -298,7 +300,7 @@ def _cross_project_author_warning(
         target_project=current_project,
         origin_project=mentioned[0],
         title=title,
-        reason=f"issue text mentions related project {mentioned[0]}",
+        reason=_related_ref_match_reason(mentioned[0]),
     )
 
 
@@ -329,12 +331,23 @@ def _mentioned_related_refs(text: str, refs: list[str]) -> list[str]:
     return [name for name in refs if _contains_ref_name(text, name)]
 
 
+def _related_ref_match_reason(ref_name: str) -> str:
+    if len(ref_name) < _MIN_BARE_REF_NAME_LENGTH:
+        return (
+            f"issue text contains a ref-style reference to related project {ref_name}; "
+            f"bare project names shorter than {_MIN_BARE_REF_NAME_LENGTH} characters "
+            "are ignored"
+        )
+    return f"issue text mentions related project {ref_name}"
+
+
 def _contains_ref_name(text: str, ref_name: str) -> bool:
-    variants = {ref_name, ref_name.replace("-", " "), ref_name.replace("_", " ")}
     if _contains_ref_style(text, ref_name):
         return True
+    if len(ref_name) < _MIN_BARE_REF_NAME_LENGTH:
+        return False
     prose = _without_markdown_code(text)
-    return any(_contains_tokenish_phrase(prose, variant) for variant in variants)
+    return _contains_tokenish_phrase(prose, ref_name)
 
 
 def _contains_tokenish_phrase(text: str, phrase: str) -> bool:

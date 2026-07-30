@@ -5,7 +5,13 @@ import pytest
 
 from issuekit import cli
 from issuekit import store as store_module
-from issuekit.commands.author import _contains_ref_name, _mentioned_related_refs, author_issue
+from issuekit.commands.author import (
+    _contains_ref_name,
+    _contains_ref_style,
+    _contains_tokenish_phrase,
+    _mentioned_related_refs,
+    author_issue,
+)
 from issuekit.config import IssuekitConfig
 from issuekit.config.refs import RefError
 from issuekit.guards.author import read_author_guard
@@ -477,6 +483,43 @@ def test_author_command_blocks_likely_cross_project_direct_authoring(
     assert read_author_guard(target) is None
 
 
+def test_author_command_explains_short_name_ref_style_match(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    pm = tmp_path / "pm"
+    target = tmp_path / "target"
+    pm.mkdir()
+    target.mkdir()
+    (tmp_path / "issuekit.workspace.toml").write_text(
+        '[projects]\npm = "pm"\ntarget = "target"\n',
+        encoding="utf-8",
+        newline="\n",
+    )
+    client = FakeIssuekitClient()
+    _configure_api_project(target, monkeypatch, client, project="target")
+
+    exit_code = cli.main(
+        [
+            "author",
+            "--title",
+            "Track dependency",
+            "--body",
+            "## Problem\n\nDepends-On: pm#proposal:123\n",
+            "--agent",
+            "codex",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "ref-style reference to related project pm" in captured.err
+    assert "bare project names shorter than 4 characters are ignored" in captured.err
+    assert client.calls == []
+    assert read_author_guard(target) is None
+
+
 @pytest.mark.parametrize(
     "body",
     [
@@ -539,6 +582,65 @@ def test_contains_ref_name_ignores_only_complete_markdown_code_regions(
     expected: bool,
 ) -> None:
     assert _contains_ref_name(text, ref_name) is expected
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("Sync scheduled for 3 pm on Friday.", False),
+        ("Finish at 3pm.", False),
+        ("The PM signed off on this.", False),
+        ("This depends on pm#123.", True),
+        ("Depends-On: pm#proposal:123", True),
+    ],
+)
+def test_contains_ref_name_requires_ref_style_for_short_names(
+    text: str,
+    expected: bool,
+) -> None:
+    assert _contains_ref_name(text, "pm") is expected
+
+
+def test_contains_ref_name_matches_four_character_name_in_prose() -> None:
+    assert _contains_ref_name("This change belongs in mine.", "mine") is True
+
+
+def test_contains_ref_name_does_not_match_space_variants() -> None:
+    assert _contains_ref_name("Run the js mine build.", "js-mine") is False
+    assert _contains_ref_name("Run the js-mine build.", "js-mine") is True
+
+
+@pytest.mark.parametrize(
+    ("text", "phrase", "expected"),
+    [
+        ("The SOURCE project.", "source", True),
+        ("The resource project.", "source", False),
+        ("The source-work project.", "source", False),
+    ],
+)
+def test_contains_tokenish_phrase_uses_identifier_boundaries(
+    text: str,
+    phrase: str,
+    expected: bool,
+) -> None:
+    assert _contains_tokenish_phrase(text, phrase) is expected
+
+
+@pytest.mark.parametrize(
+    ("text", "phrase", "expected"),
+    [
+        ("Depends-On: pm#123", "pm", True),
+        ("Depends-On: pm#issue:123", "pm", True),
+        ("Depends-On: pm#proposal:123", "pm", True),
+        ("Depends-On: spam#123", "pm", False),
+    ],
+)
+def test_contains_ref_style_matches_explicit_refs(
+    text: str,
+    phrase: str,
+    expected: bool,
+) -> None:
+    assert _contains_ref_style(text, phrase) is expected
 
 
 def test_mentioned_related_refs_returns_only_prose_and_ref_style_matches() -> None:
