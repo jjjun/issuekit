@@ -30,6 +30,7 @@ from issuekit.guards.author import (
 )
 from issuekit.issues.dependencies import bare_ref_collision_warnings, dependency_refs
 from issuekit.issues.session import resolved_or_new_session_token
+from issuekit.workers.addressing import target_worker_repo_id, validate_target_worker
 from issuekit.workflow import WorkflowError
 
 _MIN_BARE_REF_NAME_LENGTH = 4
@@ -57,6 +58,15 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     )
     author_parser.add_argument("--agent", required=True, help="Configured author agent.")
     author_parser.add_argument("--assign", help="Optional implementer assignee.")
+    author_parser.add_argument(
+        "--target-worker",
+        help="Direct the issue to a registered worker.repo or worker.repo@machine.",
+    )
+    author_parser.add_argument(
+        "--allow-unregistered-worker",
+        action="store_true",
+        help="Allow directing to a worker that has not registered yet.",
+    )
     author_parser.add_argument(
         "--depends-on",
         action="append",
@@ -104,6 +114,8 @@ def run(args) -> int:
             priority=args.priority,
             agent=args.agent,
             assign=args.assign,
+            target_worker=args.target_worker,
+            allow_unregistered_worker=args.allow_unregistered_worker,
             depends_on=args.depends_on,
             config=config,
             cwd=Path.cwd(),
@@ -125,11 +137,15 @@ def run(args) -> int:
 
         if args.json:
             output = issue_dict(authored, include_body=True)
+            if args.target_worker:
+                output["target_worker"] = authored.target_worker
             output["authorGuard"] = guard_dict(guard)
             output["stop"] = STOP_SENTINEL
             print_json(output)
             return 0
         print(f"Authored issue: {authored.ref}")
+        if args.target_worker:
+            print(f"Target worker: {authored.target_worker}")
         print(stop_message(guard))
         return 0
 
@@ -147,6 +163,8 @@ def author_issue(
     priority: str,
     agent: str,
     assign: str | None = None,
+    target_worker: str | None = None,
+    allow_unregistered_worker: bool = False,
     depends_on: list[str] | None = None,
     config: IssuekitConfig | None = None,
     cwd: Path | None = None,
@@ -181,6 +199,18 @@ def author_issue(
     from issuekit.store import get_store
 
     with get_store(config) as store:
+        validated_target = None
+        if target_worker is not None:
+            workers = store.list_workers(
+                repo_id=target_worker_repo_id(target_worker),
+                project=config.project,
+            )
+            validated_target = validate_target_worker(
+                target_worker,
+                config=config,
+                workers=workers,
+                allow_unregistered=allow_unregistered_worker,
+            )
         return store.create_issue(  # type: ignore[attr-defined]
             title=title.strip(),
             body=issue_body.strip(),
@@ -189,6 +219,7 @@ def author_issue(
             assignee=assign,
             session=session,
             depends_on=dependency_refs or None,
+            target_worker=validated_target,
         )
 
 

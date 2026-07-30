@@ -98,6 +98,24 @@ class IssueStore(Protocol):
     ) -> Issue:
         """Return a directed issue to the repo pool."""
 
+    def dispatch_issue(
+        self,
+        issue_id: int,
+        *,
+        target_worker: str,
+        assignee: str | None = None,
+        stage: str | None = None,
+    ) -> Issue:
+        """Direct an issue to a worker."""
+
+    def list_workers(
+        self,
+        *,
+        repo_id: str | None = None,
+        project: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """List registered workers used to validate directed targets."""
+
 
 class ApiStore:
     def __init__(self, config: IssuekitConfig, client: IssuekitClient | None = None) -> None:
@@ -185,6 +203,7 @@ class ApiStore:
         assignee: str | None = None,
         session: str | None = None,
         depends_on: Sequence[str] | None = None,
+        target_worker: str | None = None,
     ) -> Issue:
         return self._issue_from_response(
             self.client.create_issue(
@@ -196,6 +215,7 @@ class ApiStore:
                         "author": author,
                         "assignee": assignee,
                         "depends_on": list(depends_on) if depends_on is not None else None,
+                        "target_worker": target_worker,
                     }
                 ),
                 session=session,
@@ -394,6 +414,31 @@ class ApiStore:
                 reason=reason,
             )
         )
+
+    def dispatch_issue(
+        self,
+        issue_id: int,
+        *,
+        target_worker: str,
+        assignee: str | None = None,
+        stage: str | None = None,
+    ) -> Issue:
+        return self._issue_from_response(
+            self.client.dispatch(
+                issue_id,
+                target_worker=target_worker,
+                assignee=assignee,
+                stage=stage,
+            )
+        )
+
+    def list_workers(
+        self,
+        *,
+        repo_id: str | None = None,
+        project: str | None = None,
+    ) -> list[dict[str, Any]]:
+        return self.client.list_workers(repo_id=repo_id, project=project)
 
     def _list_issues(
         self,

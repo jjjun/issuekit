@@ -105,6 +105,7 @@ def test_server_registers_expected_tools(tmp_path: Path) -> None:
         "list_orphans",
         "reclaim_issue",
         "readdress_issue",
+        "dispatch_issue",
         "list_project_profiles",
         "propose",
         "list_incoming",
@@ -121,7 +122,7 @@ def test_server_tool_schemas_match_the_contract(tmp_path: Path) -> None:
     # schema change was intended, describe it in the commit message, then update
     # this digest.
     assert _tool_schema_digest(create_server(tmp_path)) == (
-        "2c0bea6a28b2f283d3d17180ea997e6676558b4153462dfb9d7fa5fc11c193bf"
+        "fe36849283d0ae83192e20fae98332b9ba4fa5836953d1e7c169f8dd304013df"
     )
 
 
@@ -565,6 +566,53 @@ def test_readdress_issue_tool_returns_directed_issue_to_pool(
     assert result["issue"]["stage"] == ""
     assert "target_worker" not in result["issue"]
     assert client.get_issue(6)["target_worker"] == ""
+
+
+def test_dispatch_issue_tool_directs_issue_to_registered_worker(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = FakeIssuekitClient([api_issue(6, "Ready", stage="todo")])
+    client.upsert_worker(
+        machine_id="machine",
+        repo_id="demo",
+        worker_id="checkout",
+        project="demo",
+    )
+    client.calls.clear()
+    _configure_api(tmp_path, monkeypatch, client)
+    server = create_server(tmp_path)
+
+    result = _call(
+        server,
+        "dispatch_issue",
+        {
+            "id": 6,
+            "target_worker": "checkout.demo@machine",
+            "assignee": "codex",
+            "stage": "planned",
+        },
+    )
+
+    assert result["id"] == 6
+    assert result["target_worker"] == "checkout.demo@machine"
+    assert result["assignee"] == "codex"
+    assert result["stage"] == "planned"
+    assert client.calls == [
+        {
+            "method": "list_workers",
+            "body": {"repo_id": "demo", "project": "demo"},
+        },
+        {
+            "method": "dispatch",
+            "number": 6,
+            "body": {
+                "target_worker": "checkout.demo@machine",
+                "assignee": "codex",
+                "stage": "planned",
+            },
+        },
+    ]
 
 
 def test_list_project_profiles_returns_stored_profiles(

@@ -96,7 +96,13 @@ class FakeIssueSurface:
             if session is not None:
                 body["session"] = session
             self._record("create_issue", body=deepcopy(body))
-            return deepcopy(self._store_issue(body, allocate=True))
+            stored = deepcopy(body)
+            if (
+                stored.get("target_worker")
+                and self.stored_target_worker_override is not None
+            ):
+                stored["target_worker"] = self.stored_target_worker_override
+            return deepcopy(self._store_issue(stored, allocate=True))
 
     def update_issue(self, number: int, issue: JsonDict) -> JsonDict:
         with self._lock:
@@ -262,6 +268,44 @@ class FakeIssueSurface:
                     code="race_lost",
                 )
             issue["target_worker"] = ""
+            return deepcopy(issue)
+
+    def dispatch(
+        self,
+        number: int,
+        *,
+        target_worker: str,
+        assignee: str | None = None,
+        stage: str | None = None,
+    ) -> JsonDict:
+        with self._lock:
+            self._record(
+                "dispatch",
+                number=number,
+                body=drop_none(
+                    {
+                        "target_worker": target_worker,
+                        "assignee": assignee,
+                        "stage": stage,
+                    }
+                ),
+            )
+            issue = self._find(number)
+            current_stage = str(issue.get("stage") or "todo")
+            if current_stage not in {"todo", "planned", "changes_requested"}:
+                raise WorkflowError(
+                    f"Issue #{number} is at stage {current_stage}, not dispatchable.",
+                    code="invalid_transition",
+                )
+            issue["target_worker"] = (
+                self.stored_target_worker_override
+                if self.stored_target_worker_override is not None
+                else target_worker
+            )
+            if assignee is not None:
+                issue["assignee"] = assignee
+            if stage is not None:
+                issue["stage"] = stage
             return deepcopy(issue)
 
     def submit(

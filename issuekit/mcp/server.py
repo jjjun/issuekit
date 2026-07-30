@@ -16,6 +16,7 @@ from issuekit import __version__
 from issuekit.agents.proposal_check import list_worker_proposal_checks
 from issuekit.api.token_cache import read_cached_token
 from issuekit.commands.approve import approve_issue
+from issuekit.commands.dispatch import dispatch_issue as command_dispatch_issue
 from issuekit.commands.edit import edit_issue
 from issuekit.commands.readdress import readdress_result_dict
 from issuekit.commands.reclaim import reclaim_result_dict
@@ -371,6 +372,34 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
                 config=config,
             )
         return readdress_result_dict(result)
+
+    @server.tool(
+        description=(
+            "Direct an issue to a registered worker; use readdress_issue to return "
+            "it to the repo pool."
+        )
+    )
+    async def dispatch_issue(
+        id: int,
+        target_worker: str,
+        assignee: str | None = None,
+        stage: str | None = None,
+        allow_unregistered_worker: bool = False,
+        ctx: Context | None = None,
+    ) -> dict[str, Any]:
+        async with _api_store(root, ctx) as (config, _config_root, store):
+            issue = command_dispatch_issue(
+                id,
+                target_worker=target_worker,
+                assignee=assignee,
+                stage=stage,
+                allow_unregistered_worker=allow_unregistered_worker,
+                config=config,
+                store=store,
+            )
+        output = issue_dict(issue)
+        output["target_worker"] = issue.target_worker
+        return output
 
     @server.tool(
         description=(

@@ -101,6 +101,75 @@ def test_author_command_creates_issue_via_api(tmp_path: Path, monkeypatch, capsy
     assert client.close_count == 1
 
 
+def test_author_command_directs_issue_to_registered_worker(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient(
+        stored_target_worker_override="server-stored.synthetic@response"
+    )
+    client.upsert_worker(
+        machine_id="machine",
+        repo_id="demo",
+        worker_id="checkout",
+        project="demo",
+    )
+    client.calls.clear()
+    _configure_api(tmp_path, monkeypatch, client)
+
+    exit_code = cli.main(
+        [
+            "author",
+            "--title",
+            "Host specific work",
+            "--body",
+            "Run verification on this host.",
+            "--agent",
+            "codex",
+            "--target-worker",
+            "checkout.demo@machine",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "Target worker: server-stored.synthetic@response" in captured.out
+    assert client.calls[0] == {
+        "method": "list_workers",
+        "body": {"repo_id": "demo", "project": "demo"},
+    }
+    assert client.calls[1]["method"] == "create_issue"
+    assert client.calls[1]["body"]["target_worker"] == "checkout.demo@machine"
+
+
+def test_author_command_rejects_unregistered_worker(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient()
+    _configure_api(tmp_path, monkeypatch, client)
+
+    exit_code = cli.main(
+        [
+            "author",
+            "--title",
+            "Host specific work",
+            "--body",
+            "Run verification on this host.",
+            "--agent",
+            "codex",
+            "--target-worker",
+            "missing.demo@machine",
+        ]
+    )
+
+    assert exit_code == 1
+    assert "Target worker is not registered" in capsys.readouterr().err
+    assert [call["method"] for call in client.calls] == ["list_workers"]
+
+
 def test_author_resolves_session_before_opening_store(tmp_path: Path, monkeypatch) -> None:
     opened = False
 

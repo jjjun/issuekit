@@ -9,7 +9,7 @@
 | `issuekit login [--user <username>]` | Authenticate to the API as the configured or specified user. |
 | `issuekit logout` | Clear the saved API authentication session. |
 | `issuekit profile [--project <name>] [--all] [--json]` | Show the stored profile for the local or specified project, or list all remote project profiles. |
-| `issuekit author --title "..." (--body "..." \| --body-file <path>) --agent <agent> [--priority high\|medium\|low] [--assign <agent>] [--depends-on <ref>] [--project <name>] [--direct-local-author] [--origin-project <name>] [--json]` | Create a new API-backed issue with an implementation-ready body. |
+| `issuekit author --title "..." (--body "..." \| --body-file <path>) --agent <agent> [--priority high\|medium\|low] [--assign <agent>] [--target-worker <worker.repo[@machine]>] [--allow-unregistered-worker] [--depends-on <ref>] [--project <name>] [--direct-local-author] [--origin-project <name>] [--json]` | Create a new API-backed issue with an implementation-ready body. |
 | `issuekit edit <id> [--title "..."] [--body "..." \| --body-file <path> \| --append "..." \| --append-file <path>] [--priority high\|medium\|low] [--depends-on <ref>] [--force] [--json]` | Update an issue's title, body, priority, or dependency references. |
 | `issuekit author-guard show\|check\|clear` | Diagnose or recover the local author-session separation-of-duties guard; see [Separation of duties](separation-of-duties.md). |
 | `issuekit complete <id> --summary "..." --verification "..." [--force]` | Complete an issue through the API; use `--force` to close an active no-op, duplicate, obsolete, or anchor issue without claim and review ceremony. |
@@ -26,6 +26,7 @@
 | `issuekit serve [--agent <agent>] [--model <model-id>] [--reasoning-effort <value>] [--interval <seconds>] [--heartbeat-interval <seconds>] [--priority high\|medium\|low] [--once] [--triage] [--review] [--proposal-checks] [--proposal-check-limit <n>] [--max-issues <n>] [--timeout-sec <seconds>] [--allow-any-branch] [--no-sync]` | Launch an agent loop that pulls from the implement pool by default, or the review pool with `--review`. |
 | `issuekit orphans [--stale-after-sec <n>] [--json]` | List implementing issues whose claiming worker is gone or has stopped heartbeating. |
 | `issuekit reclaim <id> [--force] [--reason "..."] [--json]` | Return an orphaned or stale implementing claim to the implement pool. |
+| `issuekit dispatch <id> --target-worker <worker.repo[@machine]> [--assignee <agent>] [--stage todo\|planned] [--allow-unregistered-worker] [--json]` | Direct a ready issue to a specific registered worker. |
 | `issuekit readdress <id> [--reason "..."] [--json]` | Return a directed issue to the repo pool. |
 | `issuekit check-encoding [--json] [--fail-on-unconfirmed] [--gate]` | Check tracked source files for encoding problems, or reproduce the submit-gate mojibake verdict with `--gate`. |
 | `issuekit protocol [--agent codex\|claude]` | Print the canonical handoff protocol. |

@@ -1783,6 +1783,33 @@ def test_client_readdress_sends_audit_body() -> None:
     ) == {"id": 7, "target_worker": ""}
 
 
+def test_client_dispatch_sends_target_assignee_and_stage() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/issues/issuekit/issues/7/dispatch"
+        assert json.loads(request.content) == {
+            "target_worker": "checkout.repo@machine",
+            "assignee": "codex",
+            "stage": "planned",
+        }
+        return httpx.Response(
+            200,
+            json={"id": 7, "target_worker": "checkout@machine"},
+        )
+
+    client = IssuekitClient(
+        "https://mine.example",
+        token="static-token",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    assert client.dispatch(
+        7,
+        target_worker="checkout.repo@machine",
+        assignee="codex",
+        stage="planned",
+    ) == {"id": 7, "target_worker": "checkout@machine"}
+
+
 def test_client_request_changes_sends_worker_when_provided() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/api/issues/issuekit/issues/7/request-changes"

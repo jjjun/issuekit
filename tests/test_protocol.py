@@ -21,6 +21,9 @@ def test_render_protocol_returns_each_agent_and_both() -> None:
         assert "author -> implement -> review cycle" in normalized
         assert "open implement pool" in normalized
         assert "open review pool" in normalized
+        assert "Assignment chooses the implementing agent" in normalized
+        assert "issuekit dispatch <id> --target-worker" in normalized
+        assert "issuekit readdress <id>" in normalized
         assert "author role and implementer role must be different sessions" in normalized
         assert "implementer and reviewer must be different sessions" in normalized
         assert "author may also be the reviewer" in normalized

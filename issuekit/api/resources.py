@@ -262,6 +262,27 @@ class IssueResourceMixin:
         )
         return ensure_dict(payload, "Readdress response")
 
+    def dispatch(
+        self,
+        number: int,
+        *,
+        target_worker: str,
+        assignee: str | None = None,
+        stage: str | None = None,
+    ) -> JsonDict:
+        payload = self._request(
+            "POST",
+            f"/{number}/dispatch",
+            json=drop_none(
+                {
+                    "target_worker": target_worker,
+                    "assignee": assignee,
+                    "stage": stage,
+                }
+            ),
+        )
+        return ensure_dict(payload, "Dispatch response")
+
     def submit(
         self,
         number: int,

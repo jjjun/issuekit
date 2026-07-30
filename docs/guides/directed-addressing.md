@@ -39,6 +39,17 @@ directed to other workers or other machines.
 
 Opting a checkout into directed work is a configuration decision; see
 `worker_accept_directed` in [Configuration](configuration.md). To clear a
-directed target and return an issue to the repo pool, use
-`issuekit readdress <id>` - see
+directed target and return an issue to the repo pool, use `issuekit readdress
+<id>`. To direct a new or existing issue, use:
+
+```console
+$ issuekit author --title "Verify production" --body-file issue.md --agent codex --target-worker prod.mine-py@main1
+$ issuekit dispatch 42 --target-worker prod.mine-py@main1
+```
+
+Both commands validate the address against the registered worker catalog and
+print the worker identity returned by the API. Use
+`--allow-unregistered-worker` only when intentionally directing work to a
+checkout that has not registered yet. Assignment selects the implementing
+agent; direction selects the checkout where that agent must run. See
 [Orphaned claim detection](orphaned-claim-detection.md).

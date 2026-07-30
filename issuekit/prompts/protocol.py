@@ -32,6 +32,12 @@ gitignored `issuekit.local.toml`, so claims report which worker checkout holds
 an issue as `worker.repo`. Multiple checkouts of one repo can use distinct
 worker names.
 
+Assignment chooses the implementing agent. Direction chooses the checkout that
+must run host-specific or checkout-specific work. Use `issuekit author
+--target-worker <worker.repo[@machine]>` when creating that work, or `issuekit
+dispatch <id> --target-worker <worker.repo[@machine]>` for an existing ready
+issue. Use `issuekit readdress <id>` to return directed work to the open pool.
+
 Issue lifecycle and cross-project proposal state are stored in the configured
 mine-py API project.
 
@@ -169,6 +175,9 @@ Copyable CLI examples:
 
 - Register worker: `issuekit add`
 - Author: `issuekit author --title "Short title" --body-file issue.md --priority medium --agent <agent>`
+- Author host-specific work: `issuekit author --title "Short title" --body-file issue.md --agent <agent> --target-worker <worker.repo@machine>`
+- Dispatch existing work: `issuekit dispatch 123 --target-worker <worker.repo@machine> --json`
+- Return directed work to the pool: `issuekit readdress 123 --json`
 - Author with upstream dependency: `issuekit author --title "Short title" --body-file issue.md --priority medium --agent <agent> --depends-on upstream#proposal:123`
 - Author a local issue that references another project: `issuekit author --title "Short title" --body-file issue.md --direct-local-author`
 - Claim next: `issuekit claim --assignee <agent>`

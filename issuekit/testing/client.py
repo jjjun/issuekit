@@ -19,6 +19,8 @@ class FakeIssuekitClient(FakeIssueSurface, FakeProposalSurface):
         self,
         issues: list[JsonDict] | None = None,
         proposals: list[JsonDict] | None = None,
+        *,
+        stored_target_worker_override: str | None = None,
     ) -> None:
         self._lock = Lock()
         self._issues: dict[int, JsonDict] = {}
@@ -33,6 +35,7 @@ class FakeIssuekitClient(FakeIssueSurface, FakeProposalSurface):
         self._next_thread_id = 1
         self._next_proposal_check_id = 1
         self.calls: list[JsonDict] = []
+        self.stored_target_worker_override = stored_target_worker_override
         # Real IssuekitClient carries the target project; the fake defaults to the
         # canonical project and lets tests override it for profile routing.
         self.project = "issuekit"
