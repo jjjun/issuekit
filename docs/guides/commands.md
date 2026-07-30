@@ -3,6 +3,8 @@
 | Command | Purpose |
 |---------|---------|
 | `issuekit info [--json]` | Show API tracker status and effective agent configuration. |
+| `issuekit show <id> [--json]` | Read one active or completed issue, including its body and handoff metadata, without changing it. |
+| `issuekit next-review [--reviewer <name>] [--json]` | Read the next issue waiting for a reviewer without changing issue state. |
 | `issuekit validate` | Check API connectivity and issue response shape. |
 | `issuekit login [--user <username>]` | Authenticate to the API as the configured or specified user. |
 | `issuekit logout` | Clear the saved API authentication session. |

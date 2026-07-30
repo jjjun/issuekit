@@ -22,6 +22,7 @@ from issuekit.commands import (
     implement,
     info,
     init,
+    inspect,
     negotiate,
     orphans,
     profile,
@@ -44,6 +45,7 @@ from issuekit.commands import (
 
 COMMAND_MODULES = (
     info,
+    inspect,
     add,
     auth,
     author_guard,

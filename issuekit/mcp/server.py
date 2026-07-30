@@ -711,7 +711,9 @@ def _missing_api_url_message(root: Path) -> str:
         "probably running from a different working directory or shell environment; "
         "launch issuekit-mcp from the repo root, configure the MCP client workspace "
         "root, or ensure the MCP server process receives the same ISSUEKIT_CONFIG, "
-        "HOME, or XDG_CONFIG_HOME setting as the CLI."
+        "HOME, or XDG_CONFIG_HOME setting as the CLI. To continue reviewing before "
+        "that is resolved, `issuekit show <id>` and `issuekit next-review` are "
+        "read-only CLI equivalents of the get_issue and next_review tools."
     )
 
 

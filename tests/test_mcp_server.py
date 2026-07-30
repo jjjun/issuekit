@@ -827,6 +827,8 @@ def test_mcp_loads_api_config_from_machine_config_at_git_root(
     message = mcp_server._missing_api_url_message(repo_root)
     assert str(machine_path) in message
     assert "(exists: True)" in message
+    assert "issuekit show <id>" in message
+    assert "issuekit next-review" in message
 
 
 def test_mcp_lifecycle_tools_reuse_one_process_session(
@@ -942,6 +944,113 @@ def test_next_review_uses_configured_default_reviewer(
     review = _call(server, "next_review", {})
 
     assert review["id"] == 1
+
+
+def test_read_only_cli_payloads_match_mcp_tools(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    raw_issue = api_issue(
+        1,
+        "First",
+        status="in_progress",
+        assignee="codex",
+        stage="review",
+        implementer="claude",
+        author="kimi",
+        worker="worker.repo",
+        target_worker="target.repo",
+        depends_on=["upstream#2"],
+        dependency_state="ready",
+        dependencies=[{"ref": "upstream#2", "state": "completed"}],
+        body="# Issue #1: First\n\nReview this.",
+    ) | {
+        "author_session": "author-session",
+        "implementer_session": "implementer-session",
+        "reviewer_session": "reviewer-session",
+    }
+    client = FakeIssuekitClient([raw_issue])
+    _configure_api(tmp_path, monkeypatch, client)
+    monkeypatch.chdir(tmp_path)
+    server = create_server(tmp_path)
+    before = client.get_issue(1)
+
+    mcp_issue = _call(server, "get_issue", {"id": 1})
+    assert cli.main(["show", "1", "--json"]) == 0
+    cli_issue = json.loads(capsys.readouterr().out)
+
+    mcp_review = _call(server, "next_review", {"reviewer": "codex"})
+    assert cli.main(["next-review", "--reviewer", "codex", "--json"]) == 0
+    cli_review = json.loads(capsys.readouterr().out)
+
+    assert cli_issue == mcp_issue
+    assert cli_review == mcp_review
+    assert client.get_issue(1) == before
+
+
+def test_read_only_cli_empty_payloads_match_mcp_tools(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    client = FakeIssuekitClient()
+    _configure_api(tmp_path, monkeypatch, client)
+    monkeypatch.chdir(tmp_path)
+    server = create_server(tmp_path)
+
+    mcp_issue = _call(server, "get_issue", {"id": 99})
+    assert cli.main(["show", "99", "--json"]) == 0
+    cli_issue = json.loads(capsys.readouterr().out)
+
+    mcp_review = _call(server, "next_review", {})
+    assert cli.main(["next-review", "--json"]) == 0
+    cli_review = json.loads(capsys.readouterr().out)
+
+    assert cli_issue == mcp_issue == {"status": "none", "id": 99}
+    assert cli_review == mcp_review == {
+        "status": "none",
+        "assignee": "auto",
+        "stage": "review",
+    }
+
+
+def test_read_only_cli_text_output_and_help_are_clear(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                1,
+                "First",
+                status="in_progress",
+                assignee="codex",
+                stage="review",
+                body="# Issue #1: First\n\nReview this.",
+            )
+        ]
+    )
+    _configure_api(tmp_path, monkeypatch, client)
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["show", "1"]) == 0
+    assert cli.main(["show", "99"]) == 0
+    assert cli.main(["next-review", "--reviewer", "codex"]) == 0
+    output = capsys.readouterr().out
+
+    assert "Issue #1: First" in output
+    assert "Review this." in output
+    assert "Issue #99 was not found." in output
+
+    assert cli.main(["next-review", "--help"]) == 0
+    next_review_help = capsys.readouterr().out
+    assert "without changing issue state" in next_review_help
+
+    assert cli.main(["review", "--help"]) == 0
+    review_help = capsys.readouterr().out
+    assert "record a decision" in review_help
 
 
 def test_request_changes_returns_issue_to_codex(

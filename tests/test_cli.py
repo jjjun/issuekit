@@ -6,6 +6,8 @@ from issuekit import cli
 
 EXPECTED_COMMANDS = {
     "info",
+    "show",
+    "next-review",
     "add",
     "register",
     "login",
@@ -167,6 +169,8 @@ def test_handlers_are_stubs(command: str) -> None:
         "threads",
         "implement",
         "info",
+        "show",
+        "next-review",
         "login",
         "logout",
         "init",

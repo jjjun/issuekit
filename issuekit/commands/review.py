@@ -23,7 +23,10 @@ from issuekit.workflow import WorkflowError
 def register(subparsers: argparse._SubParsersAction) -> None:
     review_parser = subparsers.add_parser(
         "review",
-        help="Drive an agent to review a review-stage issue.",
+        help="Drive an agent to review and record a decision on a review-stage issue.",
+        description=(
+            "Drive an agent to review and record a decision on a review-stage issue."
+        ),
     )
     review_parser.add_argument("id", help="Issue id to review.")
     review_parser.add_argument(

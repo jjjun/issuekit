@@ -38,8 +38,8 @@ mine-py API project.
 If MCP tools return `Transport closed`, the client stdio transport is dead even
 if tool metadata is still visible. Fall back to read-only or proposal/inbox CLI
 commands such as `issuekit protocol --role author`, `issuekit incoming --json`,
-and `issuekit info --json` until the user reloads or restarts the MCP client
-session.
+`issuekit info --json`, `issuekit show <id> --json`, and
+`issuekit next-review --json` until the user reloads or restarts the MCP client session.
 
 When an orchestrator or author needs to drive a configured external
 implementer instead of waiting for the pull model, use
@@ -476,7 +476,9 @@ after that upstream issue or proposal exists, and reference it with
 1. Call the issuekit MCP tool `next_review(reviewer=None)`. Omit reviewer to
    use `default_reviewer`, or pass the reviewer assignee to inspect. With
    `default_reviewer = "auto"`, omitted reviewer means the next issue already
-   assigned at stage=review.
+   assigned at stage=review. If MCP is unavailable, use the read-only CLI
+   fallback `issuekit next-review [--reviewer <name>] --json`, then use
+   `issuekit show <id> --json` to reread a specific issue.
 2. Review the referenced branch and commit diff against the issue body. For an
    automated one-shot review, run `issuekit review <id> --agent <reviewer>`.
    Treat readability and maintainability as review criteria alongside
