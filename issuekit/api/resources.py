@@ -549,12 +549,17 @@ class ProposalCheckResourceMixin:
         endpoint available for API clients that need to create checks directly.
         """
         target_project = project or self.project
-        payload = self._authorized_request(
+        response = self._authorized_response(
             "POST",
             f"/api/issues/{target_project}/proposals/{proposal_id}/checks",
             json={"target_worker": target_worker},
         )
-        return ensure_dict(payload, "Proposal check response")
+        payload = ensure_dict(
+            self._parse_response(response),
+            "Proposal check response",
+        )
+        payload["was_created"] = response.status_code == 201
+        return payload
 
     def list_proposal_checks(
         self,

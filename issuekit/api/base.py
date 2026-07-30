@@ -119,6 +119,22 @@ class ClientTransportMixin:
         json: JsonBody | None = None,
         params: Mapping[str, Any] | None = None,
     ) -> Any:
+        response = self._authorized_response(
+            method,
+            path,
+            json=json,
+            params=params,
+        )
+        return self._parse_response(response)
+
+    def _authorized_response(
+        self,
+        method: str,
+        path: str,
+        *,
+        json: JsonBody | None = None,
+        params: Mapping[str, Any] | None = None,
+    ) -> httpx.Response:
         warn_insecure_api_url(self.api_url)
         token = self.login()
         response = self._send(
@@ -145,7 +161,7 @@ class ClientTransportMixin:
                     "Authorization": f"Bearer {token}",
                 },
             )
-        return self._parse_response(response)
+        return response
 
     def _paginate(
         self,

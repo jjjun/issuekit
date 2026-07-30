@@ -18,6 +18,7 @@ from issuekit.api.token_cache import read_cached_token
 from issuekit.commands.approve import approve_issue
 from issuekit.commands.dispatch import dispatch_issue as command_dispatch_issue
 from issuekit.commands.edit import edit_issue
+from issuekit.commands.proposal_check_request import request_proposal_check
 from issuekit.commands.readdress import readdress_result_dict
 from issuekit.commands.reclaim import reclaim_result_dict
 from issuekit.config import IssuekitConfig, load_config, resolve_machine_config_path
@@ -532,6 +533,26 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
             raw_id = proposal_id if proposal_id is not None else proposal_id_arg(proposal_file or "")
             with api_client(config) as client:
                 return client.discard_proposal(int(raw_id))
+
+    @server.tool(
+        description=(
+            "Request evaluation of a pending proposal by a registered worker "
+            "in the target project."
+        )
+    )
+    async def create_proposal_check(
+        to: str,
+        proposal_id: int,
+        worker: str | None = None,
+        ctx: Context | None = None,
+    ) -> dict[str, Any]:
+        async with _api_config(root, ctx) as (config, _config_root):
+            return request_proposal_check(
+                config,
+                to=to,
+                proposal_id=proposal_id,
+                worker=worker,
+            )
 
     @server.tool(
         description=(

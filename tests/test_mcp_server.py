@@ -113,6 +113,7 @@ def test_server_registers_expected_tools(tmp_path: Path) -> None:
         "list_negotiation_threads",
         "adopt_proposal",
         "discard_proposal",
+        "create_proposal_check",
         "list_proposal_checks",
     }
 
@@ -122,7 +123,7 @@ def test_server_tool_schemas_match_the_contract(tmp_path: Path) -> None:
     # schema change was intended, describe it in the commit message, then update
     # this digest.
     assert _tool_schema_digest(create_server(tmp_path)) == (
-        "fe36849283d0ae83192e20fae98332b9ba4fa5836953d1e7c169f8dd304013df"
+        "7b8b7d3a4fd35ddb5868e15a1b927efc1ce45026270733cf9a7aad00b90d737c"
     )
 
 
@@ -269,6 +270,63 @@ def test_list_proposal_checks_tool_returns_raw_checks(
             },
         },
     ]
+
+
+def test_create_proposal_check_tool_matches_cli_json(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    client = FakeIssuekitClient(
+        proposals=[
+            {"id": 1, "origin": "source#1@abc", "title": "Check", "body": "Check body."}
+        ]
+    )
+    client.upsert_worker(
+        machine_id="machine",
+        repo_id="target",
+        worker_name="worker",
+        project="target",
+    )
+    client.create_proposal_check(
+        1,
+        target_worker="worker.target@machine",
+        project="target",
+    )
+    client.calls.clear()
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'source'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    server = create_server(tmp_path)
+
+    mcp_result = _call(
+        server,
+        "create_proposal_check",
+        {"to": "target", "proposal_id": 1},
+    )
+    monkeypatch.chdir(tmp_path)
+    assert (
+        cli.main(
+            [
+                "proposal-check-request",
+                "--to",
+                "target",
+                "--proposal",
+                "1",
+                "--json",
+            ]
+        )
+        == 0
+    )
+    cli_result = json.loads(capsys.readouterr().out)
+
+    assert cli_result == mcp_result
+    assert mcp_result["id"] == 1
+    assert mcp_result["target_worker"] == "worker.target@machine"
+    assert mcp_result["was_created"] is False
 
 
 def test_list_negotiation_threads_reads_mock_store_without_api_client(

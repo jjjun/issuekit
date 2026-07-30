@@ -1577,7 +1577,9 @@ def test_client_proposal_check_paths_and_payloads() -> None:
         http_client=httpx.Client(transport=httpx.MockTransport(handler)),
     )
 
-    assert client.create_proposal_check(4, target_worker="m/r/w")["id"] == 7
+    created = client.create_proposal_check(4, target_worker="m/r/w")
+    assert created["id"] == 7
+    assert created["was_created"] is True
     assert client.poll_proposal_checks(target_worker="m/r/w", status="pending")[0]["id"] == 7
     result = client.post_proposal_check_result(
         7,
@@ -1612,6 +1614,32 @@ def test_client_proposal_check_paths_and_payloads() -> None:
             {},
         ),
     ]
+
+
+def test_client_proposal_check_reports_existing_pending_response() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "id": 7,
+                "target_project": "target",
+                "proposal_id": 4,
+                "target_worker": "worker.target",
+                "status": "pending",
+            },
+        )
+
+    client = IssuekitClient(
+        "https://mine.example",
+        project="target",
+        token="static-token",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    existing = client.create_proposal_check(4, target_worker="worker.target")
+
+    assert existing["id"] == 7
+    assert existing["was_created"] is False
 
 def test_client_proposal_errors_use_server_code_and_message() -> None:
     def handler(request: httpx.Request) -> httpx.Response:

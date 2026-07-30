@@ -426,6 +426,9 @@ CLI: `issuekit propose --to <project> --title <t> --body <b> --json`,
 `issuekit propose --to <project> --title <t> --body <b> --depends-on upstream#proposal:123 --json`,
 `issuekit incoming --json`, and `issuekit adopt <id> --json`. They share the
 same implementation and emit the same structured output.
+Request target-side evaluation before adoption with `issuekit
+proposal-check-request --to <project> --proposal <id>` or the MCP
+`create_proposal_check` tool.
 
 When asked to write or plan an issue:
 

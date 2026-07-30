@@ -89,8 +89,10 @@ class FakeProposalSurface:
                     and check.get("target_worker") == target_worker
                     and check.get("status") == "pending"
                 ):
-                    return deepcopy(check)
-            return deepcopy(
+                    existing = deepcopy(check)
+                    existing["was_created"] = False
+                    return existing
+            created = deepcopy(
                 self._store_proposal_check(
                     {
                         "target_project": target_project,
@@ -100,6 +102,8 @@ class FakeProposalSurface:
                     allocate=True,
                 )
             )
+            created["was_created"] = True
+            return created
 
     def list_proposal_checks(
         self,

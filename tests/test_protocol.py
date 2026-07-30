@@ -136,6 +136,8 @@ def test_render_protocol_returns_author_role() -> None:
     assert "that same token" in author
     assert "for the claim and submit mutations" in author
     assert "implementation-ready issues" in author
+    assert "proposal-check-request --to <project> --proposal <id>" in author
+    assert "`create_proposal_check` tool" in author
     author.encode("ascii")
 
 
