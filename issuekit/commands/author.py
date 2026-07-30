@@ -305,14 +305,19 @@ def _cross_project_author_warning(
 def _related_ref_names(cwd: Path) -> set[str]:
     try:
         return set(list_effective_refs(cwd))
-    except RefError:
-        return set()
+    except RefError as exc:
+        raise WorkflowError(
+            "Cross-project author preflight could not determine related projects: "
+            f"{exc}. If this is genuinely a local issue for the current project, "
+            "rerun `issuekit author` with `--direct-local-author`."
+        ) from exc
 
 
 def _safe_current_ref(cwd: Path) -> str:
     try:
         return current_repo_ref(cwd)
     except RefError:
+        # The related-ref lookup already loaded and validated the same ref config.
         return ""
 
 

@@ -7,6 +7,7 @@ from issuekit import cli
 from issuekit import store as store_module
 from issuekit.commands.author import author_issue
 from issuekit.config import IssuekitConfig
+from issuekit.config.refs import RefError
 from issuekit.guards.author import read_author_guard
 from issuekit.testing import FakeIssuekitClient
 from issuekit.workflow import WorkflowError
@@ -474,6 +475,43 @@ def test_author_command_blocks_likely_cross_project_direct_authoring(
     assert "--direct-local-author" in captured.err
     assert client.calls == []
     assert read_author_guard(target) is None
+
+
+def test_author_command_fails_closed_when_related_refs_cannot_be_loaded(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient()
+    _configure_api_project(tmp_path, monkeypatch, client, project="target")
+
+    def fail_related_refs(_cwd):
+        raise RefError("workspace config is temporarily unavailable")
+
+    monkeypatch.setattr(
+        "issuekit.commands.author.list_effective_refs",
+        fail_related_refs,
+    )
+
+    exit_code = cli.main(
+        [
+            "author",
+            "--title",
+            "Local issue",
+            "--body",
+            "## Problem\n\nThis issue is local.\n",
+            "--agent",
+            "codex",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "could not determine related projects" in captured.err
+    assert "workspace config is temporarily unavailable" in captured.err
+    assert "--direct-local-author" in captured.err
+    assert client.calls == []
+    assert read_author_guard(tmp_path) is None
 
 
 def test_author_command_direct_local_author_overrides_cross_project_preflight(
