@@ -364,7 +364,10 @@ commands. Run this protocol end to end:
 3. Implement the claimed issue on the current branch by editing only the code,
    tests, and supporting project files needed for the task. Do not create or
    switch branches. When driven by `issuekit implement`, do not run git commit
-   or git push; leave implementation changes unstaged for review.
+   or git push; leave implementation changes unstaged for review. When
+   `ISSUEKIT_IMPLEMENTER_REPORT_FILE` is set, write the closing implementation
+   and verification report to that path. Issuekit sanitizes the report to ASCII,
+   bounds its length, and includes it in the submit summary.
 4. Run the relevant tests, `uv run issuekit check-encoding`, and
    `uv run issuekit check-encoding --gate` before submitting.
 5. Call `submit_for_review(id, summary, branch, commit, reviewer=None)` with an

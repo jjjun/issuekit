@@ -55,6 +55,7 @@ class FakeResult:
     parsed: dict[str, str] | None = None
     status_short: str | None = " M tracked.py\n?? new.py"
     status_path: Path | None = Path("status.json")
+    report_path: Path | None = None
 
 
 class FakeRunner:
@@ -171,8 +172,62 @@ def test_implement_command_materializes_api_issue_and_submits_review(
     assert client.calls[-1]["body"]["session"] == run_session
     assert client.calls[-1]["body"]["summary"] == (
         "Implemented by kimi via issuekit implement "
-        "(orchestrated by issuekit@unregistered-worker)."
+        "(orchestrated by issuekit@unregistered-worker).\n"
+        "Run log: `out.log`"
     )
+
+
+def test_submission_summary_includes_sanitized_implementer_report(tmp_path: Path) -> None:
+    report_path = tmp_path / ".agent-runs" / "run.report.md"
+    report_path.parent.mkdir()
+    report_path.write_text(
+        "Verified guard \u2014 passed.\n\u65e5\u672c\u8a9e",
+        encoding="utf-8",
+        newline="\n",
+    )
+    result = FakeResult(
+        stdout_path=tmp_path / ".agent-runs" / "run.out.log",
+        report_path=report_path,
+    )
+
+    summary = run_claimed_agent._submission_summary("Implemented.", result, tmp_path)
+
+    assert summary == (
+        "Implemented.\n"
+        "Run log: `.agent-runs/run.out.log`\n\n"
+        "Implementer report:\n"
+        "Verified guard - passed."
+    )
+    assert summary.isascii()
+
+
+def test_submission_summary_sanitizes_non_ascii_run_log_path() -> None:
+    result = FakeResult(
+        stdout_path=Path("D:/\u65e5\u672c\u8a9e/runs/run.out.log"),
+    )
+
+    summary = run_claimed_agent._submission_summary(
+        "Implemented.",
+        result,
+        Path("G:/workspace/projects/issuekit"),
+    )
+
+    assert summary.isascii()
+
+
+def test_submission_summary_bounds_implementer_report(tmp_path: Path) -> None:
+    report_path = tmp_path / "run.report.md"
+    report_path.write_text(
+        "x" * (run_claimed_agent.MAX_IMPLEMENTER_REPORT_CHARS + 1),
+        encoding="utf-8",
+    )
+    result = FakeResult(stdout_path=tmp_path / "run.out.log", report_path=report_path)
+
+    summary = run_claimed_agent._submission_summary("Implemented.", result, tmp_path)
+    included_report = summary.split("Implementer report:\n", 1)[1]
+
+    assert len(included_report) == run_claimed_agent.MAX_IMPLEMENTER_REPORT_CHARS
+    assert included_report.endswith("[Implementer report truncated; see run log.]")
 
 
 def test_implement_command_uses_default_implementer(tmp_path: Path, monkeypatch, capsys) -> None:

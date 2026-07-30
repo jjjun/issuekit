@@ -30,6 +30,7 @@ class FakeResult:
     parsed: dict[str, str] | None = None
     status_short: str | None = " M tracked.py"
     status_path: Path | None = Path("status.json")
+    report_path: Path | None = None
 
 
 class FakeRunner:

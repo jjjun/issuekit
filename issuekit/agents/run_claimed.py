@@ -18,6 +18,7 @@ from issuekit.encoding import (
     changed_line_numbers,
     changed_readable_paths,
     print_mojibake_hit,
+    sanitize_to_ascii,
     scan_mojibake,
 )
 from issuekit.gitutil import GitStatusEntry, git_root, git_status_entries, run_git
@@ -49,6 +50,7 @@ class ImplementationChangeSnapshot:
 
 RunReporter = Callable[[Issue, AgentResult], None]
 RunnerFactory = Callable[[], AgentRunner]
+MAX_IMPLEMENTER_REPORT_CHARS = 4000
 
 
 def implementation_prompt(plan_path: Path) -> str:
@@ -135,6 +137,7 @@ def run_and_submit(
         run_dir=run_dir,
         abort_event=abort_event,
         issuekit_session=session,
+        implementer_report=True,
     )
     if reporter is not None:
         reporter(issue, result)
@@ -228,7 +231,11 @@ def run_and_submit(
 
         reviewed_issue = submit_for_review(
             issue_id,
-            summary=submit_summary or f"Implemented by {agent} via issuekit implement.",
+            summary=_submission_summary(
+                submit_summary or f"Implemented by {agent} via issuekit implement.",
+                result,
+                cwd,
+            ),
             config=config,
             store=active_store,
             cwd=cwd,
@@ -245,6 +252,39 @@ def run_and_submit(
             exit_code=0,
             reviewed_issue=reviewed_issue,
         )
+
+
+def _submission_summary(prefix: str, result: AgentResult, cwd: Path) -> str:
+    run_log = sanitize_to_ascii(_display_path(result.stdout_path, cwd))
+    summary = f"{prefix}\nRun log: `{run_log}`"
+    if result.report_path is None or not result.report_path.is_file():
+        return summary
+    try:
+        with result.report_path.open(encoding="utf-8", errors="replace") as stream:
+            raw_report = stream.read(MAX_IMPLEMENTER_REPORT_CHARS + 1)
+    except OSError:
+        return summary
+    report = sanitize_to_ascii(raw_report).strip()
+    if not report:
+        return summary
+
+    truncation_marker = "\n[Implementer report truncated; see run log.]"
+    if (
+        len(raw_report) > MAX_IMPLEMENTER_REPORT_CHARS
+        or len(report) > MAX_IMPLEMENTER_REPORT_CHARS
+    ):
+        report = (
+            report[: MAX_IMPLEMENTER_REPORT_CHARS - len(truncation_marker)].rstrip()
+            + truncation_marker
+        )
+    return f"{summary}\n\nImplementer report:\n{report}"
+
+
+def _display_path(path: Path, cwd: Path) -> str:
+    try:
+        return path.resolve().relative_to(cwd.resolve()).as_posix()
+    except ValueError:
+        return path.as_posix()
 
 
 def review_feedback_prompt(issue_body: str) -> str | None:

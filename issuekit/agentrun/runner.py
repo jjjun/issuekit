@@ -38,6 +38,7 @@ class AgentResult:
     parsed: dict[str, str] | None = None
     status_short: str | None = None
     status_path: Path | None = None
+    report_path: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -143,6 +144,7 @@ class AgentRunner:
         abort_event: threading.Event | None = None,
         session_id: str | None = None,
         issuekit_session: str | None = None,
+        implementer_report: bool = False,
     ) -> AgentResult:
         plan_path = prompt.path.resolve()
         repo = repo.resolve()
@@ -173,6 +175,7 @@ class AgentRunner:
         run_id, reservation_path = self._reserve_run_id(run_dir)
         stdout_path = run_dir / f"{run_id}.out.log"
         agent_log_path = run_dir / f"{run_id}.agent.log"
+        report_path = run_dir / f"{run_id}.report.md" if implementer_report else None
         run_status_path = status_path(run_dir, run_id)
         started_at = datetime.now().replace(microsecond=0).isoformat()
         run_status = RunStatus(
@@ -203,9 +206,12 @@ class AgentRunner:
                 "stderr": log_f,
                 "cwd": str(repo),
             }
-            if issuekit_session is not None:
+            if issuekit_session is not None or report_path is not None:
                 env = os.environ.copy()
-                env["ISSUEKIT_SESSION"] = issuekit_session
+                if issuekit_session is not None:
+                    env["ISSUEKIT_SESSION"] = issuekit_session
+                if report_path is not None:
+                    env["ISSUEKIT_IMPLEMENTER_REPORT_FILE"] = str(report_path)
                 kwargs["env"] = env
             if os.name == "nt":
                 kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
@@ -273,6 +279,7 @@ class AgentRunner:
             parsed=parsed,
             status_short=status_short,
             status_path=run_status_path,
+            report_path=report_path,
         )
 
     def _reserve_run_id(self, run_dir: Path) -> tuple[str, Path]:

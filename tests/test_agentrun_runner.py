@@ -523,6 +523,32 @@ def test_runner_does_not_print_agent_runs_note_when_dir_already_exists(
     assert ".agent-runs/ is gitignored run-log storage" not in captured.err
 
 
+def test_runner_passes_run_specific_implementer_report_path(tmp_path: Path) -> None:
+    script = tmp_path / "script.py"
+    script.write_text(
+        "import os\n"
+        "from pathlib import Path\n"
+        "Path(os.environ['ISSUEKIT_IMPLEMENTER_REPORT_FILE']).write_text('Verified.')\n"
+    )
+    plan = tmp_path / "plan.md"
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / ".git").mkdir()
+
+    adapter = FakeAdapter([sys.executable, str(script)])
+    result = AgentRunner().run(
+        adapter,
+        agent_prompt(plan),
+        repo,
+        timeout=10.0,
+        implementer_report=True,
+    )
+
+    assert result.report_path is not None
+    assert result.report_path.name.endswith(".report.md")
+    assert result.report_path.read_text(encoding="utf-8") == "Verified."
+
+
 def test_runner_heartbeat_suppressed_when_stderr_not_tty(
     tmp_path: Path, monkeypatch, capsys
 ) -> None:

@@ -150,6 +150,8 @@ def _print_run_report(issue: Issue, result: AgentResult, agent: str) -> None:
     print(f"agent_log={result.agent_log_path}")
     if result.status_path:
         print(f"status_file={result.status_path}")
+    if result.report_path and result.report_path.is_file():
+        print(f"report_file={result.report_path}")
     if result.parsed:
         for key, value in sorted(result.parsed.items()):
             if key in {"stdout", "stderr"} or not value:
