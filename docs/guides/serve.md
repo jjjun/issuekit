@@ -91,8 +91,8 @@ ts=2026-07-28T09:31:47 event=submitted issue=318 assignee= stage=review count=1
 ```
 
 Useful event names: `idle`, `claimed`, `recovered`, `submitted`, `reviewed`,
-`run_error`, `run_failed`, `claim_error`, `review_poll_error`, `triage_error`,
-`worker_registry_error`, `signal`, `stopped`.
+`review_decision_discarded`, `run_error`, `run_failed`, `claim_error`,
+`review_poll_error`, `triage_error`, `worker_registry_error`, `signal`, `stopped`.
 
 Shutdown is two-stage. The first `SIGINT`/`SIGTERM` requests a graceful stop:
 the current agent run finishes and the loop exits afterwards. A second signal
@@ -123,6 +123,7 @@ still alive, check the log for that event before re-registering.
 | `issuekit serve is already running for this checkout` | live PID holds the lock | stop the other process, or serve from a second checkout |
 | Repeated `claim_error` with growing backoff | API unreachable or auth expired | check `issuekit info --json`, re-authenticate |
 | Repeated `run_failed` | the agent exits non-zero | read the run logs under `.agent-runs/` |
+| `review_decision_discarded` with growing backoff | the reviewer agent emitted an unparseable review block, so the verdict was dropped | rerun the review and read the agent log under `.agent-runs/` |
 | Work-branch guard blocks every claim | checkout is off `work_branch` | switch branches, or `--allow-any-branch` for human recovery |
 
 ## Related

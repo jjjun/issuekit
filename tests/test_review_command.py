@@ -104,6 +104,25 @@ class MalformedReviewRunner(ApprovingRunner):
         return FakeResult(parsed={"stdout": "The implementation looks good.\n"})
 
 
+class TimedOutReviewRunner(ApprovingRunner):
+    def run(self, *args, **kwargs) -> FakeResult:
+        return FakeResult(timed_out=True)
+
+
+class NonJsonReviewRunner(ApprovingRunner):
+    def run(self, *args, **kwargs) -> FakeResult:
+        return FakeResult(
+            parsed={
+                "stdout": (
+                    "```review\n"
+                    "REQUEST_CHANGES\n\n"
+                    "- Add focused tests.\n"
+                    "```"
+                )
+            }
+        )
+
+
 class CloseTrackingClient(FakeIssuekitClient):
     def __init__(self) -> None:
         super().__init__()
@@ -430,7 +449,7 @@ def test_review_command_rejects_same_worker_self_review(
     assert "self-review by the same worker is not allowed" in capsys.readouterr().err
 
 
-def test_review_command_reports_no_decision_for_malformed_review_output(
+def test_review_command_reports_discarded_decision_for_malformed_review_output(
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -458,8 +477,78 @@ def test_review_command_reports_no_decision_for_malformed_review_output(
     captured = capsys.readouterr()
     assert exit_code == 1
     assert "agent_exit_code=0" in captured.out
-    assert "review_decision=none (no decision recorded)" in captured.out
+    assert (
+        "review_decision=discarded (unparseable review block; rerun the review)"
+        in captured.out
+    )
     assert "No ```review``` block found" in captured.err
+    assert client.calls == []
+
+
+def test_review_command_reports_no_decision_for_timed_out_review(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                1,
+                "Timed-out review",
+                status="in_progress",
+                assignee="",
+                stage="review",
+                implementer="codex",
+                worker="machine/demo/implementer",
+                author="claude",
+            )
+        ]
+    )
+    _configure_registered_api(tmp_path, monkeypatch, client)
+    _create_reviewable_diff(tmp_path)
+    monkeypatch.setattr("issuekit.commands.review.AgentRunner", TimedOutReviewRunner)
+
+    exit_code = cli.main(["review", "1", "--agent", "codex"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 124
+    assert "review_decision=none (no decision recorded)" in captured.out
+    assert client.calls == []
+
+
+def test_review_command_discards_fenced_non_json_review_output(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                1,
+                "Non-JSON review",
+                status="in_progress",
+                assignee="",
+                stage="review",
+                implementer="codex",
+                worker="machine/demo/implementer",
+                author="claude",
+            )
+        ]
+    )
+    _configure_registered_api(tmp_path, monkeypatch, client)
+    _create_reviewable_diff(tmp_path)
+    monkeypatch.setattr("issuekit.commands.review.AgentRunner", NonJsonReviewRunner)
+
+    exit_code = cli.main(["review", "1", "--agent", "codex"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "agent_exit_code=0" in captured.out
+    assert (
+        "review_decision=discarded (unparseable review block; rerun the review)"
+        in captured.out
+    )
+    assert "Review block was not valid JSON" in captured.err
     assert client.calls == []
 
 

@@ -11,7 +11,11 @@ from pathlib import Path
 from types import FrameType
 from typing import Literal
 
-from issuekit.agents.review import ReviewParseError, run_review_and_decide
+from issuekit.agents.review import (
+    ReviewParseError,
+    ReviewRunParseError,
+    run_review_and_decide,
+)
 from issuekit.agents.run_claimed import review_feedback_prompt, run_and_submit
 from issuekit.config import IssuekitConfig
 from issuekit.core import Issue
@@ -235,6 +239,17 @@ def run_review_issue(
             out=sys.stderr,
             err=sys.stderr,
         )
+    except ReviewRunParseError as exc:
+        log_event(
+            sys.stderr,
+            log_path,
+            "review_decision_discarded",
+            issue=issue.id,
+            error=str(exc),
+            remedy="rerun_review",
+            backoff=backoff,
+        )
+        return IssueRunResult("error", 1)
     except (
         FileNotFoundError,
         RuntimeError,

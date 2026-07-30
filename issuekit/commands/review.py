@@ -75,7 +75,13 @@ def run(args) -> int:
                 err=sys.stderr,
             )
         except ReviewRunParseError as exc:
-            _print_run_report(issue, exc.result, args.agent, decision_recorded=False)
+            _print_run_report(
+                issue,
+                exc.result,
+                args.agent,
+                decision_recorded=False,
+                decision_discarded=True,
+            )
             raise
         _print_run_report(
             issue,
@@ -106,6 +112,7 @@ def _print_run_report(
     agent: str,
     *,
     decision_recorded: bool,
+    decision_discarded: bool = False,
 ) -> None:
     print(f"issue={issue.id} ref={issue.ref} reviewer={agent}")
     print(
@@ -116,7 +123,12 @@ def _print_run_report(
     print(f"agent_log={result.agent_log_path}")
     if result.status_path:
         print(f"status_file={result.status_path}")
-    if not decision_recorded:
+    if decision_discarded:
+        print(
+            "review_decision=discarded "
+            "(unparseable review block; rerun the review)"
+        )
+    elif not decision_recorded:
         print("review_decision=none (no decision recorded)")
 
 

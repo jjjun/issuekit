@@ -102,6 +102,21 @@ class ReviewApprovingRunner:
         )
 
 
+class ReviewNonJsonRunner(ReviewApprovingRunner):
+    def run(self, *args, **kwargs) -> FakeResult:
+        return FakeResult(
+            parsed={
+                "stdout": (
+                    "```review\n"
+                    "REQUEST_CHANGES\n\n"
+                    "- Add focused tests.\n"
+                    "```"
+                )
+            },
+            status_short="",
+        )
+
+
 class ProposalCheckRunner:
     calls: list[dict] = []
     outputs: list[str] = []
@@ -336,6 +351,41 @@ def test_serve_review_once_reviews_open_pool_issue(
     captured = capsys.readouterr()
     assert "event=reviewing issue=1" in captured.err
     assert "event=reviewed issue=1" in captured.err
+
+
+def test_serve_review_once_reports_discarded_decision(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                1,
+                "Malformed review",
+                status="in_progress",
+                assignee="",
+                stage="review",
+                implementer="codex",
+                worker="machine/demo/implementer",
+                author="claude",
+            )
+        ]
+    )
+    _configure_registered_api(tmp_path, monkeypatch, client)
+    _create_reviewable_diff(tmp_path)
+    monkeypatch.setattr("issuekit.agents.review.AgentRunner", ReviewNonJsonRunner)
+
+    exit_code = cli.main(["serve", "--agent", "codex", "--review", "--once"])
+
+    assert exit_code == 1
+    assert [call["method"] for call in client.calls] == [
+        "upsert_repo",
+        "upsert_worker",
+    ]
+    captured = capsys.readouterr()
+    assert "event=review_decision_discarded issue=1" in captured.err
+    assert "remedy=rerun_review" in captured.err
 
 
 def test_serve_review_once_ignores_issue_assigned_to_other_reviewer(
