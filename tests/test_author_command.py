@@ -5,7 +5,7 @@ import pytest
 
 from issuekit import cli
 from issuekit import store as store_module
-from issuekit.commands.author import author_issue
+from issuekit.commands.author import _contains_ref_name, _mentioned_related_refs, author_issue
 from issuekit.config import IssuekitConfig
 from issuekit.config.refs import RefError
 from issuekit.guards.author import read_author_guard
@@ -475,6 +475,76 @@ def test_author_command_blocks_likely_cross_project_direct_authoring(
     assert "--direct-local-author" in captured.err
     assert client.calls == []
     assert read_author_guard(target) is None
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "## Test Plan\n\n```\nuv run source check-encoding --gate\n```\n",
+        "## Test Plan\n\nRun `uv run source check-encoding --gate` before submit.\n",
+    ],
+)
+def test_author_command_ignores_foreign_project_name_in_code(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+    body: str,
+) -> None:
+    source = tmp_path / "source"
+    target = tmp_path / "target"
+    source.mkdir()
+    target.mkdir()
+    (tmp_path / "issuekit.workspace.toml").write_text(
+        "[projects]\nsource = \"source\"\ntarget = \"target\"\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    client = FakeIssuekitClient()
+    _configure_api_project(target, monkeypatch, client, project="target")
+
+    exit_code = cli.main(
+        [
+            "author",
+            "--title",
+            "Document local checks",
+            "--body",
+            body,
+            "--agent",
+            "codex",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "Authored issue: target#1" in captured.out
+    assert client.get_issue(1)["body"] == body.strip()
+
+
+@pytest.mark.parametrize(
+    ("text", "ref_name", "expected"),
+    [
+        ("This change belongs in source.", "source", True),
+        ("```\nuv run source check-encoding --gate\n```", "source", False),
+        ("Run `uv run source check-encoding --gate` before submit.", "source", False),
+        ("```\nDepends-On: source#proposal:123\n```", "source", True),
+        ("```\nDepends-On: source#123\n```", "source", True),
+        ("```\ncommand\nThe rest belongs in source.", "source", True),
+        ("is`ignored`suekit", "issuekit", False),
+        ("source`ignored`work", "source", True),
+    ],
+)
+def test_contains_ref_name_ignores_only_complete_markdown_code_regions(
+    text: str,
+    ref_name: str,
+    expected: bool,
+) -> None:
+    assert _contains_ref_name(text, ref_name) is expected
+
+
+def test_mentioned_related_refs_returns_only_prose_and_ref_style_matches() -> None:
+    text = "target is prose; `source` is code; `other#issue:12` is an explicit ref."
+
+    assert _mentioned_related_refs(text, ["source", "target", "other"]) == ["target", "other"]
 
 
 def test_author_command_fails_closed_when_related_refs_cannot_be_loaded(

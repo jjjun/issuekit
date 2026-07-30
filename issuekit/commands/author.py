@@ -331,12 +331,72 @@ def _mentioned_related_refs(text: str, refs: list[str]) -> list[str]:
 
 def _contains_ref_name(text: str, ref_name: str) -> bool:
     variants = {ref_name, ref_name.replace("-", " "), ref_name.replace("_", " ")}
-    return any(_contains_tokenish_phrase(text, variant) for variant in variants)
+    if _contains_ref_style(text, ref_name):
+        return True
+    prose = _without_markdown_code(text)
+    return any(_contains_tokenish_phrase(prose, variant) for variant in variants)
 
 
 def _contains_tokenish_phrase(text: str, phrase: str) -> bool:
     pattern = rf"(?<![A-Za-z0-9_-]){re.escape(phrase)}(?![A-Za-z0-9_-])"
     return bool(re.search(pattern, text, flags=re.IGNORECASE))
+
+
+def _contains_ref_style(text: str, phrase: str) -> bool:
+    pattern = rf"(?<![A-Za-z0-9_-]){re.escape(phrase)}#"
+    return bool(re.search(pattern, text, flags=re.IGNORECASE))
+
+
+def _without_markdown_code(text: str) -> str:
+    masked = list(text)
+    fence_pattern = re.compile(r"(?m)^ {0,3}(?P<fence>`{3,}|~{3,})[^\r\n]*(?:\r?\n|$)")
+    position = 0
+    inline_limit = len(text)
+    fenced_ranges: list[tuple[int, int]] = []
+
+    while opening := fence_pattern.search(text, position):
+        fence = opening.group("fence")
+        closing_pattern = re.compile(
+            rf"(?m)^ {{0,3}}{re.escape(fence[0])}{{{len(fence)},}}[ \t]*(?:\r?\n|$)"
+        )
+        closing = closing_pattern.search(text, opening.end())
+        if closing is None:
+            inline_limit = opening.start()
+            break
+        fenced_ranges.append((opening.start(), closing.end()))
+        position = closing.end()
+
+    for start, end in fenced_ranges:
+        _mask_code_range(masked, text, start, end)
+
+    cursor = 0
+    for start, end in fenced_ranges:
+        _mask_inline_code(masked, text, cursor, min(start, inline_limit))
+        cursor = end
+        if cursor >= inline_limit:
+            return "".join(masked)
+    _mask_inline_code(masked, text, cursor, inline_limit)
+    return "".join(masked)
+
+
+def _mask_inline_code(masked: list[str], text: str, start: int, end: int) -> None:
+    delimiter_pattern = re.compile(r"(?<!`)`+(?!`)")
+    position = start
+    while opening := delimiter_pattern.search(text, position, end):
+        delimiter = opening.group()
+        closing_pattern = re.compile(rf"(?<!`){re.escape(delimiter)}(?!`)")
+        closing = closing_pattern.search(text, opening.end(), end)
+        if closing is None:
+            position = opening.end()
+            continue
+        _mask_code_range(masked, text, opening.start(), closing.end())
+        position = closing.end()
+
+
+def _mask_code_range(masked: list[str], text: str, start: int, end: int) -> None:
+    for index in range(start, end):
+        if text[index] not in "\r\n":
+            masked[index] = " "
 
 
 def _author_proposal_warning(
