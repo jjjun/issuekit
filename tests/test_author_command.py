@@ -8,7 +8,6 @@ from issuekit import store as store_module
 from issuekit.commands.author import (
     _contains_ref_name,
     _contains_ref_style,
-    _contains_tokenish_phrase,
     _mentioned_related_refs,
     author_issue,
 )
@@ -564,6 +563,49 @@ def test_author_command_ignores_foreign_project_name_in_code(
 
 
 @pytest.mark.parametrize(
+    "body",
+    [
+        "## Test Plan\n\n    uv run source check-encoding --gate\n",
+        "## Test Plan\n\nRun uv run source check-encoding --gate before submit.\n",
+    ],
+)
+def test_author_command_ignores_invoked_foreign_project_name(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+    body: str,
+) -> None:
+    source = tmp_path / "source"
+    target = tmp_path / "target"
+    source.mkdir()
+    target.mkdir()
+    (tmp_path / "issuekit.workspace.toml").write_text(
+        "[projects]\nsource = \"source\"\ntarget = \"target\"\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    client = FakeIssuekitClient()
+    _configure_api_project(target, monkeypatch, client, project="target")
+
+    exit_code = cli.main(
+        [
+            "author",
+            "--title",
+            "Document local checks",
+            "--body",
+            body,
+            "--agent",
+            "codex",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "Authored issue: target#1" in captured.out
+    assert client.get_issue(1)["body"] == body.strip()
+
+
+@pytest.mark.parametrize(
     ("text", "ref_name", "expected"),
     [
         ("This change belongs in source.", "source", True),
@@ -582,6 +624,29 @@ def test_contains_ref_name_ignores_only_complete_markdown_code_regions(
     expected: bool,
 ) -> None:
     assert _contains_ref_name(text, ref_name) is expected
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("    uv run source check-encoding --gate", False),
+        ("Run uv run source check-encoding --gate before submit.", False),
+        ("uvx source check-encoding", False),
+        ("python -m source", False),
+        ("npx source", False),
+        ("pnpm source", False),
+        ("python \t -m \t source", False),
+        ("This belongs in source.", True),
+        ("The source directory.", True),
+        ("notuvx source", True),
+        ("    source#123", True),
+    ],
+)
+def test_contains_ref_name_ignores_invoked_bare_names(
+    text: str,
+    expected: bool,
+) -> None:
+    assert _contains_ref_name(text, "source") is expected
 
 
 @pytest.mark.parametrize(
@@ -618,12 +683,12 @@ def test_contains_ref_name_does_not_match_space_variants() -> None:
         ("The source-work project.", "source", False),
     ],
 )
-def test_contains_tokenish_phrase_uses_identifier_boundaries(
+def test_contains_ref_name_uses_identifier_boundaries(
     text: str,
     phrase: str,
     expected: bool,
 ) -> None:
-    assert _contains_tokenish_phrase(text, phrase) is expected
+    assert _contains_ref_name(text, phrase) is expected
 
 
 @pytest.mark.parametrize(

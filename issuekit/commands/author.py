@@ -33,6 +33,10 @@ from issuekit.issues.session import resolved_or_new_session_token
 from issuekit.workflow import WorkflowError
 
 _MIN_BARE_REF_NAME_LENGTH = 4
+_INVOCATION_PREFIX_PATTERN = re.compile(
+    r"(?<![A-Za-z0-9_-])(?:uv\s+run|uvx|python\s+-m|npx|pnpm)\s*$",
+    flags=re.IGNORECASE,
+)
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:
@@ -341,18 +345,23 @@ def _related_ref_match_reason(ref_name: str) -> str:
     return f"issue text mentions related project {ref_name}"
 
 
+def _tokenish_pattern(phrase: str) -> re.Pattern[str]:
+    return re.compile(
+        rf"(?<![A-Za-z0-9_-]){re.escape(phrase)}(?![A-Za-z0-9_-])",
+        flags=re.IGNORECASE,
+    )
+
+
 def _contains_ref_name(text: str, ref_name: str) -> bool:
     if _contains_ref_style(text, ref_name):
         return True
     if len(ref_name) < _MIN_BARE_REF_NAME_LENGTH:
         return False
     prose = _without_markdown_code(text)
-    return _contains_tokenish_phrase(prose, ref_name)
-
-
-def _contains_tokenish_phrase(text: str, phrase: str) -> bool:
-    pattern = rf"(?<![A-Za-z0-9_-]){re.escape(phrase)}(?![A-Za-z0-9_-])"
-    return bool(re.search(pattern, text, flags=re.IGNORECASE))
+    return any(
+        _INVOCATION_PREFIX_PATTERN.search(prose, 0, match.start()) is None
+        for match in _tokenish_pattern(ref_name).finditer(prose)
+    )
 
 
 def _contains_ref_style(text: str, phrase: str) -> bool:
