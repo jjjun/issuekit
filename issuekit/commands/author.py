@@ -37,6 +37,7 @@ _INVOCATION_PREFIX_PATTERN = re.compile(
     r"(?<![A-Za-z0-9_-])(?:uv\s+run|uvx|python\s+-m|npx|pnpm)\s*$",
     flags=re.IGNORECASE,
 )
+_DEPENDS_ON_LINE_PATTERN = re.compile(r"^[ \t]*Depends-On:", flags=re.IGNORECASE)
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:
@@ -353,6 +354,7 @@ def _tokenish_pattern(phrase: str) -> re.Pattern[str]:
 
 
 def _contains_ref_name(text: str, ref_name: str) -> bool:
+    text = _without_dependency_refs(text, ref_name)
     if _contains_ref_style(text, ref_name):
         return True
     if len(ref_name) < _MIN_BARE_REF_NAME_LENGTH:
@@ -367,6 +369,20 @@ def _contains_ref_name(text: str, ref_name: str) -> bool:
 def _contains_ref_style(text: str, phrase: str) -> bool:
     pattern = rf"(?<![A-Za-z0-9_-]){re.escape(phrase)}#"
     return bool(re.search(pattern, text, flags=re.IGNORECASE))
+
+
+def _without_dependency_refs(text: str, ref_name: str) -> str:
+    ref_pattern = re.compile(
+        rf"(?<![A-Za-z0-9_-]){re.escape(ref_name)}#"
+        r"(?:(?:issue|proposal):)?[0-9]+(?![A-Za-z0-9_-])",
+        flags=re.IGNORECASE,
+    )
+    lines = []
+    for line in text.splitlines(keepends=True):
+        if _DEPENDS_ON_LINE_PATTERN.match(line):
+            line = ref_pattern.sub(lambda match: " " * len(match.group()), line)
+        lines.append(line)
+    return "".join(lines)
 
 
 def _without_markdown_code(text: str) -> str:

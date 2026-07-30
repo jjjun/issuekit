@@ -482,7 +482,7 @@ def test_author_command_blocks_likely_cross_project_direct_authoring(
     assert read_author_guard(target) is None
 
 
-def test_author_command_explains_short_name_ref_style_match(
+def test_author_command_allows_short_name_dependency_ref(
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -506,6 +506,41 @@ def test_author_command_explains_short_name_ref_style_match(
             "Track dependency",
             "--body",
             "## Problem\n\nDepends-On: pm#proposal:123\n",
+            "--agent",
+            "codex",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "Authored issue: target#1" in captured.out
+    assert client.get_issue(1)["body"] == "## Problem\n\nDepends-On: pm#proposal:123"
+
+
+def test_author_command_explains_short_name_prose_ref_style_match(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    pm = tmp_path / "pm"
+    target = tmp_path / "target"
+    pm.mkdir()
+    target.mkdir()
+    (tmp_path / "issuekit.workspace.toml").write_text(
+        '[projects]\npm = "pm"\ntarget = "target"\n',
+        encoding="utf-8",
+        newline="\n",
+    )
+    client = FakeIssuekitClient()
+    _configure_api_project(target, monkeypatch, client, project="target")
+
+    exit_code = cli.main(
+        [
+            "author",
+            "--title",
+            "Track dependency",
+            "--body",
+            "## Problem\n\nThis is really pm#42 problem.\n",
             "--agent",
             "codex",
         ]
@@ -611,8 +646,8 @@ def test_author_command_ignores_invoked_foreign_project_name(
         ("This change belongs in source.", "source", True),
         ("```\nuv run source check-encoding --gate\n```", "source", False),
         ("Run `uv run source check-encoding --gate` before submit.", "source", False),
-        ("```\nDepends-On: source#proposal:123\n```", "source", True),
-        ("```\nDepends-On: source#123\n```", "source", True),
+        ("```\nDepends-On: source#proposal:123\n```", "source", False),
+        ("```\nDepends-On: source#123\n```", "source", False),
         ("```\ncommand\nThe rest belongs in source.", "source", True),
         ("is`ignored`suekit", "issuekit", False),
         ("source`ignored`work", "source", True),
@@ -656,7 +691,7 @@ def test_contains_ref_name_ignores_invoked_bare_names(
         ("Finish at 3pm.", False),
         ("The PM signed off on this.", False),
         ("This depends on pm#123.", True),
-        ("Depends-On: pm#proposal:123", True),
+        ("Depends-On: pm#proposal:123", False),
     ],
 )
 def test_contains_ref_name_requires_ref_style_for_short_names(
@@ -712,6 +747,27 @@ def test_mentioned_related_refs_returns_only_prose_and_ref_style_matches() -> No
     text = "target is prose; `source` is code; `other#issue:12` is an explicit ref."
 
     assert _mentioned_related_refs(text, ["source", "target", "other"]) == ["target", "other"]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Depends-On: source#123",
+        "depends-on: source#issue:123",
+        "DEPENDS-ON: source#proposal:123",
+        "  Depends-On: other#12, source#proposal:123",
+        "```\nDepends-On: source#proposal:123\n```",
+        "    Depends-On: source#proposal:123",
+    ],
+)
+def test_mentioned_related_refs_ignores_dependency_line_refs(text: str) -> None:
+    assert _mentioned_related_refs(text, ["source", "other"]) == []
+
+
+def test_mentioned_related_refs_keeps_prose_match_after_dependency_line() -> None:
+    text = "Depends-On: source#proposal:123\n\nThis is really other#42's problem."
+
+    assert _mentioned_related_refs(text, ["source", "other"]) == ["other"]
 
 
 def test_author_command_fails_closed_when_related_refs_cannot_be_loaded(
