@@ -33,6 +33,7 @@ def run(args) -> int:
             total=completed_count,
         )
     incoming_proposals = _incoming_proposals(config)
+    pending_proposal_checks = _pending_proposal_check_count(config)
     author_guard = read_author_guard(Path.cwd())
     enabled_agents = [name for name, _run_config in config.agents]
     summary = {
@@ -42,6 +43,7 @@ def run(args) -> int:
             "total": len(active_issues) + completed_count,
         },
         "latestCompletedId": latest_completed_id,
+        "pendingProposalChecks": pending_proposal_checks,
         "worker": config.worker_key(),
         "workerPresent": config.worker is not None,
         "enabledAgents": enabled_agents,
@@ -104,6 +106,7 @@ def run(args) -> int:
     print(f"- Total issues: {summary['counts']['total']}")
     print(f"- Latest completed id: {summary['latestCompletedId']}")
     print(f"- Incoming proposals: {len(summary['incomingProposals'])}")
+    print(f"- Pending proposal checks: {summary['pendingProposalChecks']}")
     print(f"- Worker: {summary['worker'] or '-'}")
     print(f"- Machine config: {summary['machineConfigPath'] or '-'}")
     print(f"- Repository config: {summary['repoConfigSource']}")
@@ -177,3 +180,19 @@ def _incoming_proposals(config) -> list[dict]:
         return []
     with api_client(config) as client:
         return client.list_proposals(status="pending")
+
+
+def _pending_proposal_check_count(config) -> int:
+    worker_keys = config.worker_lookup_keys()
+    if not config.api_url or not worker_keys:
+        return 0
+    with api_client(config) as client:
+        checks = {
+            int(check["id"])
+            for worker_key in worker_keys
+            for check in client.list_proposal_checks(
+                target_worker=worker_key,
+                status="pending",
+            )
+        }
+    return len(checks)

@@ -146,3 +146,31 @@ def test_resolve_registered_worker_address_rejects_ambiguous_bare_key() -> None:
     assert exc_info.value.code == "worker_ambiguous"
     assert "checkout.demo@machine" in str(exc_info.value)
     assert "checkout.demo@other" in str(exc_info.value)
+
+
+def test_resolve_registered_worker_address_annotates_auto_select_candidates() -> None:
+    workers = [
+        {
+            **REGISTERED_WORKER,
+            "status": "online",
+            "last_seen": "2026-07-31T10:00:00Z",
+        },
+        {
+            "machine_id": "other",
+            "repo_id": "demo",
+            "worker_name": "other-checkout",
+            "status": "offline",
+            "last_seen": "2026-07-30T09:00:00Z",
+        },
+    ]
+
+    with pytest.raises(WorkflowError) as exc_info:
+        resolve_registered_worker_address(workers, project="demo")
+
+    message = str(exc_info.value)
+    assert "checkout.demo@machine" in message
+    assert "status=online" in message
+    assert "last_seen=2026-07-31T10:00:00Z" in message
+    assert "other-checkout.demo@other" in message
+    assert "status=offline" in message
+    assert "last_seen=2026-07-30T09:00:00Z" in message

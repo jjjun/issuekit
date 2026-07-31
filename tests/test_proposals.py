@@ -1194,6 +1194,47 @@ def test_api_cli_outgoing_includes_adopted_issue_state(
     assert proposal["adopted_issue_stage"] == "done"
 
 
+def test_api_cli_outgoing_includes_pending_check_wait_time(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient(
+        proposals=[
+            {
+                "id": 3,
+                "origin": "source#2@abc",
+                "title": "Mine pending",
+                "body": "b",
+                "status": "pending",
+            },
+        ],
+    )
+    check = client.create_proposal_check(
+        3,
+        target_worker="worker.target@machine",
+        project="target",
+    )
+    client._proposal_checks[check["id"]]["created_at"] = "2026-07-30T00:00:00Z"
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'source'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.chdir(tmp_path)
+    client.register_catalog_project("target")
+
+    assert cli.main(["outgoing", "--to", "target", "--json"]) == 0
+    proposal = json.loads(capsys.readouterr().out)[0]
+
+    assert proposal["proposal_checks"][0]["status"] == "pending"
+    assert proposal["proposal_checks"][0]["waiting_seconds"] > 0
+
+    assert cli.main(["outgoing", "--to", "target"]) == 0
+    assert "check=#1 status=pending" in capsys.readouterr().out
+
+
 def test_api_cli_outgoing_rejects_foreign_and_invalid_lookups(
     tmp_path: Path,
     monkeypatch,

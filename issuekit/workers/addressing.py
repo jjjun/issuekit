@@ -44,13 +44,17 @@ def resolve_registered_worker_address(
     project: str,
     address: str | None = None,
 ) -> str:
-    candidates = tuple(
+    candidate_workers = tuple(
         sorted(
-            candidate
-            for worker in workers
-            if (candidate := _preferred_worker_address(worker)) is not None
+            (
+                (candidate, worker)
+                for worker in workers
+                if (candidate := _preferred_worker_address(worker)) is not None
+            ),
+            key=lambda item: item[0],
         )
     )
+    candidates = tuple(candidate for candidate, _worker in candidate_workers)
     if address is None:
         if len(candidates) == 1:
             return candidates[0]
@@ -61,7 +65,8 @@ def resolve_registered_worker_address(
             )
         raise WorkflowError(
             f"Multiple registered workers found for project {project}. "
-            f"Pass --worker with one of: {', '.join(candidates)}.",
+            "Pass --worker with one of: "
+            f"{', '.join(_worker_candidate_description(candidate, worker) for candidate, worker in candidate_workers)}.",
             code="worker_ambiguous",
         )
 
@@ -95,6 +100,16 @@ def resolve_registered_worker_address(
     return _worker_address(matches[0], qualified="@" in target)
 
 
+def registered_worker_row(
+    workers: Sequence[Mapping[str, object]],
+    address: str,
+) -> Mapping[str, object] | None:
+    """Return the unique registered worker row matching a resolved address."""
+
+    matches = [worker for worker in workers if _worker_row_matches(worker, address)]
+    return matches[0] if len(matches) == 1 else None
+
+
 def _worker_row_matches(worker: Mapping[str, object], target: str) -> bool:
     return any(
         worker_keys_match(target, key)
@@ -126,3 +141,12 @@ def _worker_address(worker: Mapping[str, object], *, qualified: bool) -> str:
         "Registered worker response did not contain a usable worker address.",
         code="invalid_response",
     )
+
+
+def _worker_candidate_description(
+    address: str,
+    worker: Mapping[str, object],
+) -> str:
+    status = str(worker.get("status") or "unknown")
+    last_seen = str(worker.get("last_seen") or "unknown")
+    return f"{address} (status={status}, last_seen={last_seen})"

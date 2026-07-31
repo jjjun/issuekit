@@ -57,7 +57,16 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         default=50,
         help="Maximum checks to list or evaluate.",
     )
-    parser.add_argument("--offset", type=int, default=0, help="Checks to skip when listing.")
+    parser.add_argument(
+        "--offset",
+        type=int,
+        help="Checks to skip with --list; not valid with --once.",
+    )
+    parser.add_argument(
+        "--check",
+        type=int,
+        help="Evaluate this proposal-check id with --once.",
+    )
     parser.add_argument("--json", action="store_true", help="Print JSON output.")
     parser.set_defaults(func=run)
 
@@ -70,10 +79,19 @@ def run(args) -> int:
         print(str(exc), file=sys.stderr)
         return 1
     if args.list:
+        if args.check is not None:
+            print("--check requires --once and cannot be used with --list.", file=sys.stderr)
+            return 1
         return _run_list(args, config)
     if not args.once:
         print(
             "proposal-checks requires either --once to run one cycle or --list to inspect checks.",
+            file=sys.stderr,
+        )
+        return 1
+    if args.offset is not None:
+        print(
+            "--offset cannot be used with --once; use --check <id> to select a check.",
             file=sys.stderr,
         )
         return 1
@@ -95,6 +113,7 @@ def run(args) -> int:
             model=args.model,
             reasoning_effort=args.reasoning_effort,
             limit=int(args.limit),
+            check_id=args.check,
             runner_factory=AgentRunner,
             err=sys.stderr,
         )
@@ -124,7 +143,7 @@ def _run_list(args, config: IssuekitConfig) -> int:
             config,
             status=args.status,
             limit=int(args.limit),
-            offset=int(args.offset),
+            offset=int(args.offset or 0),
         )
         if args.json:
             print_json(checks)

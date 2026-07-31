@@ -21,6 +21,7 @@ from datetime import UTC, datetime
 
 from issuekit.config import IssuekitConfig
 from issuekit.core import Issue, worker_keys_from_row, worker_keys_match
+from issuekit.timestamps import parse_timestamp
 
 # The worker heartbeat posts at the configured worker_heartbeat_interval_sec,
 # which defaults to 60s. Wait for several missed beats before flagging so a
@@ -47,21 +48,6 @@ class StaleClaim:
     last_seen: str | None
     stale_seconds: float | None
     target_worker: str = ""
-
-
-def _parse_timestamp(value: object) -> datetime | None:
-    if not isinstance(value, str) or not value.strip():
-        return None
-    text = value.strip()
-    if text.endswith("Z"):
-        text = text[:-1] + "+00:00"
-    try:
-        parsed = datetime.fromisoformat(text)
-    except ValueError:
-        return None
-    if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=UTC)
-    return parsed.astimezone(UTC)
 
 
 def detect_stale_claims(
@@ -187,7 +173,7 @@ def _append_stale_worker(
         stale.append(StaleClaim(issue, no_worker_reason, worker, None, None, target_worker))
         return
     raw_last_seen = last_seen_by_worker[matched_key]
-    seen = _parse_timestamp(raw_last_seen)
+    seen = parse_timestamp(raw_last_seen)
     if seen is None:
         return
     age = (now - seen).total_seconds()

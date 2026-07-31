@@ -287,6 +287,13 @@ def run_outgoing(args) -> int:
             f"{proposal['id']}\t{proposal.get('status')}\t"
             f"{adopted_ref}\t{adopted_state}\t{blocking}\t{proposal.get('title')}"
         )
+        for check in proposal.get("proposal_checks", []):
+            waiting = check.get("waiting_seconds")
+            age = f" waiting={waiting}s" if waiting is not None else ""
+            print(
+                f"  check=#{check.get('id')} status={check.get('status')}"
+                f" target_worker={check.get('target_worker') or '-'}{age}"
+            )
     return 0
 
 

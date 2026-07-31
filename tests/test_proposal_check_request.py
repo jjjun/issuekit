@@ -145,7 +145,41 @@ def test_cli_request_requires_worker_when_multiple_are_registered(
     assert "Pass --worker with one of:" in error
     assert "alpha.target@main1" in error
     assert "beta.target@pike3" in error
+    assert "status=idle" in error
+    assert "last_seen=2026-01-01T00:00:00Z" in error
     assert not any(call["method"] == "create_proposal_check" for call in client.calls)
+
+
+def test_cli_request_warns_for_offline_worker_and_still_creates_check(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    client = _setup(tmp_path, monkeypatch, workers=(("worker", "machine"),))
+    client._workers["worker.target"]["status"] = "offline"
+    client._workers["worker.target"]["last_seen"] = "2026-07-01T00:00:00Z"
+
+    assert (
+        cli.main(
+            [
+                "proposal-check-request",
+                "--to",
+                "target",
+                "--proposal",
+                "7",
+                "--worker",
+                "worker.target@machine",
+            ]
+        )
+        == 0
+    )
+
+    captured = capsys.readouterr()
+    assert "Created proposal check #1" in captured.out
+    assert "may be unreachable" in captured.err
+    assert "status=offline" in captured.err
+    assert "last_seen=2026-07-01T00:00:00Z" in captured.err
+    assert client._proposal_checks[1]["status"] == "pending"
 
 
 def test_cli_request_normalizes_and_validates_explicit_worker(

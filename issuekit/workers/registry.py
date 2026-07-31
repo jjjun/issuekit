@@ -14,6 +14,7 @@ from issuekit.config import IssuekitConfig
 from issuekit.config.project_profile import load_project_profile
 from issuekit.core import Issue, worker_display_from_row, worker_keys_from_row, worker_keys_match
 from issuekit.store import get_store
+from issuekit.timestamps import parse_timestamp
 from issuekit.worker_constants import WORKER_HEARTBEAT_INTERVAL_SEC
 from issuekit.workers.identity import canonical_git_origin_url
 from issuekit.workflow import WorkflowError
@@ -493,7 +494,7 @@ def _prune_candidate(
     now: datetime,
     stale_after_sec: float,
 ) -> WorkerPruneCandidate | None:
-    seen = _parse_timestamp(worker.get("last_seen"))
+    seen = parse_timestamp(worker.get("last_seen"))
     if seen is None:
         return None
     age = (now - seen).total_seconds()
@@ -510,21 +511,6 @@ def _prune_candidate(
             if any(worker_keys_match(issue.target_worker, key) for key in keys):
                 return None
     return WorkerPruneCandidate(worker=dict(worker), stale_seconds=age)
-
-
-def _parse_timestamp(value: object) -> datetime | None:
-    if not isinstance(value, str) or not value.strip():
-        return None
-    text = value.strip()
-    if text.endswith("Z"):
-        text = text[:-1] + "+00:00"
-    try:
-        parsed = datetime.fromisoformat(text)
-    except ValueError:
-        return None
-    if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=UTC)
-    return parsed.astimezone(UTC)
 
 
 def _is_active_worker_claim(

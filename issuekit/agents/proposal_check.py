@@ -70,6 +70,7 @@ def run_proposal_check_cycle(
     model: str | None = None,
     reasoning_effort: str | None = None,
     limit: int = 50,
+    check_id: int | None = None,
     runner_factory=None,
     log: LogFn | None = None,
     err: TextIO | None = None,
@@ -84,6 +85,8 @@ def run_proposal_check_cycle(
         )
     if limit < 1:
         raise ValueError("limit must be greater than zero.")
+    if check_id is not None and check_id < 1:
+        raise ValueError("check id must be greater than zero.")
 
     err = err or sys.stderr
     emit = log or (lambda *args, **kwargs: None)
@@ -97,13 +100,16 @@ def run_proposal_check_cycle(
     )
 
     with api_client(config) as client:
-        checks = _poll_worker_checks(
-            client,
-            worker_keys,
-            status="pending",
-            limit=min(limit, 500),
-            offset=0,
-        )
+        if check_id is None:
+            checks = _poll_worker_checks(
+                client,
+                worker_keys,
+                status="pending",
+                limit=min(limit, 500),
+                offset=0,
+            )
+        else:
+            checks = [_select_worker_check(client, worker_keys, check_id)]
 
     decisions: list[ProposalCheckDecision] = []
     for check in checks:
@@ -208,12 +214,37 @@ def _poll_worker_checks(
     return _merge_worker_check_streams(streams)[offset : offset + limit]
 
 
-def _list_worker_checks(client, worker_keys: tuple[str, ...]) -> list[dict[str, Any]]:
+def _list_worker_checks(
+    client,
+    worker_keys: tuple[str, ...],
+    *,
+    status: str | None = None,
+) -> list[dict[str, Any]]:
     streams = [
-        client.list_proposal_checks(target_worker=target_worker, status=None)
+        client.list_proposal_checks(target_worker=target_worker, status=status)
         for target_worker in worker_keys
     ]
     return _merge_worker_check_streams(streams)
+
+
+def _select_worker_check(
+    client,
+    worker_keys: tuple[str, ...],
+    check_id: int,
+) -> dict[str, Any]:
+    for check in _list_worker_checks(client, worker_keys):
+        if int(check["id"]) != check_id:
+            continue
+        if check.get("status") != "pending":
+            raise WorkflowError(
+                f"Proposal check {check_id} is not pending (status={check.get('status')}).",
+                code="invalid_state",
+            )
+        return check
+    raise WorkflowError(
+        f"Proposal check {check_id} is not addressed to this worker.",
+        code="worker_mismatch",
+    )
 
 
 def _merge_worker_check_streams(

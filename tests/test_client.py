@@ -1606,6 +1606,27 @@ def test_client_proposal_check_paths_and_payloads() -> None:
                     "offset": 0,
                 },
             )
+        if (
+            request.method == "GET"
+            and request.url.path == "/api/issues/target/proposals/4/checks"
+        ):
+            return httpx.Response(
+                200,
+                json={
+                    "items": [
+                        {
+                            "id": 7,
+                            "target_project": "target",
+                            "proposal_id": 4,
+                            "target_worker": "m/r/w",
+                            "status": "pending",
+                        }
+                    ],
+                    "total": 1,
+                    "limit": 500,
+                    "offset": 0,
+                },
+            )
         if request.url.path.endswith("/result"):
             return httpx.Response(
                 200,
@@ -1641,6 +1662,7 @@ def test_client_proposal_check_paths_and_payloads() -> None:
     assert created["id"] == 7
     assert created["was_created"] is True
     assert client.poll_proposal_checks(target_worker="m/r/w", status="pending")[0]["id"] == 7
+    assert client.list_proposal_checks_for_proposal(4)[0]["id"] == 7
     result = client.post_proposal_check_result(
         7,
         project="target",
@@ -1662,6 +1684,12 @@ def test_client_proposal_check_paths_and_payloads() -> None:
             "/api/issues/proposal-checks",
             None,
             {"target_worker": ["m/r/w"], "status": ["pending"], "limit": ["50"], "offset": ["0"]},
+        ),
+        (
+            "GET",
+            "/api/issues/target/proposals/4/checks",
+            None,
+            {"limit": ["500"], "offset": ["0"]},
         ),
         (
             "POST",

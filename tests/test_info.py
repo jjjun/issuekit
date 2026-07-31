@@ -292,6 +292,39 @@ def test_info_json_lists_incoming_proposals(tmp_path: Path, monkeypatch, capsys)
     ]
 
 
+def test_info_reports_pending_proposal_check_count(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient(
+        proposals=[
+            {
+                "id": 9,
+                "origin": "source#9@abc",
+                "title": "Check this",
+                "body": "Body",
+            }
+        ]
+    )
+    client.create_proposal_check(
+        9,
+        target_worker="worker.demo@machine",
+        project="demo",
+    )
+    _configure_api(tmp_path, monkeypatch, client)
+    (tmp_path / "issuekit.local.toml").write_text(
+        "[worker]\nmachine_id = 'machine'\nrepo_id = 'demo'\nworker_id = 'worker'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    cli.main(["info", "--json"])
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["pendingProposalChecks"] == 1
+
+
 def test_info_text_lists_incoming_proposals(tmp_path: Path, monkeypatch, capsys) -> None:
     client = FakeIssuekitClient(
         proposals=[

@@ -579,6 +579,25 @@ class ProposalCheckResourceMixin:
             )
         )
 
+    def list_proposal_checks_for_proposal(
+        self,
+        proposal_id: int,
+        *,
+        project: str | None = None,
+        page_size: int = 500,
+    ) -> list[JsonDict]:
+        target_project = project or self.project
+        return list(
+            self._paginate(
+                f"/api/issues/{target_project}/proposals/{proposal_id}/checks",
+                collection=None,
+                params={},
+                page_label="Proposal check list response",
+                item_label="Proposal check response",
+                page_size=page_size,
+            )
+        )
+
     def poll_proposal_checks(
         self,
         *,

@@ -179,6 +179,32 @@ class FakeProposalSurface:
             ]
             return deepcopy(checks)
 
+    def list_proposal_checks_for_proposal(
+        self,
+        proposal_id: int,
+        *,
+        project: str | None = None,
+        page_size: int = 500,
+    ) -> list[JsonDict]:
+        if page_size <= 0:
+            raise ValueError("page_size must be greater than zero")
+        with self._lock:
+            target_project = project
+            self._record(
+                "list_proposal_checks_for_proposal",
+                number=proposal_id,
+                body={"project": project or self.project, "page_size": page_size},
+            )
+            checks = [
+                check
+                for check in sorted(
+                    self._proposal_checks.values(), key=lambda item: int(item["id"])
+                )
+                if int(check.get("proposal_id", 0)) == int(proposal_id)
+                and (target_project is None or check.get("target_project") == target_project)
+            ]
+            return deepcopy(checks)
+
     def poll_proposal_checks(
         self,
         *,

@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import date
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +20,7 @@ from issuekit.issues.dependencies import (
     dependency_refs,
 )
 from issuekit.store import get_store
+from issuekit.timestamps import parse_timestamp
 from issuekit.workflow import WorkflowError
 
 from .model import Proposal, ProposalError, origin_destination
@@ -299,6 +300,10 @@ def _with_adopted_issue_state(proposal: Mapping[str, Any], client: IssuekitClien
     enriched = dict(proposal)
     enriched["adopted_issue_status"] = None
     enriched["adopted_issue_stage"] = None
+    enriched["proposal_checks"] = [
+        _with_proposal_check_waiting_time(check)
+        for check in client.list_proposal_checks_for_proposal(int(proposal["id"]))
+    ]
     try:
         adopted_issue_number = int(proposal.get("adopted_issue_number"))
     except (TypeError, ValueError):
@@ -311,6 +316,19 @@ def _with_adopted_issue_state(proposal: Mapping[str, Any], client: IssuekitClien
         return enriched
     enriched["adopted_issue_status"] = issue.get("status")
     enriched["adopted_issue_stage"] = issue.get("stage")
+    return enriched
+
+
+def _with_proposal_check_waiting_time(check: Mapping[str, Any]) -> dict:
+    enriched = dict(check)
+    if check.get("status") != "pending":
+        return enriched
+    created_at = parse_timestamp(check.get("created_at"))
+    if created_at is not None:
+        enriched["waiting_seconds"] = max(
+            0,
+            int((datetime.now(UTC) - created_at).total_seconds()),
+        )
     return enriched
 
 

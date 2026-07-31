@@ -417,6 +417,70 @@ def test_cli_proposal_checks_prints_json(monkeypatch, tmp_path, capsys) -> None:
     assert client._proposal_checks[1]["status"] == "answered"
 
 
+def test_cli_proposal_checks_selects_exact_check(monkeypatch, tmp_path, capsys) -> None:
+    from issuekit import cli
+    from issuekit.commands import proposal_checks as proposal_checks_cmd
+
+    client, runner, _config = _setup(
+        monkeypatch,
+        tmp_path,
+        output=_check_block(verdict="reject", comment="Selected check only."),
+    )
+    second = client.create_proposal_check(
+        1,
+        target_worker="worker.target",
+        project="target",
+    )
+    monkeypatch.setattr(proposal_checks_cmd, "AgentRunner", lambda: runner)
+
+    assert cli.main(["proposal-checks", "--once", "--check", str(second["id"])]) == 0
+
+    assert client._proposal_checks[1]["status"] == "pending"
+    assert client._proposal_checks[2]["status"] == "answered"
+    assert "check=2" in capsys.readouterr().out
+    assert len(runner.calls) == 1
+
+
+def test_cli_proposal_checks_refuses_check_for_another_worker(
+    monkeypatch,
+    tmp_path,
+    capsys,
+) -> None:
+    from issuekit import cli
+    from issuekit.commands import proposal_checks as proposal_checks_cmd
+
+    client, runner, _config = _setup(
+        monkeypatch,
+        tmp_path,
+        output=_check_block(verdict="reject", comment="Must not run."),
+    )
+    other = client.create_proposal_check(
+        1,
+        target_worker="other.target@other-machine",
+        project="target",
+    )
+    monkeypatch.setattr(proposal_checks_cmd, "AgentRunner", lambda: runner)
+
+    assert cli.main(["proposal-checks", "--once", "--check", str(other["id"])]) == 1
+
+    assert "not addressed to this worker" in capsys.readouterr().err
+    assert runner.calls == []
+
+
+def test_cli_proposal_checks_rejects_offset_with_once(monkeypatch, tmp_path, capsys) -> None:
+    from issuekit import cli
+
+    _setup(
+        monkeypatch,
+        tmp_path,
+        output=_check_block(verdict="reject", comment="Must not run."),
+    )
+
+    assert cli.main(["proposal-checks", "--once", "--offset", "1"]) == 1
+
+    assert "use --check <id>" in capsys.readouterr().err
+
+
 def test_cli_proposal_checks_list_prints_table_without_agent(
     monkeypatch,
     tmp_path,
