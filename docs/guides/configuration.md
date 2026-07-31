@@ -161,6 +161,27 @@ worktree plus the review gate. Projects that require the strict sandbox can use
 the override above, or set `approval_flag = "--sandbox"` and
 `approval_value = "workspace-write"`.
 
+Codex implementation runs use `codex exec` by default. API-backed projects can
+opt into issue-owned App Server attempts for Codex implementer runs:
+
+```toml
+[tool.issuekit.agents.codex]
+runtime = "codex_app_server"
+lease_ttl_seconds = 60
+```
+
+This mode requires a registered worker and provider support for the
+`agent-sessions` v1 routes. It launches `codex app-server` over local JSONL
+stdio only; `app_server_argv` may add App Server arguments but cannot configure
+a network listener. The worker heartbeats below half the configured lease TTL,
+stores its lease token only in memory, journals commands before local side
+effects, uploads bounded redacted events, stops on fencing or claim loss, and
+seals the runtime before the existing submit-for-review workflow. A provider
+without the routes returns a clear unsupported-runtime error; issuekit does not
+silently fall back because the mode is explicit. App Server is Codex-only and
+implementer-only in this version. The `issuekit implement --follow` heartbeat
+applies only to the default exec runtime.
+
 The built-in Claude config bypasses permissions so headless implementer runs
 can execute shell commands unattended. Stricter projects can restore the old
 behavior with `[agents.claude] approval_value = "acceptEdits"` in repo or

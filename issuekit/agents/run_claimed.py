@@ -6,10 +6,12 @@ import sys
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from typing import TextIO
 
 from issuekit.agentrun import AgentPrompt, AgentResult, AgentRunner
+from issuekit.agents.app_server_runtime import AppServerAttemptRunner
 from issuekit.agents.registry import resolve_adapter
 from issuekit.config import IssuekitConfig
 from issuekit.core import Issue
@@ -124,7 +126,17 @@ def run_and_submit(
         body=issue.body,
         pointer=implementation_prompt(plan_path),
     )
-    runner_factory = runner_factory or AgentRunner
+    if runner_factory is None:
+        run_config = dict(config.agents).get(agent)
+        if run_config is not None and run_config.runtime == "codex_app_server":
+            runner_factory = partial(
+                AppServerAttemptRunner,
+                config,
+                issue,
+                recovery=prompt_suffix is not None,
+            )
+        else:
+            runner_factory = AgentRunner
     result = runner_factory().run(
         adapter,
         prompt,

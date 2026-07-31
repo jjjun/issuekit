@@ -15,6 +15,7 @@ import httpx
 
 from issuekit.core import is_valid_workflow_token
 
+from .agent_sessions import AgentSessionResourceMixin
 from .base import ClientTransportMixin
 from .resources import (
     IssueResourceMixin,
@@ -34,6 +35,7 @@ DEFAULT_HTTP_LIMITS = httpx.Limits(
 
 
 class IssuekitClient(
+    AgentSessionResourceMixin,
     IssueResourceMixin,
     WorkerResourceMixin,
     ProfileResourceMixin,

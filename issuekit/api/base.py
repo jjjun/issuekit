@@ -118,12 +118,14 @@ class ClientTransportMixin:
         *,
         json: JsonBody | None = None,
         params: Mapping[str, Any] | None = None,
+        headers: Mapping[str, str] | None = None,
     ) -> Any:
         response = self._authorized_response(
             method,
             path,
             json=json,
             params=params,
+            headers=headers,
         )
         return self._parse_response(response)
 
@@ -134,32 +136,34 @@ class ClientTransportMixin:
         *,
         json: JsonBody | None = None,
         params: Mapping[str, Any] | None = None,
+        headers: Mapping[str, str] | None = None,
     ) -> httpx.Response:
         warn_insecure_api_url(self.api_url)
         token = self.login()
+        request_headers = {
+            "Accept": "application/json",
+            "Authorization": f"Bearer {token}",
+        }
+        if headers:
+            request_headers.update(headers)
         response = self._send(
             method,
             path,
             json=json,
             params=dict(params) if params is not None else None,
-            headers={
-                "Accept": "application/json",
-                "Authorization": f"Bearer {token}",
-            },
+            headers=request_headers,
         )
         if response.status_code == 401:
             if not self.username or not self.password:
                 raise WorkflowError(_login_guidance(self.api_url), code="unauthorized")
             token = self.login(force=True)
+            request_headers["Authorization"] = f"Bearer {token}"
             response = self._send(
                 method,
                 path,
                 json=json,
                 params=dict(params) if params is not None else None,
-                headers={
-                    "Accept": "application/json",
-                    "Authorization": f"Bearer {token}",
-                },
+                headers=request_headers,
             )
         return response
 

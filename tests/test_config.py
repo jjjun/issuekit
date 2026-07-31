@@ -1116,6 +1116,67 @@ def test_load_config_reads_claude_reasoning_effort(tmp_path: Path) -> None:
     assert dict(load_config(tmp_path).agents)["claude"].reasoning_effort == "medium"
 
 
+def test_load_config_codex_app_server_is_explicit_opt_in(tmp_path: Path) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        (
+            "[agents.codex]\n"
+            "runtime = 'codex_app_server'\n"
+            "app_server_argv = ['app-server', '--listen', 'stdio://']\n"
+            "lease_ttl_seconds = 90\n"
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    codex = dict(load_config(tmp_path).agents)["codex"]
+
+    assert codex.runtime == "codex_app_server"
+    assert codex.app_server_argv == ("app-server", "--listen", "stdio://")
+    assert codex.lease_ttl_seconds == 90
+
+
+def test_load_config_codex_exec_remains_default(tmp_path: Path) -> None:
+    codex = dict(load_config(tmp_path).agents)["codex"]
+
+    assert codex.runtime == "exec"
+
+
+@pytest.mark.parametrize(
+    ("config_text", "message"),
+    [
+        ("runtime = 'remote'\n", "Agent runtime"),
+        ("lease_ttl_seconds = 14\n", "lease_ttl_seconds"),
+        ("lease_ttl_seconds = 301\n", "lease_ttl_seconds"),
+        ("app_server_argv = ['app-server', '--listen', 'ws://127.0.0.1:1']\n", "stdio"),
+        ("app_server_argv = ['exec']\n", "app-server"),
+    ],
+)
+def test_load_config_rejects_invalid_app_server_settings(
+    tmp_path: Path, config_text: str, message: str
+) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        f"[agents.codex]\n{config_text}",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    with pytest.raises(ValueError, match=message):
+        load_config(tmp_path)
+
+
+def test_load_config_rejects_app_server_runtime_for_non_codex_agent(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "[agents.claude]\nruntime = 'codex_app_server'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    with pytest.raises(ValueError, match="only for agents.codex"):
+        load_config(tmp_path)
+
+
 def test_load_config_reads_reasoning_effort_without_effort_argv(
     tmp_path: Path,
 ) -> None:

@@ -1,5 +1,5 @@
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from issuekit import cli
@@ -7,6 +7,8 @@ from issuekit import store as store_module
 from issuekit.agentrun import AgentPrompt
 from issuekit.agents import run_claimed as run_claimed_agent
 from issuekit.agents.run_claimed import review_feedback_prompt
+from issuekit.config import IssuekitConfig
+from issuekit.core import Issue
 from issuekit.gitutil import GitStatusEntry
 from issuekit.testing import FakeIssuekitClient
 from tests.issue_helpers import api_issue
@@ -97,6 +99,118 @@ class CloseTrackingClient(FakeIssuekitClient):
 
     def close(self) -> None:
         self.close_count += 1
+
+
+class SelectionAdapter:
+    def effective_runtime(self) -> tuple[None, None]:
+        return None, None
+
+
+def _claimed_issue() -> Issue:
+    return Issue(
+        id=1,
+        ref="demo#1",
+        title="First",
+        issue_status="active",
+        created="2026-01-01",
+        completed="",
+        priority="medium",
+        assignee="codex",
+        stage="implementing",
+        implementer="codex",
+        author="claude",
+        body="# Issue #1: First\n",
+        metadata={},
+    )
+
+
+def _stub_implementation_snapshot(
+    tmp_path: Path,
+) -> run_claimed_agent.ImplementationChangeSnapshot:
+    return run_claimed_agent.ImplementationChangeSnapshot(
+        root=tmp_path,
+        status_entries=(),
+        changed_paths=(),
+        readable_paths=(),
+    )
+
+
+def test_run_and_submit_uses_agent_runner_by_default(
+    tmp_path: Path, monkeypatch
+) -> None:
+    constructed: list[str] = []
+
+    class SelectedAgentRunner(FakeRunner):
+        def __init__(self) -> None:
+            constructed.append("exec")
+
+        def run(self, *args, **kwargs) -> FakeResult:
+            return FakeResult(exit_code=1, status_short=None)
+
+    monkeypatch.setattr(run_claimed_agent, "AgentRunner", SelectedAgentRunner)
+    monkeypatch.setattr(
+        run_claimed_agent, "resolve_adapter", lambda *args, **kwargs: SelectionAdapter()
+    )
+    monkeypatch.setattr(
+        run_claimed_agent,
+        "_implementation_change_snapshot",
+        lambda cwd: _stub_implementation_snapshot(tmp_path),
+    )
+
+    outcome = run_claimed_agent.run_and_submit(
+        _claimed_issue(),
+        agent="codex",
+        config=IssuekitConfig(),
+        cwd=tmp_path,
+        issues_dir=tmp_path / "issues",
+        timeout=10,
+    )
+
+    assert outcome.exit_code == 1
+    assert constructed == ["exec"]
+
+
+def test_run_and_submit_selects_app_server_runner_when_opted_in(
+    tmp_path: Path, monkeypatch
+) -> None:
+    constructed: list[tuple[IssuekitConfig, Issue, bool]] = []
+
+    class SelectedAppServerRunner(FakeRunner):
+        def __init__(
+            self, config: IssuekitConfig, issue: Issue, *, recovery: bool
+        ) -> None:
+            constructed.append((config, issue, recovery))
+
+        def run(self, *args, **kwargs) -> FakeResult:
+            return FakeResult(exit_code=1, status_short=None)
+
+    codex_config = replace(
+        dict(IssuekitConfig().agents)["codex"], runtime="codex_app_server"
+    )
+    config = IssuekitConfig(agents=(("codex", codex_config),))
+    monkeypatch.setattr(
+        run_claimed_agent, "AppServerAttemptRunner", SelectedAppServerRunner
+    )
+    monkeypatch.setattr(
+        run_claimed_agent, "resolve_adapter", lambda *args, **kwargs: SelectionAdapter()
+    )
+    monkeypatch.setattr(
+        run_claimed_agent,
+        "_implementation_change_snapshot",
+        lambda cwd: _stub_implementation_snapshot(tmp_path),
+    )
+
+    outcome = run_claimed_agent.run_and_submit(
+        _claimed_issue(),
+        agent="codex",
+        config=config,
+        cwd=tmp_path,
+        issues_dir=tmp_path / "issues",
+        timeout=10,
+    )
+
+    assert outcome.exit_code == 1
+    assert constructed == [(config, _claimed_issue(), False)]
 
 
 def _configure_api(

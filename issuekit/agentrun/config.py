@@ -11,6 +11,9 @@ class AgentRunConfig:
 
     binary: str
     adapter: str | None = None
+    runtime: str = "exec"
+    app_server_argv: tuple[str, ...] = ("app-server",)
+    lease_ttl_seconds: int = 60
     known_paths: tuple[str, ...] = ()
     headless_argv: tuple[str, ...] = ()
     resumable: bool = False

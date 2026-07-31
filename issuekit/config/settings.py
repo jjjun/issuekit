@@ -809,6 +809,8 @@ def _load_agents(
             continue
         base = default_by_name.get(name, AgentRunConfig(binary=name))
         configured[name] = replace(base, **_agent_run_config_overrides(cfg))
+        if configured[name].runtime == "codex_app_server" and name != "codex":
+            raise ValueError("codex_app_server runtime is supported only for agents.codex.")
         policy = default_policies.get(name, AgentPolicy())
         configured_policies[name] = replace(policy, **_agent_policy_overrides(cfg))
         configured_role_overlays[name] = _agent_role_overlays(cfg, agent_name=name)
@@ -956,6 +958,9 @@ def _agent_run_config_overrides(cfg: dict[str, object]) -> dict[str, object]:
     loaders = {
         "binary": str,
         "adapter": optional_str,
+        "runtime": str,
+        "app_server_argv": _string_tuple,
+        "lease_ttl_seconds": int,
         "known_paths": _string_tuple,
         "headless_argv": _string_tuple,
         "resumable": _bool_value,
@@ -978,7 +983,31 @@ def _agent_run_config_overrides(cfg: dict[str, object]) -> dict[str, object]:
         value = cfg.get(key, _SENTINEL)
         if value is not _SENTINEL:
             overrides[key] = loader(value)
+    runtime = overrides.get("runtime")
+    if runtime is not None and runtime not in {"exec", "codex_app_server"}:
+        raise ValueError(
+            "Agent runtime must be 'exec' or 'codex_app_server'."
+        )
+    lease_ttl = overrides.get("lease_ttl_seconds")
+    if lease_ttl is not None and not 15 <= lease_ttl <= 300:
+        raise ValueError("lease_ttl_seconds must be between 15 and 300.")
+    app_server_argv = overrides.get("app_server_argv")
+    if app_server_argv is not None:
+        _validate_app_server_argv(app_server_argv)
     return overrides
+
+
+def _validate_app_server_argv(value: object) -> None:
+    argv = tuple(str(item) for item in value)
+    if not argv or argv[0] != "app-server":
+        raise ValueError("app_server_argv must launch 'app-server'.")
+    for index, entry in enumerate(argv):
+        if entry == "--listen":
+            listener = argv[index + 1] if index + 1 < len(argv) else ""
+            if listener != "stdio://":
+                raise ValueError("app_server_argv may listen only on stdio://.")
+        elif entry.startswith("--listen=") and entry != "--listen=stdio://":
+            raise ValueError("app_server_argv may listen only on stdio://.")
 
 
 def _agent_policy_overrides(cfg: dict[str, object]) -> dict[str, object]:
