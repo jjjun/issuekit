@@ -176,6 +176,9 @@ class NegotiationStore(Protocol):
     def set_issue_refs(self, thread_id: str, refs: NegotiationIssueRefs) -> None:
         """Record implementation issue refs for a finalized thread."""
 
+    def settle_thread_members(self, thread_id: str) -> None:
+        """Discard pending proposal rows that represent negotiation turns."""
+
     def cancel_thread(self, thread_id: str) -> None:
         """Cancel a proposal negotiation without discarding its source proposal."""
 

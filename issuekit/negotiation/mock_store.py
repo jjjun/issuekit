@@ -236,6 +236,9 @@ class MockNegotiationStore:
         self._issue_refs[thread_id] = refs
         self._persist()
 
+    def settle_thread_members(self, thread_id: str) -> None:
+        self._ensure_thread(thread_id)
+
     def cancel_thread(self, thread_id: str) -> None:
         self._ensure_thread(thread_id)
         if thread_id in self._issue_refs:

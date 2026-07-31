@@ -19,7 +19,13 @@ from issuekit.commands.negotiate import (
 from issuekit.config import IssuekitConfig
 from issuekit.config.refs import add_ref
 from issuekit.core import Issue
-from issuekit.negotiation import ApiNegotiationStore, MockNegotiationStore, ThreadStatus, Verdict
+from issuekit.negotiation import (
+    ApiNegotiationStore,
+    MockNegotiationStore,
+    NegotiationIssueRefs,
+    ThreadStatus,
+    Verdict,
+)
 from issuekit.negotiation.engine import (
     ApiIssueCreator,
     entry_origin,
@@ -138,6 +144,16 @@ class CloseTrackingNegotiationStore(MockNegotiationStore):
 
     def close(self) -> None:
         self.close_count += 1
+
+
+class SettlementTrackingNegotiationStore(MockNegotiationStore):
+    def __init__(self) -> None:
+        super().__init__(None)
+        self.settled_thread_ids: list[str] = []
+
+    def settle_thread_members(self, thread_id: str) -> None:
+        super().settle_thread_members(thread_id)
+        self.settled_thread_ids.append(thread_id)
 
 
 class CloseTrackingClient(FakeIssuekitClient):
@@ -642,7 +658,7 @@ def test_negotiate_passes_single_line_pointer_prompt_and_writes_full_plan(tmp_pa
 
 
 def test_negotiate_blocked_path_stops_immediately(tmp_path) -> None:
-    store = MockNegotiationStore(None)
+    store = SettlementTrackingNegotiationStore()
     runner = CannedRunner(
         [
             _block(side="frontend", verdict="propose", contract="GET /items"),
@@ -668,6 +684,7 @@ def test_negotiate_blocked_path_stops_immediately(tmp_path) -> None:
     assert result.round_count == 2
     assert len(runner.calls) == 2
     assert store.get_status(result.thread_id) is ThreadStatus.blocked
+    assert store.settled_thread_ids == [result.thread_id]
 
 
 def test_negotiate_escalates_at_max_rounds_without_status_change(tmp_path) -> None:
@@ -814,6 +831,37 @@ def _agreed_store(contract: str = "GET /items 200") -> tuple[MockNegotiationStor
     return store, first.thread_id
 
 
+def _api_agreed_store(
+    client: FakeIssuekitClient | None = None,
+) -> tuple[ApiNegotiationStore, FakeIssuekitClient, str, list[int]]:
+    api_client = client or FakeIssuekitClient()
+    store = ApiNegotiationStore(
+        IssuekitConfig(api_url="https://mine.example", project="frontend"),
+        client=api_client,
+    )
+    first = store.create_thread(
+        side="consumer",
+        verdict=Verdict.agree,
+        title="consumer agree",
+        body="Accepted.",
+        origin="frontend#108@consumer:round-1",
+        contract="GET /items 200",
+    )
+    second = store.append_entry(
+        first.thread_id,
+        side="provider",
+        verdict=Verdict.agree,
+        title="provider agree",
+        body="Accepted.",
+        origin="frontend#108@provider:round-2",
+        contract="GET /items 200",
+    )
+    store.set_status(first.thread_id, ThreadStatus.agreed)
+    assert first.id is not None
+    assert second.id is not None
+    return store, api_client, first.thread_id, [first.id, second.id]
+
+
 def test_finalize_negotiation_creates_cross_linked_issues() -> None:
     store, thread_id = _agreed_store()
     creator = MockIssueCreator()
@@ -842,6 +890,78 @@ def test_finalize_negotiation_creates_cross_linked_issues() -> None:
     assert "Provider issue: backend#1" in frontend.body
     assert "Originating issue: frontend#108" in backend.body
     assert "Originating issue: frontend#108" in frontend.body
+
+
+def test_finalize_negotiation_settles_issue_seeded_thread_members() -> None:
+    store, client, thread_id, proposal_ids = _api_agreed_store()
+
+    result = finalize_negotiation(
+        thread_id=thread_id,
+        to_project="backend",
+        author_agent="codex",
+        priority="medium",
+        config=IssuekitConfig(project="frontend"),
+        store=store,
+        issue_creator=MockIssueCreator(),
+    )
+
+    assert result.created is True
+    assert [client.get_proposal(proposal_id)["status"] for proposal_id in proposal_ids] == [
+        "discarded",
+        "discarded",
+    ]
+
+
+def test_finalize_negotiation_retry_settles_leftover_members() -> None:
+    store, client, thread_id, proposal_ids = _api_agreed_store()
+    refs = NegotiationIssueRefs(
+        backend_issue_ref="backend#4",
+        frontend_issue_ref="frontend#8",
+    )
+    store.set_issue_refs(thread_id, refs)
+
+    result = finalize_negotiation(
+        thread_id=thread_id,
+        to_project="backend",
+        author_agent="codex",
+        priority="medium",
+        config=IssuekitConfig(project="frontend"),
+        store=store,
+        issue_creator=MockIssueCreator(),
+    )
+
+    assert result.created is False
+    assert result.backend_issue_ref == refs.backend_issue_ref
+    assert result.frontend_issue_ref == refs.frontend_issue_ref
+    assert [client.get_proposal(proposal_id)["status"] for proposal_id in proposal_ids] == [
+        "discarded",
+        "discarded",
+    ]
+
+
+def test_finalize_negotiation_discard_failure_warns_and_returns_refs(capsys) -> None:
+    class FailingDiscardClient(FakeIssuekitClient):
+        def discard_proposal(self, proposal_id: int):
+            if proposal_id == 2:
+                raise WorkflowError("discard failed")
+            return super().discard_proposal(proposal_id)
+
+    store, _, thread_id, _ = _api_agreed_store(FailingDiscardClient())
+
+    result = finalize_negotiation(
+        thread_id=thread_id,
+        to_project="backend",
+        author_agent="codex",
+        priority="medium",
+        config=IssuekitConfig(project="frontend"),
+        store=store,
+        issue_creator=MockIssueCreator(),
+    )
+
+    assert result.created is True
+    assert result.backend_issue_ref == "backend#1"
+    assert result.frontend_issue_ref == "frontend#1"
+    assert "proposal ids: 2" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize(
@@ -1363,6 +1483,39 @@ def test_negotiate_finalize_closes_negotiation_store_on_error(
     assert exit_code == 1
     assert "finalize failed" in capsys.readouterr().err
     assert store.close_count == 1
+
+
+def test_negotiate_cancel_settles_members_and_is_idempotent(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    from issuekit.commands import negotiate
+
+    store = SettlementTrackingNegotiationStore()
+    first = store.create_thread(
+        side="consumer",
+        verdict=Verdict.propose,
+        title="consumer propose",
+        body="Start.",
+        origin="consumer#108@consumer:round-1",
+        contract="GET /items",
+    )
+    (tmp_path / "issuekit.toml").write_text(
+        "project = 'consumer'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setattr(negotiate, "get_negotiation_store", lambda *args, **kwargs: store)
+    monkeypatch.chdir(tmp_path)
+
+    args = ["negotiate", "--cancel", first.thread_id, "--to", "provider", "--json"]
+    assert cli.main(args) == 0
+    assert cli.main(args) == 0
+
+    assert store.get_status(first.thread_id) is ThreadStatus.cancelled
+    assert store.settled_thread_ids == [first.thread_id, first.thread_id]
+    assert capsys.readouterr().out.count('"status": "cancelled"') == 2
 
 
 def test_threads_cli_closes_negotiation_store(tmp_path, monkeypatch, capsys) -> None:

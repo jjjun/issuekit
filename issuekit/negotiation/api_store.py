@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from typing import Any
 
 from issuekit.api import IssuekitClient
@@ -246,6 +247,37 @@ class ApiNegotiationStore:
             raise WorkflowError(
                 "Proposal thread response did not confirm the requested issue refs.",
                 code="server_schema_drift",
+            )
+
+    def settle_thread_members(self, thread_id: str) -> None:
+        failed_ids: list[int] = []
+        try:
+            entries = self.get_thread(thread_id)
+        except WorkflowError as exc:
+            print(
+                f"Warning: could not settle negotiation thread {thread_id} members: {exc}",
+                file=sys.stderr,
+            )
+            return
+        for entry in entries:
+            if entry.id is None:
+                continue
+            try:
+                self.client.discard_proposal(entry.id)
+            except WorkflowError:
+                try:
+                    proposal = self.client.get_proposal(entry.id)
+                except WorkflowError:
+                    failed_ids.append(entry.id)
+                    continue
+                if proposal.get("status") != "discarded":
+                    failed_ids.append(entry.id)
+        if failed_ids:
+            proposal_ids = ", ".join(str(proposal_id) for proposal_id in failed_ids)
+            print(
+                f"Warning: could not settle negotiation thread {thread_id} "
+                f"proposal ids: {proposal_ids}",
+                file=sys.stderr,
             )
 
     def cancel_thread(self, thread_id: str) -> None:

@@ -141,7 +141,9 @@ def run(args) -> int:
             target_project = _proposal_target(args.from_proposal, args.to)
             target_config = replace(config, project=target_project)
             with get_negotiation_store(target_config, use_mock=False) as store:
-                store.cancel_thread(args.cancel)
+                if store.get_status(args.cancel) is not ThreadStatus.cancelled:
+                    store.cancel_thread(args.cancel)
+                store.settle_thread_members(args.cancel)
             if args.json:
                 print_json({"thread_id": args.cancel, "status": "cancelled"})
             else:

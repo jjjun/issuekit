@@ -253,6 +253,7 @@ def finalize_negotiation(
 
     existing_refs = store.get_issue_refs(thread_id)
     if existing_refs is not None:
+        store.settle_thread_members(thread_id)
         return NegotiationFinalizationResult(
             thread_id=thread_id,
             backend_issue_ref=existing_refs.backend_issue_ref,
@@ -306,6 +307,7 @@ def finalize_negotiation(
                 contract=contract,
             ),
         )
+        store.settle_thread_members(thread_id)
         return NegotiationFinalizationResult(
             thread_id=thread_id,
             backend_issue_ref=refs.backend_issue_ref,
@@ -354,6 +356,7 @@ def finalize_negotiation(
         frontend_issue_ref=consumer.ref,
     )
     store.set_issue_refs(thread_id, refs)
+    store.settle_thread_members(thread_id)
     return NegotiationFinalizationResult(
         thread_id=thread_id,
         backend_issue_ref=refs.backend_issue_ref,
@@ -742,6 +745,7 @@ def _set_terminal_status(
         store.set_status(thread_id, ThreadStatus.agreed, agreed_contract=_latest_contract(thread))
     elif outcome == "blocked":
         store.set_status(thread_id, ThreadStatus.blocked)
+        store.settle_thread_members(thread_id)
 
 
 def _set_terminal_status_if_converged(
