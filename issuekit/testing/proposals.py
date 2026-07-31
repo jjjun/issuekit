@@ -14,6 +14,58 @@ JsonDict = dict[str, Any]
 
 
 class FakeProposalSurface:
+    def begin_proposal_negotiation(
+        self,
+        proposal_id: int,
+        *,
+        initiator_project: str,
+        initiator_side: str,
+    ) -> JsonDict:
+        with self._lock:
+            self._record(
+                "begin_proposal_negotiation",
+                number=proposal_id,
+                body={
+                    "initiator_project": initiator_project,
+                    "initiator_side": initiator_side,
+                },
+            )
+            proposal = self._find_proposal(proposal_id)
+            thread_id = proposal.get("negotiation_thread_id")
+            if thread_id is not None:
+                thread = self._find_thread(int(thread_id))
+                if (
+                    thread.get("initiator_project") != initiator_project
+                    or thread.get("initiator_side") != initiator_side
+                ):
+                    raise WorkflowError(
+                        f"Proposal #{proposal_id} is already linked to a different negotiation.",
+                        code="invalid_transition",
+                    )
+                return {"proposal": deepcopy(proposal), "thread": deepcopy(thread)}
+            if proposal.get("status") != "pending":
+                raise WorkflowError(
+                    f"Proposal #{proposal_id} has already been {proposal.get('status')}.",
+                    code="invalid_transition",
+                )
+            origin = str(proposal.get("origin") or "")
+            if not origin.startswith(f"{initiator_project}#"):
+                raise WorkflowError(
+                    f"Proposal #{proposal_id} was not authored by {initiator_project}.",
+                    code="invalid_proposal_origin",
+                )
+            thread = self._allocate_thread()
+            thread["target_project"] = proposal["target_project"]
+            thread["source_proposal_id"] = proposal_id
+            thread["source_proposal_ref"] = (
+                f"{proposal.get('target_project')}#proposal:{proposal_id}"
+            )
+            thread["initiator_project"] = initiator_project
+            thread["initiator_side"] = initiator_side
+            proposal["negotiation_thread_id"] = thread["id"]
+            proposal["negotiation_status"] = "negotiating"
+            return {"proposal": deepcopy(proposal), "thread": deepcopy(thread)}
+
     def create_proposal(
         self,
         *,
@@ -374,6 +426,9 @@ class FakeProposalSurface:
                 thread["status"] = status
                 if status == "agreed":
                     thread["agreed_contract"] = agreed_contract or self._latest_agree_contract(thread_id)
+                if thread.get("source_proposal_id") is not None:
+                    proposal = self._find_proposal(int(thread["source_proposal_id"]))
+                    proposal["negotiation_status"] = status
             elif agreed_contract is not None:
                 raise WorkflowError(
                     "agreed_contract can only be set with a status transition.",
@@ -384,6 +439,108 @@ class FakeProposalSurface:
             if frontend_issue_ref is not None:
                 thread["frontend_issue_ref"] = frontend_issue_ref
             thread["updated_at"] = date.today().isoformat()
+            return deepcopy(thread)
+
+    def cancel_proposal_negotiation(self, thread_id: int) -> JsonDict:
+        with self._lock:
+            self._record("cancel_proposal_negotiation", number=thread_id)
+            thread = self._find_thread(thread_id)
+            if thread.get("source_proposal_id") is None:
+                raise WorkflowError(
+                    f"Negotiation thread {thread_id} was not seeded by a proposal.",
+                    code="invalid_transition",
+                )
+            if thread.get("backend_issue_ref") or thread.get("frontend_issue_ref"):
+                raise WorkflowError(
+                    f"Negotiation thread {thread_id} has already been finalized.",
+                    code="invalid_transition",
+                )
+            thread["status"] = "cancelled"
+            proposal = self._find_proposal(int(thread["source_proposal_id"]))
+            proposal["negotiation_status"] = "cancelled"
+            return deepcopy(thread)
+
+    def finalize_proposal_negotiation(
+        self,
+        thread_id: int,
+        *,
+        consumer_project: str,
+        author: str,
+        priority: str,
+        provider_title: str,
+        provider_body: str,
+        consumer_title: str,
+        consumer_body: str,
+    ) -> JsonDict:
+        with self._lock:
+            request = {
+                "consumer_project": consumer_project,
+                "author": author,
+                "priority": priority,
+                "provider_title": provider_title,
+                "provider_body": provider_body,
+                "consumer_title": consumer_title,
+                "consumer_body": consumer_body,
+            }
+            self._record(
+                "finalize_proposal_negotiation",
+                number=thread_id,
+                body=deepcopy(request),
+            )
+            thread = self._find_thread(thread_id)
+            if thread.get("status") != "agreed":
+                raise WorkflowError(
+                    f"Negotiation thread {thread_id} is {thread.get('status')}, not agreed.",
+                    code="invalid_transition",
+                )
+            if thread.get("backend_issue_ref") and thread.get("frontend_issue_ref"):
+                return deepcopy(thread)
+            proposal = self._find_proposal(int(thread["source_proposal_id"]))
+            provider = self._store_issue(
+                {
+                    "project": proposal["target_project"],
+                    "title": provider_title,
+                    "body": provider_body,
+                    "priority": priority,
+                    "author": author,
+                    "origin": proposal["origin"],
+                    "origin_proposal_id": str(proposal["id"]),
+                    "source_proposal_id": proposal["id"],
+                    "source_proposal": {
+                        "id": proposal["id"],
+                        "origin": proposal["origin"],
+                        "title": proposal["title"],
+                    },
+                },
+                allocate=True,
+            )
+            provider_ref = f"{proposal['target_project']}#{provider['id']}"
+            consumer = self._store_issue(
+                {
+                    "project": consumer_project,
+                    "title": consumer_title,
+                    "body": consumer_body.replace(
+                        "- Provider issue: pending",
+                        f"- Provider issue: {provider_ref}",
+                    ),
+                    "priority": priority,
+                    "author": author,
+                    "depends_on": [
+                        f"{proposal['target_project']}#issue:{provider['id']}"
+                    ],
+                },
+                allocate=True,
+            )
+            consumer_ref = f"{consumer_project}#{consumer['id']}"
+            provider["body"] = provider["body"].replace(
+                "- Consumer issue: pending",
+                f"- Consumer issue: {consumer_ref}",
+            )
+            thread["backend_issue_ref"] = provider_ref
+            thread["frontend_issue_ref"] = consumer_ref
+            proposal["status"] = "adopted"
+            proposal["adopted_issue_number"] = provider["id"]
+            proposal["negotiation_status"] = "finalized"
             return deepcopy(thread)
 
     def get_proposal(self, proposal_id: int) -> JsonDict:
@@ -403,6 +560,14 @@ class FakeProposalSurface:
                     f"Proposal #{proposal_id} has already been {proposal.get('status')}.",
                     code="invalid_transition",
                 )
+            thread_id = proposal.get("negotiation_thread_id")
+            if thread_id is not None:
+                thread = self._find_thread(int(thread_id))
+                if thread.get("status") != "cancelled":
+                    raise WorkflowError(
+                        f"Proposal #{proposal_id} is locked by negotiation thread {thread_id}.",
+                        code="proposal_negotiating",
+                    )
             issue = self._store_issue(
                 {
                     "title": proposal["title"],
@@ -428,6 +593,14 @@ class FakeProposalSurface:
                     f"Proposal #{proposal_id} has already been {proposal.get('status')}.",
                     code="invalid_transition",
                 )
+            thread_id = proposal.get("negotiation_thread_id")
+            if thread_id is not None:
+                thread = self._find_thread(int(thread_id))
+                if thread.get("status") != "cancelled":
+                    raise WorkflowError(
+                        f"Proposal #{proposal_id} is locked by negotiation thread {thread_id}.",
+                        code="proposal_negotiating",
+                    )
             proposal["status"] = "discarded"
             proposal["updated"] = date.today().isoformat()
             return deepcopy(proposal)
@@ -479,6 +652,8 @@ class FakeProposalSurface:
         stored.setdefault("side", None)
         stored.setdefault("verdict", None)
         stored.setdefault("contract", None)
+        stored.setdefault("negotiation_thread_id", None)
+        stored.setdefault("negotiation_status", None)
         self._proposals[proposal_id] = stored
         if stored.get("thread_id") is not None:
             thread_id = int(stored["thread_id"])
@@ -525,6 +700,10 @@ class FakeProposalSurface:
         stored.setdefault("agreed_contract", None)
         stored.setdefault("backend_issue_ref", None)
         stored.setdefault("frontend_issue_ref", None)
+        stored.setdefault("source_proposal_id", None)
+        stored.setdefault("source_proposal_ref", None)
+        stored.setdefault("initiator_project", None)
+        stored.setdefault("initiator_side", None)
         stored.setdefault("created_at", date.today().isoformat())
         stored.setdefault("updated_at", stored["created_at"])
         self._threads[thread_id] = stored

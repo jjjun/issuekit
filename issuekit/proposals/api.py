@@ -319,6 +319,8 @@ def _is_own_origin(origin: object, project: str) -> bool:
 
 
 def matches_triage_policy(proposal: Mapping[str, Any], config: IssuekitConfig) -> bool:
+    if proposal.get("negotiation_status") in {"negotiating", "agreed", "blocked"}:
+        return False
     origin = proposal.get("origin")
     if not isinstance(origin, str):
         return False

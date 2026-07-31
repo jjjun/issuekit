@@ -17,11 +17,11 @@ from issuekit.agentrun.app_server import (
     AppServerError,
     AppServerTransport,
     CommandJournal,
-    is_feature_unavailable,
     normalize_notification,
 )
 from issuekit.agentrun.runner import AgentPrompt, AgentResult
 from issuekit.api import IssuekitClient
+from issuekit.api.features import is_feature_unavailable
 from issuekit.config import IssuekitConfig
 from issuekit.core import Issue
 from issuekit.workflow import WorkflowError

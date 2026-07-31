@@ -44,7 +44,9 @@
 | `issuekit add-ref <name> --path <repo> [--scope local\|workspace]` | Register an optional local project alias. |
 | `issuekit list-refs` | List effective local project aliases and their source. |
 | `issuekit negotiate --from-issue <id> --to <project> --initiator-side <provider\|consumer> --provider-agent <agent> --consumer-agent <agent> [--counterpart-ref <ref>]` | Drive a bounded cross-project design negotiation. Agents receive read-only instructions; issuekit rejects worktree, HEAD, and branch changes left by a turn. See [Cross-project negotiation](negotiation.md). |
-| `issuekit threads [<thread-id>] [--status negotiating\|agreed\|blocked] [--mock] [--json]` | Inspect or list cross-project negotiation threads; see [Cross-project negotiation](negotiation.md). |
+| `issuekit negotiate --from-proposal <project>#proposal:<id> --initiator-side consumer --provider-agent <agent> --consumer-agent <agent>` | Lock a pending outbound proposal and use its title and body to seed a negotiation. |
+| `issuekit negotiate --cancel <thread-id> --from-proposal <project>#proposal:<id>` | Cancel a proposal-seeded negotiation and return its source proposal to recoverable pending triage. |
+| `issuekit threads [<thread-id>] [--status negotiating\|agreed\|blocked\|cancelled] [--mock] [--json]` | Inspect or list cross-project negotiation threads; see [Cross-project negotiation](negotiation.md). |
 | `issuekit propose --to <project> --title "..."` | Send a proposal to a project API inbox. |
 | `issuekit incoming [--json]` | List inbound API proposals. |
 | `issuekit outgoing --to <project> [--id <id>] [--status <status>]` | List proposals this project sent to a target project's inbox (read-only, self-scoped). |

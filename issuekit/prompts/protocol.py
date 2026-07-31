@@ -119,6 +119,9 @@ read-only negotiation thread inspection. Both sides receive read-only
 instructions; issuekit rejects worktree changes left by a turn and HEAD or
 branch changes, including commits. With `--counterpart-ref <ref>`, the
 counterpart side runs in that ref's checkout so it can inspect the real code.
+A pending outbound proposal can seed this workflow with `issuekit negotiate
+--from-proposal <project>#proposal:<id> --initiator-side consumer`; the target
+proposal is locked until atomic finalization or explicit `--cancel`.
 
 Local issues vs. cross-project proposals:
 

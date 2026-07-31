@@ -632,6 +632,24 @@ class ProposalCheckResourceMixin:
 
 
 class ProposalResourceMixin:
+    def begin_proposal_negotiation(
+        self,
+        proposal_id: int,
+        *,
+        initiator_project: str,
+        initiator_side: str,
+    ) -> JsonDict:
+        payload = self._request(
+            "POST",
+            f"/{proposal_id}/negotiate",
+            collection="proposals",
+            json={
+                "initiator_project": initiator_project,
+                "initiator_side": initiator_side,
+            },
+        )
+        return ensure_dict(payload, "Begin proposal negotiation response")
+
     def create_proposal(
         self,
         *,
@@ -763,6 +781,42 @@ class ProposalResourceMixin:
             ),
         )
         return ensure_dict(payload, "Proposal thread response")
+
+    def cancel_proposal_negotiation(self, thread_id: int) -> JsonDict:
+        payload = self._request(
+            "POST",
+            f"/thread/{thread_id}/cancel",
+            collection="proposals",
+        )
+        return ensure_dict(payload, "Cancel proposal negotiation response")
+
+    def finalize_proposal_negotiation(
+        self,
+        thread_id: int,
+        *,
+        consumer_project: str,
+        author: str,
+        priority: str,
+        provider_title: str,
+        provider_body: str,
+        consumer_title: str,
+        consumer_body: str,
+    ) -> JsonDict:
+        payload = self._request(
+            "POST",
+            f"/thread/{thread_id}/finalize",
+            collection="proposals",
+            json={
+                "consumer_project": consumer_project,
+                "author": author,
+                "priority": priority,
+                "provider_title": provider_title,
+                "provider_body": provider_body,
+                "consumer_title": consumer_title,
+                "consumer_body": consumer_body,
+            },
+        )
+        return ensure_dict(payload, "Finalize proposal negotiation response")
 
     def get_proposal(self, proposal_id: int) -> JsonDict:
         payload = self._request("GET", f"/{proposal_id}", collection="proposals")

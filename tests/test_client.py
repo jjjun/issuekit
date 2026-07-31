@@ -1522,6 +1522,68 @@ def test_client_proposal_get_adopt_and_discard_paths() -> None:
     ]
 
 
+def test_client_proposal_negotiation_lifecycle_paths() -> None:
+    seen: list[tuple[str, str, object]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content) if request.content else None
+        seen.append((request.method, request.url.path, body))
+        return httpx.Response(
+            200,
+            json={
+                "id": 7,
+                "status": "agreed",
+                "backend_issue_ref": "target#9",
+                "frontend_issue_ref": "source#4",
+            },
+        )
+
+    client = IssuekitClient(
+        "https://mine.example",
+        project="target",
+        token="static-token",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+    client.begin_proposal_negotiation(
+        4,
+        initiator_project="source",
+        initiator_side="consumer",
+    )
+    client.cancel_proposal_negotiation(7)
+    client.finalize_proposal_negotiation(
+        7,
+        consumer_project="source",
+        author="codex",
+        priority="medium",
+        provider_title="Implement contract",
+        provider_body="Provider body",
+        consumer_title="Integrate contract",
+        consumer_body="Consumer body",
+    )
+
+    assert seen == [
+        (
+            "POST",
+            "/api/issues/target/proposals/4/negotiate",
+            {"initiator_project": "source", "initiator_side": "consumer"},
+        ),
+        ("POST", "/api/issues/target/proposals/thread/7/cancel", None),
+        (
+            "POST",
+            "/api/issues/target/proposals/thread/7/finalize",
+            {
+                "consumer_project": "source",
+                "author": "codex",
+                "priority": "medium",
+                "provider_title": "Implement contract",
+                "provider_body": "Provider body",
+                "consumer_title": "Integrate contract",
+                "consumer_body": "Consumer body",
+            },
+        ),
+    ]
+
+
 def test_client_proposal_check_paths_and_payloads() -> None:
     seen: list[tuple[str, str, object, dict[str, list[str]]]] = []
 

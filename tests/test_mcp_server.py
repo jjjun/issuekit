@@ -388,6 +388,7 @@ def test_list_negotiation_threads_reads_mock_store_without_api_client(
             "status": "agreed",
             "agreed_contract": "Contract text.",
             "issue_refs": None,
+            "source_proposal_ref": None,
             "updated": entry.created,
         }
     ]

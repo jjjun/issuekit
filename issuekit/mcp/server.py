@@ -494,8 +494,10 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
         mock: bool = False,
         ctx: Context | None = None,
     ) -> dict[str, Any] | list[dict[str, object]]:
-        if status not in (None, "negotiating", "agreed", "blocked"):
-            raise ValueError("status must be negotiating, agreed, or blocked.")
+        if status not in (None, "negotiating", "agreed", "blocked", "cancelled"):
+            raise ValueError(
+                "status must be negotiating, agreed, blocked, or cancelled."
+            )
         async with _api_config(root, ctx) as (config, _config_root):
             store = get_negotiation_store(config, use_mock=mock)
             if thread_id:
@@ -587,6 +589,7 @@ def _negotiation_thread_summary_dict(
         "status": summary.status.value,
         "agreed_contract": summary.agreed_contract,
         "issue_refs": summary.issue_refs.to_dict() if summary.issue_refs else None,
+        "source_proposal_ref": summary.source_proposal_ref,
         "updated": summary.updated,
     }
 

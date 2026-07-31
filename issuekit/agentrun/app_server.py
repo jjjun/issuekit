@@ -393,7 +393,3 @@ def _message_text(method: str, params: Mapping[str, Any]) -> str | None:
         return None
     delta = params.get("delta")
     return delta[:MAX_TEXT_CHARS] if isinstance(delta, str) else None
-
-
-def is_feature_unavailable(exc: BaseException) -> bool:
-    return getattr(exc, "code", None) in {"not_found", "http_404"}

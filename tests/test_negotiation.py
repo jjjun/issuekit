@@ -1,3 +1,5 @@
+from concurrent.futures import ThreadPoolExecutor
+
 import pytest
 
 from issuekit.config import IssuekitConfig
@@ -410,6 +412,258 @@ def test_api_negotiation_store_round_trips_via_fake_client() -> None:
 
     assert append_exc.value.code == "invalid_transition"
     assert status_exc.value.code == "invalid_transition"
+
+
+def test_api_store_proposal_negotiation_locks_cancels_and_recovers() -> None:
+    client = FakeIssuekitClient(
+        proposals=[
+            {
+                "id": 7,
+                "target_project": "provider",
+                "origin": "consumer#12@abc123",
+                "title": "Add the shared endpoint",
+                "body": "The provider should expose GET /items.",
+            }
+        ]
+    )
+    store = ApiNegotiationStore(
+        IssuekitConfig(api_url="https://mine.example", project="provider"),
+        client=client,
+    )
+
+    source = store.begin_proposal_thread(
+        7,
+        initiator_project="consumer",
+        initiator_side="consumer",
+    )
+    retry = store.begin_proposal_thread(
+        7,
+        initiator_project="consumer",
+        initiator_side="consumer",
+    )
+
+    assert retry == source
+    assert source.proposal_ref == "provider#proposal:7"
+    assert source.title == "Add the shared endpoint"
+    assert store.get_thread(source.thread_id) == []
+    with pytest.raises(WorkflowError, match="locked by negotiation"):
+        client.adopt_proposal(7)
+    with pytest.raises(WorkflowError, match="locked by negotiation"):
+        client.discard_proposal(7)
+
+    store.cancel_thread(source.thread_id)
+
+    assert store.get_status(source.thread_id) is ThreadStatus.cancelled
+    adopted = client.adopt_proposal(7)
+    assert adopted["origin_proposal_id"] == "7"
+
+
+def test_api_store_reports_unavailable_proposal_negotiation_route() -> None:
+    class UnavailableClient(FakeIssuekitClient):
+        def begin_proposal_negotiation(self, proposal_id: int, **kwargs):
+            raise WorkflowError("Route not found.", code="http_404")
+
+    store = ApiNegotiationStore(
+        IssuekitConfig(api_url="https://mine.example", project="provider"),
+        client=UnavailableClient(),
+    )
+
+    with pytest.raises(
+        WorkflowError,
+        match="API project does not support proposal-seeded negotiation",
+    ) as exc_info:
+        store.begin_proposal_thread(
+            7,
+            initiator_project="consumer",
+            initiator_side="consumer",
+        )
+
+    assert exc_info.value.code == "unsupported_feature"
+
+
+def test_proposal_adoption_cannot_race_negotiation_lock() -> None:
+    client = FakeIssuekitClient(
+        proposals=[
+            {
+                "id": 10,
+                "target_project": "provider",
+                "origin": "consumer#21@jkl012",
+            }
+        ]
+    )
+
+    def begin() -> str:
+        client.begin_proposal_negotiation(
+            10,
+            initiator_project="consumer",
+            initiator_side="consumer",
+        )
+        return "negotiation"
+
+    def adopt() -> str:
+        client.adopt_proposal(10)
+        return "adoption"
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [executor.submit(begin), executor.submit(adopt)]
+    outcomes = []
+    errors = []
+    for future in futures:
+        try:
+            outcomes.append(future.result())
+        except WorkflowError as exc:
+            errors.append(exc.code)
+
+    assert len(outcomes) == 1
+    assert len(errors) == 1
+    assert errors[0] in {"invalid_transition", "proposal_negotiating"}
+    assert len(client._issues) <= 1
+
+
+def test_api_store_proposal_finalization_is_atomic_and_idempotent() -> None:
+    client = FakeIssuekitClient(
+        proposals=[
+            {
+                "id": 8,
+                "target_project": "provider",
+                "origin": "consumer#15@def456",
+                "title": "Negotiate pagination",
+                "body": "Define the shared pagination contract.",
+            }
+        ]
+    )
+    store = ApiNegotiationStore(
+        IssuekitConfig(api_url="https://mine.example", project="provider"),
+        client=client,
+    )
+    source = store.begin_proposal_thread(
+        8,
+        initiator_project="consumer",
+        initiator_side="consumer",
+    )
+    store.append_initial_entry(
+        source.thread_id,
+        side="consumer",
+        verdict=Verdict.agree,
+        title="consumer agree",
+        body="Accepted.",
+        origin="consumer#proposal:8@consumer:round-1",
+        contract="GET /items?cursor=token",
+    )
+    store.append_entry(
+        source.thread_id,
+        side="provider",
+        verdict=Verdict.agree,
+        title="provider agree",
+        body="Accepted.",
+        origin="consumer#proposal:8@provider:round-2",
+        contract="GET /items?cursor=token",
+    )
+    store.set_status(
+        source.thread_id,
+        ThreadStatus.agreed,
+        agreed_contract="GET /items?cursor=token",
+    )
+    finalize_args = {
+        "consumer_project": "consumer",
+        "author": "codex",
+        "priority": "medium",
+        "provider_title": "Implement pagination",
+        "provider_body": "- Consumer issue: pending",
+        "consumer_title": "Integrate pagination",
+        "consumer_body": "- Provider issue: pending",
+    }
+
+    first = store.finalize_proposal_thread(source.thread_id, **finalize_args)
+    retry = store.finalize_proposal_thread(source.thread_id, **finalize_args)
+
+    assert retry == first
+    assert first.backend_issue_ref == "provider#1"
+    assert first.frontend_issue_ref == "consumer#2"
+    assert store.get_issue_refs(source.thread_id) == first
+    proposal = client.get_proposal(8)
+    assert proposal["status"] == "adopted"
+    assert proposal["adopted_issue_number"] == 1
+    assert proposal["negotiation_thread_id"] == int(source.thread_id)
+    assert proposal["negotiation_status"] == "finalized"
+    assert client.get_issue(1)["source_proposal"] == {
+        "id": 8,
+        "origin": "consumer#15@def456",
+        "title": "Negotiate pagination",
+    }
+    assert client.get_issue(1)["body"] == "- Consumer issue: consumer#2"
+    assert client.get_issue(2)["body"] == "- Provider issue: provider#1"
+    assert sum(
+        call["method"] == "finalize_proposal_negotiation"
+        for call in client.calls
+    ) == 2
+    assert len(client._issues) == 2
+
+
+def test_api_store_proposal_finalization_recovers_after_lost_response() -> None:
+    class LostResponseClient(FakeIssuekitClient):
+        lose_response = True
+
+        def finalize_proposal_negotiation(self, thread_id: int, **kwargs):
+            result = super().finalize_proposal_negotiation(thread_id, **kwargs)
+            if self.lose_response:
+                self.lose_response = False
+                raise WorkflowError("Connection dropped after commit.", code="transport_error")
+            return result
+
+    client = LostResponseClient(
+        proposals=[
+            {
+                "id": 9,
+                "target_project": "provider",
+                "origin": "consumer#18@ghi789",
+            }
+        ]
+    )
+    store = ApiNegotiationStore(
+        IssuekitConfig(api_url="https://mine.example", project="provider"),
+        client=client,
+    )
+    source = store.begin_proposal_thread(
+        9,
+        initiator_project="consumer",
+        initiator_side="consumer",
+    )
+    store.append_initial_entry(
+        source.thread_id,
+        side="consumer",
+        verdict=Verdict.agree,
+        title="consumer agree",
+        body="Accepted.",
+        origin="provider#proposal:9@consumer:round-1",
+        contract="GET /items",
+    )
+    store.append_entry(
+        source.thread_id,
+        side="provider",
+        verdict=Verdict.agree,
+        title="provider agree",
+        body="Accepted.",
+        origin="provider#proposal:9@provider:round-2",
+        contract="GET /items",
+    )
+    store.set_status(source.thread_id, ThreadStatus.agreed, agreed_contract="GET /items")
+    finalize_args = {
+        "consumer_project": "consumer",
+        "author": "codex",
+        "priority": "medium",
+        "provider_title": "Implement contract",
+        "provider_body": "- Consumer issue: pending",
+        "consumer_title": "Integrate contract",
+        "consumer_body": "- Provider issue: pending",
+    }
+
+    with pytest.raises(WorkflowError, match="Connection dropped after commit"):
+        store.finalize_proposal_thread(source.thread_id, **finalize_args)
+    refs = store.finalize_proposal_thread(source.thread_id, **finalize_args)
+
+    assert refs == NegotiationIssueRefs("provider#1", "consumer#2")
+    assert len(client._issues) == 2
 
 
 def test_api_store_create_thread_treats_same_payload_as_idempotent_retry() -> None:

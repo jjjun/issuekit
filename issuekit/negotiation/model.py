@@ -25,6 +25,19 @@ class ThreadStatus(StrEnum):
     negotiating = "negotiating"
     agreed = "agreed"
     blocked = "blocked"
+    cancelled = "cancelled"
+
+
+@dataclass(frozen=True)
+class ProposalNegotiationSource:
+    proposal_id: int
+    proposal_ref: str
+    thread_id: str
+    title: str
+    body: str
+    origin: str
+    target_project: str
+    initiator_side: str
 
 
 @dataclass(frozen=True)
@@ -71,6 +84,7 @@ class NegotiationThreadSummary:
     status: ThreadStatus
     agreed_contract: str | None = None
     issue_refs: NegotiationIssueRefs | None = None
+    source_proposal_ref: str | None = None
     updated: str = ""
 
 
@@ -95,6 +109,28 @@ class NegotiationStore(Protocol):
         contract: str | None = None,
     ) -> NegotiationEntry:
         """Create a negotiation thread and return its first entry."""
+
+    def begin_proposal_thread(
+        self,
+        proposal_id: int,
+        *,
+        initiator_project: str,
+        initiator_side: str,
+    ) -> ProposalNegotiationSource:
+        """Lock a pending proposal and create or reuse its negotiation thread."""
+
+    def append_initial_entry(
+        self,
+        thread_id: str,
+        *,
+        side: str,
+        verdict: Verdict,
+        title: str,
+        body: str,
+        origin: str,
+        contract: str | None = None,
+    ) -> NegotiationEntry:
+        """Append the first agent entry to a proposal-seeded thread."""
 
     def append_entry(
         self,
@@ -133,8 +169,28 @@ class NegotiationStore(Protocol):
     def get_issue_refs(self, thread_id: str) -> NegotiationIssueRefs | None:
         """Return implementation issue refs recorded on a finalized thread."""
 
+    def get_source_proposal_ref(self, thread_id: str) -> str | None:
+        """Return the pending proposal that seeded this thread, if any."""
+
     def set_issue_refs(self, thread_id: str, refs: NegotiationIssueRefs) -> None:
         """Record implementation issue refs for a finalized thread."""
+
+    def cancel_thread(self, thread_id: str) -> None:
+        """Cancel a proposal negotiation without discarding its source proposal."""
+
+    def finalize_proposal_thread(
+        self,
+        thread_id: str,
+        *,
+        consumer_project: str,
+        author: str,
+        priority: str,
+        provider_title: str,
+        provider_body: str,
+        consumer_title: str,
+        consumer_body: str,
+    ) -> NegotiationIssueRefs:
+        """Atomically finalize a proposal thread into provider and consumer issues."""
 
 
 def coerce_verdict(value: object) -> Verdict:

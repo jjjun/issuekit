@@ -36,6 +36,24 @@ checkout instead; it must declare the same project as `--to`:
 issuekit negotiate --from-issue <id> --to <project> --initiator-side provider --provider-agent <agent> --consumer-agent <agent> --counterpart-ref <ref>
 ```
 
+A pending proposal authored by the current project can seed the thread instead.
+The proposal target is inferred from its qualified ref, and the initiating
+project must be the consumer because the target proposal becomes the provider
+issue after agreement:
+
+```powershell
+issuekit negotiate --from-proposal <project>#proposal:<id> --initiator-side consumer --provider-agent <agent> --consumer-agent <agent>
+```
+
+Starting this path atomically links and locks the pending proposal so inbox
+triage cannot adopt duplicate provider work. A blocked proposal negotiation
+remains linked and recoverable. To abandon it and return the proposal to normal
+pending triage, cancel the thread explicitly:
+
+```powershell
+issuekit negotiate --cancel <thread_id> --from-proposal <project>#proposal:<id>
+```
+
 The initiating checkout still supplies the configuration for the thread,
 agent selection, and issues created by finalization. The counterpart ref is only
 the counterpart agent's inspection directory; its checkout configuration is read
@@ -57,8 +75,9 @@ Each entry has one of these verdicts:
 - `agree`
 - `blocked`
 
-A thread's status is `negotiating`, `agreed`, or `blocked`. Any `blocked`
-entry makes the thread blocked.
+A thread's status is `negotiating`, `agreed`, `blocked`, or `cancelled`. Any
+`blocked` entry makes the thread blocked. Cancellation applies only to
+proposal-seeded threads.
 
 A thread becomes agreed only when the contract text matches after normalization,
 not merely because both sides chose `agree`. It converges in either of these
@@ -88,7 +107,7 @@ issuekit threads --status agreed
 ```
 
 `threads --status` filters the listed threads by their stored thread status:
-`negotiating`, `agreed`, or `blocked`.
+`negotiating`, `agreed`, `blocked`, or `cancelled`.
 
 After a thread is agreed, finalize it with the target project:
 
@@ -96,9 +115,18 @@ After a thread is agreed, finalize it with the target project:
 issuekit negotiate --finalize <thread_id> --to <project> --author-agent <agent> --priority medium
 ```
 
+For a proposal-seeded thread, pass the proposal ref again so issuekit selects
+the target project's thread store:
+
+```powershell
+issuekit negotiate --finalize <thread_id> --from-proposal <project>#proposal:<id> --author-agent <agent> --priority medium
+```
+
 Finalization creates and cross-links provider and consumer implementation
-issues. The consumer issue depends on the provider issue. It refuses threads
-that are not agreed. The author agent
+issues. For a proposal-seeded thread, the API atomically adopts the source as
+the provider issue and creates or reuses the dependent consumer issue; retrying
+the command returns the same refs. It refuses threads that are not agreed. The
+author agent
 is resolved from `--author-agent`, then `default_implementer`, then a single
 enabled assignee. `--priority` controls the priority of the created issues.
 
