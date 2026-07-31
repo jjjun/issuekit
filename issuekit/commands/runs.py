@@ -7,7 +7,13 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from issuekit.agentrun.status import RunStatus, find_status, is_stale, list_statuses
+from issuekit.agentrun.status import (
+    RunStatus,
+    find_status,
+    is_stale,
+    list_statuses,
+    status_path,
+)
 from issuekit.commands._common import print_json
 
 TAIL_LINES = 40
@@ -74,7 +80,14 @@ def _print_list(run_dir: Path, *, active_only: bool, json_output: bool) -> int:
 
 
 def _print_detail(run_dir: Path, run_id: str, *, json_output: bool) -> int:
-    status = find_status(run_dir, run_id)
+    try:
+        status = find_status(run_dir, run_id)
+    except (OSError, ValueError) as exc:
+        print(
+            f"Run status file is unreadable: {status_path(run_dir, run_id)}: {exc}",
+            file=sys.stderr,
+        )
+        return 1
     if status is None:
         print(f"Run not found: {run_id}", file=sys.stderr)
         return 1

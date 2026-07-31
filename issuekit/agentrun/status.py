@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import time
 from dataclasses import dataclass
 from datetime import datetime
@@ -45,23 +46,30 @@ class RunStatus:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> RunStatus:
-        return cls(
-            run_id=str(data["run_id"]),
-            agent=str(data["agent"]),
-            issue=optional_int(data.get("issue")),
-            status=_status_value(data["status"]),
-            pid=optional_int(data.get("pid")),
-            started_at=str(data["started_at"]),
-            ended_at=optional_str(data.get("ended_at")),
-            elapsed_sec=optional_float(data.get("elapsed_sec")),
-            exit_code=optional_int(data.get("exit_code")),
-            plan=str(data["plan"]),
-            stdout_log=str(data["stdout_log"]),
-            agent_log=str(data["agent_log"]),
-            last_log_line=optional_str(data.get("last_log_line")),
-            last_log_at=optional_str(data.get("last_log_at")),
-            heartbeat_at=optional_str(data.get("heartbeat_at")),
-        )
+        try:
+            return cls(
+                run_id=str(data["run_id"]),
+                agent=str(data["agent"]),
+                issue=optional_int(data.get("issue")),
+                status=_status_value(data["status"]),
+                pid=optional_int(data.get("pid")),
+                started_at=str(data["started_at"]),
+                ended_at=optional_str(data.get("ended_at")),
+                elapsed_sec=optional_float(data.get("elapsed_sec")),
+                exit_code=optional_int(data.get("exit_code")),
+                plan=str(data["plan"]),
+                stdout_log=str(data["stdout_log"]),
+                agent_log=str(data["agent_log"]),
+                last_log_line=optional_str(data.get("last_log_line")),
+                last_log_at=optional_str(data.get("last_log_at")),
+                heartbeat_at=optional_str(data.get("heartbeat_at")),
+            )
+        except KeyError as exc:
+            raise ValueError(
+                f"Invalid run status payload: missing key {exc.args[0]!r}"
+            ) from exc
+        except TypeError as exc:
+            raise ValueError(f"Invalid run status payload: {exc}") from exc
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -136,7 +144,24 @@ def read_status(path: Path) -> RunStatus:
 
 
 def list_statuses(run_dir: Path) -> list[RunStatus]:
-    statuses = [read_status(path) for path in run_dir.glob("*.status.json")]
+    statuses = []
+    unreadable = []
+    for path in run_dir.glob("*.status.json"):
+        try:
+            statuses.append(read_status(path))
+        except (OSError, ValueError) as exc:
+            unreadable.append((path, exc))
+    if unreadable:
+        limit = 10
+        displayed = ", ".join(
+            f"{path} ({exc})" for path, exc in unreadable[:limit]
+        )
+        remaining = len(unreadable) - limit
+        suffix = f", and {remaining} more" if remaining > 0 else ""
+        print(
+            f"Warning: skipped unreadable run status files: {displayed}{suffix}",
+            file=sys.stderr,
+        )
     return sorted(
         statuses,
         key=lambda status: (status.started_at, status.run_id),

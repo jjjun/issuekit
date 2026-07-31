@@ -142,7 +142,7 @@ def repository_mutation_message(message: str, run: ReadonlyAgentRun) -> str:
     limit = 10
     displayed = ", ".join(run.repository_changed_paths[:limit])
     remaining = len(run.repository_changed_paths) - limit
-    suffix = f", and {remaining} more" if remaining else ""
+    suffix = f", and {remaining} more" if remaining > 0 else ""
     return f"{message.rstrip('.')} (changed paths: {displayed}{suffix})."
 
 

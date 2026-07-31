@@ -2,11 +2,14 @@ import json
 from datetime import datetime, timedelta
 from pathlib import Path
 
+import pytest
+
 from issuekit.agentrun import status as status_mod
 from issuekit.agentrun.status import (
     STALE_AFTER_SEC,
     RunStatus,
     is_stale,
+    list_statuses,
     read_status,
     status_path,
     write_status,
@@ -148,3 +151,52 @@ def test_is_stale_false_for_tz_aware_timestamp_against_naive_now() -> None:
     now = datetime(2026, 6, 17, 12, 0, 0)
     aware = "2026-06-17T11:00:00+00:00"
     assert is_stale(_running_status(heartbeat_at=aware), now=now) is False
+
+
+def test_from_dict_reports_missing_required_key() -> None:
+    payload = _running_status().to_dict()
+    del payload["plan"]
+
+    with pytest.raises(ValueError, match="missing key 'plan'"):
+        RunStatus.from_dict(payload)
+
+
+def test_from_dict_rejects_non_object_payload() -> None:
+    with pytest.raises(ValueError, match="Invalid run status payload"):
+        RunStatus.from_dict([])
+
+
+def test_list_statuses_omits_remaining_suffix_below_warning_cap(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    path = status_path(tmp_path, "run-0")
+    path.touch()
+
+    def fail_read(path: Path) -> RunStatus:
+        raise PermissionError("file is locked")
+
+    monkeypatch.setattr(status_mod, "read_status", fail_read)
+
+    assert list_statuses(tmp_path) == []
+
+    assert capsys.readouterr().err == (
+        f"Warning: skipped unreadable run status files: {path} (file is locked)\n"
+    )
+
+
+def test_list_statuses_caps_unreadable_file_warnings(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    for index in range(12):
+        status_path(tmp_path, f"run-{index}").touch()
+
+    def fail_read(path: Path) -> RunStatus:
+        raise PermissionError("file is locked")
+
+    monkeypatch.setattr(status_mod, "read_status", fail_read)
+
+    assert list_statuses(tmp_path) == []
+
+    error = capsys.readouterr().err
+    assert error.count(".status.json (file is locked)") == 10
+    assert "and 2 more" in error

@@ -362,6 +362,20 @@ def test_require_clean_run_names_changed_paths(tmp_path: Path, capsys) -> None:
     assert "changed paths: added.txt" in capsys.readouterr().err
 
 
+def test_repository_mutation_message_omits_remaining_suffix_below_cap() -> None:
+    run = readonly.ReadonlyAgentRun(
+        result=object(),
+        repository_modified=True,
+        repository_changed_paths=("p0.py", "p1.py", "p2.py"),
+        label="Test",
+        subject="subject",
+    )
+
+    assert readonly.repository_mutation_message("Repository changed.", run) == (
+        "Repository changed (changed paths: p0.py, p1.py, p2.py)."
+    )
+
+
 @pytest.mark.parametrize(
     ("exit_code", "timed_out", "error_type"),
     [(0, True, TimeoutError), (2, False, RuntimeError)],

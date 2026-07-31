@@ -66,6 +66,45 @@ def test_runs_json_outputs_records(tmp_path: Path, monkeypatch, capsys) -> None:
     assert records[0]["issue"] is None
 
 
+def test_runs_skips_unreadable_records_and_warns(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    run_dir = tmp_path / ".agent-runs"
+    _write_run(run_dir, "good", status="completed", exit_code=0)
+    (run_dir / "nul.status.json").write_bytes(b"\0" * 470)
+    (run_dir / "missing.status.json").write_text(
+        '{"run_id": "missing"}\n', encoding="utf-8", newline="\n"
+    )
+    (run_dir / "array.status.json").write_text(
+        "[]\n", encoding="utf-8", newline="\n"
+    )
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["runs"]) == 0
+
+    captured = capsys.readouterr()
+    assert "good" in captured.out
+    assert "nul.status.json" in captured.err
+    assert "missing.status.json" in captured.err
+    assert "array.status.json" in captured.err
+
+
+def test_runs_json_skips_unreadable_records_and_stays_parseable(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    run_dir = tmp_path / ".agent-runs"
+    _write_run(run_dir, "good", status="completed", exit_code=0)
+    (run_dir / "bad.status.json").write_bytes(b"\0")
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["runs", "--json"]) == 0
+
+    captured = capsys.readouterr()
+    records = json.loads(captured.out)
+    assert [record["run_id"] for record in records] == ["good"]
+    assert "bad.status.json" in captured.err
+
+
 def test_runs_detail_prints_record_and_log_tails(tmp_path: Path, monkeypatch, capsys) -> None:
     run_dir = tmp_path / ".agent-runs"
     run_dir.mkdir()
@@ -106,6 +145,23 @@ def test_runs_detail_missing_returns_error(tmp_path: Path, monkeypatch, capsys) 
     assert cli.main(["runs", "missing"]) == 1
 
     assert "Run not found: missing" in capsys.readouterr().err
+
+
+def test_runs_detail_unreadable_returns_error(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    run_dir = tmp_path / ".agent-runs"
+    run_dir.mkdir()
+    path = run_dir / "broken.status.json"
+    path.write_bytes(b"\0")
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["runs", "broken"]) == 1
+
+    error = capsys.readouterr().err
+    assert "Run status file is unreadable" in error
+    assert str(path) in error
+    assert "Run not found" not in error
 
 
 def test_runs_detail_reads_agent_log(tmp_path: Path, monkeypatch, capsys) -> None:
