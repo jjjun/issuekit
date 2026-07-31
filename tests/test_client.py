@@ -1549,7 +1549,6 @@ def test_client_proposal_negotiation_lifecycle_paths() -> None:
         initiator_project="source",
         initiator_side="consumer",
     )
-    client.cancel_proposal_negotiation(7)
     client.finalize_proposal_negotiation(
         7,
         consumer_project="source",
@@ -1567,7 +1566,6 @@ def test_client_proposal_negotiation_lifecycle_paths() -> None:
             "/api/issues/target/proposals/4/negotiate",
             {"initiator_project": "source", "initiator_side": "consumer"},
         ),
-        ("POST", "/api/issues/target/proposals/thread/7/cancel", None),
         (
             "POST",
             "/api/issues/target/proposals/thread/7/finalize",

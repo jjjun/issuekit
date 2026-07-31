@@ -496,6 +496,87 @@ def test_api_store_reports_unavailable_proposal_negotiation_route() -> None:
     assert exc_info.value.code == "unsupported_feature"
 
 
+def test_api_store_cancels_issue_seeded_thread_with_status_patch() -> None:
+    client = FakeIssuekitClient()
+    store = ApiNegotiationStore(
+        IssuekitConfig(api_url="https://mine.example", project="provider"),
+        client=client,
+    )
+    entry = store.create_thread(
+        side="consumer",
+        verdict=Verdict.propose,
+        title="Add the shared endpoint",
+        body="The provider should expose GET /items.",
+        origin="consumer#12",
+    )
+
+    store.cancel_thread(str(entry.thread_id))
+
+    assert store.get_status(str(entry.thread_id)) is ThreadStatus.cancelled
+    assert client.calls[-1] == {
+        "method": "patch_thread",
+        "number": int(entry.thread_id),
+        "body": {"status": "cancelled"},
+    }
+
+
+def test_api_store_rejects_cancel_response_without_cancelled_status() -> None:
+    class UnconfirmedClient(FakeIssuekitClient):
+        def patch_thread(self, thread_id: int, **kwargs):
+            payload = super().patch_thread(thread_id, **kwargs)
+            payload["status"] = "negotiating"
+            return payload
+
+    client = UnconfirmedClient()
+    store = ApiNegotiationStore(
+        IssuekitConfig(api_url="https://mine.example", project="provider"),
+        client=client,
+    )
+    entry = store.create_thread(
+        side="consumer",
+        verdict=Verdict.propose,
+        title="Add the shared endpoint",
+        body="The provider should expose GET /items.",
+        origin="consumer#12",
+    )
+
+    with pytest.raises(
+        WorkflowError,
+        match="did not confirm cancellation",
+    ) as exc_info:
+        store.cancel_thread(str(entry.thread_id))
+
+    assert exc_info.value.code == "server_schema_drift"
+
+
+def test_api_store_reports_unavailable_proposal_finalization_route() -> None:
+    class UnavailableClient(FakeIssuekitClient):
+        def finalize_proposal_negotiation(self, thread_id: int, **kwargs):
+            raise WorkflowError("Route not found.", code="http_404")
+
+    store = ApiNegotiationStore(
+        IssuekitConfig(api_url="https://mine.example", project="provider"),
+        client=UnavailableClient(),
+    )
+
+    with pytest.raises(
+        WorkflowError,
+        match="does not support proposal-seeded negotiation finalization",
+    ) as exc_info:
+        store.finalize_proposal_thread(
+            "7",
+            consumer_project="consumer",
+            author="codex",
+            priority="medium",
+            provider_title="Implement endpoint",
+            provider_body="Provider body",
+            consumer_title="Integrate endpoint",
+            consumer_body="Consumer body",
+        )
+
+    assert exc_info.value.code == "unsupported_feature"
+
+
 def test_proposal_adoption_cannot_race_negotiation_lock() -> None:
     client = FakeIssuekitClient(
         proposals=[

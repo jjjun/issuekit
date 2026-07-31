@@ -121,7 +121,9 @@ branch changes, including commits. With `--counterpart-ref <ref>`, the
 counterpart side runs in that ref's checkout so it can inspect the real code.
 A pending outbound proposal can seed this workflow with `issuekit negotiate
 --from-proposal <project>#proposal:<id> --initiator-side consumer`; the target
-proposal is locked until atomic finalization or explicit `--cancel`.
+proposal is locked until atomic finalization or explicit `--cancel`. This path
+requires an API project exposing the proposal-negotiation endpoints; use
+`--from-issue` when those endpoints are unavailable.
 
 Local issues vs. cross-project proposals:
 

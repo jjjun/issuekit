@@ -782,14 +782,6 @@ class ProposalResourceMixin:
         )
         return ensure_dict(payload, "Proposal thread response")
 
-    def cancel_proposal_negotiation(self, thread_id: int) -> JsonDict:
-        payload = self._request(
-            "POST",
-            f"/thread/{thread_id}/cancel",
-            collection="proposals",
-        )
-        return ensure_dict(payload, "Cancel proposal negotiation response")
-
     def finalize_proposal_negotiation(
         self,
         thread_id: int,

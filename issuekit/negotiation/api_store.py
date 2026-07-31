@@ -249,7 +249,10 @@ class ApiNegotiationStore:
             )
 
     def cancel_thread(self, thread_id: str) -> None:
-        payload = self.client.cancel_proposal_negotiation(_api_thread_id(thread_id))
+        payload = self.client.patch_thread(
+            _api_thread_id(thread_id),
+            status=ThreadStatus.cancelled.value,
+        )
         if payload.get("status") != ThreadStatus.cancelled.value:
             raise WorkflowError(
                 "Proposal thread response did not confirm cancellation.",
@@ -268,16 +271,25 @@ class ApiNegotiationStore:
         consumer_title: str,
         consumer_body: str,
     ) -> NegotiationIssueRefs:
-        payload = self.client.finalize_proposal_negotiation(
-            _api_thread_id(thread_id),
-            consumer_project=consumer_project,
-            author=author,
-            priority=priority,
-            provider_title=provider_title,
-            provider_body=provider_body,
-            consumer_title=consumer_title,
-            consumer_body=consumer_body,
-        )
+        try:
+            payload = self.client.finalize_proposal_negotiation(
+                _api_thread_id(thread_id),
+                consumer_project=consumer_project,
+                author=author,
+                priority=priority,
+                provider_title=provider_title,
+                provider_body=provider_body,
+                consumer_title=consumer_title,
+                consumer_body=consumer_body,
+            )
+        except WorkflowError as exc:
+            if not is_feature_unavailable(exc):
+                raise
+            raise WorkflowError(
+                "The API project does not support proposal-seeded negotiation "
+                "finalization; use --from-issue or upgrade the API project.",
+                code="unsupported_feature",
+            ) from exc
         refs = issue_refs_from_api(payload, require_supported=True)
         if refs is None:
             raise WorkflowError(

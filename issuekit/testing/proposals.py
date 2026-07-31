@@ -413,7 +413,7 @@ class FakeProposalSurface:
                         f"Negotiation thread {thread_id} is already {thread.get('status')}.",
                         code="invalid_transition",
                     )
-                if status not in {"agreed", "blocked"}:
+                if status not in {"agreed", "blocked", "cancelled"}:
                     raise WorkflowError(
                         f"Invalid thread status transition: {status}.",
                         code="invalid_transition",
@@ -439,25 +439,6 @@ class FakeProposalSurface:
             if frontend_issue_ref is not None:
                 thread["frontend_issue_ref"] = frontend_issue_ref
             thread["updated_at"] = date.today().isoformat()
-            return deepcopy(thread)
-
-    def cancel_proposal_negotiation(self, thread_id: int) -> JsonDict:
-        with self._lock:
-            self._record("cancel_proposal_negotiation", number=thread_id)
-            thread = self._find_thread(thread_id)
-            if thread.get("source_proposal_id") is None:
-                raise WorkflowError(
-                    f"Negotiation thread {thread_id} was not seeded by a proposal.",
-                    code="invalid_transition",
-                )
-            if thread.get("backend_issue_ref") or thread.get("frontend_issue_ref"):
-                raise WorkflowError(
-                    f"Negotiation thread {thread_id} has already been finalized.",
-                    code="invalid_transition",
-                )
-            thread["status"] = "cancelled"
-            proposal = self._find_proposal(int(thread["source_proposal_id"]))
-            proposal["negotiation_status"] = "cancelled"
             return deepcopy(thread)
 
     def finalize_proposal_negotiation(
