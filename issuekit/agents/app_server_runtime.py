@@ -7,7 +7,7 @@ import secrets
 import threading
 import time
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -34,6 +34,20 @@ LEASE_STOP_CODES = frozenset(
         "stale_generation",
     }
 )
+
+
+def _usage_total(event: Mapping[str, Any]) -> dict[str, int]:
+    """Return the cumulative thread token counts carried by a normalized event."""
+    payload = event.get("payload")
+    usage = payload.get("usage") if isinstance(payload, Mapping) else None
+    total = usage.get("total") if isinstance(usage, Mapping) else None
+    if not isinstance(total, Mapping):
+        return {}
+    return {
+        str(name): count
+        for name, count in total.items()
+        if isinstance(count, int) and not isinstance(count, bool)
+    }
 
 
 @dataclass(frozen=True)
@@ -110,6 +124,7 @@ class AppServerAttemptRunner:
         pointer = prompt.pointer
         if prompt_suffix:
             pointer = f"{pointer}\n\n{prompt_suffix}"
+        pointer = adapter.compose_prompt(pointer)
         if self.recovery:
             pointer = (
                 "This is a recovery attempt. Inspect the current worktree before "
@@ -142,6 +157,7 @@ class AppServerAttemptRunner:
             )
             heartbeat.start()
             pending_events: list[dict[str, Any]] = []
+            usage_total: dict[str, int] = {}
             event_number = 0
             current_command_id: str | None = None
             turn_finished = threading.Event()
@@ -156,6 +172,10 @@ class AppServerAttemptRunner:
                     command_id=current_command_id,
                 )
                 if event is not None:
+                    total = _usage_total(event)
+                    if total:
+                        usage_total.clear()
+                        usage_total.update(total)
                     pending_events.append(event)
                     if event["event_type"] in {
                         "turn_completed",
@@ -352,7 +372,11 @@ class AppServerAttemptRunner:
                             {
                                 "event_key": f"{context.session_id}:runtime-stopped",
                                 "event_type": "runtime_stopped",
-                                "payload": {"exit_code": process_exit},
+                                "payload": (
+                                    {"exit_code": process_exit, "usage": dict(usage_total)}
+                                    if usage_total
+                                    else {"exit_code": process_exit}
+                                ),
                             },
                         )
                         client.seal_agent_session(
@@ -403,6 +427,7 @@ class AppServerAttemptRunner:
                     "session_id": session_id,
                     "native_session_id": native_session_id,
                     "exit_code": exit_code,
+                    "usage": dict(usage_total),
                 },
                 ensure_ascii=True,
             )
@@ -420,6 +445,7 @@ class AppServerAttemptRunner:
                 "runtime": "codex_app_server",
                 "agent_session_id": session_id or "",
                 "native_session_id": native_session_id or "",
+                **{f"usage_{name}": str(count) for name, count in usage_total.items()},
             },
             status_short=None,
             report_path=report_path,

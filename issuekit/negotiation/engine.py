@@ -429,6 +429,7 @@ def run_negotiation(
         initiator_side: cwd,
         _other_side(initiator_side) if not legacy_mode else provider_side: counterpart_cwd or cwd,
     }
+    sessions = _SideSessions(adapters)
     resume_thread_id = proposal_thread_id or _find_resumable_thread_id(
         store,
         issue=issue,
@@ -440,7 +441,7 @@ def run_negotiation(
             side=initiator_side,
             agent=agents[initiator_side],
             adapter=adapters[initiator_side],
-            session_id=_new_round_session_id(adapters[initiator_side]),
+            session=sessions.next_round(initiator_side),
             seed=seed,
             thread=[],
             issue=issue,
@@ -480,7 +481,7 @@ def run_negotiation(
                 side=initiator_side,
                 agent=agents[initiator_side],
                 adapter=adapters[initiator_side],
-                session_id=_new_round_session_id(adapters[initiator_side]),
+                session=sessions.next_round(initiator_side),
                 seed=seed,
                 thread=[],
                 issue=issue,
@@ -523,7 +524,7 @@ def run_negotiation(
                 side=side,
                 agent=agents[side],
                 adapter=adapters[side],
-                session_id=_new_round_session_id(adapters[side]),
+                session=sessions.next_round(side),
                 seed=seed,
                 thread=thread,
                 issue=issue,
@@ -588,7 +589,7 @@ def _run_side_turn(
     side: str,
     agent: str,
     adapter: AgentAdapter,
-    session_id: str | None,
+    session: tuple[str | None, bool],
     seed: str,
     thread: list[NegotiationEntry],
     issue: Issue,
@@ -596,6 +597,7 @@ def _run_side_turn(
     timeout: float,
     runner: AgentRunner,
 ) -> _TurnResult:
+    session_id, resume_session = session
     prompt = render_round_prompt(
         side=side,
         seed=seed,
@@ -624,12 +626,13 @@ def _run_side_turn(
         subject=side,
         issue_id=issue.id,
         session_id=session_id,
+        resume_session=resume_session,
     )
     result = readonly_run.result
     run_id = _run_id(result)
     print(
         f"round={round_number} side={side} agent={agent} run_id={run_id or '-'} "
-        f"session_id={session_id or '-'}",
+        f"session_id={session_id or '-'}{' resumed' if resume_session else ''}",
         file=sys.stderr,
     )
 
@@ -674,10 +677,29 @@ def _run_side_turn(
     )
 
 
-def _new_round_session_id(adapter: AgentAdapter) -> str | None:
-    if not adapter.supports_session_resume():
-        return None
-    return str(uuid.uuid4())
+class _SideSessions:
+    """Hold one agent session per side so later rounds resume it.
+
+    Sessions live for a single negotiate invocation. A thread resumed by a
+    later invocation starts fresh sessions because the store does not record
+    session ids and the counterpart may run on another machine.
+    """
+
+    def __init__(self, adapters: dict[str, AgentAdapter]) -> None:
+        self._adapters = adapters
+        self._sessions: dict[str, str] = {}
+
+    def next_round(self, side: str) -> tuple[str | None, bool]:
+        """Return the session id for this side's next round and whether to resume."""
+        adapter = self._adapters[side]
+        if not adapter.supports_session_resume():
+            return None, False
+        existing = self._sessions.get(side)
+        if existing is not None and adapter.supports_session_continuation():
+            return existing, True
+        session_id = str(uuid.uuid4())
+        self._sessions[side] = session_id
+        return session_id, False
 
 
 def _failure_reason(result: AgentResult) -> str | None:

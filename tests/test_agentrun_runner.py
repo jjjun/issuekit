@@ -34,6 +34,7 @@ class FakeAdapter(AgentAdapter):
         prompt: str,
         plan_path: Path,
         session_id: str | None = None,
+        resume: bool = False,
     ) -> list[str]:
         return self.command[1:]
 
@@ -121,9 +122,12 @@ def test_runner_uses_caller_prompt(
             prompt: str,
             plan_path: Path,
             session_id: str | None = None,
+            resume: bool = False,
         ) -> list[str]:
             self.prompt = prompt
-            return super().build_argv(prompt, plan_path, session_id=session_id)
+            return super().build_argv(
+                prompt, plan_path, session_id=session_id, resume=resume
+            )
 
     script = tmp_path / "script.py"
     script.write_text("pass")

@@ -143,6 +143,7 @@ class AgentRunner:
         run_dir: Path | None = None,
         abort_event: threading.Event | None = None,
         session_id: str | None = None,
+        resume_session: bool = False,
         issuekit_session: str | None = None,
         implementer_report: bool = False,
     ) -> AgentResult:
@@ -160,6 +161,7 @@ class AgentRunner:
             prompt_text,
             plan_path,
             session_id=session_id,
+            resume=resume_session,
         )
 
         run_dir = (run_dir or repo / ".agent-runs").resolve()

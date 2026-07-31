@@ -123,6 +123,7 @@ class CannedRunner:
                 "agent_name": agent_name,
                 "issue_id": issue_id,
                 "session_id": kwargs.get("session_id"),
+                "resume_session": kwargs.get("resume_session"),
             }
         )
         return AgentResult(
@@ -486,7 +487,7 @@ def test_backend_ref_resolution_accepts_project_alias(tmp_path) -> None:
     )
 
 
-def test_negotiate_uses_fresh_resumable_side_session_and_full_prompt(tmp_path) -> None:
+def test_negotiate_resumes_the_side_session_and_keeps_the_full_prompt(tmp_path) -> None:
     store = MockNegotiationStore(None)
     runner = CannedRunner(
         [
@@ -511,9 +512,11 @@ def test_negotiate_uses_fresh_resumable_side_session_and_full_prompt(tmp_path) -
 
     assert result.outcome == "agreed"
     assert isinstance(runner.calls[0]["session_id"], str)
-    assert isinstance(runner.calls[2]["session_id"], str)
-    assert runner.calls[0]["session_id"] != runner.calls[2]["session_id"]
+    assert runner.calls[0]["resume_session"] is False
+    assert runner.calls[2]["session_id"] == runner.calls[0]["session_id"]
+    assert runner.calls[2]["resume_session"] is True
     assert runner.calls[1]["session_id"] is None
+    assert runner.calls[1]["resume_session"] is False
     assert "Compact thread so far:" in _call_plan_text(runner, 1)
     repeated_side_prompt = _call_plan_text(runner, 2)
     assert "Seed:" in repeated_side_prompt
@@ -527,7 +530,7 @@ def test_negotiate_uses_fresh_resumable_side_session_and_full_prompt(tmp_path) -
     assert "Latest counterpart entry:" not in repeated_side_prompt
 
 
-def test_negotiate_allocates_unique_session_id_per_round_for_same_agent(tmp_path) -> None:
+def test_negotiate_keeps_one_session_per_side_for_the_same_agent(tmp_path) -> None:
     store = MockNegotiationStore(None)
     runner = CannedRunner(
         [
@@ -552,10 +555,15 @@ def test_negotiate_allocates_unique_session_id_per_round_for_same_agent(tmp_path
     )
 
     session_ids = [call["session_id"] for call in runner.calls]
+    resumed = [call["resume_session"] for call in runner.calls]
     assert result.outcome == "escalate"
     assert result.round_count == 4
     assert all(isinstance(session_id, str) for session_id in session_ids)
-    assert len(set(session_ids)) == 4
+    # One session per side, created on its first round and resumed afterwards.
+    assert len(set(session_ids)) == 2
+    assert session_ids[2] == session_ids[0]
+    assert session_ids[3] == session_ids[1]
+    assert resumed == [False, False, True, True]
 
 
 def test_negotiate_failure_includes_round_session_and_log_reason(tmp_path) -> None:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import threading
 from pathlib import Path
 
@@ -26,6 +27,9 @@ class FakeAdapter:
 
     def effective_runtime(self) -> tuple[None, None]:
         return None, None
+
+    def compose_prompt(self, prompt: str) -> str:
+        return f"{prompt}\n\nMake minimal, additive diffs."
 
 
 class FakeAgentSessionClient:
@@ -137,6 +141,7 @@ class FakeTransport:
         self.notification = notification
         self.complete_on_start = complete_on_start
         self.interruptions: list[tuple[str, str]] = []
+        self.prompts: list[str] = []
 
     def initialize(self) -> None:
         return None
@@ -145,7 +150,21 @@ class FakeTransport:
         return "thread-1"
 
     def start_turn(self, native_session_id: str, prompt: str) -> str:
+        self.prompts.append(prompt)
         if self.complete_on_start:
+            self.notification(
+                {
+                    "method": "thread/tokenUsage/updated",
+                    "params": {
+                        "threadId": native_session_id,
+                        "turnId": "turn-1",
+                        "tokenUsage": {
+                            "last": {"inputTokens": 10, "totalTokens": 14},
+                            "total": {"inputTokens": 30, "totalTokens": 42},
+                        },
+                    },
+                }
+            )
             self.notification(
                 {
                     "method": "turn/completed",
@@ -259,9 +278,26 @@ def test_app_server_runner_returns_result_for_successful_attempt(
         "runtime": "codex_app_server",
         "agent_session_id": "session-1",
         "native_session_id": "thread-1",
+        "usage_input_tokens": "30",
+        "usage_total_tokens": "42",
     }
     assert len(transports) == 1
-    assert FakeAgentSessionClient.instances[-1].closed_sessions == [
+    assert transports[0].prompts == [
+        "Implement the plan.\n\nMake minimal, additive diffs."
+    ]
+    assert json.loads(result.stdout_path.read_text(encoding="utf-8"))["usage"] == {
+        "input_tokens": 30,
+        "total_tokens": 42,
+    }
+    client = FakeAgentSessionClient.instances[-1]
+    stopped = [
+        event for event in client.events if event["event_type"] == "runtime_stopped"
+    ]
+    assert stopped[-1]["payload"] == {
+        "exit_code": 0,
+        "usage": {"input_tokens": 30, "total_tokens": 42},
+    }
+    assert client.closed_sessions == [
         {
             "outcome": "closed",
             "reason": "implementation_turn_finished",

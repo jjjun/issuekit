@@ -95,6 +95,67 @@ def test_normalize_notification_maps_turn_and_agent_message_events() -> None:
     assert "raw message" not in json.dumps(message)
 
 
+def test_normalize_notification_records_token_usage() -> None:
+    event = normalize_notification(
+        {
+            "method": "thread/tokenUsage/updated",
+            "params": {
+                "threadId": "thread-1",
+                "turnId": "turn-1",
+                "tokenUsage": {
+                    "last": {
+                        "cachedInputTokens": 8,
+                        "inputTokens": 10,
+                        "outputTokens": 4,
+                        "reasoningOutputTokens": 2,
+                        "totalTokens": 14,
+                    },
+                    "total": {
+                        "cachedInputTokens": 16,
+                        "inputTokens": 30,
+                        "outputTokens": 12,
+                        "reasoningOutputTokens": 5,
+                        "totalTokens": 42,
+                    },
+                    "modelContextWindow": 272000,
+                },
+            },
+        },
+        event_key="session:3",
+    )
+
+    assert event is not None
+    assert event["event_type"] == "turn_progress"
+    assert event["turn_id"] == "turn-1"
+    assert event["payload"]["usage"] == {
+        "last": {
+            "cached_input_tokens": 8,
+            "input_tokens": 10,
+            "output_tokens": 4,
+            "reasoning_output_tokens": 2,
+            "total_tokens": 14,
+        },
+        "total": {
+            "cached_input_tokens": 16,
+            "input_tokens": 30,
+            "output_tokens": 12,
+            "reasoning_output_tokens": 5,
+            "total_tokens": 42,
+        },
+        "model_context_window": 272000,
+    }
+
+
+def test_normalize_notification_omits_usage_without_token_counts() -> None:
+    event = normalize_notification(
+        {"method": "turn/started", "params": {"turn": {"id": "turn-1"}}},
+        event_key="session:4",
+    )
+
+    assert event is not None
+    assert "usage" not in event["payload"]
+
+
 def test_app_server_transport_initializes_starts_thread_and_turn(
     tmp_path: Path,
 ) -> None:

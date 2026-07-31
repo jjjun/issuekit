@@ -13,6 +13,13 @@ from typing import Any, TextIO
 
 MAX_TEXT_CHARS = 32 * 1024
 MAX_EVENT_BYTES = 64 * 1024
+USAGE_TOKEN_FIELDS = (
+    ("cachedInputTokens", "cached_input_tokens"),
+    ("inputTokens", "input_tokens"),
+    ("outputTokens", "output_tokens"),
+    ("reasoningOutputTokens", "reasoning_output_tokens"),
+    ("totalTokens", "total_tokens"),
+)
 SENSITIVE_KEYS = frozenset(
     {
         "api_key",
@@ -279,14 +286,16 @@ def normalize_notification(
     if event_type is None:
         return None
     turn_id = _notification_turn_id(params)
-    payload = redact_payload(
-        {
-            "method": method,
-            "item": _item_summary(params.get("item")),
-            "status": _status(params),
-            "message": _message_text(method, params),
-        }
-    )
+    fields: dict[str, Any] = {
+        "method": method,
+        "item": _item_summary(params.get("item")),
+        "status": _status(params),
+        "message": _message_text(method, params),
+    }
+    usage = _token_usage(params)
+    if usage is not None:
+        fields["usage"] = usage
+    payload = redact_payload(fields)
     event = {
         "event_key": event_key,
         "event_type": event_type,
@@ -386,6 +395,39 @@ def _status(params: Mapping[str, Any]) -> str | None:
     if isinstance(value, dict):
         value = value.get("type")
     return str(value) if value is not None else None
+
+
+def _token_usage(params: Mapping[str, Any]) -> dict[str, Any] | None:
+    """Return normalized counts from a thread/tokenUsage/updated notification."""
+    usage = params.get("tokenUsage")
+    if not isinstance(usage, Mapping):
+        return None
+    normalized: dict[str, Any] = {}
+    for scope in ("last", "total"):
+        breakdown = _token_breakdown(usage.get(scope))
+        if breakdown:
+            normalized[scope] = breakdown
+    window = _token_count(usage.get("modelContextWindow"))
+    if window is not None:
+        normalized["model_context_window"] = window
+    return normalized or None
+
+
+def _token_breakdown(value: Any) -> dict[str, int]:
+    if not isinstance(value, Mapping):
+        return {}
+    counts: dict[str, int] = {}
+    for source, name in USAGE_TOKEN_FIELDS:
+        count = _token_count(value.get(source))
+        if count is not None:
+            counts[name] = count
+    return counts
+
+
+def _token_count(value: Any) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None
+    return value
 
 
 def _message_text(method: str, params: Mapping[str, Any]) -> str | None:

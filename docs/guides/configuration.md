@@ -156,6 +156,13 @@ model = "gpt-5.6"
 For the runtime boundary and how to add a config-only or custom agent adapter,
 see [`issuekit/agentrun/README.md`](../../issuekit/agentrun/README.md).
 
+Session flags come in a pair. `session_flag` starts a new agent session under a
+caller-chosen id, and `resume_flag` continues a session that issuekit already
+started; both require `resumable = true`. Negotiation uses the pair to keep one
+session per side across the rounds of a run, so an agent configured with only
+`session_flag` gets a fresh session per round as before. The built-in Claude
+config sets `session_flag = "--session-id"` and `resume_flag = "--resume"`.
+
 By default, issuekit runs Codex without a sandbox and relies on the repository
 worktree plus the review gate. Projects that require the strict sandbox can use
 the override above, or set `approval_flag = "--sandbox"` and
@@ -182,10 +189,28 @@ silently fall back because the mode is explicit. App Server is Codex-only and
 implementer-only in this version. The `issuekit implement --follow` heartbeat
 applies only to the default exec runtime.
 
+Both runtimes send the same prompt: the plan pointer plus the agent's
+`prompt_suffix` and any matching `model_prompts` entry. App Server attempts also
+record token usage. Codex reports it through `thread/tokenUsage/updated`
+notifications, which issuekit uploads as `turn_progress` events carrying a
+`usage` payload with `last` and `total` breakdowns. The cumulative thread total
+is repeated in the final `runtime_stopped` event, in the run's
+`<run_id>.out.log` JSON, and as `usage_*` entries on the run result, so App
+Server and exec runs can be compared without reading the raw agent log.
+
 The built-in Claude config bypasses permissions so headless implementer runs
 can execute shell commands unattended. Stricter projects can restore the old
 behavior with `[agents.claude] approval_value = "acceptEdits"` in repo or
 machine config.
+
+That config also sets `output_format = "json"`, so Claude returns a result
+envelope instead of bare text. An agent configured with `output_format = "json"`
+has its envelope unwrapped by the adapter: `stdout` becomes the agent's own
+reply, exactly as under `"text"`, and the run result gains `session_id`,
+`cost_usd`, and `usage_*` entries. The unwrapped run log keeps the full
+envelope, and an agent that dies before emitting one keeps its raw stdout, so
+crash diagnostics are unchanged. Set `output_format = "text"` to opt out; the
+recorded metrics are then unavailable.
 
 Agent-launching commands accept pass-through `--model <model-id>` and
 `--reasoning-effort <value>` overrides, including `implement`, `review`,

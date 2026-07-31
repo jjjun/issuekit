@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import shutil
 from abc import ABC, abstractmethod
 from pathlib import Path
@@ -22,6 +23,7 @@ class AgentAdapter(ABC):
         prompt: str,
         plan_path: Path,
         session_id: str | None = None,
+        resume: bool = False,
     ) -> list[str]:
         """Build the command-line argv for the agent."""
 
@@ -33,9 +35,17 @@ class AgentAdapter(ABC):
         """Return True when the adapter can resume a caller-provided session."""
         return False
 
+    def supports_session_continuation(self) -> bool:
+        """Return True when the adapter can continue a session it already started."""
+        return False
+
     def effective_runtime(self) -> tuple[str | None, str | None]:
         """Return the effective model and reasoning effort for this run."""
         return None, None
+
+    def compose_prompt(self, prompt: str) -> str:
+        """Return the prompt text a runtime must send to the agent."""
+        return prompt
 
 
 class ConfigAgentAdapter(AgentAdapter):
@@ -85,9 +95,15 @@ class ConfigAgentAdapter(AgentAdapter):
         prompt: str,
         plan_path: Path,
         session_id: str | None = None,
+        resume: bool = False,
     ) -> list[str]:
+        if resume and not self.supports_session_continuation():
+            raise ValueError(
+                f"Agent '{self.agent_name}' cannot continue a session; "
+                "add resume_flag to the agent configuration."
+            )
         resolved_model, resolved_effort = self.effective_runtime()
-        prompt = self._append_prompt_suffixes(prompt, resolved_model)
+        prompt = self.compose_prompt(prompt)
         argv = list(self.run_config.headless_argv)
         argv.append(prompt)
         if self.run_config.approval_flag:
@@ -107,24 +123,33 @@ class ConfigAgentAdapter(AgentAdapter):
             )
         if self.run_config.speed is True:
             argv.extend(self.run_config.speed_argv)
-        if (
-            session_id
-            and self.run_config.resumable
-            and self.run_config.session_flag
-        ):
-            argv.extend([self.run_config.session_flag, session_id])
+        if session_id and self.run_config.resumable:
+            flag = (
+                self.run_config.resume_flag
+                if resume
+                else self.run_config.session_flag
+            )
+            if flag:
+                argv.extend([flag, session_id])
         return argv
 
     def parse_output(self, stdout: str, stderr: str) -> dict[str, str]:
         """Parse stdout/stderr into a structured dict."""
-        return {
+        parsed = {
             "stdout": stdout,
             "stderr": stderr,
         }
+        if self.run_config.output_format == "json":
+            parsed.update(_result_envelope_fields(stdout))
+        return parsed
 
     def supports_session_resume(self) -> bool:
         """Return True when the declarative config has a session flag."""
         return bool(self.run_config.resumable and self.run_config.session_flag)
+
+    def supports_session_continuation(self) -> bool:
+        """Return True when the declarative config has a resume flag."""
+        return bool(self.run_config.resumable and self.run_config.resume_flag)
 
     def effective_runtime(self) -> tuple[str | None, str | None]:
         """Return the model and reasoning effort used to build agent argv."""
@@ -132,6 +157,11 @@ class ConfigAgentAdapter(AgentAdapter):
             self.model or self.run_config.model,
             self.reasoning_effort or self.run_config.reasoning_effort,
         )
+
+    def compose_prompt(self, prompt: str) -> str:
+        """Return the prompt text with configured and model suffixes appended."""
+        resolved_model, _ = self.effective_runtime()
+        return self._append_prompt_suffixes(prompt, resolved_model)
 
     def _append_prompt_suffixes(self, prompt: str, resolved_model: str | None) -> str:
         parts = [prompt]
@@ -142,6 +172,37 @@ class ConfigAgentAdapter(AgentAdapter):
             if model_prompt:
                 parts.append(model_prompt)
         return "\n\n".join(parts)
+
+
+def _result_envelope_fields(stdout: str) -> dict[str, str]:
+    """Unwrap a headless JSON result envelope into agent text and run metrics.
+
+    Falls back to leaving stdout untouched when the agent did not emit a
+    well-formed envelope, so a crash before the first byte of JSON keeps its
+    original diagnostics.
+    """
+    try:
+        envelope = json.loads(stdout)
+    except ValueError:
+        return {}
+    if not isinstance(envelope, dict):
+        return {}
+    fields: dict[str, str] = {}
+    text = envelope.get("result")
+    if isinstance(text, str):
+        fields["stdout"] = text
+    session_id = envelope.get("session_id")
+    if isinstance(session_id, str):
+        fields["session_id"] = session_id
+    cost = envelope.get("total_cost_usd")
+    if isinstance(cost, (int, float)) and not isinstance(cost, bool):
+        fields["cost_usd"] = str(cost)
+    usage = envelope.get("usage")
+    if isinstance(usage, dict):
+        for name, count in usage.items():
+            if isinstance(count, int) and not isinstance(count, bool):
+                fields[f"usage_{name}"] = str(count)
+    return fields
 
 
 def build_adapter(

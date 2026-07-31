@@ -18,6 +18,7 @@ class AgentRunConfig:
     headless_argv: tuple[str, ...] = ()
     resumable: bool = False
     session_flag: str | None = None
+    resume_flag: str | None = None
     approval_flag: str | None = None
     approval_value: str | None = None
     output_format_flag: str | None = None

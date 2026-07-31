@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import pytest
@@ -177,6 +178,136 @@ def test_config_adapter_false_speed_emits_nothing() -> None:
     )
 
     assert argv == ["exec", "base"]
+
+
+def _json_adapter() -> ConfigAgentAdapter:
+    return ConfigAgentAdapter(
+        "claude",
+        AgentRunConfig(
+            binary="claude",
+            headless_argv=("-p",),
+            output_format_flag="--output-format",
+            output_format="json",
+        ),
+    )
+
+
+def test_config_adapter_unwraps_json_result_envelope() -> None:
+    envelope = json.dumps(
+        {
+            "type": "result",
+            "subtype": "success",
+            "is_error": False,
+            "result": '{"verdict": "agree"}',
+            "session_id": "518533be-abe7-4728-aa20-549bbeefe661",
+            "total_cost_usd": 0.0695405,
+            "usage": {
+                "input_tokens": 3503,
+                "cache_creation_input_tokens": 4019,
+                "cache_read_input_tokens": 22261,
+                "output_tokens": 4,
+                "service_tier": "standard",
+            },
+        }
+    )
+
+    parsed = _json_adapter().parse_output(envelope, "stderr text")
+
+    assert parsed["stdout"] == '{"verdict": "agree"}'
+    assert parsed["stderr"] == "stderr text"
+    assert parsed["session_id"] == "518533be-abe7-4728-aa20-549bbeefe661"
+    assert parsed["cost_usd"] == "0.0695405"
+    assert parsed["usage_input_tokens"] == "3503"
+    assert parsed["usage_cache_read_input_tokens"] == "22261"
+    assert parsed["usage_output_tokens"] == "4"
+    # Non-numeric usage entries are metadata, not counts.
+    assert "usage_service_tier" not in parsed
+
+
+def test_config_adapter_keeps_raw_stdout_when_envelope_is_unparsable() -> None:
+    parsed = _json_adapter().parse_output("crashed before any JSON", "boom")
+
+    assert parsed == {"stdout": "crashed before any JSON", "stderr": "boom"}
+
+
+def test_config_adapter_does_not_unwrap_text_output_format() -> None:
+    adapter = ConfigAgentAdapter(
+        "kimi",
+        AgentRunConfig(
+            binary="kimi",
+            headless_argv=("-p",),
+            output_format_flag="--output-format",
+            output_format="text",
+        ),
+    )
+    envelope = json.dumps({"result": "inner", "usage": {"input_tokens": 1}})
+
+    assert adapter.parse_output(envelope, "")["stdout"] == envelope
+
+
+def test_config_adapter_resume_uses_resume_flag() -> None:
+    session_id = "123e4567-e89b-12d3-a456-426614174000"
+    adapter = ConfigAgentAdapter(
+        "continuable",
+        AgentRunConfig(
+            binary="agent",
+            headless_argv=("run",),
+            resumable=True,
+            session_flag="--session-id",
+            resume_flag="--resume",
+        ),
+    )
+
+    assert adapter.supports_session_continuation() is True
+    assert adapter.build_argv("prompt", Path("/plan.md"), session_id=session_id)[-2:] == [
+        "--session-id",
+        session_id,
+    ]
+    assert adapter.build_argv(
+        "prompt", Path("/plan.md"), session_id=session_id, resume=True
+    )[-2:] == ["--resume", session_id]
+
+
+def test_config_adapter_rejects_resume_without_resume_flag() -> None:
+    adapter = ConfigAgentAdapter(
+        "session-only",
+        AgentRunConfig(
+            binary="agent",
+            headless_argv=("run",),
+            resumable=True,
+            session_flag="--session-id",
+        ),
+    )
+
+    assert adapter.supports_session_continuation() is False
+    with pytest.raises(ValueError, match="cannot continue a session"):
+        adapter.build_argv(
+            "prompt",
+            Path("/plan.md"),
+            session_id="123e4567-e89b-12d3-a456-426614174000",
+            resume=True,
+        )
+
+
+def test_config_adapter_compose_prompt_matches_argv_prompt() -> None:
+    adapter = ConfigAgentAdapter(
+        "codex",
+        AgentRunConfig(
+            binary="codex",
+            headless_argv=("exec",),
+            model_flag="--model",
+            model="gpt-5.3-codex",
+            prompt_suffix="Make minimal, additive diffs.",
+            model_prompts=(("gpt-5.3-codex", "Codex guardrail."),),
+        ),
+    )
+
+    composed = adapter.compose_prompt("base")
+
+    assert composed == (
+        "base\n\nMake minimal, additive diffs.\n\nCodex guardrail."
+    )
+    assert adapter.build_argv("base", Path("/plan.md"))[1] == composed
 
 
 def test_config_adapter_rejects_reasoning_effort_without_template() -> None:

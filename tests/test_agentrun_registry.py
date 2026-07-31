@@ -60,7 +60,7 @@ def test_claude_adapter_argv_contains_print_and_bypass_permissions() -> None:
         "--permission-mode",
         "bypassPermissions",
         "--output-format",
-        "text",
+        "json",
     ]
     assert "acceptEdits" not in argv
 

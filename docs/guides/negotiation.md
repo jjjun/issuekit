@@ -95,6 +95,16 @@ while the thread remains `negotiating`, the result is `outcome=escalate`.
 Escalation is a stop, not a failure; normally rerun with a larger
 `--max-rounds` value.
 
+Each side keeps one agent session for the whole run when its agent can
+continue a session, so later rounds resume the session the side opened on its
+first round instead of exploring the repository again from a cold start. An
+agent qualifies when its configuration sets `resumable`, `session_flag`, and
+`resume_flag`; the built-in Claude config does, and Codex does not. Sessions
+last for one `issuekit negotiate` invocation: resuming a thread in a later
+invocation starts new sessions, because thread storage does not record session
+ids and the counterpart side may run on another machine. The round prompt is
+unchanged either way, so a side that cannot resume behaves exactly as before.
+
 ## Inspect and finalize
 
 Use `issuekit threads` to list negotiation threads, or pass a thread id to
