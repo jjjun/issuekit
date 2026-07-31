@@ -384,6 +384,20 @@ def test_parse_proposal_check_output_rejects_non_ascii() -> None:
         )
 
 
+def test_parse_proposal_check_output_normalizes_verdict() -> None:
+    parsed = parse_proposal_check_output(
+        _check_block(verdict=" APPROVE ", comment="Ready.")
+    )
+
+    assert parsed["verdict"] == "approve"
+
+
+def test_parse_proposal_check_output_normalizes_ok_alias() -> None:
+    parsed = parse_proposal_check_output(_check_block(verdict=" OK ", comment="Ready."))
+
+    assert parsed["verdict"] == "approve"
+
+
 def test_cli_proposal_checks_prints_json(monkeypatch, tmp_path, capsys) -> None:
     from issuekit import cli
     from issuekit.commands import proposal_checks as proposal_checks_cmd

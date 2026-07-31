@@ -19,7 +19,11 @@ from issuekit.agents.readonly import prompt_from_spec
 from issuekit.agents.registry import resolve_adapter
 from issuekit.config import IssuekitConfig
 from issuekit.encoding import has_non_ascii
-from issuekit.prompts import PROPOSAL_CHECK_PROMPT, ProposalCheckParseError
+from issuekit.prompts import (
+    PROPOSAL_CHECK_PROMPT,
+    ProposalCheckParseError,
+    canonical_contract_token,
+)
 from issuekit.proposals.api import ProposalError, adopt_proposal_with_append, api_client
 from issuekit.workflow import WorkflowError
 
@@ -309,11 +313,14 @@ def _error_decision(
 
 def parse_proposal_check_output(stdout: str) -> dict[str, str]:
     raw = PROPOSAL_CHECK_PROMPT.parse_json(stdout)
-    verdict = raw.get("verdict")
-    if verdict == "ok":
-        verdict = "approve"
-    if not isinstance(verdict, str) or verdict not in PROPOSAL_CHECK_VERDICTS:
-        raise ProposalCheckParseError(f"Invalid proposal-check verdict: {verdict!r}")
+    raw_verdict = raw.get("verdict")
+    if canonical_contract_token(raw_verdict, ("ok",)) == "ok":
+        raw_verdict = "approve"
+    verdict = canonical_contract_token(raw_verdict, PROPOSAL_CHECK_VERDICTS)
+    if verdict is None:
+        raise ProposalCheckParseError(
+            f"Invalid proposal-check verdict: {raw_verdict!r}"
+        )
     comment = raw.get("comment")
     if not isinstance(comment, str) or not comment.strip():
         raise ProposalCheckParseError("Proposal-check verdict requires a non-empty comment.")

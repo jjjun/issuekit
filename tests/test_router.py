@@ -250,6 +250,16 @@ def test_parse_router_output_rejects_unknown_target_project() -> None:
         )
 
 
+def test_parse_router_output_normalizes_decision() -> None:
+    decision = parse_router_output(
+        _route_block({"decision": " Clarify ", "question": "Which project?"}),
+        candidates=[],
+        max_targets=3,
+    )
+
+    assert decision.decision == "clarify"
+
+
 def test_parse_router_output_rejects_forward_target_dependency() -> None:
     candidates = [router.ProjectProfile("api", "", (), ""), router.ProjectProfile("ui", "", (), "")]
 

@@ -124,6 +124,18 @@ def test_parse_triage_output_reads_last_valid_block() -> None:
     assert parsed == {"decision": "adopt", "spec_markdown": "## Spec\n\nDo it."}
 
 
+def test_parse_triage_output_normalizes_decision() -> None:
+    parsed = parse_triage_output(
+        _triage_block(
+            decision="Adopt-And-Reply",
+            spec_markdown="## Spec\n\nDo it.",
+            reply_markdown="Follow up.",
+        )
+    )
+
+    assert parsed["decision"] == "adopt_and_reply"
+
+
 def test_parse_triage_output_requires_block() -> None:
     with pytest.raises(TriageAuthorParseError, match="No ```triage``` block"):
         parse_triage_output("no block here")

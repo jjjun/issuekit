@@ -84,6 +84,7 @@ def run(args) -> int:
                 args.agent,
                 decision_recorded=False,
                 decision_discarded=True,
+                discard_reason=str(exc),
             )
             raise
         _print_run_report(
@@ -116,6 +117,7 @@ def _print_run_report(
     *,
     decision_recorded: bool,
     decision_discarded: bool = False,
+    discard_reason: str | None = None,
 ) -> None:
     print(f"issue={issue.id} ref={issue.ref} reviewer={agent}")
     print(
@@ -129,7 +131,12 @@ def _print_run_report(
     if decision_discarded:
         print(
             "review_decision=discarded "
-            "(unparseable review block; rerun the review)"
+            f"(unparseable review block: {discard_reason or 'unknown parse error'})"
+        )
+        print(
+            "manual_fallback="
+            f"issuekit request-changes {issue.id} --notes <text> OR "
+            f"issuekit approve {issue.id} --verification <text>"
         )
     elif not decision_recorded:
         print("review_decision=none (no decision recorded)")

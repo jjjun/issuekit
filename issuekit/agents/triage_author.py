@@ -41,7 +41,11 @@ from issuekit.agents.triage_state import (
 )
 from issuekit.config import IssuekitConfig
 from issuekit.encoding import has_non_ascii
-from issuekit.prompts import TRIAGE_PROMPT, TriageAuthorParseError
+from issuekit.prompts import (
+    TRIAGE_PROMPT,
+    TriageAuthorParseError,
+    canonical_contract_token,
+)
 from issuekit.proposals import origin_destination
 from issuekit.proposals.api import (
     ProposalError,
@@ -106,9 +110,10 @@ def parse_triage_output(stdout: str) -> dict[str, str]:
 
 
 def _decision_from_json(raw: dict[str, object]) -> dict[str, str]:
-    decision = raw.get("decision")
-    if not isinstance(decision, str) or decision not in _DECISIONS:
-        raise TriageAuthorParseError(f"Invalid triage decision: {decision!r}")
+    raw_decision = raw.get("decision")
+    decision = canonical_contract_token(raw_decision, _DECISIONS)
+    if decision is None:
+        raise TriageAuthorParseError(f"Invalid triage decision: {raw_decision!r}")
     field = _DECISION_FIELD[decision]
     value = raw.get(field)
     if not isinstance(value, str) or not value.strip():

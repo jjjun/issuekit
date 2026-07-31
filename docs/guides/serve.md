@@ -123,7 +123,7 @@ still alive, check the log for that event before re-registering.
 | `issuekit serve is already running for this checkout` | live PID holds the lock | stop the other process, or serve from a second checkout |
 | Repeated `claim_error` with growing backoff | API unreachable or auth expired | check `issuekit info --json`, re-authenticate |
 | Repeated `run_failed` | the agent exits non-zero | read the run logs under `.agent-runs/` |
-| `review_decision_discarded` with growing backoff | the reviewer agent emitted an unparseable review block, so the verdict was dropped | rerun the review and read the agent log under `.agent-runs/` |
+| `review_decision_discarded` with growing backoff | the reviewer agent emitted an unparseable review block, so the verdict was dropped | read the reported parse error and stdout log, then rerun the review or use the printed manual `request-changes`/`approve` fallback |
 | Work-branch guard blocks every claim | checkout is off `work_branch` | switch branches, or `--allow-any-branch` for human recovery |
 
 ## Related

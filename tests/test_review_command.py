@@ -478,9 +478,12 @@ def test_review_command_reports_discarded_decision_for_malformed_review_output(
     assert exit_code == 1
     assert "agent_exit_code=0" in captured.out
     assert (
-        "review_decision=discarded (unparseable review block; rerun the review)"
+        "review_decision=discarded "
+        "(unparseable review block: No ```review``` block found"
         in captured.out
     )
+    assert "issuekit request-changes 1 --notes <text>" in captured.out
+    assert "issuekit approve 1 --verification <text>" in captured.out
     assert "No ```review``` block found" in captured.err
     assert client.calls == []
 
@@ -545,7 +548,8 @@ def test_review_command_discards_fenced_non_json_review_output(
     assert exit_code == 1
     assert "agent_exit_code=0" in captured.out
     assert (
-        "review_decision=discarded (unparseable review block; rerun the review)"
+        "review_decision=discarded "
+        "(unparseable review block: Review block was not valid JSON"
         in captured.out
     )
     assert "Review block was not valid JSON" in captured.err
@@ -869,6 +873,99 @@ def test_parse_review_output_sanitizes_non_ascii_field(capsys) -> None:
 
     assert verdict.notes == "[notes sanitized from non-ASCII]"
     assert "field notes contained non-ASCII text" in capsys.readouterr().err
+
+
+def test_parse_review_output_normalizes_request_changes_verdict() -> None:
+    verdict = review_agent.parse_review_output(
+        "```review\n"
+        '{"verdict":"request_changes","verification":"","notes":"Add tests."}\n'
+        "```"
+    )
+
+    assert verdict.verdict == "request-changes"
+
+
+def test_parse_review_output_skips_newer_invalid_json_block() -> None:
+    verdict = review_agent.parse_review_output(
+        "```review\n"
+        '{"verdict":"approve","verification":"pytest","notes":""}\n'
+        "```\n"
+        "```review\n"
+        '{"verdict":"approve"\n'
+        "```"
+    )
+
+    assert verdict.verdict == "approve"
+
+
+def test_parse_review_output_rejects_newer_non_object_block() -> None:
+    with pytest.raises(
+        review_agent.ReviewParseError,
+        match="Review block JSON must be an object",
+    ):
+        review_agent.parse_review_output(
+            "```review\n"
+            '{"verdict":"approve","verification":"pytest","notes":""}\n'
+            "```\n"
+            "```review\n"
+            "[]\n"
+            "```"
+        )
+
+
+def test_parse_review_output_accepts_json_fallback_block() -> None:
+    verdict = review_agent.parse_review_output(
+        "```json\n"
+        '{"verdict":"approve","verification":"pytest","notes":""}\n'
+        "```"
+    )
+
+    assert verdict.verdict == "approve"
+
+
+def test_parse_review_output_accepts_bare_fallback_block() -> None:
+    verdict = review_agent.parse_review_output(
+        "```\n"
+        '{"verdict":"approve","verification":"pytest","notes":""}\n'
+        "```"
+    )
+
+    assert verdict.verdict == "approve"
+
+
+def test_parse_review_output_joins_list_valued_notes() -> None:
+    verdict = review_agent.parse_review_output(
+        "```review\n"
+        '{"verdict":"request-changes","verification":"","notes":["Add tests.","Fix docs."]}\n'
+        "```"
+    )
+
+    assert verdict.notes == "Add tests.\nFix docs."
+
+
+def test_parse_review_output_prefers_review_block_over_json_block() -> None:
+    verdict = review_agent.parse_review_output(
+        "```review\n"
+        '{"verdict":"approve","verification":"pytest","notes":""}\n'
+        "```\n"
+        "```json\n"
+        '{"unrelated":true}\n'
+        "```"
+    )
+
+    assert verdict.verdict == "approve"
+
+
+def test_parse_review_output_rejects_json_fallback_without_required_keys() -> None:
+    with pytest.raises(
+        review_agent.ReviewParseError,
+        match="Review block is missing required key",
+    ):
+        review_agent.parse_review_output(
+            "```json\n"
+            '{"verdict":"approve"}\n'
+            "```"
+        )
 
 
 @pytest.mark.parametrize("filename", ["code.py", "変更.py"])

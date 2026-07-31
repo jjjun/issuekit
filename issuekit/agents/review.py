@@ -17,7 +17,7 @@ from issuekit.config import IssuekitConfig
 from issuekit.core import Issue, worker_keys_match
 from issuekit.encoding import ASCII_ONLY_HINT, has_non_ascii, sanitize_to_ascii
 from issuekit.gitutil import GitStatusEntry, git_status_entries, git_status_short, run_git
-from issuekit.prompts import REVIEW_PROMPT, ReviewParseError
+from issuekit.prompts import REVIEW_PROMPT, ReviewParseError, canonical_contract_token
 from issuekit.store import managed_issue_store
 from issuekit.workflow import WorkflowError, ensure_assigned_reviewer, request_changes
 
@@ -225,19 +225,20 @@ def _review_verdict_from_json(
     if missing:
         raise ReviewParseError(f"Review block is missing required key: {', '.join(missing)}.")
 
-    verdict = _required_string(raw["verdict"], "verdict")
+    raw_verdict = _required_string(raw["verdict"], "verdict")
+    verdict = canonical_contract_token(raw_verdict, _REVIEW_VERDICTS)
+    if verdict is None:
+        raise ReviewParseError(f"Invalid review verdict: {raw_verdict}")
     verification = _sanitize_review_field(
         "verification",
-        _required_string(raw["verification"], "verification").strip(),
+        _required_review_text(raw["verification"], "verification").strip(),
         err=err,
     )
     notes = _sanitize_review_field(
         "notes",
-        _required_string(raw["notes"], "notes").strip(),
+        _required_review_text(raw["notes"], "notes").strip(),
         err=err,
     )
-    if verdict not in _REVIEW_VERDICTS:
-        raise ReviewParseError(f"Invalid review verdict: {verdict}")
     if verdict == "approve" and not verification:
         raise ReviewParseError("Approved review verdict requires verification.")
     if verdict == "request-changes" and not notes:
@@ -250,6 +251,16 @@ def _required_string(value: object, key: str) -> str:
     if not isinstance(value, str):
         raise ReviewParseError(f"Review key {key} must be a string.")
     return value
+
+
+def _required_review_text(value: object, key: str) -> str:
+    if isinstance(value, list):
+        if not all(isinstance(item, str) for item in value):
+            raise ReviewParseError(
+                f"Review key {key} must be a string or a list of strings."
+            )
+        return "\n".join(value)
+    return _required_string(value, key)
 
 
 def _validate_ascii_review_field(key: str, value: str) -> None:

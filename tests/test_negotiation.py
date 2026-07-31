@@ -277,6 +277,21 @@ def test_negotiation_entry_rejects_invalid_verdict() -> None:
         )
 
 
+def test_negotiation_entry_normalizes_verdict() -> None:
+    entry = NegotiationEntry(
+        thread_id="1",
+        side="frontend",
+        verdict=" AGREE ",
+        contract="GET /items",
+        title="Agreed",
+        body="Accepted.",
+        origin="frontend#1",
+        created="2026-07-31T00:00:00Z",
+    )
+
+    assert entry.verdict is Verdict.agree
+
+
 def test_entry_from_api_selects_created_timestamp_fallbacks() -> None:
     raw = {
         "id": 1,

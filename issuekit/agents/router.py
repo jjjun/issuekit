@@ -14,7 +14,7 @@ from issuekit.agents.readonly import prompt_from_spec, require_clean_run, run_re
 from issuekit.agents.registry import resolve_adapter
 from issuekit.config import IssuekitConfig
 from issuekit.issues.dependencies import DEPENDENCY_REF_EXPECTED, DEPENDENCY_REF_PATTERN
-from issuekit.prompts import ROUTER_PROMPT, RouterParseError
+from issuekit.prompts import ROUTER_PROMPT, RouterParseError, canonical_contract_token
 from issuekit.proposals.api import api_client
 from issuekit.workflow import WorkflowError
 
@@ -195,9 +195,10 @@ def _decision_from_json(
     candidate_projects: set[str],
     max_targets: int,
 ) -> RouterDecision:
-    decision = raw.get("decision")
-    if not isinstance(decision, str) or decision not in _DECISIONS:
-        raise RouterParseError(f"Invalid route decision: {decision!r}")
+    raw_decision = raw.get("decision")
+    decision = canonical_contract_token(raw_decision, _DECISIONS)
+    if decision is None:
+        raise RouterParseError(f"Invalid route decision: {raw_decision!r}")
     if decision == "clarify":
         question = _required_text(raw, "question", decision)
         return RouterDecision(decision="clarify", question=question)

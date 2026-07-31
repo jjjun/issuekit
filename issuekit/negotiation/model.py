@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Protocol
 
 from issuekit.core import is_valid_workflow_token
+from issuekit.prompts import canonical_contract_token
 from issuekit.workflow import WorkflowError
 
 DEFAULT_NEGOTIATION_PATH = Path(".agent-runs") / "negotiations" / "mock.json"
@@ -194,8 +195,11 @@ class NegotiationStore(Protocol):
 
 
 def coerce_verdict(value: object) -> Verdict:
+    if isinstance(value, Verdict):
+        return value
+    canonical = canonical_contract_token(value, (verdict.value for verdict in Verdict))
     try:
-        return value if isinstance(value, Verdict) else Verdict(str(value))
+        return Verdict(canonical)
     except ValueError as exc:
         raise ValueError(f"Invalid verdict: {value}") from exc
 

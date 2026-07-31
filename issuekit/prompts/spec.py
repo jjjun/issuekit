@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from importlib import resources
 from string import Template
@@ -86,6 +86,7 @@ class PromptSpec:
             error_factory=self.parse_error_type,
             reject_non_ascii=self.reject_non_ascii_block,
             non_ascii_message=self.non_ascii_block_message,
+            fallback_validator=self.validate_required_keys,
         )
         self.validate_required_keys(raw)
         return raw
@@ -94,7 +95,11 @@ class PromptSpec:
         required_keys = self.required_keys
         if self.branch_key is not None:
             branch = raw.get(self.branch_key)
-            if isinstance(branch, str) and branch in self.required_keys_by_branch:
+            branch = canonical_contract_token(
+                branch,
+                self.required_keys_by_branch,
+            )
+            if branch is not None:
                 required_keys = self.required_keys_by_branch[branch]
         missing = [key for key in required_keys if key not in raw]
         if missing:
@@ -223,6 +228,7 @@ def parse_newest_json_block(
     error_factory: type[ParseErrorT],
     reject_non_ascii: bool = False,
     non_ascii_message: str | None = None,
+    fallback_validator: Callable[[Mapping[str, object]], None] | None = None,
 ) -> dict[str, object]:
     """Parse the newest well-formed fenced JSON block for an agent contract."""
 
@@ -232,25 +238,90 @@ def parse_newest_json_block(
     )
     blocks = [match.group("body") for match in pattern.finditer(stdout)]
     if not blocks:
-        raise error_factory(f"No ```{language}``` block found in agent output.")
+        fallback_pattern = re.compile(
+            r"```(?:json)?[ \t]*\r?\n(?P<body>.*?)\r?\n```",
+            re.DOTALL,
+        )
+        fallback_blocks = [
+            match.group("body") for match in fallback_pattern.finditer(stdout)
+        ]
+        if not fallback_blocks:
+            raise error_factory(f"No ```{language}``` block found in agent output.")
+        last_fallback_error: RuntimeError | None = None
+        for block in reversed(fallback_blocks):
+            try:
+                raw, json_error = _parse_json_object(
+                    block,
+                    block_label=block_label,
+                    error_factory=error_factory,
+                    reject_non_ascii=reject_non_ascii,
+                    non_ascii_message=non_ascii_message,
+                )
+                if json_error is not None:
+                    last_fallback_error = json_error
+                    continue
+                if fallback_validator is not None:
+                    fallback_validator(raw)
+            except RuntimeError as exc:
+                last_fallback_error = exc
+                continue
+            return raw
+        if last_fallback_error is not None:
+            raise last_fallback_error
+        raise error_factory(f"No well-formed ```{language}``` block found.")
 
     last_json_error: ParseErrorT | None = None
     for block in reversed(blocks):
-        if reject_non_ascii and has_non_ascii(block):
-            raise error_factory(
-                non_ascii_message or f"{block_label} must be ASCII-only."
-            )
-        try:
-            raw = json.loads(block.strip())
-        except json.JSONDecodeError as exc:
-            last_json_error = error_factory(
-                f"{block_label} was not valid JSON: {exc.msg}."
-            )
+        raw, json_error = _parse_json_object(
+            block,
+            block_label=block_label,
+            error_factory=error_factory,
+            reject_non_ascii=reject_non_ascii,
+            non_ascii_message=non_ascii_message,
+        )
+        if json_error is not None:
+            last_json_error = json_error
             continue
-        if not isinstance(raw, dict):
-            raise error_factory(f"{block_label} JSON must be an object.")
         return raw
 
     if last_json_error is not None:
         raise last_json_error
     raise error_factory(f"No well-formed ```{language}``` block found.")
+
+
+def canonical_contract_token(
+    value: object,
+    canonical_values: Iterable[str],
+) -> str | None:
+    """Map separator and case variants onto a contract's canonical token."""
+
+    if not isinstance(value, str):
+        return None
+    folded = _fold_contract_token(value)
+    for canonical in canonical_values:
+        if _fold_contract_token(canonical) == folded:
+            return canonical
+    return None
+
+
+def _fold_contract_token(value: str) -> str:
+    return value.strip().lower().replace("-", "").replace("_", "").replace(" ", "")
+
+
+def _parse_json_object(
+    block: str,
+    *,
+    block_label: str,
+    error_factory: type[ParseErrorT],
+    reject_non_ascii: bool,
+    non_ascii_message: str | None,
+) -> tuple[dict[str, object], None] | tuple[None, ParseErrorT]:
+    if reject_non_ascii and has_non_ascii(block):
+        raise error_factory(non_ascii_message or f"{block_label} must be ASCII-only.")
+    try:
+        raw = json.loads(block.strip())
+    except json.JSONDecodeError as exc:
+        return None, error_factory(f"{block_label} was not valid JSON: {exc.msg}.")
+    if not isinstance(raw, dict):
+        raise error_factory(f"{block_label} JSON must be an object.")
+    return raw, None
