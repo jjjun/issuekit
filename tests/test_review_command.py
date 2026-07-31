@@ -72,6 +72,21 @@ class RequestChangesRunner(ApprovingRunner):
         )
 
 
+class MappingVerificationRunner(ApprovingRunner):
+    def run(self, *args, **kwargs) -> FakeResult:
+        return FakeResult(
+            parsed={
+                "stdout": (
+                    "```review\n"
+                    '{"verdict":"approve","verification":'
+                    '{"1":"uv run pytest","2":"uv run issuekit check-encoding"},'
+                    '"notes":""}\n'
+                    "```"
+                )
+            }
+        )
+
+
 class NonAsciiApprovingRunner(ApprovingRunner):
     def run(self, *args, **kwargs) -> FakeResult:
         return FakeResult(
@@ -294,6 +309,37 @@ def test_review_command_approves_with_sanitized_non_ascii_verification(
     assert client.get_issue(1)["status"] == "completed"
     assert client.calls[-1]["body"]["verification"] == (
         "[verification sanitized from non-ASCII]"
+    )
+
+
+def test_review_command_records_mapping_valued_verification(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                1,
+                "Review me",
+                status="in_progress",
+                assignee="",
+                stage="review",
+                implementer="codex",
+                worker="machine/demo/implementer",
+                author="claude",
+            )
+        ]
+    )
+    _configure_registered_api(tmp_path, monkeypatch, client)
+    _create_reviewable_diff(tmp_path)
+    monkeypatch.setattr(
+        "issuekit.commands.review.AgentRunner",
+        MappingVerificationRunner,
+    )
+
+    assert cli.main(["review", "1", "--agent", "codex"]) == 0
+    assert client.calls[-1]["body"]["verification"] == (
+        "1: uv run pytest\n2: uv run issuekit check-encoding"
     )
 
 
@@ -828,6 +874,21 @@ def test_review_prompt_surfaces_obfuscation_hints() -> None:
     assert "globals() attribute injection" in prompt
 
 
+def test_review_prompt_identifies_the_last_handoff_as_current() -> None:
+    prompt = review_agent._render_review_prompt(
+        _issue(),
+        diff_context=review_agent.ReviewDiffContext(
+            text="Handoff evidence:\nCommit: current",
+            has_changed_files=False,
+        ),
+    )
+    normalized_prompt = " ".join(prompt.split())
+
+    assert "append-only event log" in normalized_prompt
+    assert "review the last handoff as the current submission" in normalized_prompt
+    assert "earlier handoffs are history superseded" in normalized_prompt
+
+
 def test_readability_warnings_only_inspect_added_lines() -> None:
     suspicious = 'globals()["generated"] = value'
 
@@ -941,6 +1002,55 @@ def test_parse_review_output_joins_list_valued_notes() -> None:
     )
 
     assert verdict.notes == "Add tests.\nFix docs."
+
+
+def test_parse_review_output_joins_mapping_valued_notes() -> None:
+    verdict = review_agent.parse_review_output(
+        "```review\n"
+        '{"verdict":"request-changes","verification":"",'
+        '"notes":{"tests":"Add tests.","docs":"Fix docs."}}\n'
+        "```"
+    )
+
+    assert verdict.notes == "tests: Add tests.\ndocs: Fix docs."
+
+
+def test_parse_review_output_rejects_non_string_mapping_value() -> None:
+    with pytest.raises(
+        review_agent.ReviewParseError,
+        match="Review key verification entry 2 must be a string",
+    ):
+        review_agent.parse_review_output(
+            "```review\n"
+            '{"verdict":"approve","verification":{"1":"pytest","2":false},"notes":""}\n'
+            "```"
+        )
+
+
+@pytest.mark.parametrize(
+    ("verdict", "verification", "notes", "message"),
+    [
+        ("approve", "{}", '""', "Approved review verdict requires verification"),
+        (
+            "request-changes",
+            '""',
+            "{}",
+            "Request-changes review verdict requires notes",
+        ),
+    ],
+)
+def test_parse_review_output_rejects_empty_required_mapping(
+    verdict: str,
+    verification: str,
+    notes: str,
+    message: str,
+) -> None:
+    with pytest.raises(review_agent.ReviewParseError, match=message):
+        review_agent.parse_review_output(
+            "```review\n"
+            f'{{"verdict":"{verdict}","verification":{verification},"notes":{notes}}}\n'
+            "```"
+        )
 
 
 def test_parse_review_output_prefers_review_block_over_json_block() -> None:

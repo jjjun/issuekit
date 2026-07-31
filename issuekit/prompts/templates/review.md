@@ -13,6 +13,10 @@ Issue body:
 
 $issue_body
 
+The issue body is an append-only event log. If it contains more than one `## Handoff`
+section, review the last handoff as the current submission; earlier handoffs are
+history superseded by the review feedback that follows them.
+
 Implementation context:
 
 $implementation_context
@@ -34,4 +38,3 @@ All JSON string values must be ASCII-only. $ascii_only_hint
   "notes": "Short rationale or empty string."
 }
 ```
-

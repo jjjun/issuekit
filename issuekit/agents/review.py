@@ -269,6 +269,15 @@ def _required_review_text(value: object, key: str) -> str:
                 f"Review key {key} must be a string or a list of strings."
             )
         return "\n".join(value)
+    if isinstance(value, dict):
+        for entry_key, entry_value in value.items():
+            if not isinstance(entry_value, str):
+                raise ReviewParseError(
+                    f"Review key {key} entry {entry_key} must be a string."
+                )
+        return "\n".join(
+            f"{entry_key}: {entry_value}" for entry_key, entry_value in value.items()
+        )
     return _required_string(value, key)
 
 
