@@ -581,7 +581,7 @@ def test_cli_proposal_checks_list_and_once_are_mutually_exclusive(capsys) -> Non
 
 
 @pytest.mark.parametrize("filename", ["code.py", "変更.py"])
-def test_proposal_check_rejects_content_only_worktree_mutations(
+def test_proposal_check_allows_change_to_already_dirty_worktree_path(
     monkeypatch,
     tmp_path,
     filename,
@@ -610,5 +610,5 @@ def test_proposal_check_rejects_content_only_worktree_mutations(
         runner_factory=lambda: runner,
     )
 
-    assert decisions[0].status == "error"
-    assert decisions[0].error == "Proposal-check agent modified repository state for proposal #1."
+    assert decisions[0].status == "answered"
+    assert decisions[0].error is None

@@ -10,7 +10,12 @@ from pathlib import Path
 from typing import TextIO
 
 from issuekit.agentrun import AgentResult, AgentRunner
-from issuekit.agents.readonly import prompt_from_spec, run_readonly_evaluation, stdout_text
+from issuekit.agents.readonly import (
+    prompt_from_spec,
+    repository_mutation_message,
+    run_readonly_evaluation,
+    stdout_text,
+)
 from issuekit.agents.registry import resolve_adapter
 from issuekit.commands.approve import approve_issue
 from issuekit.config import IssuekitConfig
@@ -144,7 +149,11 @@ def run_review_and_decide(
 
     if run.repository_modified:
         print(
-            "ERROR: reviewer run modified repository state; not applying review verdict.",
+            repository_mutation_message(
+                "ERROR: reviewer run modified repository state; "
+                "not applying review verdict.",
+                run,
+            ),
             file=err,
         )
         if run.repository_error:

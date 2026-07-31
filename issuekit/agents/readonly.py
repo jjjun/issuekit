@@ -20,6 +20,7 @@ class ReadonlyAgentRun:
 
     result: AgentResult
     repository_modified: bool
+    repository_changed_paths: tuple[str, ...]
     label: str
     subject: str
     repository_error: str | None = None
@@ -67,7 +68,13 @@ def run_readonly_evaluation(
     follow: bool = False,
     abort_event: threading.Event | None = None,
 ) -> ReadonlyAgentRun:
-    """Run an agent from a prompt file and record whether it changed repository state."""
+    """Run an agent from a prompt file and record attributable repository changes.
+
+    Content changes to paths that were already dirty are ignored because a shared
+    checkout cannot attribute those writes to the agent. This weakens the guard
+    for those paths; HEAD, branch, durable state, newly dirty paths, disappearing
+    baseline paths, deletions, and renames remain protected.
+    """
 
     fingerprint_before = repository_fingerprint(cwd)
 
@@ -88,11 +95,15 @@ def run_readonly_evaluation(
     except WorkflowError as exc:
         fingerprint_after = None
         repository_error = str(exc)
+    changed_paths = (
+        ()
+        if fingerprint_after is None
+        else _repository_changed_paths(fingerprint_before, fingerprint_after)
+    )
     return ReadonlyAgentRun(
         result=result,
-        repository_modified=(
-            fingerprint_after is None or fingerprint_before != fingerprint_after
-        ),
+        repository_modified=fingerprint_after is None or bool(changed_paths),
+        repository_changed_paths=changed_paths,
         label=label,
         subject=subject,
         repository_error=repository_error,
@@ -108,7 +119,7 @@ def require_clean_run(
     """Return agent output after enforcing read-only execution requirements."""
 
     if run.repository_modified:
-        print(mutation_log_message, file=err)
+        print(repository_mutation_message(mutation_log_message, run), file=err)
         if run.repository_error:
             print(f"ERROR: {run.repository_error}", file=err)
     if run.result.timed_out:
@@ -118,8 +129,21 @@ def require_clean_run(
             f"{run.label} agent exited {run.result.exit_code} for {run.subject}."
         )
     if run.repository_modified:
-        raise WorkflowError(f"{run.label} agent modified repository state for {run.subject}.")
+        message = f"{run.label} agent modified repository state for {run.subject}."
+        raise WorkflowError(repository_mutation_message(message, run))
     return stdout_text(run.result)
+
+
+def repository_mutation_message(message: str, run: ReadonlyAgentRun) -> str:
+    """Append a bounded list of changed fingerprint paths to a diagnostic."""
+
+    if not run.repository_changed_paths:
+        return message
+    limit = 10
+    displayed = ", ".join(run.repository_changed_paths[:limit])
+    remaining = len(run.repository_changed_paths) - limit
+    suffix = f", and {remaining} more" if remaining else ""
+    return f"{message.rstrip('.')} (changed paths: {displayed}{suffix})."
 
 
 def worktree_fingerprint(cwd: Path) -> tuple[tuple[str, str, str, str], ...] | None:
@@ -178,6 +202,41 @@ def repository_fingerprint(cwd: Path) -> RepositoryFingerprint:
         branch=branch,
         durable_state=_durable_state_fingerprint(root),
     )
+
+
+def _repository_changed_paths(
+    before: RepositoryFingerprint,
+    after: RepositoryFingerprint,
+) -> tuple[str, ...]:
+    changed: set[str] = set()
+    before_entries = {entry[1]: entry for entry in before.worktree}
+    after_entries = {entry[1]: entry for entry in after.worktree}
+
+    for path in before_entries.keys() - after_entries.keys():
+        changed.add(path)
+    for path, entry in after_entries.items():
+        before_entry = before_entries.get(path)
+        if before_entry is None:
+            changed.add(path)
+            if entry[2]:
+                changed.add(entry[2])
+        elif "D" in entry[0] and "D" not in before_entry[0]:
+            changed.add(path)
+        elif entry[2] and entry[2] != before_entry[2]:
+            changed.update((path, entry[2]))
+
+    if before.head != after.head:
+        changed.add("HEAD")
+    if before.branch != after.branch:
+        changed.add("branch")
+
+    before_durable = dict(before.durable_state)
+    after_durable = dict(after.durable_state)
+    for path in before_durable.keys() | after_durable.keys():
+        if before_durable.get(path) != after_durable.get(path):
+            changed.add(path)
+
+    return tuple(sorted(changed))
 
 
 def stdout_text(result: AgentResult) -> str:

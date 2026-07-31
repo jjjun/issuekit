@@ -146,6 +146,220 @@ def test_readonly_evaluation_protects_durable_agent_run_state(
     )
 
     assert run.repository_modified is True
+    assert run.repository_changed_paths == (relative_path.as_posix(),)
+
+
+def test_readonly_evaluation_ignores_content_change_to_already_dirty_path(
+    tmp_path: Path,
+) -> None:
+    _init_git_repo(tmp_path)
+    changed_path = tmp_path / "tracked.txt"
+    changed_path.write_text("dirty before\n", encoding="utf-8", newline="\n")
+    runner = ResultRunner(
+        mutate=lambda: changed_path.write_text(
+            "dirty after\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+    )
+
+    run = run_readonly_evaluation(
+        agent="codex",
+        adapter=object(),
+        cwd=tmp_path,
+        timeout=1,
+        runner_factory=lambda: runner,
+        prompt=AgentPrompt(tmp_path / ".agent-runs/prompt.md", "body", "pointer"),
+        label="Test",
+        subject="subject",
+    )
+
+    assert run.repository_modified is False
+    assert run.repository_changed_paths == ()
+
+
+def test_readonly_evaluation_detects_deletion_of_already_dirty_path(
+    tmp_path: Path,
+) -> None:
+    _init_git_repo(tmp_path)
+    changed_path = tmp_path / "tracked.txt"
+    changed_path.write_text("dirty before\n", encoding="utf-8", newline="\n")
+    runner = ResultRunner(mutate=changed_path.unlink)
+
+    run = run_readonly_evaluation(
+        agent="codex",
+        adapter=object(),
+        cwd=tmp_path,
+        timeout=1,
+        runner_factory=lambda: runner,
+        prompt=AgentPrompt(tmp_path / ".agent-runs/prompt.md", "body", "pointer"),
+        label="Test",
+        subject="subject",
+    )
+
+    assert run.repository_modified is True
+    assert run.repository_changed_paths == ("tracked.txt",)
+
+
+def test_readonly_evaluation_detects_newly_modified_tracked_path(
+    tmp_path: Path,
+) -> None:
+    _init_git_repo(tmp_path)
+    changed_path = tmp_path / "tracked.txt"
+    runner = ResultRunner(
+        mutate=lambda: changed_path.write_text(
+            "changed\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+    )
+
+    run = run_readonly_evaluation(
+        agent="codex",
+        adapter=object(),
+        cwd=tmp_path,
+        timeout=1,
+        runner_factory=lambda: runner,
+        prompt=AgentPrompt(tmp_path / ".agent-runs/prompt.md", "body", "pointer"),
+        label="Test",
+        subject="subject",
+    )
+
+    assert run.repository_modified is True
+    assert run.repository_changed_paths == ("tracked.txt",)
+
+
+def test_readonly_evaluation_detects_new_untracked_path(tmp_path: Path) -> None:
+    _init_git_repo(tmp_path)
+    added_path = tmp_path / "added.txt"
+    runner = ResultRunner(
+        mutate=lambda: added_path.write_text(
+            "added\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+    )
+
+    run = run_readonly_evaluation(
+        agent="codex",
+        adapter=object(),
+        cwd=tmp_path,
+        timeout=1,
+        runner_factory=lambda: runner,
+        prompt=AgentPrompt(tmp_path / ".agent-runs/prompt.md", "body", "pointer"),
+        label="Test",
+        subject="subject",
+    )
+
+    assert run.repository_modified is True
+    assert run.repository_changed_paths == ("added.txt",)
+
+
+def test_readonly_evaluation_detects_disappearing_baseline_path(
+    tmp_path: Path,
+) -> None:
+    _init_git_repo(tmp_path)
+    changed_path = tmp_path / "tracked.txt"
+    changed_path.write_text("dirty\n", encoding="utf-8", newline="\n")
+    runner = ResultRunner(
+        mutate=lambda: changed_path.write_text(
+            "baseline\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+    )
+
+    run = run_readonly_evaluation(
+        agent="codex",
+        adapter=object(),
+        cwd=tmp_path,
+        timeout=1,
+        runner_factory=lambda: runner,
+        prompt=AgentPrompt(tmp_path / ".agent-runs/prompt.md", "body", "pointer"),
+        label="Test",
+        subject="subject",
+    )
+
+    assert run.repository_modified is True
+    assert run.repository_changed_paths == ("tracked.txt",)
+
+
+def test_readonly_evaluation_detects_rename(tmp_path: Path) -> None:
+    _init_git_repo(tmp_path)
+
+    run = run_readonly_evaluation(
+        agent="codex",
+        adapter=object(),
+        cwd=tmp_path,
+        timeout=1,
+        runner_factory=lambda: ResultRunner(
+            mutate=lambda: subprocess.run(
+                ["git", "mv", "tracked.txt", "renamed.txt"],
+                cwd=tmp_path,
+                check=True,
+            )
+        ),
+        prompt=AgentPrompt(tmp_path / ".agent-runs/prompt.md", "body", "pointer"),
+        label="Test",
+        subject="subject",
+    )
+
+    assert run.repository_modified is True
+    assert run.repository_changed_paths == ("renamed.txt", "tracked.txt")
+
+
+def test_readonly_evaluation_detects_commit(tmp_path: Path) -> None:
+    _init_git_repo(tmp_path)
+    changed_path = tmp_path / "tracked.txt"
+
+    def commit_change() -> None:
+        changed_path.write_text("changed\n", encoding="utf-8", newline="\n")
+        subprocess.run(["git", "add", "tracked.txt"], cwd=tmp_path, check=True)
+        subprocess.run(["git", "commit", "-qm", "agent commit"], cwd=tmp_path, check=True)
+
+    run = run_readonly_evaluation(
+        agent="codex",
+        adapter=object(),
+        cwd=tmp_path,
+        timeout=1,
+        runner_factory=lambda: ResultRunner(mutate=commit_change),
+        prompt=AgentPrompt(tmp_path / ".agent-runs/prompt.md", "body", "pointer"),
+        label="Test",
+        subject="subject",
+    )
+
+    assert run.repository_modified is True
+    assert run.repository_changed_paths == ("HEAD",)
+
+
+def test_require_clean_run_names_changed_paths(tmp_path: Path, capsys) -> None:
+    _init_git_repo(tmp_path)
+    added_path = tmp_path / "added.txt"
+    run = run_readonly_evaluation(
+        agent="codex",
+        adapter=object(),
+        cwd=tmp_path,
+        timeout=1,
+        runner_factory=lambda: ResultRunner(
+            mutate=lambda: added_path.write_text(
+                "added\n",
+                encoding="utf-8",
+                newline="\n",
+            )
+        ),
+        prompt=AgentPrompt(tmp_path / ".agent-runs/prompt.md", "body", "pointer"),
+        label="Test",
+        subject="subject",
+    )
+
+    with pytest.raises(WorkflowError, match=r"changed paths: added\.txt"):
+        require_clean_run(
+            run,
+            err=sys.stderr,
+            mutation_log_message="ERROR: repository mutation detected.",
+        )
+
+    assert "changed paths: added.txt" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize(

@@ -17,7 +17,6 @@ from issuekit.agents.router import RouterParseError, parse_router_output
 from issuekit.config import RouterPolicy, load_config
 from issuekit.proposals import ProposalError
 from issuekit.testing import FakeIssuekitClient
-from issuekit.workflow import WorkflowError
 
 
 class FakeRunner:
@@ -963,7 +962,9 @@ def test_request_requires_router_agent(monkeypatch, tmp_path, capsys) -> None:
 
 
 @pytest.mark.parametrize("filename", ["code.py", "変更.py"])
-def test_router_rejects_content_only_worktree_mutations(monkeypatch, tmp_path, filename) -> None:
+def test_router_allows_change_to_already_dirty_worktree_path(
+    monkeypatch, tmp_path, filename
+) -> None:
     _clients, _runner = _setup(
         monkeypatch,
         tmp_path,
@@ -982,11 +983,12 @@ def test_router_rejects_content_only_worktree_mutations(monkeypatch, tmp_path, f
     config = load_config(tmp_path)
     runner = MutatingRunner([_route_block({"decision": "reject", "reason": "No."})])
 
-    with pytest.raises(WorkflowError, match="Router agent modified repository state"):
-        router.run_router(
-            config,
-            tmp_path,
-            request_id=1,
-            request_text="Route this.",
-            runner_factory=lambda: runner,
-        )
+    decision = router.run_router(
+        config,
+        tmp_path,
+        request_id=1,
+        request_text="Route this.",
+        runner_factory=lambda: runner,
+    )
+
+    assert decision.decision == "reject"

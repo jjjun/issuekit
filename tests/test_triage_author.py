@@ -870,7 +870,7 @@ def test_cli_triage_once_prints_json_decisions(monkeypatch, tmp_path, capsys) ->
 
 
 @pytest.mark.parametrize("filename", ["code.py", "変更.py"])
-def test_triage_author_rejects_content_only_worktree_mutations(
+def test_triage_author_allows_change_to_already_dirty_worktree_path(
     monkeypatch,
     tmp_path,
     filename,
@@ -902,5 +902,5 @@ def test_triage_author_rejects_content_only_worktree_mutations(
         log=log,
     )
 
-    assert decisions[0].decision == "error"
-    assert decisions[0].error == "Triage agent modified repository state for proposal #5."
+    assert decisions[0].decision == "discard"
+    assert decisions[0].error is None

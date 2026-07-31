@@ -969,7 +969,7 @@ def test_parse_review_output_rejects_json_fallback_without_required_keys() -> No
 
 
 @pytest.mark.parametrize("filename", ["code.py", "変更.py"])
-def test_review_command_blocks_verdict_when_agent_mutates_worktree(
+def test_review_command_allows_change_to_already_dirty_worktree_path(
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -1007,6 +1007,6 @@ def test_review_command_blocks_verdict_when_agent_mutates_worktree(
 
     exit_code = cli.main(["review", "1", "--agent", "codex"])
 
-    assert exit_code == 1
-    assert "reviewer run modified repository state" in capsys.readouterr().err
-    assert [call["method"] for call in client.calls] == []
+    assert exit_code == 0
+    assert "reviewer run modified repository state" not in capsys.readouterr().err
+    assert client.calls[-1]["method"] == "approve"
