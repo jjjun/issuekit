@@ -135,6 +135,13 @@ def _stub_implementation_snapshot(
     )
 
 
+def test_implementation_prompt_names_implementer_report_channel(tmp_path: Path) -> None:
+    prompt = run_claimed_agent.implementation_prompt(tmp_path / "issue-1.md")
+
+    assert "$ISSUEKIT_IMPLEMENTER_REPORT_FILE" in prompt
+    assert "answers to any reporting requests in the plan" in prompt
+
+
 def test_run_and_submit_uses_agent_runner_by_default(
     tmp_path: Path, monkeypatch
 ) -> None:

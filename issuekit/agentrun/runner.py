@@ -49,6 +49,16 @@ class AgentPrompt:
     body: str
     pointer: str
 
+
+def implementation_report_instruction(destination: str) -> str:
+    """Return the instruction for writing an implementer report."""
+
+    return (
+        "Write your closing implementation and verification report to "
+        f"{destination}, including answers to any reporting requests in the plan."
+    )
+
+
 class _RunWatcher:
     """Background watcher that updates status JSON and optionally emits a heartbeat."""
 

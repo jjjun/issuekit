@@ -19,7 +19,11 @@ from issuekit.agentrun.app_server import (
     CommandJournal,
     normalize_notification,
 )
-from issuekit.agentrun.runner import AgentPrompt, AgentResult
+from issuekit.agentrun.runner import (
+    AgentPrompt,
+    AgentResult,
+    implementation_report_instruction,
+)
 from issuekit.api import IssuekitClient
 from issuekit.api.features import is_feature_unavailable
 from issuekit.config import IssuekitConfig
@@ -122,6 +126,12 @@ class AppServerAttemptRunner:
         ttl = run_config.lease_ttl_seconds
         model, reasoning_effort = adapter.effective_runtime()
         pointer = prompt.pointer
+        pointer = pointer.replace(
+            implementation_report_instruction(
+                "the path in $ISSUEKIT_IMPLEMENTER_REPORT_FILE"
+            ),
+            implementation_report_instruction(str(report_path)),
+        )
         if prompt_suffix:
             pointer = f"{pointer}\n\n{prompt_suffix}"
         pointer = adapter.compose_prompt(pointer)

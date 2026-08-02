@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import TextIO
 
 from issuekit.agentrun import AgentPrompt, AgentResult, AgentRunner
+from issuekit.agentrun.runner import implementation_report_instruction
 from issuekit.agents.app_server_runtime import AppServerAttemptRunner
 from issuekit.agents.registry import resolve_adapter
 from issuekit.config import IssuekitConfig
@@ -72,7 +73,10 @@ def implementation_prompt(plan_path: Path) -> str:
         "and completion state; do not run issuekit claim, submit-review, "
         "request-changes, approve, or complete, and do not mutate tracker state "
         "or issue lifecycle metadata directly. If the plan is ambiguous, make "
-        "the most reasonable choice and note it at the end."
+        "the most reasonable choice and note it at the end. "
+        + implementation_report_instruction(
+            "the path in $ISSUEKIT_IMPLEMENTER_REPORT_FILE"
+        )
     )
 
 

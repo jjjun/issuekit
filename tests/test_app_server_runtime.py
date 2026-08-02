@@ -10,6 +10,7 @@ from issuekit.agentrun.config import AgentRunConfig
 from issuekit.agentrun.runner import AgentPrompt
 from issuekit.agents import app_server_runtime
 from issuekit.agents.app_server_runtime import AppServerAttemptRunner
+from issuekit.agents.run_claimed import implementation_prompt
 from issuekit.config import IssuekitConfig, WorkerIdentity
 from issuekit.core import Issue
 from issuekit.workflow import WorkflowError
@@ -303,6 +304,39 @@ def test_app_server_runner_returns_result_for_successful_attempt(
             "reason": "implementation_turn_finished",
         }
     ]
+
+
+def test_app_server_pointer_contains_one_concrete_report_instruction(
+    tmp_path: Path, monkeypatch
+) -> None:
+    FakeAgentSessionClient.instances.clear()
+    FakeAgentSessionClient.create_error = None
+    transports: list[FakeTransport] = []
+
+    def transport_factory(*args, **kwargs) -> FakeTransport:
+        transport = FakeTransport(*args, complete_on_start=True, **kwargs)
+        transports.append(transport)
+        return transport
+
+    monkeypatch.setattr(app_server_runtime, "IssuekitClient", FakeAgentSessionClient)
+    runner = AppServerAttemptRunner(
+        make_config(), make_issue(), transport_factory=transport_factory
+    )
+    plan_path = tmp_path / "plan.md"
+
+    result = runner.run(
+        FakeAdapter(),
+        AgentPrompt(plan_path, "plan", implementation_prompt(plan_path)),
+        tmp_path,
+        issue_id=322,
+        agent_name="codex",
+        run_dir=tmp_path / "runs",
+    )
+
+    pointer = transports[0].prompts[0]
+    assert pointer.count("closing implementation and verification report") == 1
+    assert "$ISSUEKIT_IMPLEMENTER_REPORT_FILE" not in pointer
+    assert str(result.report_path) in pointer
 
 
 def test_app_server_runner_translates_missing_provider_feature(

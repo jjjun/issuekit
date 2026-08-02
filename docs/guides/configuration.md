@@ -189,9 +189,12 @@ silently fall back because the mode is explicit. App Server is Codex-only and
 implementer-only in this version. The `issuekit implement --follow` heartbeat
 applies only to the default exec runtime.
 
-Both runtimes send the same prompt: the plan pointer plus the agent's
-`prompt_suffix` and any matching `model_prompts` entry. App Server attempts also
-record token usage. Codex reports it through `thread/tokenUsage/updated`
+Both runtimes send the plan pointer plus the agent's `prompt_suffix` and any
+matching `model_prompts` entry. For the implementer report destination, the exec
+prompt names `ISSUEKIT_IMPLEMENTER_REPORT_FILE`; the App Server prompt replaces
+that instruction with the concrete path because its session does not receive
+the exec environment. App Server attempts also record token usage. Codex reports
+it through `thread/tokenUsage/updated`
 notifications, which issuekit uploads as `turn_progress` events carrying a
 `usage` payload with `last` and `total` breakdowns. The cumulative thread total
 is repeated in the final `runtime_stopped` event, in the run's
