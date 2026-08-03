@@ -33,3 +33,8 @@ jobs:
       - run: python -m pip install uv
       - run: uv sync --all-extras --dev --locked
       - run: uv run pip-audit
+      - run: |
+          uv export --all-extras --dev --format requirements-txt --no-hashes --output-file requirements-audit.txt
+          sed -i 's/ *;.*//' requirements-audit.txt
+          echo "requirements in audit scope: $(grep -c '==' requirements-audit.txt)"
+      - run: uv run pip-audit -r requirements-audit.txt --no-deps --disable-pip
