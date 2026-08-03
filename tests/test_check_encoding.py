@@ -249,12 +249,17 @@ def test_check_encoding_exclude_keeps_other_paths_checked(tmp_path: Path, monkey
     assert "source/bad.md" in capsys.readouterr().err
 
 
-def test_check_encoding_default_does_not_exclude_generated_paths(tmp_path: Path, monkeypatch) -> None:
+def test_check_encoding_default_does_not_exclude_generated_paths(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
     init_git_repo(tmp_path)
     add_tracked(tmp_path, "generated/openapi.ts", f"{MOJIBAKE}\n".encode())
     monkeypatch.chdir(tmp_path)
 
     assert cli.main(["check-encoding"]) == 1
+    assert "check_encoding_exclude matches" not in capsys.readouterr().err
 
 
 def test_check_encoding_ignores_non_source_extensions(tmp_path: Path, monkeypatch) -> None:
@@ -625,6 +630,7 @@ def test_check_encoding_gate_scans_changed_files_without_source_extension(
 def test_check_encoding_exclusion_does_not_suppress_confirmed_hit(
     tmp_path: Path,
     monkeypatch,
+    capsys,
 ) -> None:
     init_git_repo(tmp_path)
     (tmp_path / "issuekit.toml").write_text(
@@ -642,7 +648,14 @@ def test_check_encoding_exclusion_does_not_suppress_confirmed_hit(
     monkeypatch.chdir(tmp_path)
 
     assert cli.main(["check-encoding"]) == 1
+    captured = capsys.readouterr()
+    assert "check_encoding_exclude matches 1 of these path(s)" in captured.err
+    assert "suppress unconfirmed candidates only" in captured.err
+
     assert cli.main(["check-encoding", "--gate"]) == 1
+    captured = capsys.readouterr()
+    assert "check_encoding_exclude matches 1 of these path(s)" in captured.err
+    assert "suppress unconfirmed candidates only" in captured.err
 
 
 def test_check_encoding_reports_invalid_utf8_in_default_and_gate_modes(

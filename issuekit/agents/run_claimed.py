@@ -20,6 +20,7 @@ from issuekit.encoding import (
     MojibakeScanOptions,
     changed_line_numbers,
     changed_readable_paths,
+    is_encoding_excluded_path,
     print_mojibake_hit,
     sanitize_to_ascii,
     scan_mojibake,
@@ -232,6 +233,21 @@ def run_and_submit(
                 for hit in unconfirmed_hits:
                     print_mojibake_hit(hit, err, prefix="- ", context_prefix="  ")
                     print("  failed CP932 reverse confirmation", file=err)
+                excluded_confirmed_paths = {
+                    str(hit["file"])
+                    for hit in confirmed_hits
+                    if is_encoding_excluded_path(
+                        str(hit["file"]), config.check_encoding_exclude
+                    )
+                }
+                if excluded_confirmed_paths:
+                    print(
+                        "check_encoding_exclude matches "
+                        f"{len(excluded_confirmed_paths)} of these path(s); exclusions "
+                        "suppress unconfirmed candidates only, so confirmed mojibake "
+                        "is still reported.",
+                        file=err,
+                    )
                 print(
                     "Reproduce this gate locally with "
                     "`uv run issuekit check-encoding --gate`.",

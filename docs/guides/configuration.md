@@ -311,12 +311,12 @@ corruption. Use it only with `check_encoding_exclude` entries for trees that
 legitimately contain such text, or when the project has none.
 
 Set `check_encoding_exclude` to a list of POSIX-style, repo-relative glob
-patterns for generated paths that `issuekit check-encoding` should skip. The
-agent submit mojibake gate also honors them for unconfirmed hits; confirmed
-mojibake remains blocked by that gate. The exclusions apply to BOM, mojibake,
-stray carriage-return, and CRLF checks. Use repeatable `--exclude PATTERN` flags
-for one-off default scans. Gate mode uses the configured exclusions exactly and
-cannot be combined with scan modifiers.
+patterns for generated paths. The exclusions suppress unconfirmed mojibake
+candidates, but confirmed mojibake remains reported by `issuekit
+check-encoding` and blocked by the agent submit gate in every path. They are a
+whole-path filter for BOM, stray carriage-return, and CRLF checks. Use
+repeatable `--exclude PATTERN` flags for one-off default scans. Gate mode uses
+the configured exclusions exactly and cannot be combined with scan modifiers.
 
 ## Registration and repo metadata
 

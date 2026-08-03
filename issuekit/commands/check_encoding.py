@@ -298,6 +298,19 @@ def run(args) -> int:
                     context_prefix="    ",
                 )
                 print(f"    recovers to {hit['recovered']}", file=sys.stderr)
+            excluded_mojibake_files = {
+                str(hit["file"])
+                for hit in mojibake_hits
+                if is_encoding_excluded_path(str(hit["file"]), exclude_patterns)
+            }
+            if excluded_mojibake_files:
+                print(
+                    "check_encoding_exclude matches "
+                    f"{len(excluded_mojibake_files)} of these path(s); exclusions "
+                    "suppress unconfirmed candidates only, so confirmed mojibake "
+                    "is still reported.",
+                    file=sys.stderr,
+                )
             print(
                 "\nTip: use the reported location and code-point context to replace mojibake with the intended UTF-8 text.",
                 file=sys.stderr,

@@ -474,6 +474,7 @@ def test_implement_command_mojibake_gate_blocks_submit(
     assert "uv run issuekit check-encoding --gate" in captured.err
     assert "- code.py:1:12: U+7E67" in captured.err
     assert "recovers to U+" in captured.err
+    assert "check_encoding_exclude matches" not in captured.err
     assert [call["method"] for call in client.calls] == ["claim"]
 
 
@@ -654,6 +655,7 @@ def test_implement_command_mojibake_gate_allows_excluded_legitimate_japanese(
 def test_implement_command_mojibake_gate_blocks_confirmed_excluded_text(
     tmp_path: Path,
     monkeypatch,
+    capsys,
 ) -> None:
     client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
     _configure_api(
@@ -679,6 +681,9 @@ def test_implement_command_mojibake_gate_blocks_confirmed_excluded_text(
     monkeypatch.setattr("issuekit.commands.implement.AgentRunner", MojibakeRunner)
 
     assert cli.main(["implement", "1", "--agent", "codex"]) == 1
+    captured = capsys.readouterr()
+    assert "check_encoding_exclude matches 1 of these path(s)" in captured.err
+    assert "suppress unconfirmed candidates only" in captured.err
     assert [call["method"] for call in client.calls] == ["claim"]
 
 
