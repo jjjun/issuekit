@@ -72,3 +72,7 @@ assignees = ["codex", "claude", "kimi"]
 disabled_agents = ["kimi"]
 default_reviewer = "auto"
 work_branch = "main"
+
+[tool.issuekit.triage]
+author_agent = "codex"
+trusted_origins = ["fast-domain"]
