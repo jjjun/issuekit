@@ -41,6 +41,7 @@ SOURCE_EXTENSIONS = frozenset(
         "txt",
     }
 )
+BINARY_SNIFF_BYTES = 8_000
 
 
 @dataclass(frozen=True)
@@ -98,6 +99,11 @@ def scan_mojibake(
             continue
         try:
             content = (repo / rel_path).read_bytes()
+            if (
+                not _has_source_extension(file, SOURCE_EXTENSIONS)
+                and b"\0" in content[:BINARY_SNIFF_BYTES]
+            ):
+                continue
             text = content.decode("utf-8")
         except UnicodeDecodeError:
             if not excluded or "confirmed" not in options.excluded_hit_classes:

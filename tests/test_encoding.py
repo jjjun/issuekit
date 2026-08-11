@@ -103,6 +103,56 @@ def test_mojibake_gate_batches_changed_line_and_tracked_path_queries(
     ]
 
 
+def test_mojibake_gate_skips_binary_non_source_extensions(tmp_path) -> None:
+    paths = (Path("sounds/tick.mp3"), Path("images/icon.png"))
+    for path in paths:
+        file = tmp_path / path
+        file.parent.mkdir(parents=True, exist_ok=True)
+        file.write_bytes(b"binary\0\xff")
+
+    result = encoding.scan_mojibake(
+        tmp_path,
+        paths,
+        options=encoding.MojibakeScanOptions(
+            failure_classes=frozenset({"confirmed", "unconfirmed"}),
+            include_halfwidth_katakana=True,
+            source_extensions=None,
+            line_scope="changed-lines",
+            exclude_patterns=(),
+            excluded_hit_classes=frozenset({"unconfirmed"}),
+        ),
+        whole_file_paths=paths,
+    )
+
+    assert not result.confirmed_hits
+    assert not result.unconfirmed_hits
+
+
+def test_mojibake_gate_reports_invalid_utf8_in_text_and_source_files(tmp_path) -> None:
+    paths = (Path("invalid.txt"), Path("corrupted.py"))
+    (tmp_path / paths[0]).write_bytes(b"invalid\xff")
+    (tmp_path / paths[1]).write_bytes(b"corrupted\0\xff")
+
+    result = encoding.scan_mojibake(
+        tmp_path,
+        paths,
+        options=encoding.MojibakeScanOptions(
+            failure_classes=frozenset({"confirmed", "unconfirmed"}),
+            include_halfwidth_katakana=True,
+            source_extensions=None,
+            line_scope="changed-lines",
+            exclude_patterns=(),
+            excluded_hit_classes=frozenset({"unconfirmed"}),
+        ),
+        whole_file_paths=paths,
+    )
+
+    assert [hit["file"] for hit in result.confirmed_hits] == [
+        "invalid.txt",
+        "corrupted.py",
+    ]
+
+
 def test_added_line_numbers_ignores_deleted_file_headers() -> None:
     diff = (
         "diff --git a/a.txt b/a.txt\n"
