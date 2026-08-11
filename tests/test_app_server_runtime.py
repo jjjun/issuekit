@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import threading
 from pathlib import Path
 
@@ -304,6 +305,33 @@ def test_app_server_runner_returns_result_for_successful_attempt(
             "reason": "implementation_turn_finished",
         }
     ]
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX mode bits are not used on Windows")
+def test_app_server_runner_creates_owner_only_artifacts(
+    tmp_path: Path, monkeypatch
+) -> None:
+    FakeAgentSessionClient.instances.clear()
+    FakeAgentSessionClient.create_error = None
+    monkeypatch.setattr(app_server_runtime, "IssuekitClient", FakeAgentSessionClient)
+    run_dir = tmp_path / "runs"
+    result = AppServerAttemptRunner(
+        make_config(), make_issue(), transport_factory=lambda *args, **kwargs: FakeTransport(
+            *args, complete_on_start=True, **kwargs
+        )
+    ).run(
+        FakeAdapter(),
+        make_prompt(tmp_path),
+        tmp_path,
+        issue_id=322,
+        agent_name="codex",
+        run_dir=run_dir,
+    )
+
+    assert run_dir.stat().st_mode & 0o777 == 0o700
+    assert result.stdout_path.stat().st_mode & 0o777 == 0o600
+    assert result.agent_log_path.stat().st_mode & 0o777 == 0o600
+    assert next(run_dir.glob("*.commands.jsonl")).stat().st_mode & 0o777 == 0o600
 
 
 def test_app_server_pointer_contains_one_concrete_report_instruction(

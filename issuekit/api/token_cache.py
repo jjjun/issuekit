@@ -2,16 +2,14 @@
 
 from __future__ import annotations
 
-import csv
-import io
 import json
 import os
-import subprocess
 import sys
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+from issuekit.file_permissions import chmod_600, ensure_owner_only_directory, open_owner_only
 from issuekit.workflow import WorkflowError
 
 from .security import is_expired, jwt_expiry
@@ -99,48 +97,30 @@ def _read_token_cache() -> dict[str, Any]:
 def _write_token_cache(cache: Mapping[str, Any]) -> None:
     path = _token_cache_path()
     try:
-        path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-        _chmod_700(path.parent)
+        ensure_owner_only_directory(path.parent)
     except OSError as exc:
         raise WorkflowError(f"Failed to create API token cache directory: {exc}", code="token_cache_error") from exc
 
     temp_path = path.with_name(f".{path.name}.{os.getpid()}.tmp")
     data = json.dumps(dict(cache), sort_keys=True, separators=(",", ":")) + "\n"
     flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
-    if hasattr(os, "O_BINARY"):
-        flags |= os.O_BINARY
     try:
-        fd = os.open(temp_path, flags, 0o600)
+        fd = open_owner_only(
+            temp_path,
+            flags,
+            warn=_warn_token_cache_permissions,
+            windows_acl=True,
+        )
         with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
             handle.write(data)
-        _chmod_600(temp_path)
         os.replace(temp_path, path)
-        _chmod_600(path)
+        chmod_600(path, warn=_warn_token_cache_permissions, windows_acl=True)
     except OSError as exc:
         try:
             temp_path.unlink()
         except OSError:
             pass
         raise WorkflowError(f"Failed to write API token cache: {exc}", code="token_cache_error") from exc
-
-
-def _chmod_600(path: Path) -> None:
-    if os.name == "nt":
-        _restrict_windows_acl(path)
-        return
-    try:
-        os.chmod(path, 0o600)
-    except OSError:
-        pass
-
-
-def _chmod_700(path: Path) -> None:
-    if os.name == "nt":
-        return
-    try:
-        os.chmod(path, 0o700)
-    except OSError:
-        pass
 
 
 def _warn_if_token_cache_is_loose(path: Path) -> None:
@@ -160,74 +140,6 @@ def _warn_if_token_cache_is_loose(path: Path) -> None:
         path,
         "cache file is group/other-readable; run `chmod 600` on the file",
     )
-
-
-def _restrict_windows_acl(path: Path) -> None:
-    grantee = _current_windows_acl_grantee()
-    if not grantee:
-        _warn_token_cache_permissions(path, "current Windows user could not be determined")
-        return
-    try:
-        result = subprocess.run(
-            [
-                "icacls",
-                str(path),
-                "/inheritance:r",
-                "/grant:r",
-                f"{grantee}:F",
-            ],
-            check=False,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
-            text=True,
-        )
-    except (OSError, subprocess.SubprocessError) as exc:
-        _warn_token_cache_permissions(path, str(exc))
-        return
-    if result.returncode != 0:
-        reason = result.stderr.strip() or f"icacls exited with {result.returncode}"
-        _warn_token_cache_permissions(path, reason)
-
-
-def _current_windows_acl_grantee() -> str | None:
-    sid = _current_windows_user_sid()
-    if sid:
-        return f"*{sid}"
-    try:
-        login = os.getlogin()
-    except OSError:
-        login = ""
-    if login:
-        return login
-    username = os.getenv("USERNAME")
-    if not username:
-        return None
-    domain = os.getenv("USERDOMAIN")
-    if domain:
-        return f"{domain}\\{username}"
-    return username
-
-
-def _current_windows_user_sid() -> str | None:
-    try:
-        result = subprocess.run(
-            ["whoami", "/user", "/fo", "csv"],
-            check=False,
-            capture_output=True,
-            text=True,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return None
-    if result.returncode != 0:
-        return None
-    try:
-        rows = list(csv.DictReader(io.StringIO(result.stdout or "")))
-    except csv.Error:
-        return None
-    if not rows:
-        return None
-    sid = (rows[0].get("SID") or "").strip()
-    return sid if sid.startswith("S-1-") else None
 
 
 def _warn_token_cache_permissions(path: Path, reason: str) -> None:

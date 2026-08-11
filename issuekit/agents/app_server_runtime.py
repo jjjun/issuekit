@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import secrets
 import threading
 import time
@@ -28,6 +29,7 @@ from issuekit.api import IssuekitClient
 from issuekit.api.features import is_feature_unavailable
 from issuekit.config import IssuekitConfig
 from issuekit.core import Issue
+from issuekit.file_permissions import ensure_owner_only_directory, open_owner_only
 from issuekit.workflow import WorkflowError
 
 LEASE_STOP_CODES = frozenset(
@@ -105,7 +107,7 @@ class AppServerAttemptRunner:
             raise ValueError("codex_app_server runtime requires a registered worker.")
 
         run_dir = (run_dir or repo / ".agent-runs").resolve()
-        run_dir.mkdir(parents=True, exist_ok=True)
+        ensure_owner_only_directory(run_dir)
         prompt.path.parent.mkdir(parents=True, exist_ok=True)
         prompt.path.write_text(prompt.body, encoding="utf-8", newline="\n")
         run_id = f"app-server-{issue_id}-{uuid.uuid4().hex[:8]}"
@@ -197,7 +199,12 @@ class AppServerAttemptRunner:
 
             transport: AppServerTransport | None = None
             try:
-                with agent_log_path.open("w", encoding="utf-8", newline="\n") as log:
+                with os.fdopen(
+                    open_owner_only(agent_log_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC),
+                    "w",
+                    encoding="utf-8",
+                    newline="\n",
+                ) as log:
                     transport = self.transport_factory(
                         binary,
                         run_config.app_server_argv,
@@ -430,21 +437,25 @@ class AppServerAttemptRunner:
                 except WorkflowError:
                     pass
 
-        stdout_path.write_text(
-            json.dumps(
-                {
-                    "runtime": "codex_app_server",
-                    "session_id": session_id,
-                    "native_session_id": native_session_id,
-                    "exit_code": exit_code,
-                    "usage": dict(usage_total),
-                },
-                ensure_ascii=True,
-            )
-            + "\n",
+        with os.fdopen(
+            open_owner_only(stdout_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC),
+            "w",
             encoding="utf-8",
             newline="\n",
-        )
+        ) as handle:
+            handle.write(
+                json.dumps(
+                    {
+                        "runtime": "codex_app_server",
+                        "session_id": session_id,
+                        "native_session_id": native_session_id,
+                        "exit_code": exit_code,
+                        "usage": dict(usage_total),
+                    },
+                    ensure_ascii=True,
+                )
+                + "\n"
+            )
         return AgentResult(
             exit_code=exit_code,
             stdout_path=stdout_path,

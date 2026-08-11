@@ -13,6 +13,7 @@ import pytest
 
 import issuekit.api.security as security_module
 import issuekit.api.token_cache as token_cache_module
+import issuekit.file_permissions as file_permissions_module
 from issuekit.api import IssuekitClient
 from issuekit.api.client import DEFAULT_HTTP_LIMITS
 from issuekit.testing import FakeIssuekitClient
@@ -590,7 +591,7 @@ def test_windows_token_cache_acl_tightening_is_best_effort(
     monkeypatch.setenv("USERNAME", "svc-user")
     monkeypatch.setattr(token_cache_module, "_token_cache_path", lambda: cache_path)
     monkeypatch.setattr(token_cache_module.os, "name", "nt")
-    monkeypatch.setattr(token_cache_module.subprocess, "run", fake_run)
+    monkeypatch.setattr(file_permissions_module.subprocess, "run", fake_run)
 
     token_cache_module._write_token_cache({"https://mine.example": {"token": "cached-token"}})
 
@@ -615,6 +616,44 @@ def test_windows_token_cache_acl_tightening_is_best_effort(
         ],
     ]
     assert "could not restrict API token cache permissions" in capsys.readouterr().err
+
+
+def test_windows_acl_tightening_is_opt_in(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cache_path = tmp_path / "token.json"
+    calls: list[list[str]] = []
+    attempted_without_acl = False
+
+    def fail_run(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        nonlocal attempted_without_acl
+        attempted_without_acl = True
+        pytest.fail("subprocess.run should not be called without windows_acl=True")
+
+    def fake_run(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(argv)
+        if argv[:2] == ["whoami", "/user"]:
+            return subprocess.CompletedProcess(
+                argv,
+                0,
+                stdout='"User Name","SID"\n"DOMAIN\\svc-user","S-1-5-21-123"\n',
+            )
+        return subprocess.CompletedProcess(argv, 0, stderr="")
+
+    monkeypatch.setenv("USERNAME", "svc-user")
+    monkeypatch.setattr(token_cache_module, "_token_cache_path", lambda: cache_path)
+    monkeypatch.setattr(file_permissions_module.os, "name", "nt")
+    monkeypatch.setattr(file_permissions_module.subprocess, "run", fail_run)
+
+    file_permissions_module.chmod_600(cache_path)
+
+    assert not attempted_without_acl
+
+    monkeypatch.setattr(file_permissions_module.subprocess, "run", fake_run)
+    token_cache_module._write_token_cache({"https://mine.example": {"token": "cached-token"}})
+
+    assert len(calls) == 4
 
 
 def test_second_client_reuses_cached_token_without_login(

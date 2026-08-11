@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 import sys
 import threading
@@ -89,6 +90,58 @@ def test_runner_captures_stdout_stderr_and_returns_result(tmp_path: Path) -> Non
     assert status["elapsed_sec"] >= 0
     assert status["stdout_log"].endswith(".out.log")
     assert status["agent_log"].endswith(".agent.log")
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX mode bits are not used on Windows")
+def test_runner_creates_owner_only_artifacts(tmp_path: Path, monkeypatch) -> None:
+    script = tmp_path / "script.py"
+    script.write_text("pass")
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / ".git").mkdir()
+    reservation_modes: list[int] = []
+    runner = AgentRunner()
+    release_reservation = runner._release_run_id_reservation
+
+    def capture_reservation_mode(path: Path) -> None:
+        reservation_modes.append(path.stat().st_mode & 0o777)
+        release_reservation(path)
+
+    monkeypatch.setattr(runner, "_release_run_id_reservation", capture_reservation_mode)
+    result = runner.run(
+        FakeAdapter([sys.executable, str(script)]),
+        agent_prompt(tmp_path / "plan.md"),
+        repo,
+        timeout=10.0,
+    )
+
+    assert (repo / ".agent-runs").stat().st_mode & 0o777 == 0o700
+    assert result.stdout_path.stat().st_mode & 0o777 == 0o600
+    assert result.agent_log_path.stat().st_mode & 0o777 == 0o600
+    assert result.status_path is not None
+    assert result.status_path.stat().st_mode & 0o777 == 0o600
+    assert reservation_modes == [0o600]
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX mode bits are not used on Windows")
+def test_runner_tightens_an_existing_run_directory(tmp_path: Path) -> None:
+    script = tmp_path / "script.py"
+    script.write_text("pass")
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / ".git").mkdir()
+    run_dir = repo / ".agent-runs"
+    run_dir.mkdir(mode=0o755)
+    run_dir.chmod(0o755)
+
+    AgentRunner().run(
+        FakeAdapter([sys.executable, str(script)]),
+        agent_prompt(tmp_path / "plan.md"),
+        repo,
+        timeout=10.0,
+    )
+
+    assert run_dir.stat().st_mode & 0o777 == 0o700
 
 
 def test_runner_uses_explicit_run_directory(tmp_path: Path) -> None:

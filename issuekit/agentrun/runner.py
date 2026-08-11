@@ -24,6 +24,7 @@ from issuekit.agentrun.status import (
     status_path,
     write_status,
 )
+from issuekit.file_permissions import ensure_owner_only_directory, open_owner_only
 
 
 @dataclass(frozen=True)
@@ -176,7 +177,7 @@ class AgentRunner:
 
         run_dir = (run_dir or repo / ".agent-runs").resolve()
         run_dir_existed = run_dir.exists()
-        run_dir.mkdir(exist_ok=True)
+        ensure_owner_only_directory(run_dir)
         if not run_dir_existed:
             print(
                 ".agent-runs/ is gitignored run-log storage and is not normally committed.",
@@ -209,8 +210,14 @@ class AgentRunner:
 
         enable_heartbeat = sys.stderr.isatty() or follow
         start = time.monotonic()
-        with open(stdout_path, "w", encoding="utf-8") as out_f, open(
-            agent_log_path, "w", encoding="utf-8"
+        with os.fdopen(
+            open_owner_only(stdout_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC),
+            "w",
+            encoding="utf-8",
+        ) as out_f, os.fdopen(
+            open_owner_only(agent_log_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC),
+            "w",
+            encoding="utf-8",
         ) as log_f:
             kwargs: dict[str, Any] = {
                 "stdin": subprocess.DEVNULL,
@@ -310,7 +317,7 @@ class AgentRunner:
                 counter += 1
                 continue
             try:
-                fd = os.open(
+                fd = open_owner_only(
                     reservation_path,
                     os.O_CREAT | os.O_EXCL | os.O_WRONLY,
                 )

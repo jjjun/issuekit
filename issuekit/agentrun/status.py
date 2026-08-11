@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from issuekit.agentrun._coerce import optional_float, optional_int, optional_str
+from issuekit.file_permissions import chmod_600, open_owner_only
 
 RunStatusValue = Literal["running", "completed", "failed", "timed_out"]
 
@@ -113,11 +114,18 @@ def write_status(path: Path, status: RunStatus) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temp_path = path.with_name(f".{path.name}.{os.getpid()}.tmp")
     content = json.dumps(status.to_dict(), indent=2) + "\n"
-    temp_path.write_text(content, encoding="utf-8", newline="\n")
+    with os.fdopen(
+        open_owner_only(temp_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC),
+        "w",
+        encoding="utf-8",
+        newline="\n",
+    ) as handle:
+        handle.write(content)
 
     for attempt in range(_REPLACE_MAX_ATTEMPTS):
         try:
             temp_path.replace(path)
+            chmod_600(path)
             return
         except OSError:
             if attempt == _REPLACE_MAX_ATTEMPTS - 1:
@@ -129,7 +137,13 @@ def write_status(path: Path, status: RunStatus) -> None:
     # write_status must never raise on IO contention. If even this fails, the record
     # stays as last written on disk and is_stale surfaces it after STALE_AFTER_SEC.
     try:
-        path.write_text(content, encoding="utf-8", newline="\n")
+        with os.fdopen(
+            open_owner_only(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC),
+            "w",
+            encoding="utf-8",
+            newline="\n",
+        ) as handle:
+            handle.write(content)
     except OSError:
         pass
     finally:

@@ -11,6 +11,8 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any, TextIO
 
+from issuekit.file_permissions import chmod_600, open_owner_only
+
 MAX_TEXT_CHARS = 32 * 1024
 MAX_EVENT_BYTES = 64 * 1024
 USAGE_TOKEN_FIELDS = (
@@ -44,11 +46,9 @@ class CommandJournal:
         self.path = path
         path.parent.mkdir(parents=True, exist_ok=True)
         if not path.exists():
-            path.touch(mode=0o600)
-        try:
-            path.chmod(0o600)
-        except OSError:
-            pass
+            fd = open_owner_only(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL)
+            os.close(fd)
+        chmod_600(path)
 
     def record(self, command: Mapping[str, Any]) -> None:
         entry = {

@@ -59,7 +59,8 @@ See the README configuration section for the user-facing TOML reference.
 
 Each runtime invocation reserves a run id with a `<run_id>.lock` file and
 produces `<run_id>.out.log`, `<run_id>.agent.log`, and
-`<run_id>.status.json`. The `.agent-runs/` directory is gitignored.
+`<run_id>.status.json`. The `.agent-runs/` directory is gitignored and is
+owner-only by default.
 
 Other issuekit components also use this directory: serve stores `serve.lock`
 and `serve.log`, prompts are written there, and triage-author keeps its state
