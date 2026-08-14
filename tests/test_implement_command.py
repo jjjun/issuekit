@@ -1,6 +1,7 @@
 import subprocess
 from dataclasses import dataclass, replace
 from pathlib import Path
+from types import SimpleNamespace
 
 from issuekit import cli
 from issuekit import store as store_module
@@ -161,7 +162,7 @@ def test_run_and_submit_uses_agent_runner_by_default(
     monkeypatch.setattr(
         run_claimed_agent,
         "_implementation_change_snapshot",
-        lambda cwd: _stub_implementation_snapshot(tmp_path),
+        lambda cwd, fingerprint_before: _stub_implementation_snapshot(tmp_path),
     )
 
     outcome = run_claimed_agent.run_and_submit(
@@ -204,7 +205,7 @@ def test_run_and_submit_selects_app_server_runner_when_opted_in(
     monkeypatch.setattr(
         run_claimed_agent,
         "_implementation_change_snapshot",
-        lambda cwd: _stub_implementation_snapshot(tmp_path),
+        lambda cwd, fingerprint_before: _stub_implementation_snapshot(tmp_path),
     )
 
     outcome = run_claimed_agent.run_and_submit(
@@ -817,13 +818,70 @@ def test_implement_command_blocks_when_git_has_no_implementation_changes(
             return FakeResult(status_short="")
 
     monkeypatch.setattr("issuekit.commands.implement.AgentRunner", CleanRunner)
+    monkeypatch.setattr(
+        run_claimed_agent,
+        "read_status",
+        lambda path: SimpleNamespace(last_log_line="Blocked: no workspace runner."),
+    )
 
     exit_code = cli.main(["implement", "1", "--agent", "codex"])
 
     captured = capsys.readouterr()
     assert exit_code == 1
     assert "agent produced no implementation changes; not submitting for review" in captured.err
+    assert "Last agent log line: Blocked: no workspace runner." in captured.err
     assert [call["method"] for call in client.calls] == ["claim"]
+
+
+def test_implement_command_blocks_preexisting_dirty_worktree_without_agent_changes(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
+    _configure_api(tmp_path, monkeypatch, client)
+    modified_path = tmp_path / "modified.py"
+    modified_path.write_text("value = 1\n", encoding="utf-8", newline="\n")
+    _init_git_repo(tmp_path)
+    modified_path.write_text("value = 2\n", encoding="utf-8", newline="\n")
+    (tmp_path / "untracked.py").write_text("value = 3\n", encoding="utf-8", newline="\n")
+
+    class CleanRunner(FakeRunner):
+        def run(self, adapter, prompt: AgentPrompt, repo, timeout, **kwargs) -> FakeResult:
+            return FakeResult(status_short=" M modified.py\n?? untracked.py")
+
+    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", CleanRunner)
+
+    assert cli.main(["implement", "1", "--agent", "codex"]) == 1
+    assert "agent produced no implementation changes; not submitting for review" in capsys.readouterr().err
+    assert [call["method"] for call in client.calls] == ["claim"]
+
+
+def test_implement_command_submits_agent_change_with_preexisting_dirty_worktree(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
+    _configure_api(tmp_path, monkeypatch, client)
+    modified_path = tmp_path / "modified.py"
+    modified_path.write_text("value = 1\n", encoding="utf-8", newline="\n")
+    changed_path = tmp_path / "changed.py"
+    changed_path.write_text("value = 1\n", encoding="utf-8", newline="\n")
+    _init_git_repo(tmp_path)
+    modified_path.write_text("value = 2\n", encoding="utf-8", newline="\n")
+    (tmp_path / "untracked.py").write_text("value = 3\n", encoding="utf-8", newline="\n")
+
+    class ChangingRunner(FakeRunner):
+        def run(self, adapter, prompt: AgentPrompt, repo, timeout, **kwargs) -> FakeResult:
+            changed_path.write_text("value = 4\n", encoding="utf-8", newline="\n")
+            return FakeResult(
+                status_short=" M changed.py\n M modified.py\n?? untracked.py"
+            )
+
+    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", ChangingRunner)
+
+    assert cli.main(["implement", "1", "--agent", "codex"]) == 0
+    assert [call["method"] for call in client.calls] == ["claim", "submit"]
 
 
 def test_implement_command_submits_deletion_only_change(

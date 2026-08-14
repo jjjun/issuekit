@@ -12,7 +12,9 @@ from typing import TextIO
 
 from issuekit.agentrun import AgentPrompt, AgentResult, AgentRunner
 from issuekit.agentrun.runner import implementation_report_instruction
+from issuekit.agentrun.status import read_status
 from issuekit.agents.app_server_runtime import AppServerAttemptRunner
+from issuekit.agents.readonly import worktree_fingerprint
 from issuekit.agents.registry import resolve_adapter
 from issuekit.config import IssuekitConfig
 from issuekit.core import Issue
@@ -44,7 +46,7 @@ class RunOutcome:
 
 @dataclass(frozen=True)
 class ImplementationChangeSnapshot:
-    """Repository changes captured once after an implementation run."""
+    """Agent-attributable repository changes captured after an implementation run."""
 
     root: Path | None
     status_entries: tuple[GitStatusEntry, ...] | None
@@ -142,6 +144,7 @@ def run_and_submit(
             )
         else:
             runner_factory = AgentRunner
+    fingerprint_before = worktree_fingerprint(cwd)
     result = runner_factory().run(
         adapter,
         prompt,
@@ -158,7 +161,7 @@ def run_and_submit(
     )
     if reporter is not None:
         reporter(issue, result)
-    snapshot = _implementation_change_snapshot(cwd)
+    snapshot = _implementation_change_snapshot(cwd, fingerprint_before)
 
     if result.timed_out:
         return RunOutcome(issue=issue, result=result, exit_code=124)
@@ -192,9 +195,13 @@ def run_and_submit(
                 )
             if not allow_no_changes:
                 current_stage = current_issue.stage if current_issue is not None else "unknown"
+                last_log_line = _last_log_line(result)
+                log_detail = (
+                    f" Last agent log line: {last_log_line}" if last_log_line else ""
+                )
                 print(
                     "ERROR: agent produced no implementation changes; not submitting for review. "
-                    f"The issue is currently at stage={current_stage}.",
+                    f"The issue is currently at stage={current_stage}.{log_detail}",
                     file=err,
                 )
                 return RunOutcome(issue=issue, result=result, exit_code=1)
@@ -310,6 +317,15 @@ def _submission_summary(prefix: str, result: AgentResult, cwd: Path) -> str:
             + truncation_marker
         )
     return f"{summary}\n\nImplementer report:\n{report}"
+
+
+def _last_log_line(result: AgentResult) -> str | None:
+    if result.status_path is None:
+        return None
+    try:
+        return read_status(result.status_path).last_log_line
+    except (OSError, ValueError):
+        return None
 
 
 def _display_path(path: Path, cwd: Path) -> str:
@@ -437,9 +453,14 @@ def _numstat_records(output: str) -> tuple[tuple[str, str, tuple[Path, ...]], ..
     return tuple(records)
 
 
-def _implementation_change_snapshot(repo: Path) -> ImplementationChangeSnapshot:
+def _implementation_change_snapshot(
+    repo: Path,
+    fingerprint_before: tuple[tuple[str, str, str, str], ...] | None = None,
+) -> ImplementationChangeSnapshot:
     root = git_root(repo)
     entries = git_status_entries(repo) if root == repo.resolve() else None
+    fingerprint_after = worktree_fingerprint(repo) if entries is not None else None
+    entries = _attributable_entries(entries, fingerprint_before, fingerprint_after)
     changed_paths: list[Path] = []
     readable_paths: list[Path] = []
     seen_changed: set[Path] = set()
@@ -458,6 +479,26 @@ def _implementation_change_snapshot(repo: Path) -> ImplementationChangeSnapshot:
         status_entries=entries,
         changed_paths=tuple(changed_paths),
         readable_paths=tuple(readable_paths),
+    )
+
+
+def _attributable_entries(
+    entries: tuple[GitStatusEntry, ...] | None,
+    fingerprint_before: tuple[tuple[str, str, str, str], ...] | None,
+    fingerprint_after: tuple[tuple[str, str, str, str], ...] | None,
+) -> tuple[GitStatusEntry, ...] | None:
+    if entries is None or fingerprint_before is None or fingerprint_after is None:
+        return entries
+    before_by_path = {entry[1]: entry for entry in fingerprint_before}
+    after_by_path = {entry[1]: entry for entry in fingerprint_after}
+    return tuple(
+        entry
+        for entry in entries
+        if (after_entry := after_by_path.get(entry.path.as_posix())) is not None
+        and (
+            (before_entry := before_by_path.get(entry.path.as_posix())) is None
+            or before_entry[3] != after_entry[3]
+        )
     )
 
 
