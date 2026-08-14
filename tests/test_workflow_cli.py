@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import pytest
@@ -111,6 +112,70 @@ def test_queue_command_marks_waiting_dependencies(
     captured = capsys.readouterr()
     assert exit_code == 0
     assert "dependency_state=waiting" in captured.out
+
+
+def test_queue_command_lists_all_issues_as_json_with_bodies(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(1, "Review", assignee="claude", stage="review"),
+            api_issue(2, "Work", assignee="codex", stage="implementing"),
+        ]
+    )
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'demo'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = cli.main(["queue", "--json", "--with-body"])
+
+    assert exit_code == 0
+    queue = json.loads(capsys.readouterr().out)
+    assert [item["id"] for item in queue] == [1, 2]
+    assert set(queue[0]) >= {"id", "ref", "title", "stage", "body"}
+    assert queue[0]["body"] == "# Issue #1: Review\n"
+
+
+def test_queue_command_rejects_with_body_without_json(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'demo'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["queue", "--with-body"]) == 1
+    assert "--with-body requires --json." in capsys.readouterr().err
+
+
+def test_queue_command_treats_empty_assignee_as_unfiltered(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient([api_issue(1, "Review", assignee="claude", stage="review")])
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'demo'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["queue", "--json"]) == 0
+    unfiltered = capsys.readouterr().out
+    assert cli.main(["queue", "--assignee", "", "--json"]) == 0
+    assert capsys.readouterr().out == unfiltered
 
 
 def test_author_command_uses_api_allocated_id(

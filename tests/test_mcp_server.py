@@ -123,7 +123,7 @@ def test_server_tool_schemas_match_the_contract(tmp_path: Path) -> None:
     # schema change was intended, describe it in the commit message, then update
     # this digest.
     assert _tool_schema_digest(create_server(tmp_path)) == (
-        "7b8b7d3a4fd35ddb5868e15a1b927efc1ce45026270733cf9a7aad00b90d737c"
+        "5dcc654471ab444210c69f813dbacbde6e84802c9233f6d76fc95ccecc3ccf49"
     )
 
 
@@ -1212,6 +1212,16 @@ def test_list_queue_includes_target_worker(tmp_path: Path, monkeypatch) -> None:
             "target_worker": "checkout.demo",
         }
     ]
+
+
+def test_list_queue_can_include_body(tmp_path: Path, monkeypatch) -> None:
+    client = FakeIssuekitClient([api_issue(1, "Directed", body="Issue body.")])
+    _configure_api(tmp_path, monkeypatch, client)
+    server = create_server(tmp_path)
+
+    queue = _call(server, "list_queue", {"with_body": True})
+
+    assert queue[0]["body"] == "Issue body."
 
 
 def test_request_changes_defaults_to_recorded_implementer(

@@ -257,11 +257,12 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
     async def list_queue(
         assignee: str | None = None,
         stage: str | None = None,
+        with_body: bool = False,
         ctx: Context | None = None,
     ) -> list[dict[str, Any]]:
         async with _api_store(root, ctx) as (config, _config_root, store):
             return [
-                issue_dict(issue)
+                issue_dict(issue, include_body=with_body)
                 for issue in find_for(assignee, stage=stage, config=config, store=store)
             ]
 
