@@ -56,7 +56,15 @@ def implementation_report_instruction(destination: str) -> str:
 
     return (
         "Write your closing implementation and verification report to "
-        f"{destination}, including answers to any reporting requests in the plan."
+        f"{destination}, including answers to any reporting requests in the "
+        "plan. The report is mandatory; a run that ends without one is treated "
+        "as a failed run, not a completed one. Await every verification command "
+        "you start and record its actual exit result before writing the report; "
+        "starting a command in the background and ending the turn is a failed "
+        "run. Include a section listing every acceptance criterion you could "
+        "not verify in this environment and why (for example: no browser "
+        "available). Leaving such a criterion unmentioned is worse than "
+        "reporting it unverified."
     )
 
 

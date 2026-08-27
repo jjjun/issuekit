@@ -108,6 +108,7 @@ def run_and_submit(
     store=None,
     out: TextIO | None = None,
     err: TextIO | None = None,
+    allow_missing_report: bool = False,
 ) -> RunOutcome:
     """Run an agent for an already-claimed issue and submit successful work."""
     out = out or sys.stdout
@@ -218,6 +219,25 @@ def run_and_submit(
             print(
                 "No implementation changes detected; submitting for review because "
                 "--allow-no-changes was set.",
+                file=out,
+            )
+
+        if result.report_path is not None and not _has_report_content(result.report_path):
+            if not allow_missing_report:
+                print(
+                    "ERROR: implementer report missing; not submitting for review. "
+                    f"Expected a report at {_display_path(result.report_path, cwd)}. "
+                    "The agent must await every verification command it starts and "
+                    "write its closing implementation and verification report before "
+                    "the run ends.",
+                    file=err,
+                )
+                return RunOutcome(
+                    issue=issue, result=result, exit_code=1, reason="missing_report"
+                )
+            print(
+                "Implementer report missing; submitting anyway because "
+                "--allow-missing-report was set.",
                 file=out,
             )
 
@@ -358,6 +378,16 @@ def _is_startup_failure(result: AgentResult) -> bool:
             pass
     usage_values = [value for key, value in parsed.items() if key.startswith("usage_")]
     return not usage_values or all(value == "0" for value in usage_values)
+
+
+def _has_report_content(path: Path) -> bool:
+    if not path.is_file():
+        return False
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    return bool(text.strip())
 
 
 def _display_path(path: Path, cwd: Path) -> str:

@@ -380,10 +380,19 @@ commands. Run this protocol end to end:
    switch branches. When driven by `issuekit implement`, do not run git commit
    or git push; leave implementation changes unstaged for review. When
    `ISSUEKIT_IMPLEMENTER_REPORT_FILE` is set, write the closing implementation
-   and verification report to that path. Issuekit sanitizes the report to ASCII,
-   bounds its length, and includes it in the submit summary.
+   and verification report to that path; the report is mandatory and a run
+   that ends without one is refused at submit time, the same way the submit
+   gate refuses new binaries and encoding violations. Include a section
+   listing every acceptance criterion you could not verify in this
+   environment and why (for example: no browser available in a headless run);
+   leaving such a criterion unmentioned is worse than reporting it unverified.
+   Issuekit sanitizes the report to ASCII, bounds its length, and includes it
+   in the submit summary.
 4. Run the relevant tests, `uv run issuekit check-encoding`, and
-   `uv run issuekit check-encoding --gate` before submitting.
+   `uv run issuekit check-encoding --gate` before submitting. Await every
+   verification command you start and record its actual exit result; starting
+   a command in the background and ending the turn is a failed run, not a
+   completed one.
 5. Call `submit_for_review(id, summary, branch, commit, reviewer=None)` with an
    ASCII summary and optional branch/commit metadata. Omit reviewer to use
    `default_reviewer`, or pass another configured assignee. If
@@ -395,6 +404,21 @@ commands. Run this protocol end to end:
    `claim_next_task()` again, or use `claim_next_task(assignee="<agent>")` for
    an explicit implementer, read the Review Feedback note, re-plan for just
    that feedback, address it, and submit for review again.
+
+When a change rewrites a test file or removes any test case, list the before
+and after test names for that file in the report and justify each removal. A
+rising suite total is not evidence that no coverage was lost; both can be true
+at once.
+
+A test name is a claim: if it says a state or behavior occurs, the test body
+must assert that state, not just exercise the surrounding code path.
+Otherwise, rename the test to what it actually checks. When a mocked
+dependency resolves too quickly to observe an intermediate state, use a
+manually-resolved promise, not a weaker name.
+
+When a change corrects a misconception, check whether any comment in the
+touched files restates it. Do not replace an accurate comment with one that is
+weaker or repeats the misconception the change was meant to fix.
 
 The assigned implementer owns implementation unless assigned as reviewer. The
 reviewer owns the review decision for issues assigned to them at stage=review.

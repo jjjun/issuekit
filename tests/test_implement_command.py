@@ -992,6 +992,110 @@ def test_implement_command_allows_no_change_submit_with_flag(
     assert [call["method"] for call in client.calls] == ["claim", "submit"]
 
 
+def test_implement_command_blocks_submit_when_report_is_missing(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
+    _configure_api(tmp_path, monkeypatch, client)
+    report_path = tmp_path / ".agent-runs" / "run.report.md"
+
+    class NoReportRunner(FakeRunner):
+        def run(self, adapter, prompt: AgentPrompt, repo, timeout, **kwargs) -> FakeResult:
+            (repo / "code.py").write_text("value = 1\n", encoding="utf-8", newline="\n")
+            return FakeResult(status_short=" M code.py", report_path=report_path)
+
+    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", NoReportRunner)
+
+    exit_code = cli.main(["implement", "1", "--agent", "codex"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "implementer report missing; not submitting for review" in captured.err
+    assert "not_submitted id=1 stage=implementing reason=missing_report" in captured.out
+    assert [call["method"] for call in client.calls] == ["claim"]
+
+
+def test_implement_command_blocks_submit_when_report_is_whitespace_only(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
+    _configure_api(tmp_path, monkeypatch, client)
+    report_path = tmp_path / ".agent-runs" / "run.report.md"
+    report_path.parent.mkdir()
+    report_path.write_text("   \n", encoding="utf-8", newline="\n")
+
+    class BlankReportRunner(FakeRunner):
+        def run(self, adapter, prompt: AgentPrompt, repo, timeout, **kwargs) -> FakeResult:
+            (repo / "code.py").write_text("value = 1\n", encoding="utf-8", newline="\n")
+            return FakeResult(status_short=" M code.py", report_path=report_path)
+
+    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", BlankReportRunner)
+
+    exit_code = cli.main(["implement", "1", "--agent", "codex"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "not_submitted id=1 stage=implementing reason=missing_report" in captured.out
+    assert [call["method"] for call in client.calls] == ["claim"]
+
+
+def test_implement_command_allows_missing_report_with_flag(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
+    _configure_api(tmp_path, monkeypatch, client)
+    report_path = tmp_path / ".agent-runs" / "run.report.md"
+
+    class NoReportRunner(FakeRunner):
+        def run(self, adapter, prompt: AgentPrompt, repo, timeout, **kwargs) -> FakeResult:
+            (repo / "code.py").write_text("value = 1\n", encoding="utf-8", newline="\n")
+            return FakeResult(status_short=" M code.py", report_path=report_path)
+
+    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", NoReportRunner)
+
+    exit_code = cli.main(
+        ["implement", "1", "--agent", "codex", "--allow-missing-report"]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "Implementer report missing; submitting anyway" in captured.out
+    assert [call["method"] for call in client.calls] == ["claim", "submit"]
+
+
+def test_implement_command_treats_already_at_review_as_submitted_without_report(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
+    _configure_api(tmp_path, monkeypatch, client)
+    (tmp_path / ".gitignore").write_text(".agent-runs/\n", encoding="utf-8", newline="\n")
+    _init_git_repo(tmp_path)
+    report_path = tmp_path / ".agent-runs" / "run.report.md"
+
+    class AgentSubmittingRunner(FakeRunner):
+        def run(self, adapter, prompt: AgentPrompt, repo, timeout, **kwargs) -> FakeResult:
+            client.submit(1, summary="Submitted by agent.")
+            return FakeResult(status_short="", report_path=report_path)
+
+    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", AgentSubmittingRunner)
+
+    exit_code = cli.main(["implement", "1", "--agent", "codex"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "already at review after the agent run" in captured.out
+    assert "submitted_review id=1 ref=demo#1 assignee= stage=review" in captured.out
+    assert [call["method"] for call in client.calls] == ["claim", "submit"]
+
+
 def test_implement_command_reinjects_review_feedback(
     tmp_path: Path,
     monkeypatch,

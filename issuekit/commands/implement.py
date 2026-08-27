@@ -54,6 +54,11 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         help="Submit for review even when the agent produces no implementation diff.",
     )
     implement_parser.add_argument(
+        "--allow-missing-report",
+        action="store_true",
+        help="Submit for review even when the agent wrote no implementer report.",
+    )
+    implement_parser.add_argument(
         "--allow-author-session",
         action="store_true",
         help="Override a local author-session STOP guard for human recovery.",
@@ -132,6 +137,7 @@ def run(args) -> int:
                 follow=getattr(args, "follow", False),
                 prompt_suffix=reviewer_prompt,
                 allow_no_changes=getattr(args, "allow_no_changes", False),
+                allow_missing_report=getattr(args, "allow_missing_report", False),
                 allow_author_guard_override=args.allow_author_session,
                 allow_any_branch=args.allow_any_branch,
                 session=run_session,

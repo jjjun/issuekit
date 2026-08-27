@@ -17,7 +17,7 @@
 | `issuekit claim --assignee codex` | Claim the next active issue for an implementer. |
 | `issuekit claim --id <id> --assignee codex` | Claim a specific active issue for an implementer. |
 | `issuekit claims [--worker <worker>] [--stage <stage>] [--json]` | List issue claims, optionally filtered by worker or workflow stage. |
-| `issuekit implement <id> [--agent <agent>] [--model <model-id>] [--reasoning-effort <value>] [--timeout-sec <seconds>] [--follow] [--allow-no-changes] [--allow-author-session] [--allow-any-branch] [--no-sync]` | Claim and run a configured implementer agent for an issue. |
+| `issuekit implement <id> [--agent <agent>] [--model <model-id>] [--reasoning-effort <value>] [--timeout-sec <seconds>] [--follow] [--allow-no-changes] [--allow-missing-report] [--allow-author-session] [--allow-any-branch] [--no-sync]` | Claim and run a configured implementer agent for an issue. |
 | `issuekit submit-review <id> --summary "..." [--reviewer claude]` | Submit implemented work to a reviewer. |
 | `issuekit review <id> --agent <agent> [--model <model-id>] [--reasoning-effort <value>] [--timeout-sec <seconds>] [--follow]` | Run a configured reviewer agent for a review-stage issue. |
 | `issuekit request-changes <id> --notes "..." [--assignee codex] [--reviewer claude]` | Return a reviewed issue to implementation. |

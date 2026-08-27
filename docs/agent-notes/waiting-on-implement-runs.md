@@ -41,7 +41,10 @@ orchestrator should branch on:
       not_submitted id=<id> stage=<stage> reason=<reason>
 
   `reason` is one of: `timed_out`, `agent_failed`, `no_changes`,
-  `mojibake_gate`, `submit_error:<message>`, `run_error:<message>`.
-  `submit_error` means the agent run finished and `submit_for_review` (or a
-  guard around it) failed; `run_error` means the agent run itself never
-  completed.
+  `mojibake_gate`, `missing_report`, `submit_error:<message>`,
+  `run_error:<message>`.
+  `missing_report` means the agent run finished but wrote no implementer
+  report (or only a whitespace one); recover with `--allow-missing-report`
+  once the missing verification is understood. `submit_error` means the
+  agent run finished and `submit_for_review` (or a guard around it) failed;
+  `run_error` means the agent run itself never completed.
