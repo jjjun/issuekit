@@ -224,6 +224,48 @@ def test_config_adapter_unwraps_json_result_envelope() -> None:
     assert "usage_service_tier" not in parsed
 
 
+def test_config_adapter_unwraps_json_result_envelope_success_has_no_failure_reason() -> None:
+    envelope = json.dumps(
+        {
+            "type": "result",
+            "subtype": "success",
+            "is_error": False,
+            "result": '{"verdict": "agree"}',
+        }
+    )
+
+    parsed = _json_adapter().parse_output(envelope, "")
+
+    assert parsed["is_error"] == "false"
+    assert "failure_reason" not in parsed
+
+
+def test_config_adapter_parses_startup_failure_envelope() -> None:
+    envelope = json.dumps(
+        {
+            "type": "result",
+            "subtype": "error_during_execution",
+            "is_error": True,
+            "terminal_reason": "api_error",
+            "num_turns": 1,
+            "result": "Failed to authenticate: OAuth session expired and could "
+            "not be refreshed",
+            "usage": {"input_tokens": 0, "output_tokens": 0},
+        }
+    )
+
+    parsed = _json_adapter().parse_output(envelope, "workspace-trust warning")
+
+    assert parsed["is_error"] == "true"
+    assert parsed["terminal_reason"] == "api_error"
+    assert parsed["num_turns"] == "1"
+    assert parsed["failure_reason"] == (
+        "Failed to authenticate: OAuth session expired and could not be refreshed"
+    )
+    assert parsed["usage_input_tokens"] == "0"
+    assert parsed["usage_output_tokens"] == "0"
+
+
 def test_config_adapter_keeps_raw_stdout_when_envelope_is_unparsable() -> None:
     parsed = _json_adapter().parse_output("crashed before any JSON", "boom")
 

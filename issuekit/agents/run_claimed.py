@@ -166,6 +166,15 @@ def run_and_submit(
     if result.timed_out:
         return RunOutcome(issue=issue, result=result, exit_code=124)
     if result.exit_code != 0:
+        if _is_startup_failure(result):
+            print(
+                "HINT: the agent parsed a failure with no turns or token usage, "
+                "which looks like a startup failure rather than an implementation "
+                f"attempt. The claim on issue #{issue_id} was left in place; "
+                f"re-run `issuekit implement {issue_id}` or release it with "
+                f"`issuekit reclaim {issue_id}`.",
+                file=err,
+            )
         return RunOutcome(
             issue=issue,
             result=result,
@@ -195,10 +204,7 @@ def run_and_submit(
                 )
             if not allow_no_changes:
                 current_stage = current_issue.stage if current_issue is not None else "unknown"
-                last_log_line = _last_log_line(result)
-                log_detail = (
-                    f" Last agent log line: {last_log_line}" if last_log_line else ""
-                )
+                log_detail = _diagnostic_log_detail(result)
                 print(
                     "ERROR: agent produced no implementation changes; not submitting for review. "
                     f"The issue is currently at stage={current_stage}.{log_detail}",
@@ -319,13 +325,33 @@ def _submission_summary(prefix: str, result: AgentResult, cwd: Path) -> str:
     return f"{summary}\n\nImplementer report:\n{report}"
 
 
-def _last_log_line(result: AgentResult) -> str | None:
+def _diagnostic_log_detail(result: AgentResult) -> str:
     if result.status_path is None:
-        return None
+        return ""
     try:
-        return read_status(result.status_path).last_log_line
+        status = read_status(result.status_path)
     except (OSError, ValueError):
-        return None
+        return ""
+    if status.failure_reason:
+        return f" Agent failure reason: {status.failure_reason}"
+    if status.last_log_line:
+        return f" Last agent log line: {status.last_log_line}"
+    return ""
+
+
+def _is_startup_failure(result: AgentResult) -> bool:
+    parsed = result.parsed or {}
+    if parsed.get("is_error") != "true":
+        return False
+    num_turns = parsed.get("num_turns")
+    if num_turns is not None:
+        try:
+            if int(num_turns) <= 1:
+                return True
+        except ValueError:
+            pass
+    usage_values = [value for key, value in parsed.items() if key.startswith("usage_")]
+    return not usage_values or all(value == "0" for value in usage_values)
 
 
 def _display_path(path: Path, cwd: Path) -> str:

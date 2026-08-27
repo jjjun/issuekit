@@ -44,6 +44,8 @@ class RunStatus:
     last_log_line: str | None = None
     last_log_at: str | None = None
     heartbeat_at: str | None = None
+    failure_reason: str | None = None
+    terminal_reason: str | None = None
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> RunStatus:
@@ -64,6 +66,8 @@ class RunStatus:
                 last_log_line=optional_str(data.get("last_log_line")),
                 last_log_at=optional_str(data.get("last_log_at")),
                 heartbeat_at=optional_str(data.get("heartbeat_at")),
+                failure_reason=optional_str(data.get("failure_reason")),
+                terminal_reason=optional_str(data.get("terminal_reason")),
             )
         except KeyError as exc:
             raise ValueError(
@@ -89,6 +93,8 @@ class RunStatus:
             "last_log_line": self.last_log_line,
             "last_log_at": self.last_log_at,
             "heartbeat_at": self.heartbeat_at,
+            "failure_reason": self.failure_reason,
+            "terminal_reason": self.terminal_reason,
         }
 
     @property

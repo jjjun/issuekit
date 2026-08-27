@@ -121,9 +121,9 @@ def _format_elapsed(status: RunStatus) -> str:
 
 
 def _format_last_log(status: RunStatus) -> str:
-    if not status.last_log_line:
+    line = status.failure_reason or status.last_log_line
+    if not line:
         return "-"
-    line = status.last_log_line
     if len(line) > 30:
         line = line[:27] + "..."
     return line

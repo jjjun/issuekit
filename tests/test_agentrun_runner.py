@@ -381,6 +381,54 @@ def test_runner_status_is_failed_for_nonzero_exit(tmp_path: Path) -> None:
     assert status["exit_code"] == 7
 
 
+def test_runner_status_carries_parsed_failure_reason(tmp_path: Path) -> None:
+    class FailureReasonAdapter(FakeAdapter):
+        def parse_output(self, stdout: str, stderr: str) -> dict[str, str]:
+            return {
+                "failure_reason": "Failed to authenticate: OAuth session expired",
+                "terminal_reason": "api_error",
+            }
+
+    script = tmp_path / "script.py"
+    script.write_text("raise SystemExit(1)")
+    plan = tmp_path / "plan.md"
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / ".git").mkdir()
+
+    adapter = FailureReasonAdapter([sys.executable, str(script)])
+    result = AgentRunner().run(adapter, agent_prompt(plan), repo, timeout=10.0)
+
+    assert result.status_path is not None
+    status = json.loads(result.status_path.read_text(encoding="utf-8"))
+    assert status["failure_reason"] == "Failed to authenticate: OAuth session expired"
+    assert status["terminal_reason"] == "api_error"
+
+
+def test_runner_writes_terminal_status_when_parse_output_raises(tmp_path: Path) -> None:
+    class RaisingAdapter(FakeAdapter):
+        def parse_output(self, stdout: str, stderr: str) -> dict[str, str]:
+            raise ValueError("boom")
+
+    script = tmp_path / "script.py"
+    script.write_text("raise SystemExit(1)")
+    plan = tmp_path / "plan.md"
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / ".git").mkdir()
+
+    adapter = RaisingAdapter([sys.executable, str(script)])
+    result = AgentRunner().run(adapter, agent_prompt(plan), repo, timeout=10.0)
+
+    assert result.parsed is None
+    assert result.status_path is not None
+    status = json.loads(result.status_path.read_text(encoding="utf-8"))
+    assert status["status"] == "failed"
+    assert status["exit_code"] == 1
+    assert status["failure_reason"] is None
+    assert status["terminal_reason"] is None
+
+
 def test_runner_git_status_short(tmp_path: Path) -> None:
     script = tmp_path / "script.py"
     script.write_text("import pathlib, sys; (pathlib.Path(sys.argv[1]) / 'new.txt').write_text('x')")

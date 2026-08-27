@@ -266,6 +266,13 @@ class AgentRunner:
         elapsed = time.monotonic() - start
         terminal_status = self._terminal_status(exit_code, timed_out)
 
+        try:
+            stdout_text = stdout_path.read_text(encoding="utf-8", errors="replace")
+            agent_log_text = agent_log_path.read_text(encoding="utf-8", errors="replace")
+            parsed = adapter.parse_output(stdout_text, agent_log_text)
+        except Exception:  # noqa: BLE001 - parsing must never block the terminal status write
+            parsed = None
+
         # Preserve fields the watcher may have written.
         try:
             current_status = read_status(run_status_path)
@@ -280,12 +287,10 @@ class AgentRunner:
                 ended_at=datetime.now().replace(microsecond=0).isoformat(),
                 elapsed_sec=elapsed,
                 exit_code=exit_code,
+                failure_reason=(parsed or {}).get("failure_reason"),
+                terminal_reason=(parsed or {}).get("terminal_reason"),
             ),
         )
-
-        stdout_text = stdout_path.read_text(encoding="utf-8", errors="replace")
-        agent_log_text = agent_log_path.read_text(encoding="utf-8", errors="replace")
-        parsed = adapter.parse_output(stdout_text, agent_log_text)
 
         status_short = git_status_short(repo)
 

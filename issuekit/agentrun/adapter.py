@@ -191,6 +191,17 @@ def _result_envelope_fields(stdout: str) -> dict[str, str]:
     text = envelope.get("result")
     if isinstance(text, str):
         fields["stdout"] = text
+    is_error = envelope.get("is_error")
+    if isinstance(is_error, bool):
+        fields["is_error"] = "true" if is_error else "false"
+        if is_error and isinstance(text, str):
+            fields["failure_reason"] = text
+    terminal_reason = envelope.get("terminal_reason")
+    if isinstance(terminal_reason, str):
+        fields["terminal_reason"] = terminal_reason
+    num_turns = envelope.get("num_turns")
+    if isinstance(num_turns, int) and not isinstance(num_turns, bool):
+        fields["num_turns"] = str(num_turns)
     session_id = envelope.get("session_id")
     if isinstance(session_id, str):
         fields["session_id"] = session_id

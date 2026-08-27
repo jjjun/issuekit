@@ -821,7 +821,10 @@ def test_implement_command_blocks_when_git_has_no_implementation_changes(
     monkeypatch.setattr(
         run_claimed_agent,
         "read_status",
-        lambda path: SimpleNamespace(last_log_line="Blocked: no workspace runner."),
+        lambda path: SimpleNamespace(
+            last_log_line="Blocked: no workspace runner.",
+            failure_reason=None,
+        ),
     )
 
     exit_code = cli.main(["implement", "1", "--agent", "codex"])
@@ -830,6 +833,39 @@ def test_implement_command_blocks_when_git_has_no_implementation_changes(
     assert exit_code == 1
     assert "agent produced no implementation changes; not submitting for review" in captured.err
     assert "Last agent log line: Blocked: no workspace runner." in captured.err
+    assert [call["method"] for call in client.calls] == ["claim"]
+
+
+def test_implement_command_prefers_failure_reason_over_last_log_line(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
+    _configure_api(tmp_path, monkeypatch, client)
+    (tmp_path / ".gitignore").write_text(".agent-runs/\n", encoding="utf-8", newline="\n")
+    _init_git_repo(tmp_path)
+
+    class CleanRunner(FakeRunner):
+        def run(self, adapter, prompt: AgentPrompt, repo, timeout, **kwargs) -> FakeResult:
+            return FakeResult(status_short="")
+
+    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", CleanRunner)
+    monkeypatch.setattr(
+        run_claimed_agent,
+        "read_status",
+        lambda path: SimpleNamespace(
+            last_log_line="Ignoring N permissions.allow entries: workspace not trusted.",
+            failure_reason="Failed to authenticate: OAuth session expired",
+        ),
+    )
+
+    exit_code = cli.main(["implement", "1", "--agent", "codex"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "Agent failure reason: Failed to authenticate: OAuth session expired" in captured.err
+    assert "workspace not trusted" not in captured.err
     assert [call["method"] for call in client.calls] == ["claim"]
 
 
@@ -1000,6 +1036,67 @@ def test_implement_command_does_not_submit_failed_run(
 
     assert cli.main(["implement", "1", "--agent", "codex"]) == 2
     assert [call["method"] for call in client.calls] == ["claim"]
+
+
+def test_implement_command_prints_recovery_hint_for_startup_failure(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
+    _configure_api(tmp_path, monkeypatch, client)
+
+    class StartupFailureRunner(FakeRunner):
+        def run(self, adapter, prompt: AgentPrompt, repo, timeout, **kwargs) -> FakeResult:
+            return FakeResult(
+                exit_code=1,
+                status_short=None,
+                parsed={
+                    "is_error": "true",
+                    "num_turns": "1",
+                    "failure_reason": "Failed to authenticate: OAuth session expired",
+                },
+            )
+
+    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", StartupFailureRunner)
+
+    exit_code = cli.main(["implement", "1", "--agent", "codex"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "failure_reason=Failed to authenticate: OAuth session expired" in captured.out
+    assert "HINT:" in captured.err
+    assert "issuekit implement 1" in captured.err
+    assert "issuekit reclaim 1" in captured.err
+    assert [call["method"] for call in client.calls] == ["claim"]
+
+
+def test_implement_command_omits_recovery_hint_when_usage_is_nonzero(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
+    _configure_api(tmp_path, monkeypatch, client)
+
+    class RealFailureRunner(FakeRunner):
+        def run(self, adapter, prompt: AgentPrompt, repo, timeout, **kwargs) -> FakeResult:
+            return FakeResult(
+                exit_code=1,
+                status_short=None,
+                parsed={
+                    "is_error": "true",
+                    "num_turns": "12",
+                    "usage_input_tokens": "500",
+                },
+            )
+
+    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", RealFailureRunner)
+
+    exit_code = cli.main(["implement", "1", "--agent", "codex"])
+
+    assert exit_code == 1
+    assert "HINT:" not in capsys.readouterr().err
 
 
 def test_implement_command_reports_author_self_assignment(

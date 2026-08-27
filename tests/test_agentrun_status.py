@@ -166,6 +166,24 @@ def test_from_dict_rejects_non_object_payload() -> None:
         RunStatus.from_dict([])
 
 
+def test_failure_reason_and_terminal_reason_round_trip() -> None:
+    status = _running_status(
+        status="failed",
+        failure_reason="Failed to authenticate: OAuth session expired",
+        terminal_reason="api_error",
+    )
+
+    restored = RunStatus.from_dict(status.to_dict())
+
+    assert restored.failure_reason == "Failed to authenticate: OAuth session expired"
+    assert restored.terminal_reason == "api_error"
+
+
+def test_failure_reason_and_terminal_reason_default_to_none() -> None:
+    assert _running_status().failure_reason is None
+    assert _running_status().terminal_reason is None
+
+
 def test_list_statuses_omits_remaining_suffix_below_warning_cap(
     tmp_path: Path, monkeypatch, capsys
 ) -> None:
