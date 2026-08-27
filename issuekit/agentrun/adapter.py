@@ -168,10 +168,38 @@ class ConfigAgentAdapter(AgentAdapter):
         if self.run_config.prompt_suffix:
             parts.append(self.run_config.prompt_suffix)
         if resolved_model:
-            model_prompt = dict(self.run_config.model_prompts).get(resolved_model)
+            model_prompt = _resolve_model_prompt(
+                self.run_config.model_prompts, resolved_model
+            )
             if model_prompt:
                 parts.append(model_prompt)
         return "\n\n".join(parts)
+
+
+def _resolve_model_prompt(
+    model_prompts: tuple[tuple[str, str], ...], resolved_model: str
+) -> str | None:
+    """Return the best-matching model_prompts entry for resolved_model.
+
+    An exact key match wins outright. Otherwise, a key ending in "*" is a
+    prefix pattern; among matching prefixes the longest one wins, so guidance
+    keyed to a model family (e.g. "claude-sonnet-5*") keeps applying when the
+    resolved model id gains a date suffix or point revision.
+    """
+    prompts = dict(model_prompts)
+    exact = prompts.get(resolved_model)
+    if exact is not None:
+        return exact
+    best_prefix = ""
+    best_prompt: str | None = None
+    for key, prompt in prompts.items():
+        if not key.endswith("*"):
+            continue
+        prefix = key[:-1]
+        if resolved_model.startswith(prefix) and len(prefix) >= len(best_prefix):
+            best_prefix = prefix
+            best_prompt = prompt
+    return best_prompt
 
 
 def _result_envelope_fields(stdout: str) -> dict[str, str]:

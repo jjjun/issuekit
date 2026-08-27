@@ -72,9 +72,11 @@ This includes `implement`, `review`, `negotiate`, `request`, `serve`, `triage`, 
 `proposal-checks`; issuekit does not maintain a model allowlist. Set an agent's
 defaults with `[agents.codex] model = "gpt-5.6"` and
 `[agents.codex] reasoning_effort = "medium"`. The optional
-`[agents.codex.model_prompts]` entries append model-specific guidance and their
-keys must match the exact model id string. Per-run values override configured
-defaults. A reasoning effort setting requires an `effort_argv` template; the
+`[agents.codex.model_prompts]` entries append model-specific guidance. A key
+matches the resolved model id exactly, or, if it ends in `*`, as a prefix (the
+longest matching prefix wins when several match); exact match always beats a
+prefix match. Per-run values override configured defaults. A reasoning effort
+setting requires an `effort_argv` template; the
 built-in Codex adapter uses `("-c", "model_reasoning_effort={{value}}")` and the
 built-in Claude adapter uses `("--effort", "{{value}}")`.
 Serve-level overrides apply to every agent launched; use per-agent overlays

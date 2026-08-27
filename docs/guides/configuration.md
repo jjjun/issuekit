@@ -220,12 +220,41 @@ Agent-launching commands accept pass-through `--model <model-id>` and
 `negotiate`, `request`, `serve`, `triage`, and `proposal-checks`. Issuekit does not
 restrict model ids; the selected agent CLI validates them. The `model` and
 `reasoning_effort` agent overlays set defaults, while `model_prompts` adds
-prompt text for keys matching the exact resolved model id. Explicit per-run
+prompt text for keys matching the resolved model id. A key matches exactly, or,
+if it ends in `*`, as a prefix; when several prefixes match, the longest one
+wins, and an exact match always beats a prefix match. This keeps guidance keyed
+to a model family (for example `"claude-sonnet-5*"`) applying when the
+resolved model id gains a date suffix or point revision. Explicit per-run
 values take precedence over configured defaults. A serve override applies to
 every agent launched by that loop, so mixed-agent serve setups should configure
-`model` and `reasoning_effort` in each agent's overlay instead. An agent can
-also set model and reasoning-effort defaults for the `implementer`, `reviewer`,
-`router`, or `triage` role:
+`model` and `reasoning_effort` in each agent's overlay instead.
+
+One project reported a recurring implementer failure shape for the
+`claude-sonnet-5` model family: correct mechanisms applied at one level too
+coarse a granularity (staleness guards keyed by entity instead of per-request,
+in-flight request sharing that a forced refresh should have bypassed, a limit
+enforced at the outer boundary instead of per-resource) and reset paths that
+handled every branch except an early return. The following `model_prompts`
+fragment is a starting point, not a shipped default; adapt it per project:
+
+```toml
+[tool.issuekit.agents.claude.model_prompts]
+"claude-sonnet-5*" = """
+When adding a staleness guard, state what one request is and confirm the key
+changes per request, not per selected entity.
+When a request can be superseded, check whether a forced or retried call must
+bypass any in-flight sharing.
+When a limit is per-resource, apply it where the resource is known, not at the
+outermost boundary.
+When adding an is-current check around state writes, enumerate every
+early-return and reset branch and clear loading and error state there too.
+When deleting a test file, first check whether its cases cover code that
+survives the deletion, and move them rather than dropping them.
+"""
+```
+
+An agent can also set model and reasoning-effort defaults for the
+`implementer`, `reviewer`, `router`, or `triage` role:
 
 ```toml
 [tool.issuekit.agents.claude]

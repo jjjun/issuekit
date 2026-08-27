@@ -382,6 +382,63 @@ def test_config_adapter_model_prompt_requires_exact_match() -> None:
     assert "Spark guardrail." not in argv[1]
 
 
+def test_config_adapter_model_prompt_matches_prefix_pattern() -> None:
+    adapter = ConfigAgentAdapter(
+        "claude",
+        AgentRunConfig(
+            binary="claude",
+            headless_argv=("-p",),
+            model_flag="--model",
+            model="claude-sonnet-5-20260115",
+            model_prompts=(("claude-sonnet-5*", "Sonnet family guardrail."),),
+        ),
+    )
+
+    argv = adapter.build_argv("base", Path("/plan.md"))
+
+    assert argv[1] == "base\n\nSonnet family guardrail."
+
+
+def test_config_adapter_model_prompt_exact_match_beats_prefix() -> None:
+    adapter = ConfigAgentAdapter(
+        "claude",
+        AgentRunConfig(
+            binary="claude",
+            headless_argv=("-p",),
+            model_flag="--model",
+            model="claude-sonnet-5",
+            model_prompts=(
+                ("claude-sonnet-5*", "Sonnet family guardrail."),
+                ("claude-sonnet-5", "Exact sonnet guardrail."),
+            ),
+        ),
+    )
+
+    argv = adapter.build_argv("base", Path("/plan.md"))
+
+    assert argv[1] == "base\n\nExact sonnet guardrail."
+
+
+def test_config_adapter_model_prompt_longest_prefix_wins() -> None:
+    adapter = ConfigAgentAdapter(
+        "claude",
+        AgentRunConfig(
+            binary="claude",
+            headless_argv=("-p",),
+            model_flag="--model",
+            model="claude-sonnet-5-20260115",
+            model_prompts=(
+                ("claude-*", "Claude family guardrail."),
+                ("claude-sonnet-5*", "Sonnet family guardrail."),
+            ),
+        ),
+    )
+
+    argv = adapter.build_argv("base", Path("/plan.md"))
+
+    assert argv[1] == "base\n\nSonnet family guardrail."
+
+
 def test_kimi_adapter_argv_contains_headless_flags_and_model() -> None:
     adapter = resolve_adapter("kimi", model="k2")
     argv = adapter.build_argv("prompt", Path("/plan.md"))
