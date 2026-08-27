@@ -42,6 +42,7 @@ class RunOutcome:
     result: AgentResult
     exit_code: int
     reviewed_issue: Issue | None = None
+    reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -164,7 +165,7 @@ def run_and_submit(
     snapshot = _implementation_change_snapshot(cwd, fingerprint_before)
 
     if result.timed_out:
-        return RunOutcome(issue=issue, result=result, exit_code=124)
+        return RunOutcome(issue=issue, result=result, exit_code=124, reason="timed_out")
     if result.exit_code != 0:
         if _is_startup_failure(result):
             print(
@@ -179,6 +180,7 @@ def run_and_submit(
             issue=issue,
             result=result,
             exit_code=result.exit_code if result.exit_code >= 0 else 1,
+            reason="agent_failed",
         )
     if result.status_short:
         print(
@@ -210,7 +212,9 @@ def run_and_submit(
                     f"The issue is currently at stage={current_stage}.{log_detail}",
                     file=err,
                 )
-                return RunOutcome(issue=issue, result=result, exit_code=1)
+                return RunOutcome(
+                    issue=issue, result=result, exit_code=1, reason="no_changes"
+                )
             print(
                 "No implementation changes detected; submitting for review because "
                 "--allow-no-changes was set.",
@@ -272,7 +276,9 @@ def run_and_submit(
                         "repo-relative path to check_encoding_exclude.",
                         file=err,
                     )
-                return RunOutcome(issue=issue, result=result, exit_code=1)
+                return RunOutcome(
+                    issue=issue, result=result, exit_code=1, reason="mojibake_gate"
+                )
 
         reviewed_issue = submit_for_review(
             issue_id,

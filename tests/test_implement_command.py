@@ -12,6 +12,7 @@ from issuekit.config import IssuekitConfig
 from issuekit.core import Issue
 from issuekit.gitutil import GitStatusEntry
 from issuekit.testing import FakeIssuekitClient
+from issuekit.workflow import WorkflowError
 from tests.issue_helpers import api_issue
 
 
@@ -1036,6 +1037,147 @@ def test_implement_command_does_not_submit_failed_run(
 
     assert cli.main(["implement", "1", "--agent", "codex"]) == 2
     assert [call["method"] for call in client.calls] == ["claim"]
+
+
+def test_implement_command_prints_post_run_line_on_successful_submit(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
+    _configure_api(tmp_path, monkeypatch, client)
+    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", FakeRunner)
+
+    exit_code = cli.main(["implement", "1", "--agent", "codex"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "not_submitted" not in captured.out
+    assert (
+        "post_run id=1 stage=review submitted=true agent_exit=0 cli_exit=0"
+        in captured.out
+    )
+
+
+def test_implement_command_prints_not_submitted_reason_for_failed_run(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
+    _configure_api(tmp_path, monkeypatch, client)
+
+    class FailingRunner(FakeRunner):
+        def run(self, adapter, prompt: AgentPrompt, repo, timeout, **kwargs) -> FakeResult:
+            return FakeResult(exit_code=2, status_short=" M tracked.py")
+
+    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", FailingRunner)
+
+    exit_code = cli.main(["implement", "1", "--agent", "codex"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 2
+    assert (
+        "not_submitted id=1 stage=implementing reason=agent_failed" in captured.out
+    )
+    assert (
+        "post_run id=1 stage=implementing submitted=false agent_exit=2 cli_exit=2"
+        in captured.out
+    )
+
+
+def test_implement_command_prints_not_submitted_reason_for_no_changes(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
+    _configure_api(tmp_path, monkeypatch, client)
+    (tmp_path / ".gitignore").write_text(".agent-runs/\n", encoding="utf-8", newline="\n")
+    _init_git_repo(tmp_path)
+
+    class CleanRunner(FakeRunner):
+        def run(self, adapter, prompt: AgentPrompt, repo, timeout, **kwargs) -> FakeResult:
+            return FakeResult(status_short="")
+
+    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", CleanRunner)
+
+    exit_code = cli.main(["implement", "1", "--agent", "codex"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "not_submitted id=1 stage=implementing reason=no_changes" in captured.out
+    assert (
+        "post_run id=1 stage=implementing submitted=false agent_exit=0 cli_exit=1"
+        in captured.out
+    )
+
+
+def test_implement_command_prints_submit_error_reason_when_guard_blocks_submit(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
+    _configure_api(tmp_path, monkeypatch, client)
+    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", FakeRunner)
+
+    def raise_guard_error(*args, **kwargs):
+        raise WorkflowError("Author-session guard blocks submit.")
+
+    monkeypatch.setattr(run_claimed_agent, "submit_for_review", raise_guard_error)
+
+    exit_code = cli.main(["implement", "1", "--agent", "codex"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "Author-session guard blocks submit." in captured.err
+    assert (
+        "not_submitted id=1 stage=implementing "
+        "reason=submit_error:Author-session guard blocks submit." in captured.out
+    )
+    assert (
+        "post_run id=1 stage=implementing submitted=false agent_exit=0 cli_exit=1"
+        in captured.out
+    )
+
+
+def test_implement_command_prints_unknown_stage_when_stage_lookup_also_fails(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    should_fail_lookup = {"value": False}
+
+    class FlakyAfterSubmitClient(FakeIssuekitClient):
+        def get_issue(self, number):
+            if should_fail_lookup["value"]:
+                raise WorkflowError("API unreachable.", code="request_failed")
+            return super().get_issue(number)
+
+    client = FlakyAfterSubmitClient([api_issue(1, "First", author="claude")])
+    _configure_api(tmp_path, monkeypatch, client)
+    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", FakeRunner)
+
+    def raise_guard_error(*args, **kwargs):
+        should_fail_lookup["value"] = True
+        raise WorkflowError("Author-session guard blocks submit.")
+
+    monkeypatch.setattr(run_claimed_agent, "submit_for_review", raise_guard_error)
+
+    exit_code = cli.main(["implement", "1", "--agent", "codex"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "Author-session guard blocks submit." in captured.err
+    assert (
+        "not_submitted id=1 stage=unknown "
+        "reason=submit_error:Author-session guard blocks submit." in captured.out
+    )
+    assert (
+        "post_run id=1 stage=unknown submitted=false agent_exit=0 cli_exit=1"
+        in captured.out
+    )
 
 
 def test_implement_command_prints_recovery_hint_for_startup_failure(
