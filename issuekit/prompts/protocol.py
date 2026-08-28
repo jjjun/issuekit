@@ -391,7 +391,9 @@ commands. Run this protocol end to end:
    Issuekit sanitizes the report to ASCII, bounds its length, and includes it
    in the submit summary.
 4. Run the relevant tests, `uv run issuekit check-encoding`, and
-   `uv run issuekit check-encoding --gate` before submitting. Await every
+   `uv run issuekit check-encoding --gate` before submitting. This run is a
+   single turn: background tasks cannot wake you, no completion notification
+   will ever arrive, and ending the turn ends the run. Await every
    verification command you start and record its actual exit result; starting
    a command in the background and ending the turn is a failed run, not a
    completed one.

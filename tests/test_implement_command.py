@@ -1217,6 +1217,158 @@ def test_implement_command_prints_not_submitted_reason_for_no_changes(
     )
 
 
+def test_implement_command_prints_final_message_tail_and_hint_for_no_changes(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
+    _configure_api(tmp_path, monkeypatch, client)
+    (tmp_path / ".gitignore").write_text(".agent-runs/\n", encoding="utf-8", newline="\n")
+    _init_git_repo(tmp_path)
+
+    class StalledRunner(FakeRunner):
+        def run(self, adapter, prompt: AgentPrompt, repo, timeout, **kwargs) -> FakeResult:
+            return FakeResult(
+                status_short="",
+                parsed={
+                    "stdout": (
+                        "The baseline test run is executing in the "
+                        "background; I'll be notified automatically when it "
+                        "finishes. I won't poll - waiting now."
+                    )
+                },
+            )
+
+    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", StalledRunner)
+
+    exit_code = cli.main(["implement", "1", "--agent", "codex"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "not_submitted id=1 stage=implementing reason=no_changes" in captured.out
+    assert (
+        "final_message_tail=The baseline test run is executing in the "
+        "background; I'll be notified automatically when it finishes. "
+        "I won't poll - waiting now." in captured.out
+    )
+    assert (
+        "HINT: a common cause of reason=no_changes or reason=missing_report "
+        "is a verification command started in the background" in captured.out
+    )
+    assert "retry with `issuekit implement 1`" in captured.out
+
+
+def test_implement_command_prints_final_message_tail_for_missing_report(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
+    _configure_api(tmp_path, monkeypatch, client)
+    report_path = tmp_path / ".agent-runs" / "run.report.md"
+
+    class StalledNoReportRunner(FakeRunner):
+        def run(self, adapter, prompt: AgentPrompt, repo, timeout, **kwargs) -> FakeResult:
+            (repo / "code.py").write_text("value = 1\n", encoding="utf-8", newline="\n")
+            return FakeResult(
+                status_short=" M code.py",
+                report_path=report_path,
+                parsed={"stdout": "I'll wait for the background test run to complete."},
+            )
+
+    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", StalledNoReportRunner)
+
+    exit_code = cli.main(["implement", "1", "--agent", "codex"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "not_submitted id=1 stage=implementing reason=missing_report" in captured.out
+    assert (
+        "final_message_tail=I'll wait for the background test run to complete."
+        in captured.out
+    )
+    assert "HINT: a common cause of reason=no_changes or reason=missing_report" in captured.out
+
+
+def test_implement_command_truncates_long_final_message_tail(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
+    _configure_api(tmp_path, monkeypatch, client)
+    (tmp_path / ".gitignore").write_text(".agent-runs/\n", encoding="utf-8", newline="\n")
+    _init_git_repo(tmp_path)
+    long_message = "x" * 500
+
+    class VerboseStalledRunner(FakeRunner):
+        def run(self, adapter, prompt: AgentPrompt, repo, timeout, **kwargs) -> FakeResult:
+            return FakeResult(status_short="", parsed={"stdout": long_message})
+
+    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", VerboseStalledRunner)
+
+    exit_code = cli.main(["implement", "1", "--agent", "codex"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert f"final_message_tail=...{'x' * 400}" in captured.out
+    assert f"final_message_tail={'x' * 500}" not in captured.out
+
+
+def test_implement_command_sanitizes_non_ascii_final_message_tail(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
+    _configure_api(tmp_path, monkeypatch, client)
+    (tmp_path / ".gitignore").write_text(".agent-runs/\n", encoding="utf-8", newline="\n")
+    _init_git_repo(tmp_path)
+
+    class NonAsciiStalledRunner(FakeRunner):
+        def run(self, adapter, prompt: AgentPrompt, repo, timeout, **kwargs) -> FakeResult:
+            return FakeResult(
+                status_short="",
+                parsed={"stdout": "I’ll wait — no need to poll café."},
+            )
+
+    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", NonAsciiStalledRunner)
+
+    exit_code = cli.main(["implement", "1", "--agent", "codex"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "final_message_tail=I'll wait - no need to poll cafe." in captured.out
+    assert "post_run id=1" in captured.out
+
+
+def test_implement_command_omits_final_message_tail_when_not_stall_shaped(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
+    _configure_api(tmp_path, monkeypatch, client)
+
+    class FailingRunner(FakeRunner):
+        def run(self, adapter, prompt: AgentPrompt, repo, timeout, **kwargs) -> FakeResult:
+            return FakeResult(
+                exit_code=2,
+                status_short=" M tracked.py",
+                parsed={"stdout": "Should not be surfaced for agent_failed."},
+            )
+
+    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", FailingRunner)
+
+    exit_code = cli.main(["implement", "1", "--agent", "codex"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 2
+    assert "final_message_tail" not in captured.out
+    assert "HINT: a common cause of reason=no_changes" not in captured.out
+
+
 def test_implement_command_prints_submit_error_reason_when_guard_blocks_submit(
     tmp_path: Path,
     monkeypatch,

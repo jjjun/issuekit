@@ -48,3 +48,13 @@ orchestrator should branch on:
   once the missing verification is understood. `submit_error` means the
   agent run finished and `submit_for_review` (or a guard around it) failed;
   `run_error` means the agent run itself never completed.
+- For `reason=no_changes` or `reason=missing_report`, two extra lines can
+  follow `not_submitted`: a `final_message_tail=<text>` line with a bounded,
+  whitespace-collapsed tail of the agent's last assistant message (present
+  only when the run captured one), and a `HINT:` line noting that a common
+  cause is a verification command started in the background whose completion
+  never rejoined the turn, with a suggestion to retry `issuekit implement`.
+  A `final_message_tail` ending in something like "I'll wait for the
+  background run to finish; no need to poll" is the signature of that
+  failure mode - the agent never restarted the run, so it exited with no
+  diff.

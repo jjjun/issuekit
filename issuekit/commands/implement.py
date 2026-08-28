@@ -15,6 +15,7 @@ from issuekit.agents.run_claimed import (
 from issuekit.commands._common import run_command
 from issuekit.config import load_config
 from issuekit.core import Issue, parse_issue_id_arg
+from issuekit.encoding import sanitize_to_ascii
 from issuekit.guards.author import AuthorOrchestrationContext, read_author_guard
 from issuekit.issues.session import new_session_token
 from issuekit.store import get_store
@@ -197,6 +198,10 @@ def _print_submit_report(outcome: RunOutcome) -> None:
     )
 
 
+_STALL_SHAPED_REASONS = {"no_changes", "missing_report"}
+_FINAL_MESSAGE_TAIL_MAX_CHARS = 400
+
+
 def _print_terminal_lines(issue_id: int, outcome: RunOutcome, config) -> None:
     submitted = outcome.reviewed_issue is not None
     if outcome.reviewed_issue is not None:
@@ -204,6 +209,16 @@ def _print_terminal_lines(issue_id: int, outcome: RunOutcome, config) -> None:
     else:
         stage = _current_stage(config, issue_id)
         print(f"not_submitted id={issue_id} stage={stage} reason={outcome.reason or 'unknown'}")
+        if outcome.reason in _STALL_SHAPED_REASONS:
+            tail = _final_message_tail(outcome.result)
+            if tail:
+                print(f"final_message_tail={tail}")
+            print(
+                "HINT: a common cause of reason=no_changes or "
+                "reason=missing_report is a verification command started in "
+                "the background whose completion never rejoined the turn; "
+                f"retry with `issuekit implement {issue_id}`."
+            )
     print(
         f"post_run id={issue_id} stage={stage} submitted={str(submitted).lower()} "
         f"agent_exit={outcome.result.exit_code} cli_exit={outcome.exit_code}"
@@ -217,6 +232,19 @@ def _print_terminal_lines_for_error(
     agent_exit = str(agent_result.exit_code) if agent_result is not None else "unknown"
     print(f"not_submitted id={issue_id} stage={stage} reason={reason}")
     print(f"post_run id={issue_id} stage={stage} submitted=false agent_exit={agent_exit} cli_exit=1")
+
+
+def _final_message_tail(result: AgentResult) -> str | None:
+    parsed = result.parsed or {}
+    text = parsed.get("stdout")
+    if not text:
+        return None
+    collapsed = " ".join(sanitize_to_ascii(text).split())
+    if not collapsed:
+        return None
+    if len(collapsed) > _FINAL_MESSAGE_TAIL_MAX_CHARS:
+        collapsed = "..." + collapsed[-_FINAL_MESSAGE_TAIL_MAX_CHARS:]
+    return collapsed
 
 
 def _current_stage(config, issue_id: int) -> str:
