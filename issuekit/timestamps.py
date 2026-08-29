@@ -5,6 +5,10 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 
+def utcnow() -> datetime:
+    return datetime.now(UTC)
+
+
 def parse_timestamp(value: object) -> datetime | None:
     if not isinstance(value, str) or not value.strip():
         return None

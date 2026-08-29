@@ -5,14 +5,14 @@ from __future__ import annotations
 import argparse
 import sys
 from collections.abc import Mapping
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 
 from issuekit.commands._common import print_json, run_command
 from issuekit.config import IssuekitConfig, load_config
 from issuekit.proposals import ProposalError
 from issuekit.proposals.api import api_client
-from issuekit.timestamps import parse_timestamp
+from issuekit.timestamps import parse_timestamp, utcnow
 from issuekit.workers.addressing import (
     registered_worker_row,
     resolve_registered_worker_address,
@@ -104,7 +104,7 @@ def _worker_liveness_warning(
     age_seconds = (
         None
         if seen is None
-        else max(0, int(((now or datetime.now(UTC)) - seen).total_seconds()))
+        else max(0, int(((now or utcnow()) - seen).total_seconds()))
     )
     if status != "offline" and (
         age_seconds is None or age_seconds <= PROPOSAL_CHECK_WORKER_STALE_AFTER_SEC

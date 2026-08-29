@@ -3,6 +3,7 @@ import hashlib
 import json
 import os
 import time
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -300,6 +301,10 @@ def test_create_proposal_check_tool_matches_cli_json(
         newline="\n",
     )
     monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.setattr(
+        "issuekit.commands.proposal_check_request.utcnow",
+        lambda: datetime(2026, 1, 1, 6, 0, 0, tzinfo=UTC),
+    )
     server = create_server(tmp_path)
 
     mcp_result = _call(
