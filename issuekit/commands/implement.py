@@ -213,12 +213,21 @@ def _print_terminal_lines(issue_id: int, outcome: RunOutcome, config) -> None:
             tail = _final_message_tail(outcome.result)
             if tail:
                 print(f"final_message_tail={tail}")
-            print(
-                "HINT: a common cause of reason=no_changes or "
-                "reason=missing_report is a verification command started in "
-                "the background whose completion never rejoined the turn; "
-                f"retry with `issuekit implement {issue_id}`."
-            )
+            if outcome.reason == "no_changes" and outcome.resumed_changes:
+                print(
+                    "HINT: the changes present in the worktree were made "
+                    "before this run started, not by this run; this looks "
+                    "like a resumed run over a previous attempt's unsubmitted "
+                    f"edits. Submit them with `issuekit implement {issue_id} "
+                    "--allow-no-changes` if they are complete."
+                )
+            else:
+                print(
+                    "HINT: a common cause of reason=no_changes or "
+                    "reason=missing_report is a verification command started in "
+                    "the background whose completion never rejoined the turn; "
+                    f"retry with `issuekit implement {issue_id}`."
+                )
     print(
         f"post_run id={issue_id} stage={stage} submitted={str(submitted).lower()} "
         f"agent_exit={outcome.result.exit_code} cli_exit={outcome.exit_code}"

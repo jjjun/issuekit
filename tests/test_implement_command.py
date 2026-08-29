@@ -49,6 +49,33 @@ def test_rename_across_issues_directory_is_an_implementation_change(
     )
 
 
+def test_snapshot_all_status_entries_includes_attributable_and_preexisting(
+    tmp_path: Path,
+) -> None:
+    issues_dir = tmp_path / "issues"
+    existing_path = tmp_path / "existing.py"
+    existing_path.write_text("value = 1\n", encoding="utf-8", newline="\n")
+    _init_git_repo(tmp_path)
+    existing_path.write_text("value = 2\n", encoding="utf-8", newline="\n")
+
+    fingerprint_before = run_claimed_agent.worktree_fingerprint(tmp_path)
+    changed_path = tmp_path / "changed.py"
+    changed_path.write_text("value = 1\n", encoding="utf-8", newline="\n")
+    snapshot = run_claimed_agent._implementation_change_snapshot(
+        tmp_path, fingerprint_before
+    )
+
+    attributable = run_claimed_agent._implementation_entries(snapshot, tmp_path, issues_dir)
+    assert [entry.path for entry in attributable] == [Path("changed.py")]
+    all_entries = run_claimed_agent._all_implementation_entries(
+        snapshot, tmp_path, issues_dir
+    )
+    assert sorted(entry.path for entry in all_entries) == [
+        Path("changed.py"),
+        Path("existing.py"),
+    ]
+
+
 @dataclass(frozen=True)
 class FakeResult:
     exit_code: int = 0
@@ -889,9 +916,24 @@ def test_implement_command_blocks_preexisting_dirty_worktree_without_agent_chang
 
     monkeypatch.setattr("issuekit.commands.implement.AgentRunner", CleanRunner)
 
-    assert cli.main(["implement", "1", "--agent", "codex"]) == 1
-    assert "agent produced no implementation changes; not submitting for review" in capsys.readouterr().err
+    exit_code = cli.main(["implement", "1", "--agent", "codex"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "agent produced no implementation changes; not submitting for review" in captured.err
+    assert "this looks like a resumed run" in captured.err
+    assert "--allow-no-changes" in captured.err
     assert [call["method"] for call in client.calls] == ["claim"]
+    assert "not_submitted id=1 stage=implementing reason=no_changes" in captured.out
+    assert (
+        "HINT: the changes present in the worktree were made before this "
+        "run started, not by this run; this looks like a resumed run" in captured.out
+    )
+    assert (
+        "Submit them with `issuekit implement 1 --allow-no-changes` if they "
+        "are complete." in captured.out
+    )
+    assert "HINT: a common cause of reason=no_changes or reason=missing_report" not in captured.out
 
 
 def test_implement_command_submits_agent_change_with_preexisting_dirty_worktree(

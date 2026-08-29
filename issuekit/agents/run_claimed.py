@@ -43,6 +43,7 @@ class RunOutcome:
     exit_code: int
     reviewed_issue: Issue | None = None
     reason: str | None = None
+    resumed_changes: bool = False
 
 
 @dataclass(frozen=True)
@@ -53,6 +54,7 @@ class ImplementationChangeSnapshot:
     status_entries: tuple[GitStatusEntry, ...] | None
     changed_paths: tuple[Path, ...]
     readable_paths: tuple[Path, ...]
+    all_status_entries: tuple[GitStatusEntry, ...] | None = None
 
 
 RunReporter = Callable[[Issue, AgentResult], None]
@@ -208,6 +210,29 @@ def run_and_submit(
             if not allow_no_changes:
                 current_stage = current_issue.stage if current_issue is not None else "unknown"
                 log_detail = _diagnostic_log_detail(result)
+                # implementation_entries is already empty here, so every
+                # non-issues-dir entry in the unfiltered set is pre-existing.
+                unattributed_entries = _all_implementation_entries(
+                    snapshot, cwd, issues_dir
+                )
+                if unattributed_entries:
+                    print(
+                        "ERROR: agent produced no implementation changes; not "
+                        "submitting for review. The worktree holds uncommitted "
+                        "modifications that were made before this run started, "
+                        "not by this run; this looks like a resumed run over a "
+                        "previous attempt's unsubmitted edits. If they are "
+                        "complete, submit them with --allow-no-changes. The "
+                        f"issue is currently at stage={current_stage}.{log_detail}",
+                        file=err,
+                    )
+                    return RunOutcome(
+                        issue=issue,
+                        result=result,
+                        exit_code=1,
+                        reason="no_changes",
+                        resumed_changes=True,
+                    )
                 print(
                     "ERROR: agent produced no implementation changes; not submitting for review. "
                     f"The issue is currently at stage={current_stage}.{log_detail}",
@@ -520,9 +545,11 @@ def _implementation_change_snapshot(
     fingerprint_before: tuple[tuple[str, str, str, str], ...] | None = None,
 ) -> ImplementationChangeSnapshot:
     root = git_root(repo)
-    entries = git_status_entries(repo) if root == repo.resolve() else None
-    fingerprint_after = worktree_fingerprint(repo) if entries is not None else None
-    entries = _attributable_entries(entries, fingerprint_before, fingerprint_after)
+    all_status_entries = git_status_entries(repo) if root == repo.resolve() else None
+    fingerprint_after = (
+        worktree_fingerprint(repo) if all_status_entries is not None else None
+    )
+    entries = _attributable_entries(all_status_entries, fingerprint_before, fingerprint_after)
     changed_paths: list[Path] = []
     readable_paths: list[Path] = []
     seen_changed: set[Path] = set()
@@ -539,6 +566,7 @@ def _implementation_change_snapshot(
     return ImplementationChangeSnapshot(
         root=root,
         status_entries=entries,
+        all_status_entries=all_status_entries,
         changed_paths=tuple(changed_paths),
         readable_paths=tuple(readable_paths),
     )
@@ -580,9 +608,27 @@ def _implementation_entries(
     repo: Path,
     issues_dir: Path,
 ) -> tuple[GitStatusEntry, ...]:
+    return _filter_implementation_entries(snapshot.status_entries, repo, issues_dir)
+
+
+def _all_implementation_entries(
+    snapshot: ImplementationChangeSnapshot,
+    repo: Path,
+    issues_dir: Path,
+) -> tuple[GitStatusEntry, ...]:
+    """Non-issues-dir status entries, regardless of which run produced them."""
+
+    return _filter_implementation_entries(snapshot.all_status_entries, repo, issues_dir)
+
+
+def _filter_implementation_entries(
+    entries: tuple[GitStatusEntry, ...] | None,
+    repo: Path,
+    issues_dir: Path,
+) -> tuple[GitStatusEntry, ...]:
     return tuple(
         entry
-        for entry in snapshot.status_entries or ()
+        for entry in entries or ()
         if _entry_is_implementation_change(entry, repo, issues_dir)
     )
 
