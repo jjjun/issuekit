@@ -6,7 +6,12 @@ import argparse
 import sys
 from pathlib import Path
 
-from issuekit.commands._common import active_issue_not_found, require_ascii, run_command
+from issuekit.commands._common import (
+    active_issue_not_found,
+    read_text_file,
+    require_ascii,
+    run_command,
+)
 from issuekit.config import IssuekitConfig, load_config
 from issuekit.core import (
     Issue,
@@ -29,8 +34,14 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         help="Approve a review-stage issue.",
     )
     approve_parser.add_argument("id", help="Issue id to approve.")
-    approve_parser.add_argument("--verification", required=True, help="Verification notes.")
-    approve_parser.add_argument("--summary", help="Approval summary.")
+    verification_group = approve_parser.add_mutually_exclusive_group(required=True)
+    verification_group.add_argument("--verification", help="Verification notes.")
+    verification_group.add_argument(
+        "--verification-file", help="File containing verification notes."
+    )
+    summary_group = approve_parser.add_mutually_exclusive_group()
+    summary_group.add_argument("--summary", help="Approval summary.")
+    summary_group.add_argument("--summary-file", help="File containing the approval summary.")
     approve_parser.add_argument("--reviewer", help="Reviewer approving this issue.")
     approve_parser.set_defaults(func=run)
 
@@ -47,18 +58,32 @@ def run(args) -> int:
                 "WARNING: approval is being recorded with uncommitted changes in this checkout.",
                 file=sys.stderr,
             )
+        if args.verification is not None:
+            verification = args.verification
+        else:
+            verification = read_text_file(args.verification_file)
+        summary = args.summary
+        if summary is None and args.summary_file:
+            summary = read_text_file(args.summary_file)
         completed_issue = approve_issue(
             issue_id,
-            summary=args.summary,
-            verification=args.verification,
+            summary=summary,
+            verification=verification,
             reviewer=args.reviewer,
             config=config,
         )
 
         print(f"Approved issue #{completed_issue.id}: {completed_issue.ref}")
+        if summary is not None:
+            print(f"summary:\n{summary}")
+        print(f"verification:\n{verification}")
         return 0
 
-    return run_command(action, lookup_error=lambda _exc: active_issue_not_found(issue_id))
+    return run_command(
+        action,
+        errors=(OSError, UnicodeError, ValueError, WorkflowError),
+        lookup_error=lambda _exc: active_issue_not_found(issue_id),
+    )
 
 
 def approve_issue(

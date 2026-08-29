@@ -9,6 +9,7 @@ from pathlib import Path
 from issuekit.commands._common import (
     active_issue_not_found,
     print_json,
+    read_text_file,
     require_ascii,
     run_command,
 )
@@ -173,7 +174,7 @@ def _body_update(
         require_ascii(update_body, message="--body and --body-file must be ASCII-only.")
         return update_body
     if body_file is not None:
-        update_body = Path(body_file).read_text(encoding="utf-8-sig").strip()
+        update_body = read_text_file(body_file)
         require_ascii(update_body, message="--body and --body-file must be ASCII-only.")
         return update_body
     if append is not None:
@@ -181,7 +182,7 @@ def _body_update(
         require_ascii(append_body, message="--append and --append-file must be ASCII-only.")
         return f"{existing.body}\n\n{append_body}"
     if append_file is not None:
-        append_body = Path(append_file).read_text(encoding="utf-8-sig").strip()
+        append_body = read_text_file(append_file)
         require_ascii(append_body, message="--append and --append-file must be ASCII-only.")
         return f"{existing.body}\n\n{append_body}"
     return None

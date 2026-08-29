@@ -11,6 +11,7 @@ from pathlib import Path
 from issuekit.commands._common import (
     load_config_for_project_mutation,
     print_json,
+    read_text_file,
     require_ascii,
     run_command,
 )
@@ -252,7 +253,7 @@ def _read_body(*, body: str | None, body_file: str | None) -> str:
     if body is not None:
         return body.strip()
     if body_file:
-        return Path(body_file).read_text(encoding="utf-8-sig").strip()
+        return read_text_file(body_file)
     raise ValueError("--body or --body-file is required.")
 
 

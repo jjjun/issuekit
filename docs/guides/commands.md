@@ -12,15 +12,15 @@
 | `issuekit author --title "..." (--body "..." \| --body-file <path>) --agent <agent> [--priority high\|medium\|low] [--assign <agent>] [--target-worker <worker.repo[@machine]>] [--allow-unregistered-worker] [--depends-on <ref>] [--project <name>] [--direct-local-author] [--origin-project <name>] [--json]` | Create a new API-backed issue with an implementation-ready body. |
 | `issuekit edit <id> [--title "..."] [--body "..." \| --body-file <path> \| --append "..." \| --append-file <path>] [--priority high\|medium\|low] [--depends-on <ref>] [--force] [--json]` | Update an issue's title, body, priority, or dependency references. |
 | `issuekit author-guard show\|check\|clear` | Diagnose or recover the local author-session separation-of-duties guard; see [Separation of duties](separation-of-duties.md). |
-| `issuekit complete <id> --summary "..." --verification "..." [--force]` | Complete an issue through the API; use `--force` to close an active no-op, duplicate, obsolete, or anchor issue without claim and review ceremony. |
-| `issuekit approve <id> --verification "..." [--reviewer claude]` | Approve a review-stage issue and move it to completed. |
+| `issuekit complete <id> [(--summary "..." \| --summary-file <path>)] [(--verification "..." \| --verification-file <path>)] [--force]` | Complete an issue through the API; use `--force` to close an active no-op, duplicate, obsolete, or anchor issue without claim and review ceremony. |
+| `issuekit approve <id> (--verification "..." \| --verification-file <path>) [(--summary "..." \| --summary-file <path>)] [--reviewer claude]` | Approve a review-stage issue and move it to completed. |
 | `issuekit claim --assignee codex` | Claim the next active issue for an implementer. |
 | `issuekit claim --id <id> --assignee codex` | Claim a specific active issue for an implementer. |
 | `issuekit claims [--worker <worker>] [--stage <stage>] [--json]` | List issue claims, optionally filtered by worker or workflow stage. |
 | `issuekit implement <id> [--agent <agent>] [--model <model-id>] [--reasoning-effort <value>] [--timeout-sec <seconds>] [--follow] [--allow-no-changes] [--allow-missing-report] [--allow-author-session] [--allow-any-branch] [--no-sync]` | Claim and run a configured implementer agent for an issue. |
-| `issuekit submit-review <id> --summary "..." [--reviewer claude]` | Submit implemented work to a reviewer. |
+| `issuekit submit-review <id> (--summary "..." \| --summary-file <path>) [--reviewer claude]` | Submit implemented work to a reviewer. |
 | `issuekit review <id> --agent <agent> [--model <model-id>] [--reasoning-effort <value>] [--timeout-sec <seconds>] [--follow]` | Run a configured reviewer agent for a review-stage issue. |
-| `issuekit request-changes <id> --notes "..." [--assignee codex] [--reviewer claude]` | Return a reviewed issue to implementation. |
+| `issuekit request-changes <id> (--notes "..." \| --notes-file <path>) [--assignee codex] [--reviewer claude]` | Return a reviewed issue to implementation. |
 | `issuekit queue [--assignee claude] [--stage review] [--json] [--with-body]` | List active issues, optionally filtered by assignee. `--with-body` requires `--json`. |
 | `issuekit runs [<run-id>] [--active] [--json]` | Inspect an agent run or list runs, optionally limited to active ones. |
 | `issuekit serve [--agent <agent>] [--model <model-id>] [--reasoning-effort <value>] [--interval <seconds>] [--heartbeat-interval <seconds>] [--priority high\|medium\|low] [--once] [--triage] [--review] [--proposal-checks] [--proposal-check-limit <n>] [--max-issues <n>] [--timeout-sec <seconds>] [--allow-any-branch] [--no-sync]` | Launch an agent loop that pulls from the implement pool by default, or the review pool with `--review`. |

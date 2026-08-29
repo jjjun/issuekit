@@ -55,6 +55,12 @@ def active_issue_not_found(issue_id: int) -> str:
     return f"Active issue #{issue_id} was not found."
 
 
+def read_text_file(path: str) -> str:
+    """Read a prose file using the shared file-flag convention."""
+
+    return Path(path).read_text(encoding="utf-8-sig").strip()
+
+
 def require_ascii(*values: str, message: str) -> None:
     if any(has_non_ascii(value) for value in values):
         raise ValueError(f"{message} {ASCII_ONLY_HINT}")

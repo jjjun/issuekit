@@ -192,6 +192,7 @@ Copyable CLI examples:
 - Submit review: `issuekit submit-review 123 --summary "Implemented." --branch main --commit abc123`
 - Agent review: `issuekit review 123 --agent <agent>`
 - Request changes: `issuekit request-changes 123 --notes "Add focused tests." --reviewer <agent>`
+- Request changes with Markdown or backticked identifiers: `issuekit request-changes 123 --notes-file <notes.md> --reviewer <agent>`
 - Approve: `issuekit approve 123 --verification "uv run pytest" --reviewer <agent>`
 - Complete: `issuekit complete 123 --summary "Done." --verification "uv run pytest"`
 - Close no-op issue: `issuekit complete 123 --force --summary "Obsolete." --verification "no local code scope"`
@@ -543,7 +544,11 @@ after that upstream issue or proposal exists, and reference it with
    anchor issue without creating a fake implementation and review cycle.
 4. If changes are needed or the work is incomplete, call
    `request_changes(id, notes, reviewer=None, assignee=None)` with ASCII notes.
-   Omit assignee to return the issue to its recorded implementer.
+   Omit assignee to return the issue to its recorded implementer. From a POSIX
+   shell, notes with backticks or pipes can be rewritten before the CLI ever
+   sees them; write the notes to a file and pass
+   `issuekit request-changes <id> --notes-file <notes.md>` instead of
+   `--notes` to avoid that.
 
 Authors own proposals and implementation-ready issues unless assigned as
 implementer. The assigned reviewer owns the review decision. The approving

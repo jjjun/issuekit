@@ -596,3 +596,238 @@ def test_handoff_commands_reject_invalid_issue_id(tmp_path: Path, monkeypatch, c
     assert request_exit == 1
     out = capsys.readouterr()
     assert "Invalid issue id: bad-id" in out.err
+
+
+def test_request_changes_notes_file_round_trip(tmp_path: Path, monkeypatch, capsys) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                2,
+                "Changes",
+                status="in_progress",
+                assignee="claude",
+                stage="review",
+                implementer="codex",
+            )
+        ]
+    )
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'demo'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.chdir(tmp_path)
+    notes_file = tmp_path / "notes.md"
+    notes_file.write_text(
+        "Rename `old_name` to `new_name`.\n", encoding="utf-8", newline="\n"
+    )
+
+    exit_code = cli.main(["request-changes", "2", "--notes-file", str(notes_file)])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "Rename `old_name` to `new_name`." in captured.out
+    assert client.calls == [
+        {
+            "method": "request_changes",
+            "number": 2,
+            "body": {"notes": "Rename `old_name` to `new_name`."},
+        },
+    ]
+
+
+def test_request_changes_notes_and_notes_file_are_mutually_exclusive(capsys) -> None:
+    exit_code = cli.main(
+        ["request-changes", "2", "--notes", "a", "--notes-file", "notes.md"]
+    )
+
+    assert exit_code == 2
+    assert "not allowed with argument" in capsys.readouterr().err
+
+
+def test_approve_verification_file_and_summary_file_round_trip(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                3,
+                "Approval",
+                status="in_progress",
+                assignee="claude",
+                stage="review",
+                implementer="codex",
+            )
+        ]
+    )
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'demo'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.chdir(tmp_path)
+    verification_file = tmp_path / "verification.md"
+    verification_file.write_text("uv run pytest\n", encoding="utf-8", newline="\n")
+    summary_file = tmp_path / "summary.md"
+    summary_file.write_text(
+        "Matches `expected_output`.\n", encoding="utf-8", newline="\n"
+    )
+
+    exit_code = cli.main(
+        [
+            "approve",
+            "3",
+            "--verification-file",
+            str(verification_file),
+            "--summary-file",
+            str(summary_file),
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "uv run pytest" in captured.out
+    assert "Matches `expected_output`." in captured.out
+    assert client.calls == [
+        {
+            "method": "approve",
+            "number": 3,
+            "body": {
+                "summary": "Matches `expected_output`.",
+                "verification": "uv run pytest",
+                "reviewer": "claude",
+            },
+        },
+    ]
+
+
+def test_approve_verification_and_verification_file_are_mutually_exclusive(capsys) -> None:
+    exit_code = cli.main(
+        [
+            "approve",
+            "3",
+            "--verification",
+            "a",
+            "--verification-file",
+            "verification.md",
+        ]
+    )
+
+    assert exit_code == 2
+    assert "not allowed with argument" in capsys.readouterr().err
+
+
+def test_submit_review_summary_file_round_trip(tmp_path: Path, monkeypatch, capsys) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                1,
+                "Implementation",
+                status="in_progress",
+                assignee="codex",
+                stage="implementing",
+                implementer="codex",
+            )
+        ]
+    )
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'demo'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.chdir(tmp_path)
+    summary_file = tmp_path / "summary.md"
+    summary_file.write_text(
+        "Implemented `feature_flag`.\n", encoding="utf-8", newline="\n"
+    )
+
+    exit_code = cli.main(["submit-review", "1", "--summary-file", str(summary_file)])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "Implemented `feature_flag`." in captured.out
+    assert client.calls[0]["body"]["summary"] == "Implemented `feature_flag`."
+
+
+def test_complete_summary_file_and_verification_file_round_trip(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                10,
+                "Direct Complete",
+                status="in_progress",
+                assignee="codex",
+                stage="implementing",
+                implementer="codex",
+            )
+        ]
+    )
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'demo'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.chdir(tmp_path)
+    summary_file = tmp_path / "summary.md"
+    summary_file.write_text("Obsolete `old_module`.\n", encoding="utf-8", newline="\n")
+    verification_file = tmp_path / "verification.md"
+    verification_file.write_text(
+        "no local code scope\n", encoding="utf-8", newline="\n"
+    )
+
+    exit_code = cli.main(
+        [
+            "complete",
+            "10",
+            "--force",
+            "--summary-file",
+            str(summary_file),
+            "--verification-file",
+            str(verification_file),
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "Obsolete `old_module`." in captured.out
+    assert "no local code scope" in captured.out
+    assert client.calls[0]["body"] == {
+        "summary": "Obsolete `old_module`.",
+        "verification": "no local code scope",
+        "force": True,
+    }
+
+
+def test_complete_summary_file_missing_exits_cleanly(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'demo'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.chdir(tmp_path)
+    missing_file = tmp_path / "missing-summary.md"
+
+    exit_code = cli.main(
+        [
+            "complete",
+            "10",
+            "--force",
+            "--summary-file",
+            str(missing_file),
+            "--verification",
+            "x",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "No such file or directory" in captured.err
+    assert missing_file.name in captured.err
