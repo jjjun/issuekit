@@ -10,8 +10,8 @@ from pathlib import Path
 from issuekit.agentrun.status import (
     RunStatus,
     find_status,
-    is_stale,
     list_statuses,
+    reconcile_stale,
     status_path,
 )
 from issuekit.commands._common import print_json
@@ -43,6 +43,7 @@ def run(args) -> int:
 
 def _print_list(run_dir: Path, *, active_only: bool, json_output: bool) -> int:
     statuses = list_statuses(run_dir) if run_dir.exists() else []
+    statuses = [reconcile_stale(run_dir, status) for status in statuses]
     if active_only:
         statuses = [status for status in statuses if status.is_active]
 
@@ -59,7 +60,7 @@ def _print_list(run_dir: Path, *, active_only: bool, json_output: bool) -> int:
             status.run_id,
             status.agent,
             str(status.issue) if status.issue is not None else "-",
-            "stale" if is_stale(status) else status.status,
+            status.status,
             _format_elapsed(status),
             _format_last_log(status),
         )
@@ -91,6 +92,7 @@ def _print_detail(run_dir: Path, run_id: str, *, json_output: bool) -> int:
     if status is None:
         print(f"Run not found: {run_id}", file=sys.stderr)
         return 1
+    status = reconcile_stale(run_dir, status)
 
     record = status.to_dict()
     if json_output:

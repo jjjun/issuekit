@@ -936,6 +936,168 @@ def test_implement_command_blocks_preexisting_dirty_worktree_without_agent_chang
     assert "HINT: a common cause of reason=no_changes or reason=missing_report" not in captured.out
 
 
+def test_implement_command_warns_before_run_when_resuming_over_stale_prior_run(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    from datetime import datetime, timedelta
+
+    from issuekit.agentrun.status import STALE_AFTER_SEC, RunStatus, status_path, write_status
+
+    client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
+    (tmp_path / ".gitignore").write_text(".agent-runs/\n", encoding="utf-8", newline="\n")
+    _configure_api(tmp_path, monkeypatch, client)
+    modified_path = tmp_path / "modified.py"
+    modified_path.write_text("value = 1\n", encoding="utf-8", newline="\n")
+    _init_git_repo(tmp_path)
+    modified_path.write_text("value = 2\n", encoding="utf-8", newline="\n")
+
+    old = (datetime.now() - timedelta(seconds=STALE_AFTER_SEC + 30)).replace(
+        microsecond=0
+    ).isoformat()
+    write_status(
+        status_path(tmp_path / ".agent-runs", "previous"),
+        RunStatus(
+            run_id="previous",
+            agent="codex",
+            issue=1,
+            status="running",
+            pid=999,
+            started_at=old,
+            ended_at=None,
+            elapsed_sec=None,
+            exit_code=None,
+            plan="docs/issues/active/001_first.md",
+            stdout_log=".agent-runs/previous.out.log",
+            agent_log=".agent-runs/previous.agent.log",
+            heartbeat_at=old,
+        ),
+    )
+
+    class CleanRunner(FakeRunner):
+        def run(self, adapter, prompt: AgentPrompt, repo, timeout, **kwargs) -> FakeResult:
+            return FakeResult(status_short=" M modified.py")
+
+    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", CleanRunner)
+
+    exit_code = cli.main(["implement", "1", "--agent", "codex"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert (
+        "WARNING: the worktree already holds uncommitted changes, and this "
+        "issue's most recent local run (run=previous) looks dead" in captured.out
+    )
+    assert "HINT: the changes present in the worktree were made" in captured.out
+
+
+def test_implement_command_does_not_warn_when_prior_run_is_fresh(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    from datetime import datetime
+
+    from issuekit.agentrun.status import RunStatus, status_path, write_status
+
+    client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
+    (tmp_path / ".gitignore").write_text(".agent-runs/\n", encoding="utf-8", newline="\n")
+    _configure_api(tmp_path, monkeypatch, client)
+    modified_path = tmp_path / "modified.py"
+    modified_path.write_text("value = 1\n", encoding="utf-8", newline="\n")
+    _init_git_repo(tmp_path)
+    modified_path.write_text("value = 2\n", encoding="utf-8", newline="\n")
+
+    fresh = datetime.now().replace(microsecond=0).isoformat()
+    write_status(
+        status_path(tmp_path / ".agent-runs", "previous"),
+        RunStatus(
+            run_id="previous",
+            agent="codex",
+            issue=1,
+            status="running",
+            pid=999,
+            started_at=fresh,
+            ended_at=None,
+            elapsed_sec=None,
+            exit_code=None,
+            plan="docs/issues/active/001_first.md",
+            stdout_log=".agent-runs/previous.out.log",
+            agent_log=".agent-runs/previous.agent.log",
+            heartbeat_at=fresh,
+        ),
+    )
+
+    class CleanRunner(FakeRunner):
+        def run(self, adapter, prompt: AgentPrompt, repo, timeout, **kwargs) -> FakeResult:
+            return FakeResult(status_short=" M modified.py")
+
+    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", CleanRunner)
+
+    cli.main(["implement", "1", "--agent", "codex"])
+
+    captured = capsys.readouterr()
+    assert "WARNING: the worktree already holds uncommitted changes" not in captured.out
+
+
+def test_implement_command_warns_when_prior_run_already_reconciled_to_abandoned(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    from datetime import datetime, timedelta
+
+    from issuekit.agentrun.status import STALE_AFTER_SEC, RunStatus, status_path, write_status
+
+    client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
+    (tmp_path / ".gitignore").write_text(".agent-runs/\n", encoding="utf-8", newline="\n")
+    _configure_api(tmp_path, monkeypatch, client)
+    modified_path = tmp_path / "modified.py"
+    modified_path.write_text("value = 1\n", encoding="utf-8", newline="\n")
+    _init_git_repo(tmp_path)
+    modified_path.write_text("value = 2\n", encoding="utf-8", newline="\n")
+
+    old = (datetime.now() - timedelta(seconds=STALE_AFTER_SEC + 30)).replace(
+        microsecond=0
+    ).isoformat()
+    write_status(
+        status_path(tmp_path / ".agent-runs", "previous"),
+        RunStatus(
+            run_id="previous",
+            agent="codex",
+            issue=1,
+            status="abandoned",
+            pid=999,
+            started_at=old,
+            ended_at=old,
+            elapsed_sec=None,
+            exit_code=None,
+            plan="docs/issues/active/001_first.md",
+            stdout_log=".agent-runs/previous.out.log",
+            agent_log=".agent-runs/previous.agent.log",
+            heartbeat_at=old,
+            terminal_reason="heartbeat_lost",
+        ),
+    )
+
+    class CleanRunner(FakeRunner):
+        def run(self, adapter, prompt: AgentPrompt, repo, timeout, **kwargs) -> FakeResult:
+            return FakeResult(status_short=" M modified.py")
+
+    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", CleanRunner)
+
+    exit_code = cli.main(["implement", "1", "--agent", "codex"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert (
+        "WARNING: the worktree already holds uncommitted changes, and this "
+        "issue's most recent local run (run=previous) looks dead" in captured.out
+    )
+    assert "HINT: the changes present in the worktree were made" in captured.out
+
+
 def test_implement_command_submits_agent_change_with_preexisting_dirty_worktree(
     tmp_path: Path,
     monkeypatch,

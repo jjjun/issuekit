@@ -50,3 +50,25 @@ Use `issuekit readdress <id>` to clear a directed `target_worker` and return
 that issue to the repo pool. The command sends the target worker it observed as
 a race guard, so if the API sees a different target by the time it handles the
 request it rejects the update instead of clearing newer directed work.
+
+## Killed one-shot implementer runs
+
+`orphans`/`reclaim` judge liveness from the API worker heartbeat, so they do
+not cover a one-shot `issuekit implement` killed before it could submit: the
+issue stays at `stage=implementing` with an assignee, but no worker registry
+entry ever goes stale. Instead, `.agent-runs/<run-id>.status.json` for that run
+keeps its own heartbeat. A killed run's heartbeat goes stale and the record
+reconciles to `status=abandoned` with `terminal_reason=heartbeat_lost`
+(`ended_at` set from the last heartbeat) the next time `issuekit runs` reads
+it. `issuekit show <id>` reports a dead run on an issue stuck at `implementing`
+even before that reconciliation happens, and resuming with `issuekit implement
+<id>` warns before spending an agent turn if the worktree already holds
+unattributed changes from the dead run. See the recovery hint from that
+warning, or `issuekit implement <id> --allow-no-changes`, to submit the
+existing worktree changes once you have verified them.
+
+```console
+$ issuekit show 484 --json
+...
+"stale_run": "run=20260830-... heartbeat_at=... looks dead (heartbeat stale); ..."
+```

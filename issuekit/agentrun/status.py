@@ -6,7 +6,7 @@ import json
 import os
 import sys
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
@@ -14,7 +14,7 @@ from typing import Any, Literal
 from issuekit.agentrun._coerce import optional_float, optional_int, optional_str
 from issuekit.file_permissions import chmod_600, open_owner_only
 
-RunStatusValue = Literal["running", "completed", "failed", "timed_out"]
+RunStatusValue = Literal["running", "completed", "failed", "timed_out", "abandoned"]
 
 # Cadence of the background status writer loop (seconds).
 HEARTBEAT_INTERVAL_SEC = 1.0
@@ -223,6 +223,43 @@ def is_stale(status: RunStatus, *, now: datetime | None = None) -> bool:
     return elapsed > STALE_AFTER_SEC
 
 
+def is_dead(status: RunStatus, *, now: datetime | None = None) -> bool:
+    """Return True when a run is known not to be running any more.
+
+    True both while a record is still ``running`` but stale (see :func:`is_stale`)
+    and after it has already been reconciled to ``abandoned``. Consumers that
+    need to detect a dead run across that reconciliation boundary -- for example
+    a check that runs after ``issuekit runs`` has already reconciled the record
+    on disk -- should gate on this instead of on :func:`is_stale` alone, which
+    only covers the still-``running`` half of that boundary.
+    """
+    return is_stale(status, now=now) or status.status == "abandoned"
+
+
+def reconcile_stale(run_dir: Path, status: RunStatus, *, now: datetime | None = None) -> RunStatus:
+    """Reconcile a stale ``running`` record to a terminal ``abandoned`` state.
+
+    When the process that owned ``status`` was killed before it could write its
+    own terminal status, the on-disk record is left at ``status=running``
+    forever, indistinguishable from a live run without inspecting its pid. This
+    detects that case via :func:`is_stale` (heartbeat age only) and persists a
+    terminal record instead: ``status=abandoned``, ``terminal_reason
+    ="heartbeat_lost"``, and ``ended_at`` taken from the last heartbeat rather
+    than from ``now``, since that is when the run actually stopped producing
+    output. Returns ``status`` unchanged when it is not stale.
+    """
+    if not is_stale(status, now=now):
+        return status
+    reconciled = replace(
+        status,
+        status="abandoned",
+        ended_at=status.heartbeat_at or status.started_at,
+        terminal_reason="heartbeat_lost",
+    )
+    write_status(status_path(run_dir, status.run_id), reconciled)
+    return reconciled
+
+
 def repo_relative(path: Path, repo: Path) -> str:
     try:
         return path.resolve().relative_to(repo.resolve()).as_posix()
@@ -231,6 +268,6 @@ def repo_relative(path: Path, repo: Path) -> str:
 
 
 def _status_value(value: Any) -> RunStatusValue:
-    if value not in {"running", "completed", "failed", "timed_out"}:
+    if value not in {"running", "completed", "failed", "timed_out", "abandoned"}:
         raise ValueError(f"Invalid run status: {value}")
     return value

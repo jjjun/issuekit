@@ -5,9 +5,10 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from issuekit.agentrun.status import is_dead, list_statuses
 from issuekit.commands._common import print_json, run_command
 from issuekit.config import load_config
-from issuekit.core import issue_dict, parse_issue_id_arg
+from issuekit.core import Issue, issue_dict, parse_issue_id_arg
 from issuekit.store import get_store
 from issuekit.workflow import WorkflowError, next_review
 
@@ -50,10 +51,40 @@ def run_show(args) -> int:
             if issue is not None
             else {"status": "none", "id": issue_id}
         )
+        if issue is not None:
+            _add_stale_run_note(payload, issue, Path.cwd())
         _print_issue(payload, as_json=args.json)
         return 0
 
     return run_command(action, errors=(WorkflowError, ValueError))
+
+
+def _add_stale_run_note(payload: dict[str, object], issue: Issue, cwd: Path) -> None:
+    """Best-effort: note a dead local run when the issue looks stuck implementing.
+
+    ``orphans``/``reclaim`` judge liveness from the API worker heartbeat and never
+    read ``.agent-runs``, so a killed one-shot ``issuekit implement`` run is
+    otherwise invisible here: the issue stays at stage ``implementing`` with no
+    indication that the run behind it has died.
+    """
+    if issue.stage != "implementing" or issue.id is None:
+        return
+    try:
+        runs_for_issue = [
+            status for status in list_statuses(cwd / ".agent-runs") if status.issue == issue.id
+        ]
+    except OSError:
+        return
+    if not runs_for_issue:
+        return
+    newest = runs_for_issue[0]
+    if not is_dead(newest):
+        return
+    payload["stale_run"] = (
+        f"run={newest.run_id} heartbeat_at={newest.heartbeat_at} looks dead "
+        "(heartbeat stale); the claim may be stale even though "
+        f"stage={issue.stage}. See `issuekit runs {newest.run_id}`."
+    )
 
 
 def run_next_review(args) -> int:

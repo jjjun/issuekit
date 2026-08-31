@@ -234,7 +234,7 @@ def _write_run(
     )
 
 
-def test_runs_marks_stale_running_in_table_but_not_json(
+def test_runs_reconciles_stale_running_to_abandoned_everywhere(
     tmp_path: Path, monkeypatch, capsys
 ) -> None:
     from datetime import datetime, timedelta
@@ -267,11 +267,54 @@ def test_runs_marks_stale_running_in_table_but_not_json(
 
     assert cli.main(["runs"]) == 0
     table = capsys.readouterr().out
-    assert "stale" in table
+    assert "abandoned" in table
+
+    assert cli.main(["runs", "--json"]) == 0
+    records = json.loads(capsys.readouterr().out)
+    assert records[0]["status"] == "abandoned"
+    assert records[0]["terminal_reason"] == "heartbeat_lost"
+    assert records[0]["ended_at"] == old
+
+    assert cli.main(["runs", "frozen", "--json"]) == 0
+    detail = json.loads(capsys.readouterr().out)
+    assert detail["status"] == "abandoned"
+    assert detail["terminal_reason"] == "heartbeat_lost"
+
+    on_disk = json.loads(status_path(run_dir, "frozen").read_text(encoding="utf-8"))
+    assert on_disk["status"] == "abandoned"
+
+
+def test_runs_leaves_fresh_running_record_untouched(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    run_dir = tmp_path / ".agent-runs"
+    fresh_heartbeat = datetime.now().replace(microsecond=0).isoformat()
+    write_status(
+        status_path(run_dir, "live"),
+        RunStatus(
+            run_id="live",
+            agent="codex",
+            issue=61,
+            status="running",
+            pid=123,
+            started_at=fresh_heartbeat,
+            ended_at=None,
+            elapsed_sec=None,
+            exit_code=None,
+            plan="docs/issues/active/061_x.md",
+            stdout_log=".agent-runs/live.out.log",
+            agent_log=".agent-runs/live.agent.log",
+            heartbeat_at=fresh_heartbeat,
+        ),
+    )
+    monkeypatch.chdir(tmp_path)
 
     assert cli.main(["runs", "--json"]) == 0
     records = json.loads(capsys.readouterr().out)
     assert records[0]["status"] == "running"
+
+    on_disk = json.loads(status_path(run_dir, "live").read_text(encoding="utf-8"))
+    assert on_disk["status"] == "running"
 
 
 def test_runs_list_shows_last_log_line(tmp_path: Path, monkeypatch, capsys) -> None:

@@ -8,9 +8,11 @@ from issuekit.agentrun import status as status_mod
 from issuekit.agentrun.status import (
     STALE_AFTER_SEC,
     RunStatus,
+    is_dead,
     is_stale,
     list_statuses,
     read_status,
+    reconcile_stale,
     status_path,
     write_status,
 )
@@ -151,6 +153,75 @@ def test_is_stale_false_for_tz_aware_timestamp_against_naive_now() -> None:
     now = datetime(2026, 6, 17, 12, 0, 0)
     aware = "2026-06-17T11:00:00+00:00"
     assert is_stale(_running_status(heartbeat_at=aware), now=now) is False
+
+
+def test_reconcile_stale_marks_abandoned_with_heartbeat_as_ended_at(
+    tmp_path: Path,
+) -> None:
+    now = datetime(2026, 6, 17, 12, 0, 0)
+    old_heartbeat = (now - timedelta(seconds=STALE_AFTER_SEC + 10)).isoformat()
+    run_dir = tmp_path / ".agent-runs"
+    status = _running_status(heartbeat_at=old_heartbeat)
+    write_status(status_path(run_dir, status.run_id), status)
+
+    reconciled = reconcile_stale(run_dir, status, now=now)
+
+    assert reconciled.status == "abandoned"
+    assert reconciled.terminal_reason == "heartbeat_lost"
+    assert reconciled.ended_at == old_heartbeat
+    on_disk = read_status(status_path(run_dir, status.run_id))
+    assert on_disk.status == "abandoned"
+    assert on_disk.terminal_reason == "heartbeat_lost"
+    assert on_disk.ended_at == old_heartbeat
+
+
+def test_reconcile_stale_leaves_fresh_running_record_untouched(tmp_path: Path) -> None:
+    now = datetime(2026, 6, 17, 12, 0, 0)
+    fresh_heartbeat = (now - timedelta(seconds=1)).isoformat()
+    run_dir = tmp_path / ".agent-runs"
+    status = _running_status(heartbeat_at=fresh_heartbeat)
+    write_status(status_path(run_dir, status.run_id), status)
+
+    reconciled = reconcile_stale(run_dir, status, now=now)
+
+    assert reconciled == status
+    on_disk = read_status(status_path(run_dir, status.run_id))
+    assert on_disk.status == "running"
+
+
+def test_reconcile_stale_ignores_already_terminal_record(tmp_path: Path) -> None:
+    now = datetime(2026, 6, 17, 12, 0, 0)
+    old_heartbeat = (now - timedelta(seconds=STALE_AFTER_SEC + 10)).isoformat()
+    run_dir = tmp_path / ".agent-runs"
+    status = _running_status(status="completed", heartbeat_at=old_heartbeat)
+    write_status(status_path(run_dir, status.run_id), status)
+
+    reconciled = reconcile_stale(run_dir, status, now=now)
+
+    assert reconciled == status
+
+
+def test_is_dead_true_for_stale_running_record() -> None:
+    now = datetime(2026, 6, 17, 12, 0, 0)
+    old = (now - timedelta(seconds=STALE_AFTER_SEC + 10)).isoformat()
+    assert is_dead(_running_status(heartbeat_at=old), now=now) is True
+
+
+def test_is_dead_true_for_already_abandoned_record() -> None:
+    now = datetime(2026, 6, 17, 12, 0, 0)
+    old = (now - timedelta(seconds=STALE_AFTER_SEC + 10)).isoformat()
+    abandoned = _running_status(
+        status="abandoned", ended_at=old, terminal_reason="heartbeat_lost", heartbeat_at=old
+    )
+    # is_stale alone misses this: it only recognizes still-"running" records.
+    assert is_stale(abandoned, now=now) is False
+    assert is_dead(abandoned, now=now) is True
+
+
+def test_is_dead_false_for_fresh_running_record() -> None:
+    now = datetime(2026, 6, 17, 12, 0, 0)
+    fresh = (now - timedelta(seconds=1)).isoformat()
+    assert is_dead(_running_status(heartbeat_at=fresh), now=now) is False
 
 
 def test_from_dict_reports_missing_required_key() -> None:

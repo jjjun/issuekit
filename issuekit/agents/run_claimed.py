@@ -12,7 +12,7 @@ from typing import TextIO
 
 from issuekit.agentrun import AgentPrompt, AgentResult, AgentRunner
 from issuekit.agentrun.runner import implementation_report_instruction
-from issuekit.agentrun.status import read_status
+from issuekit.agentrun.status import is_dead, list_statuses, read_status
 from issuekit.agents.app_server_runtime import AppServerAttemptRunner
 from issuekit.agents.readonly import worktree_fingerprint
 from issuekit.agents.registry import resolve_adapter
@@ -60,6 +60,18 @@ class ImplementationChangeSnapshot:
 RunReporter = Callable[[Issue, AgentResult], None]
 RunnerFactory = Callable[[], AgentRunner]
 MAX_IMPLEMENTER_REPORT_CHARS = 4000
+
+
+def resumed_changes_hint(issue_id: int) -> str:
+    """Return the recovery hint for a resumed run over unattributed worktree changes."""
+
+    return (
+        "HINT: the changes present in the worktree were made "
+        "before this run started, not by this run; this looks "
+        "like a resumed run over a previous attempt's unsubmitted "
+        f"edits. Submit them with `issuekit implement {issue_id} "
+        "--allow-no-changes` if they are complete."
+    )
 
 
 def implementation_prompt(plan_path: Path) -> str:
@@ -149,6 +161,7 @@ def run_and_submit(
         else:
             runner_factory = AgentRunner
     fingerprint_before = worktree_fingerprint(cwd)
+    _warn_if_resuming_stale_run(issue_id, cwd, issues_dir, run_dir, out=out)
     result = runner_factory().run(
         adapter,
         prompt,
@@ -374,6 +387,36 @@ def _submission_summary(prefix: str, result: AgentResult, cwd: Path) -> str:
             + truncation_marker
         )
     return f"{summary}\n\nImplementer report:\n{report}"
+
+
+def _warn_if_resuming_stale_run(
+    issue_id: int,
+    cwd: Path,
+    issues_dir: Path,
+    run_dir: Path,
+    *,
+    out: TextIO,
+) -> None:
+    """Warn, before launching the agent, when this looks like a resume over a
+    dead run's unsubmitted edits. This never skips the run and never submits
+    anything on its own; it only reaches the --allow-no-changes recovery hint
+    before a full agent turn is spent discovering it via the post-run path.
+    """
+    root = git_root(cwd)
+    if root != cwd.resolve():
+        return
+    entries = git_status_entries(cwd)
+    if not _filter_implementation_entries(entries, cwd, issues_dir):
+        return
+    previous_runs = [status for status in list_statuses(run_dir) if status.issue == issue_id]
+    if not previous_runs or not is_dead(previous_runs[0]):
+        return
+    print(
+        "WARNING: the worktree already holds uncommitted changes, and this "
+        f"issue's most recent local run (run={previous_runs[0].run_id}) looks "
+        "dead (heartbeat stale). " + resumed_changes_hint(issue_id),
+        file=out,
+    )
 
 
 def _diagnostic_log_detail(result: AgentResult) -> str:
