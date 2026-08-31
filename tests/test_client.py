@@ -1268,7 +1268,10 @@ def test_client_create_proposal_accepts_dedup_200_response() -> None:
         http_client=httpx.Client(transport=httpx.MockTransport(handler)),
     )
 
-    assert client.create_proposal(origin="source#0@abc123", title="Proposal", body="Body") == response
+    assert client.create_proposal(origin="source#0@abc123", title="Proposal", body="Body") == {
+        **response,
+        "was_created": False,
+    }
 
 
 def test_client_create_proposal_sends_thread_fields() -> None:
@@ -1295,7 +1298,7 @@ def test_client_create_proposal_sends_thread_fields() -> None:
             "verdict": "propose",
             "contract": "GET /items",
         }
-        return httpx.Response(200, json=response)
+        return httpx.Response(201, json=response)
 
     client = IssuekitClient(
         "https://mine.example",
@@ -1304,18 +1307,15 @@ def test_client_create_proposal_sends_thread_fields() -> None:
         http_client=httpx.Client(transport=httpx.MockTransport(handler)),
     )
 
-    assert (
-        client.create_proposal(
-            origin="source#0@abc123",
-            title="Proposal",
-            body="Body",
-            thread_id=9,
-            side="frontend",
-            verdict="propose",
-            contract="GET /items",
-        )
-        == response
-    )
+    assert client.create_proposal(
+        origin="source#0@abc123",
+        title="Proposal",
+        body="Body",
+        thread_id=9,
+        side="frontend",
+        verdict="propose",
+        contract="GET /items",
+    ) == {**response, "was_created": True}
 
 
 def test_client_create_proposal_sends_blocking_flag() -> None:
@@ -1336,7 +1336,7 @@ def test_client_create_proposal_sends_blocking_flag() -> None:
             "body": "Body",
             "blocking": True,
         }
-        return httpx.Response(200, json=response)
+        return httpx.Response(201, json=response)
 
     client = IssuekitClient(
         "https://mine.example",
@@ -1352,7 +1352,7 @@ def test_client_create_proposal_sends_blocking_flag() -> None:
             body="Body",
             blocking=True,
         )
-        == response
+        == {**response, "was_created": True}
     )
 
 
@@ -1374,7 +1374,7 @@ def test_client_create_proposal_sends_target_worker_when_set() -> None:
             "body": "Body",
             "target_worker": "checkout",
         }
-        return httpx.Response(200, json=response)
+        return httpx.Response(201, json=response)
 
     client = IssuekitClient(
         "https://mine.example",
@@ -1388,7 +1388,7 @@ def test_client_create_proposal_sends_target_worker_when_set() -> None:
         title="Proposal",
         body="Body",
         target_worker="checkout",
-    ) == response
+    ) == {**response, "was_created": True}
 
 
 def test_client_create_proposal_sends_dependency_refs() -> None:
@@ -1409,7 +1409,7 @@ def test_client_create_proposal_sends_dependency_refs() -> None:
             "body": "Body",
             "depends_on": ["mine-py#42"],
         }
-        return httpx.Response(200, json=response)
+        return httpx.Response(201, json=response)
 
     client = IssuekitClient(
         "https://mine.example",
@@ -1425,7 +1425,7 @@ def test_client_create_proposal_sends_dependency_refs() -> None:
             body="Body",
             depends_on=["mine-py#42"],
         )
-        == response
+        == {**response, "was_created": True}
     )
 
 
@@ -2221,7 +2221,10 @@ def test_fake_issuekit_client_round_trips_proposal_lifecycle() -> None:
     discarded = client.discard_proposal(discarded["id"])
 
     assert duplicate["id"] == created["id"]
-    assert listed == [created]
+    assert created["was_created"] is True
+    assert duplicate["was_created"] is False
+    stored = {key: value for key, value in created.items() if key != "was_created"}
+    assert listed == [stored]
     assert adopted["title"] == "Proposal"
     assert adopted["priority"] == "low"
     assert client.get_proposal(created["id"])["status"] == "adopted"

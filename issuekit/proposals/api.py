@@ -123,6 +123,8 @@ def send_proposal(config: IssuekitConfig, proposal: Proposal) -> dict:
             target_worker=proposal.target_worker or None,
         )
     result = dict(created)
+    deduplicated = result.pop("was_created", None) is False
+    result["deduplicated"] = deduplicated
     dependency_ref = proposal_dependency_ref(proposal.to, result.get("id"))
     if dependency_ref is not None:
         result["dependency_ref"] = dependency_ref
@@ -135,6 +137,8 @@ def send_proposal(config: IssuekitConfig, proposal: Proposal) -> dict:
     ]
     if warnings:
         result["warnings"] = list(_dedupe_refs(warnings))
+    if deduplicated:
+        result["idempotent_existing"] = True
     mismatched = proposal_payload_mismatch(proposal, created)
     result["payload_mismatch"] = bool(mismatched)
     if mismatched:
@@ -199,9 +203,7 @@ def adopt_proposal_with_append(
 
 
 def proposal_payload_mismatch(proposal: Proposal, created: Mapping[str, Any]) -> list[str]:
-    """Fields where an idempotent same-origin response differs from the request."""
-    if created.get("origin") != proposal.origin:
-        return []
+    """Fields where a deduplicated response differs from the request."""
     mismatched = []
     if _proposal_text(created.get("title")) != _proposal_text(proposal.title):
         mismatched.append("title")

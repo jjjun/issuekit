@@ -109,13 +109,17 @@ class FakeProposalSurface:
                 # duplicate origin on both plain and negotiation creates.
                 for proposal in sorted(self._proposals.values(), key=lambda item: int(item["id"])):
                     if proposal.get("origin") == origin and proposal.get("status") == "pending":
-                        return deepcopy(proposal)
+                        existing = deepcopy(proposal)
+                        existing["was_created"] = False
+                        return existing
             if has_thread_fields and thread_id is None:
                 request["thread_id"] = self._allocate_thread()["id"]
             elif thread_id is not None:
                 self._ensure_thread_is_negotiating(thread_id)
                 self._ensure_unique_thread_origin(thread_id, origin)
-            return deepcopy(self._store_proposal(request, allocate=True))
+            created = deepcopy(self._store_proposal(request, allocate=True))
+            created["was_created"] = True
+            return created
 
     def create_proposal_check(
         self,

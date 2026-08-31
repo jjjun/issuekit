@@ -685,10 +685,9 @@ class ProposalResourceMixin:
         contract: str | None = None,
         target_worker: str | None = None,
     ) -> JsonDict:
-        payload = self._request(
+        response = self._authorized_response(
             "POST",
-            "/",
-            collection="proposals",
+            self._collection_path("proposals", "/"),
             json=drop_none(
                 {
                     "origin": origin,
@@ -706,7 +705,9 @@ class ProposalResourceMixin:
                 }
             ),
         )
-        return ensure_dict(payload, "Proposal response")
+        payload = ensure_dict(self._parse_response(response), "Proposal response")
+        payload["was_created"] = response.status_code == 201
+        return payload
 
     def list_proposals(
         self,

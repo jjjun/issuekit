@@ -65,6 +65,7 @@ def test_api_cli_propose_posts_expected_body_and_dedupes(
     assert first["dependency_ref"] == "target#proposal:1"
     assert second["dependency_ref"] == "target#proposal:1"
     assert first["payload_mismatch"] is False
+    assert first["deduplicated"] is False
     assert first["stop"] == "STOP_NOW"
     guard = read_author_guard(tmp_path)
     assert guard is not None
@@ -74,7 +75,8 @@ def test_api_cli_propose_posts_expected_body_and_dedupes(
     assert guard.author_session is not None
     assert guard.author_session.startswith("cli-")
     assert second["payload_mismatch"] is False
-    assert "idempotent_existing" not in second
+    assert second["deduplicated"] is True
+    assert second["idempotent_existing"] is True
     assert client.calls[0] == {
         "method": "create_proposal",
         "body": {
@@ -1099,6 +1101,93 @@ def test_api_cli_propose_same_origin_payload_mismatch_fails(
     captured = capsys.readouterr()
     assert "Sent proposal" not in captured.out
     assert "--from-issue" in captured.err
+
+
+def test_api_cli_propose_deduplicated_matching_payload_reports_deduplicated(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient(
+        proposals=[
+            {
+                "id": 1,
+                "origin": "source#0@unknown",
+                "title": "Shared title",
+                "body": "Shared body.",
+                "status": "pending",
+            }
+        ]
+    )
+    client.register_catalog_project("target")
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'source'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.chdir(tmp_path)
+
+    argv = ["propose", "--to", "target", "--title", "Shared title", "--body", "Shared body."]
+    assert cli.main([*argv, "--json"]) == 0
+    output = json.loads(capsys.readouterr().out)
+
+    assert output["id"] == 1
+    assert output["deduplicated"] is True
+    assert output["idempotent_existing"] is True
+    assert output["payload_mismatch"] is False
+
+    assert cli.main(argv) == 0
+    captured = capsys.readouterr()
+    assert "already has pending proposal #1" in captured.out
+
+
+def test_api_cli_propose_deduplicated_response_with_stale_origin_still_reports_mismatch(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    class StaleOriginDedupeClient(FakeIssuekitClient):
+        def create_proposal(self, **kwargs):
+            # Simulates a server that dedupes on a key other than the full
+            # origin string, so the echoed origin can predate the request's
+            # current-HEAD origin.
+            with self._lock:
+                self._record("create_proposal", body=dict(kwargs))
+                existing = dict(self._proposals[1])
+                existing["was_created"] = False
+                return existing
+
+    client = StaleOriginDedupeClient(
+        proposals=[
+            {
+                "id": 1,
+                "origin": "source#0@stale-commit",
+                "title": "Old title",
+                "body": "Old body.",
+                "status": "pending",
+            }
+        ]
+    )
+    client.register_catalog_project("target")
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'source'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.chdir(tmp_path)
+
+    argv = ["propose", "--to", "target", "--title", "New title", "--body", "New body."]
+    assert cli.main([*argv, "--json"]) == 1
+    output = json.loads(capsys.readouterr().out)
+
+    assert output["id"] == 1
+    assert output["origin"] == "source#0@stale-commit"
+    assert output["deduplicated"] is True
+    assert output["idempotent_existing"] is True
+    assert output["payload_mismatch"] is True
+    assert output["payload_mismatch_fields"] == ["title", "body"]
 
 
 def test_api_cli_outgoing_lists_own_proposals(
