@@ -1425,6 +1425,100 @@ def test_api_cli_adopt_and_discard_use_proposal_ids(
     assert client.get_proposal(2)["status"] == "discarded"
 
 
+def test_api_cli_discard_to_addresses_target_inbox(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient(
+        proposals=[
+            {"id": 5, "origin": "source#1@abc", "title": "Mine", "body": "b", "status": "pending"},
+            {"id": 8, "origin": "source#1@def", "title": "Mine too", "body": "b", "status": "pending"},
+        ]
+    )
+    created_projects: list[str] = []
+
+    def fake_client(*args, **kwargs):
+        created_projects.append(kwargs["project"])
+        return client
+
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'source'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setattr(proposals_api, "IssuekitClient", fake_client)
+    monkeypatch.chdir(tmp_path)
+    client.register_catalog_project("target")
+
+    assert cli.main(["discard", "5", "--to", "target", "--json"]) == 0
+    discarded = json.loads(capsys.readouterr().out)
+
+    assert discarded["status"] == "discarded"
+    assert client.get_proposal(5)["status"] == "discarded"
+    assert "target" in created_projects
+
+    assert cli.main(["discard", "8", "--to", "target"]) == 0
+    assert capsys.readouterr().out == "Discarded proposal #8 in target.\n"
+    assert client.get_proposal(8)["status"] == "discarded"
+
+
+def test_api_cli_discard_to_rejects_foreign_origin(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient(
+        proposals=[
+            {"id": 6, "origin": "other#1@abc", "title": "Not mine", "body": "b", "status": "pending"},
+        ]
+    )
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'source'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.chdir(tmp_path)
+    client.register_catalog_project("target")
+
+    assert cli.main(["discard", "6", "--to", "target"]) == 1
+    assert "was not sent by source" in capsys.readouterr().err
+    assert client.get_proposal(6)["status"] == "pending"
+
+
+def test_api_cli_discard_without_to_addresses_local_inbox(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient(
+        proposals=[
+            {"id": 7, "origin": "other#1@abc", "title": "Incoming", "body": "b", "status": "pending"},
+        ]
+    )
+    created_projects: list[str] = []
+
+    def fake_client(*args, **kwargs):
+        created_projects.append(kwargs["project"])
+        return client
+
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'target'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setattr(proposals_api, "IssuekitClient", fake_client)
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["discard", "7", "--json"]) == 0
+    discarded = json.loads(capsys.readouterr().out)
+
+    assert discarded["status"] == "discarded"
+    assert client.get_proposal(7)["status"] == "discarded"
+    assert created_projects == ["target"]
+
+
 def test_api_cli_adopt_normal_output_includes_next_step(
     tmp_path: Path,
     monkeypatch,

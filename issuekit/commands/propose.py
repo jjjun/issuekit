@@ -23,6 +23,7 @@ from issuekit.proposals.api import (
     adopt_proposal_with_append,
     api_client,
     build_proposal,
+    discard_outgoing_proposal,
     get_outgoing_proposal,
     list_outgoing_proposals,
     proposal_id_arg,
@@ -132,9 +133,13 @@ def register(subparsers: argparse._SubParsersAction) -> None:
 
     discard_parser = subparsers.add_parser(
         "discard",
-        help="Discard an incoming proposal.",
+        help="Discard a pending proposal: incoming by default, or sent when --to is given.",
     )
     discard_parser.add_argument("proposal", help="Proposal id.")
+    discard_parser.add_argument(
+        "--to",
+        help="Target project whose inbox holds the proposal, for discarding an outgoing proposal.",
+    )
     discard_parser.add_argument("--json", action="store_true", help="Print JSON output.")
     discard_parser.set_defaults(func=run_discard)
 
@@ -341,14 +346,23 @@ def run_adopt(args) -> int:
 
 def run_discard(args) -> int:
     config = load_config(Path.cwd())
+    to = getattr(args, "to", None)
     try:
-        with api_client(config) as client:
-            discarded = client.discard_proposal(proposal_id_arg(args.proposal))
+        if to:
+            discarded = discard_outgoing_proposal(
+                config, to=to, proposal_id=proposal_id_arg(args.proposal)
+            )
+        else:
+            with api_client(config) as client:
+                discarded = client.discard_proposal(proposal_id_arg(args.proposal))
     except (ProposalError, WorkflowError, ValueError) as exc:
         print(str(exc), file=sys.stderr)
         return 1
     if getattr(args, "json", False):
         print_json(discarded)
         return 0
-    print(f"Discarded proposal #{discarded.get('id')}.")
+    if to:
+        print(f"Discarded proposal #{discarded.get('id')} in {to}.")
+    else:
+        print(f"Discarded proposal #{discarded.get('id')}.")
     return 0

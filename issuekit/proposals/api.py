@@ -298,6 +298,20 @@ def get_outgoing_proposal(config: IssuekitConfig, *, to: str, proposal_id: int) 
         return _with_adopted_issue_state(proposal, client)
 
 
+def discard_outgoing_proposal(config: IssuekitConfig, *, to: str, proposal_id: int) -> dict:
+    """Discard one pending proposal this project sent to another project's inbox."""
+    to = _target_repo(to, label="--to")
+    validate_target_project(config, to)
+    with api_client(config, project=to) as client:
+        proposal = client.get_proposal(int(proposal_id))
+        if not _is_own_origin(proposal.get("origin"), config.project):
+            raise ProposalError(
+                f"Proposal #{proposal_id} in {to} was not sent by {config.project}; "
+                "refusing to discard it."
+            )
+        return client.discard_proposal(int(proposal_id))
+
+
 def _with_adopted_issue_state(proposal: Mapping[str, Any], client: IssuekitClient) -> dict:
     enriched = dict(proposal)
     enriched["adopted_issue_status"] = None

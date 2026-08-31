@@ -51,7 +51,7 @@
 | `issuekit incoming [--json]` | List inbound API proposals. |
 | `issuekit outgoing --to <project> [--id <id>] [--status <status>]` | List proposals this project sent to a target project's inbox (read-only, self-scoped). |
 | `issuekit adopt <proposal-id> [--json]` | Adopt an incoming API proposal as a local issue and print the created API issue id. |
-| `issuekit discard <proposal-id>` | Discard an incoming API proposal. |
+| `issuekit discard <proposal-id> [--to <project>]` | Discard an incoming API proposal. With `--to`, discard a pending proposal this project sent to that target project's inbox instead. |
 | `issuekit proposal-check-request --to <project> --proposal <id> [--worker <address>] [--json]` | Request evaluation of a pending proposal by a registered target worker. |
 | `issuekit proposal-checks [--agent <agent>] [--model <model-id>] [--reasoning-effort <value>] [--list \| --once] [--status pending\|answered] [--timeout-sec <seconds>] [--limit <n>] [--offset <n>] [--json]` | List or run proposal checks addressed to this worker. |
 | `issuekit triage --once [--model <model-id>] [--reasoning-effort <value>] [--timeout-sec <seconds>] [--json]` | Launch a single agent triage loop that pulls pending inbound proposals. |

@@ -39,6 +39,7 @@ from issuekit.proposals.api import (
     adopt_proposal_with_append,
     api_client,
     build_proposal,
+    discard_outgoing_proposal,
     list_outgoing_proposals,
     proposal_id_arg,
     send_proposal,
@@ -526,14 +527,23 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
                 append_text=append,
             )
 
-    @server.tool(description="Discard an incoming cross-repository proposal.")
+    @server.tool(
+        description=(
+            "Discard a pending cross-repository proposal. Discards an incoming "
+            "proposal by default; pass `to` to discard a proposal this project "
+            "sent to that target project's inbox instead."
+        )
+    )
     async def discard_proposal(
         proposal_id: int | None = None,
         proposal_file: str | None = None,
+        to: str | None = None,
         ctx: Context | None = None,
     ) -> dict[str, Any]:
         async with _api_config(root, ctx) as (config, _config_root):
             raw_id = proposal_id if proposal_id is not None else proposal_id_arg(proposal_file or "")
+            if to:
+                return discard_outgoing_proposal(config, to=to, proposal_id=int(raw_id))
             with api_client(config) as client:
                 return client.discard_proposal(int(raw_id))
 

@@ -124,7 +124,7 @@ def test_server_tool_schemas_match_the_contract(tmp_path: Path) -> None:
     # schema change was intended, describe it in the commit message, then update
     # this digest.
     assert _tool_schema_digest(create_server(tmp_path)) == (
-        "5dcc654471ab444210c69f813dbacbde6e84802c9233f6d76fc95ccecc3ccf49"
+        "92d6bd40abf8b319ddc882473e769c93ddf779ffdf6064d55bf8c0a144136a64"
     )
 
 
@@ -1657,6 +1657,35 @@ def test_api_proposal_tools_send_list_adopt_and_discard(
     assert adopted["priority"] == "low"
     assert adopted["body"] == "Adopt body.\n\nImplementation plan."
     assert discarded["status"] == "discarded"
+
+
+def test_api_discard_proposal_to_addresses_target_inbox_and_rejects_foreign_origin(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    client = FakeIssuekitClient(
+        proposals=[
+            {"id": 20, "origin": "source#1@abc", "title": "Mine", "body": "b", "status": "pending"},
+            {"id": 21, "origin": "other#1@abc", "title": "Not mine", "body": "b", "status": "pending"},
+        ]
+    )
+    client.register_catalog_project("target")
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'source'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    server = create_server(tmp_path)
+
+    discarded = _call(server, "discard_proposal", {"proposal_id": 20, "to": "target"})
+    assert discarded["status"] == "discarded"
+    assert client.get_proposal(20)["status"] == "discarded"
+
+    with pytest.raises(Exception) as excinfo:
+        _call(server, "discard_proposal", {"proposal_id": 21, "to": "target"})
+    assert "was not sent by source" in str(excinfo.value)
+    assert client.get_proposal(21)["status"] == "pending"
 
 
 def test_mcp_propose_accepts_worker_repo_target(
