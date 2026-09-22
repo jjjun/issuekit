@@ -10,7 +10,15 @@ def git_status_short(cwd: Path, *, timeout: float = 30) -> str | None:
     """Return stripped ``git status --short`` output, or None on failure."""
     try:
         result = subprocess.run(
-            ["git", "-c", "core.quotepath=false", "--no-pager", "status", "--short"],
+            [
+                "git",
+                "--no-optional-locks",
+                "-c",
+                "core.quotepath=false",
+                "--no-pager",
+                "status",
+                "--short",
+            ],
             cwd=str(cwd),
             capture_output=True,
             text=True,

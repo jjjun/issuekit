@@ -57,6 +57,8 @@ orchestrator in the submit summary. It is different from
 `--allow-author-session`, which is only a human emergency bypass for a local
 STOP guard. Prefer a clean worktree before orchestrating so existing author
 edits are not attributed to the implementer run.
+Its `--follow` heartbeat polls `git status` read-only without an index lock, so
+it is safe for issues that rewrite the checkout.
 
 By default, the built-in Codex config runs without a sandbox and relies on the
 repository worktree plus the review gate. Projects that require the strict

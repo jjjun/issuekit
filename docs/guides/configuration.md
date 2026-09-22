@@ -187,7 +187,8 @@ seals the runtime before the existing submit-for-review workflow. A provider
 without the routes returns a clear unsupported-runtime error; issuekit does not
 silently fall back because the mode is explicit. App Server is Codex-only and
 implementer-only in this version. The `issuekit implement --follow` heartbeat
-applies only to the default exec runtime.
+applies only to the default exec runtime; it polls `git status` read-only without
+an index lock, so it is safe for issues that rewrite the checkout.
 
 Both runtimes send the plan pointer plus the agent's `prompt_suffix` and any
 matching `model_prompts` entry. For the implementer report destination, the exec

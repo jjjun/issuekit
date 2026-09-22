@@ -32,3 +32,5 @@ one. See [README.md](README.md) for the rules.
 - [Encoding check modes](encoding-check-modes.md) - use `check-encoding --gate`
   to reproduce submit behavior; the default command intentionally has broader
   whole-file and line-ending checks.
+- [Follow heartbeat git status](follow-heartbeat-git-status.md) - the exec run
+  heartbeat is lock-free and safe while an issue rewrites the checkout.

@@ -466,7 +466,7 @@ def test_implement_command_does_not_commit_or_push(
             return subprocess.CompletedProcess(argv, 1, "", "")
         if list(argv[:3]) == ["git", "--no-pager", "diff"]:
             return subprocess.CompletedProcess(argv, 1, "", "")
-        if list(argv[:3]) == ["git", "--no-pager", "status"]:
+        if list(argv[:4]) == ["git", "--no-optional-locks", "--no-pager", "status"]:
             return subprocess.CompletedProcess(argv, 1, "", "")
         raise AssertionError(f"unexpected subprocess call: {argv}")
 

@@ -48,7 +48,10 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     implement_parser.add_argument(
         "--follow",
         action="store_true",
-        help="Emit a live heartbeat to stderr while the agent runs.",
+        help=(
+            "Emit a live heartbeat to stderr; it polls git status read-only without an"
+            " index lock and is safe for issues that rewrite the checkout."
+        ),
     )
     implement_parser.add_argument(
         "--allow-no-changes",
