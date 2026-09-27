@@ -1425,6 +1425,183 @@ def test_api_cli_adopt_and_discard_use_proposal_ids(
     assert client.get_proposal(2)["status"] == "discarded"
 
 
+def test_api_cli_adopt_missing_append_file_leaves_proposal_pending(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient(
+        proposals=[
+            {"id": 1, "origin": "source#1@abc123", "title": "Adopt", "body": "Adopt body."},
+        ]
+    )
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'target'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    append_file = tmp_path / "missing.md"
+    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["adopt", "1", "--append-file", str(append_file), "--json"]) == 1
+
+    assert f"Could not read append file '{append_file}'." in capsys.readouterr().err
+    assert client.get_proposal(1)["status"] == "pending"
+    assert not any(call["method"] in {"adopt_proposal", "update_issue"} for call in client.calls)
+
+
+def test_api_cli_adopt_non_ascii_append_file_leaves_proposal_pending(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient(
+        proposals=[
+            {"id": 1, "origin": "source#1@abc123", "title": "Adopt", "body": "Adopt body."},
+        ]
+    )
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'target'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    append_file = tmp_path / "plan.md"
+    append_file.write_text("caf\u00e9\n", encoding="utf-8", newline="\n")
+    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["adopt", "1", "--append-file", str(append_file), "--json"]) == 1
+
+    assert (
+        "--append and --append-file must be ASCII-only. "
+        "Replace em dashes, curly quotes, and non-English text."
+    ) in capsys.readouterr().err
+    assert client.get_proposal(1)["status"] == "pending"
+    assert not any(call["method"] in {"adopt_proposal", "update_issue"} for call in client.calls)
+
+
+def test_api_cli_adopt_empty_append_file_leaves_proposal_pending(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient(
+        proposals=[
+            {"id": 1, "origin": "source#1@abc123", "title": "Adopt", "body": "Adopt body."},
+        ]
+    )
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'target'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    append_file = tmp_path / "plan.md"
+    append_file.write_text(" \n\t\n", encoding="utf-8", newline="\n")
+    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["adopt", "1", "--append-file", str(append_file), "--json"]) == 1
+
+    assert "Append text is empty; nothing to append." in capsys.readouterr().err
+    assert client.get_proposal(1)["status"] == "pending"
+    assert not any(call["method"] in {"adopt_proposal", "update_issue"} for call in client.calls)
+
+
+def test_api_cli_adopt_append_retries_not_found_and_reports_verified_output(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient(
+        proposals=[
+            {"id": 1, "origin": "source#1@abc123", "title": "Adopt", "body": "Adopt body."},
+        ],
+        adopt_not_found_attempts=1,
+    )
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'target'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    append_file = tmp_path / "plan.md"
+    append_file.write_text("\n## Implementation Plan\n\nDo this.\n", encoding="utf-8", newline="\n")
+    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.setattr(proposals_api, "_sleep", lambda _delay: None)
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["adopt", "1", "--append-file", str(append_file), "--json"]) == 0
+
+    adopted = json.loads(capsys.readouterr().out)
+    assert adopted["body"] == "Adopt body.\n\n## Implementation Plan\n\nDo this."
+    assert adopted["append_applied"] is True
+    assert adopted["appended_chars"] == len("## Implementation Plan\n\nDo this.")
+
+
+def test_api_cli_adopt_append_reports_persistent_not_found(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient(
+        proposals=[
+            {"id": 1, "origin": "source#1@abc123", "title": "Adopt", "body": "Adopt body."},
+        ],
+        adopt_not_found_attempts=len(proposals_api.ADOPT_APPEND_RETRY_DELAYS) + 1,
+    )
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'target'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    append_file = tmp_path / "plan.md"
+    append_file.write_text("## Implementation Plan\n\nDo this.\n", encoding="utf-8", newline="\n")
+    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.setattr(proposals_api, "_sleep", lambda _delay: None)
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["adopt", "1", "--append-file", str(append_file), "--json"]) == 1
+
+    captured = capsys.readouterr()
+    adopted = json.loads(captured.out)
+    assert adopted["append_error"] == "Active issue #1 was not found."
+    assert "already in the open implement pool without the appended text" in captured.err
+    assert "issuekit edit 1 --append-file <file>" in captured.err
+    assert client.get_issue(1)["body"] == "Adopt body."
+
+
+def test_api_cli_adopt_append_fails_when_patch_body_is_not_visible(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient(
+        proposals=[
+            {"id": 1, "origin": "source#1@abc123", "title": "Adopt", "body": "Adopt body."},
+        ],
+        drop_adopted_issue_body_patch=True,
+    )
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'target'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    append_file = tmp_path / "plan.md"
+    append_file.write_text("## Implementation Plan\n\nDo this.\n", encoding="utf-8", newline="\n")
+    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.setattr(proposals_api, "_sleep", lambda _delay: None)
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["adopt", "1", "--append-file", str(append_file), "--json"]) == 1
+
+    captured = capsys.readouterr()
+    adopted = json.loads(captured.out)
+    assert "does not contain the appended text" in adopted["append_error"]
+    assert "append update was accepted but could not be confirmed" in captured.err
+    assert "issuekit show 1 --json" in captured.err
+    assert client.get_issue(1)["body"] == "Adopt body."
+
+
 def test_api_cli_discard_to_addresses_target_inbox(
     tmp_path: Path,
     monkeypatch,

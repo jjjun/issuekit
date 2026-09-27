@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping, Sequence
+import time
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
 from issuekit.api import IssuekitClient
+from issuekit.commands._common import active_issue_not_found, read_text_file, require_ascii
 from issuekit.config import IssuekitConfig, load_config
 from issuekit.config.refs import RefError, list_effective_refs
 from issuekit.core import Issue, parse_issue_id_arg, parse_target_address
@@ -42,6 +44,8 @@ PROJECT_CATALOG_UNSUPPORTED_CODES = {
     "not_found",
     "method_not_allowed",
 }
+ADOPT_APPEND_RETRY_DELAYS = (0.1, 0.2, 0.4, 0.8, 1.6)
+_sleep = time.sleep
 
 
 @dataclass(frozen=True)
@@ -169,9 +173,12 @@ def adopt_proposal_with_append(
     if append_text is not None and append_file is not None:
         raise ValueError("append_text and append_file are mutually exclusive.")
     raw_id = proposal_id_arg(str(proposal_id))
+    appended_text: str | None = None
+    if append_text is not None or append_file is not None:
+        appended_text = _append_text(append_text, append_file)
     with api_client(config) as client:
         issue = client.adopt_proposal(raw_id, priority=priority)
-        if append_text is not None or append_file is not None:
+        if appended_text is not None:
             issue_id = _adopted_issue_id(issue)
             outcome = adopt_outcome(proposal_id, config.project, issue)
             if issue_id is None:
@@ -185,21 +192,107 @@ def adopt_proposal_with_append(
                 from issuekit.commands.edit import edit_issue
                 from issuekit.store import ApiStore
 
-                edit_issue(
+                issue = _append_and_verify_adopted_issue(
                     issue_id,
-                    append=append_text,
-                    append_file=append_file,
+                    appended_text,
                     config=config,
+                    client=client,
+                    edit_issue=edit_issue,
                     store=ApiStore(config, client=client),
                 )
-                issue = client.get_issue(issue_id)
             except (OSError, UnicodeError, ValueError, WorkflowError) as exc:
                 raise ProposalAppendError(
-                    f"Adopted proposal as issue #{issue_id}, but append failed: {exc}",
+                    _append_failure_message(issue_id, exc),
                     outcome=outcome,
                     append_error=str(exc),
                 ) from exc
-    return adopt_outcome(proposal_id, config.project, issue)
+    outcome = adopt_outcome(proposal_id, config.project, issue)
+    if appended_text is not None:
+        outcome["append_applied"] = True
+        outcome["appended_chars"] = len(appended_text)
+    return outcome
+
+
+def _append_text(append_text: str | None, append_file: str | None) -> str:
+    if append_text is not None:
+        appended_text = append_text.strip()
+    elif append_file is not None:
+        try:
+            appended_text = read_text_file(append_file).strip()
+        except OSError as exc:
+            raise ProposalError(f"Could not read append file '{append_file}'.") from exc
+    else:
+        raise ValueError("append text or append file is required.")
+    require_ascii(appended_text, message="--append and --append-file must be ASCII-only.")
+    if not appended_text:
+        raise ValueError("Append text is empty; nothing to append.")
+    return appended_text
+
+
+def _append_and_verify_adopted_issue(
+    issue_id: int,
+    appended_text: str,
+    *,
+    config: IssuekitConfig,
+    client: IssuekitClient,
+    edit_issue,
+    store,
+) -> dict:
+    retry_delays = iter(ADOPT_APPEND_RETRY_DELAYS)
+    while True:
+        try:
+            edit_issue(
+                issue_id,
+                append=appended_text,
+                config=config,
+                store=store,
+            )
+        except (OSError, UnicodeError, ValueError, WorkflowError) as exc:
+            if not _is_adopted_issue_not_found(exc, issue_id) or not _sleep_for_retry(retry_delays):
+                raise
+        else:
+            break
+
+    while True:
+        try:
+            issue = client.get_issue(issue_id)
+        except WorkflowError as exc:
+            if not _is_adopted_issue_not_found(exc, issue_id):
+                raise
+        else:
+            body = issue.get("body")
+            if isinstance(body, str) and appended_text in body:
+                return issue
+        if not _sleep_for_retry(retry_delays):
+            raise ValueError(f"Issue #{issue_id} does not contain the appended text after retrying.")
+
+
+def _is_adopted_issue_not_found(exc: Exception, issue_id: int) -> bool:
+    return (isinstance(exc, WorkflowError) and exc.code == "not_found") or (
+        type(exc) is ValueError and str(exc) == active_issue_not_found(issue_id)
+    )
+
+
+def _sleep_for_retry(retry_delays: Iterator[float]) -> bool:
+    try:
+        delay = next(retry_delays)
+    except StopIteration:
+        return False
+    _sleep(delay)
+    return True
+
+
+def _append_failure_message(issue_id: int, exc: Exception) -> str:
+    if str(exc) == f"Issue #{issue_id} does not contain the appended text after retrying.":
+        return (
+            f"Adopted proposal as issue #{issue_id}. The append update was accepted but could "
+            f"not be confirmed. Check with `issuekit show {issue_id} --json` before re-appending."
+        )
+    return (
+        f"Adopted proposal as issue #{issue_id}, but append failed: {exc} "
+        "The issue is already in the open implement pool without the appended text. "
+        f"Recover with `issuekit edit {issue_id} --append-file <file>` or the MCP `update_issue` tool."
+    )
 
 
 def proposal_payload_mismatch(proposal: Proposal, created: Mapping[str, Any]) -> list[str]:

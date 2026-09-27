@@ -8,6 +8,7 @@ from typing import Any
 
 from issuekit.testing.issues import FakeIssueSurface
 from issuekit.testing.proposals import FakeProposalSurface
+from issuekit.workflow import WorkflowError
 
 JsonDict = dict[str, Any]
 
@@ -21,7 +22,11 @@ class FakeIssuekitClient(FakeIssueSurface, FakeProposalSurface):
         proposals: list[JsonDict] | None = None,
         *,
         stored_target_worker_override: str | None = None,
+        adopt_not_found_attempts: int = 0,
+        drop_adopted_issue_body_patch: bool = False,
     ) -> None:
+        if adopt_not_found_attempts < 0:
+            raise ValueError("adopt_not_found_attempts must not be negative")
         self._lock = Lock()
         self._issues: dict[int, JsonDict] = {}
         self._repos: dict[str, JsonDict] = {}
@@ -34,6 +39,9 @@ class FakeIssuekitClient(FakeIssueSurface, FakeProposalSurface):
         self._next_proposal_id = 1
         self._next_thread_id = 1
         self._next_proposal_check_id = 1
+        self._adopt_not_found_attempts = adopt_not_found_attempts
+        self._adopted_issue_not_found_attempts: dict[int, int] = {}
+        self._drop_adopted_issue_body_patch = drop_adopted_issue_body_patch
         self.calls: list[JsonDict] = []
         self.stored_target_worker_override = stored_target_worker_override
         # Real IssuekitClient carries the target project; the fake defaults to the
@@ -105,6 +113,30 @@ class FakeIssuekitClient(FakeIssueSurface, FakeProposalSurface):
 
     def close(self) -> None:
         pass
+
+    def get_issue(self, number: int) -> JsonDict:
+        with self._lock:
+            remaining_attempts = self._adopted_issue_not_found_attempts.get(number, 0)
+            if remaining_attempts:
+                self._adopted_issue_not_found_attempts[number] = remaining_attempts - 1
+                raise WorkflowError(f"Issue #{number} was not found.", code="not_found")
+            return deepcopy(self._find(number))
+
+    def update_issue(self, number: int, issue: JsonDict) -> JsonDict:
+        with self._lock:
+            self._record("update_issue", number=number, body=deepcopy(issue))
+            update = deepcopy(issue)
+            if self._drop_adopted_issue_body_patch and number in self._adopted_issue_not_found_attempts:
+                update.pop("body", None)
+            stored = self._find(number)
+            stored.update(update)
+            return deepcopy(stored)
+
+    def adopt_proposal(self, proposal_id: int, *, priority: str | None = None) -> JsonDict:
+        issue = super().adopt_proposal(proposal_id, priority=priority)
+        with self._lock:
+            self._adopted_issue_not_found_attempts[issue["id"]] = self._adopt_not_found_attempts
+        return issue
 
     def health(self) -> JsonDict:
         return {"status": "ok", "migration_revision": "test"}

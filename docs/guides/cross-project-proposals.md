@@ -129,8 +129,17 @@ specific follow-up action, it can use `adopt_and_reply` to send that action
 back as a linked proposal. This is only for necessary follow-up, not routine
 adoption notification. A proposal that is already a reply is adopted without
 another automatic reply, preventing reply loops.
+
 Discard decisions remain pull-based: they do not automatically notify the
 sender, which can inspect the outcome with `issuekit outgoing --to <project>`.
+
+When appending text, local input errors, including a missing, non-ASCII, or
+empty append, fail before adoption and leave the proposal pending. Adoption
+retries a transient not-found response for about three seconds, then re-reads
+the issue until the text is visible. A successful JSON response includes
+`append_applied: true` and `appended_chars`. A persistent append failure exits
+1 and leaves the adopted issue claimable; recover with `issuekit edit <id>
+--append-file <file>` or the MCP `update_issue` tool.
 
 To reply after implementing an adopted issue, run:
 

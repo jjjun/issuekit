@@ -1656,7 +1656,36 @@ def test_api_proposal_tools_send_list_adopt_and_discard(
     assert adopted["title"] == "Adopt"
     assert adopted["priority"] == "low"
     assert adopted["body"] == "Adopt body.\n\nImplementation plan."
+    assert adopted["append_applied"] is True
+    assert adopted["appended_chars"] == len("Implementation plan.")
     assert discarded["status"] == "discarded"
+
+
+def test_mcp_adopt_proposal_raises_for_persistent_append_failure(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    client = FakeIssuekitClient(
+        proposals=[
+            {"id": 10, "origin": "source#10@abc123", "title": "Adopt", "body": "Adopt body."},
+        ],
+        adopt_not_found_attempts=len(proposals_api.ADOPT_APPEND_RETRY_DELAYS) + 1,
+    )
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'target'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.setattr(proposals_api, "_sleep", lambda _delay: None)
+    server = create_server(tmp_path)
+
+    with pytest.raises(Exception, match="append failed"):
+        _call(
+            server,
+            "adopt_proposal",
+            {"proposal_id": 10, "append": "Implementation plan."},
+        )
 
 
 def test_api_discard_proposal_to_addresses_target_inbox_and_rejects_foreign_origin(
