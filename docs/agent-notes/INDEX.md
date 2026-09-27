@@ -34,3 +34,6 @@ one. See [README.md](README.md) for the rules.
   whole-file and line-ending checks.
 - [Follow heartbeat git status](follow-heartbeat-git-status.md) - the exec run
   heartbeat is lock-free and safe while an issue rewrites the checkout.
+- [Adopt append failures](adopt-append-failures.md) - a failed append exits 1
+  and leaves a claimable issue without its scope; the mine-py API commits after
+  responding, so an immediate read can miss a write.
