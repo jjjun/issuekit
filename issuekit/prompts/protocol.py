@@ -72,7 +72,7 @@ Agent-launching commands accept pass-through `--model <model-id>` and
 `--reasoning-effort <value>` overrides.
 This includes `implement`, `review`, `negotiate`, `request`, `serve`, `triage`, and
 `proposal-checks`; issuekit does not maintain a model allowlist. Set an agent's
-defaults with `[agents.codex] model = "gpt-5.6"` and
+defaults with `[agents.codex] model = "gpt-6-sol"` and
 `[agents.codex] reasoning_effort = "medium"`. The optional
 `[agents.codex.model_prompts]` entries append model-specific guidance. A key
 matches the resolved model id exactly, or, if it ends in `*`, as a prefix (the
@@ -169,13 +169,14 @@ Separation-of-duties invariants:
   operator/session; explicit author self-assignment is rejected.
 - After `issuekit author` or `issuekit propose` succeeds, issuekit writes a
   machine-local author-session guard and emits `STOP_NOW`. Issue guards block
-  implementing that authored issue in the same checkout; proposal guards record
-  the handoff but do not block unrelated local issue lifecycle work.
+  direct lifecycle work on the authored issue and all pool claims from that
+  checkout until `issuekit author-guard clear`; proposal guards do not block
+  local issue lifecycle work.
 - The implementer and reviewer must be different sessions; explicit implementer
   self-review is rejected.
 - The author may also be the reviewer when a different implementer did the work.
 
-Canonical guard diagnostics: see README.md#separation-of-duties-guards or run
+Canonical guard diagnostics: see docs/guides/separation-of-duties.md or run
 `issuekit author-guard --help` to diagnose which guard blocked a command.
 
 {SEPARATION_GUARD_REFERENCE}

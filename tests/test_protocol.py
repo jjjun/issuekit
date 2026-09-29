@@ -28,7 +28,7 @@ def test_render_protocol_returns_each_agent_and_both() -> None:
         assert "implementer and reviewer must be different sessions" in normalized
         assert "author may also be the reviewer" in normalized
         assert "Separation-of-duties guard reference" in normalized
-        assert "README.md#separation-of-duties-guards" in rendered
+        assert "docs/guides/separation-of-duties.md" in rendered
         assert "Server author-implementer guard" in normalized
         assert "Distinct-reviewer guard" in normalized
         assert "issuekit#162 and issuekit#163" in rendered
@@ -106,6 +106,35 @@ def test_render_protocol_returns_each_agent_and_both() -> None:
     assert "Cross-project negotiation is a bounded, agent-driven design conversation" in both
     assert "Negotiation is CLI-only because it launches multiple long-running agent turns" in normalized_both
     both.encode("ascii")
+
+
+def test_protocol_model_and_issue_guard_guidance_is_current() -> None:
+    for role in ("author", "implementer"):
+        rendered = render_protocol(role=role)
+        normalized = " ".join(rendered.split())
+
+        assert '[agents.codex] model = "gpt-6-sol"' in rendered
+        assert 'gpt-5.6"' not in rendered
+        assert "README.md#separation-of-duties-guards" not in rendered
+        assert "docs/guides/separation-of-duties.md" in rendered
+        assert "or run `issuekit author-guard --help`" in normalized
+        assert (
+            "Issue guards block direct lifecycle work on the authored issue and "
+            "all pool claims from that checkout until `issuekit author-guard clear`"
+            in normalized
+        )
+        assert "proposal guards do not block local issue lifecycle work." in normalized
+        assert (
+            "While an issue guard is recorded, pool claims from that checkout "
+            "(`claim` without `--id`, `serve`) are blocked for every issue"
+            in normalized
+        )
+        assert (
+            "Proposal guards record the handoff but do not block local issue "
+            "lifecycle commands."
+            in normalized
+        )
+        rendered.encode("ascii")
 
 
 def test_render_protocol_returns_implementer_for_unknown_agent() -> None:
