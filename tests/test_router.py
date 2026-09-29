@@ -436,6 +436,100 @@ def test_request_stops_on_send_failure_and_resume_skips_sent_target(
     assert clients["ui"].calls[0]["body"]["depends_on"] == ["api#proposal:1"]
 
 
+def _single_api_route(title: str, body: str) -> str:
+    return _route_block(
+        {
+            "decision": "route",
+            "targets": [{"project": "api", "title": title, "body": body}],
+        }
+    )
+
+
+def _create_origins(client: FakeIssuekitClient) -> list[str]:
+    return [
+        call["body"]["origin"] for call in client.calls if call["method"] == "create_proposal"
+    ]
+
+
+def _forget_sent_target(tmp_path: Path, request_id: str) -> None:
+    state_path = tmp_path / ".agent-runs" / "pm-requests.json"
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    for key in ("proposal_ref", "dependency_ref", "proposal_id", "sent_at"):
+        state[request_id]["targets"][0].pop(key, None)
+    state_path.write_text(json.dumps(state, indent=2), encoding="utf-8", newline="\n")
+
+
+def test_request_routes_distinct_requests_to_same_target(monkeypatch, tmp_path, capsys) -> None:
+    clients, _runner = _setup(
+        monkeypatch,
+        tmp_path,
+        [
+            _single_api_route("Add export endpoint", "Add a CSV export endpoint."),
+            _single_api_route("Add export audit log", "Record export audit events."),
+        ],
+    )
+
+    assert cli.main(["request", "Add CSV export", "--json"]) == 0
+    first = json.loads(capsys.readouterr().out)
+    assert cli.main(["request", "Audit exports", "--json"]) == 0
+    second = json.loads(capsys.readouterr().out)
+
+    assert first["targets"][0]["proposal_ref"] == "api#1"
+    assert second["targets"][0]["proposal_ref"] == "api#2"
+    first_origin, second_origin = _create_origins(clients["api"])
+    assert first_origin.startswith("pm#request-1-target-0-api@")
+    assert second_origin.startswith("pm#request-2-target-0-api@")
+    assert len(clients["api"]._proposals) == 2
+
+
+def test_request_rerun_dedupes_against_its_own_sent_proposal(
+    monkeypatch,
+    tmp_path,
+    capsys,
+) -> None:
+    route = _single_api_route("Add export endpoint", "Add a CSV export endpoint.")
+    clients, _runner = _setup(monkeypatch, tmp_path, [route, route])
+
+    assert cli.main(["request", "Add CSV export", "--json"]) == 0
+    capsys.readouterr()
+    _forget_sent_target(tmp_path, "1")
+
+    assert cli.main(["request", "Add CSV export", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["request_id"] == 1
+    assert payload["targets"][0]["proposal_ref"] == "api#1"
+    first_origin, second_origin = _create_origins(clients["api"])
+    assert first_origin == second_origin
+    assert len(clients["api"]._proposals) == 1
+
+
+def test_request_rerun_payload_mismatch_suggests_link_or_discard(
+    monkeypatch,
+    tmp_path,
+    capsys,
+) -> None:
+    _clients, _runner = _setup(
+        monkeypatch,
+        tmp_path,
+        [
+            _single_api_route("Add export endpoint", "Add a CSV export endpoint."),
+            _single_api_route("Add export endpoint", "Add a JSON export endpoint."),
+        ],
+    )
+
+    assert cli.main(["request", "Add CSV export", "--json"]) == 0
+    capsys.readouterr()
+    _forget_sent_target(tmp_path, "1")
+
+    assert cli.main(["request", "Add CSV export", "--json"]) == 1
+    err = capsys.readouterr().err
+
+    assert "issuekit request --link 1 --target api api#1" in err
+    assert "issuekit discard 1 --to api" in err
+    assert "--from-issue" not in err
+
+
 def test_request_link_records_existing_proposal_for_unsent_target(
     monkeypatch,
     tmp_path,

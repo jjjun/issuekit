@@ -15,6 +15,10 @@ Recovery / correct flow:
   so each proposal derives a distinct origin such as `issuekit#286@<commit>`.
 - If no motivating local issue exists yet, author it first (it can gain
   `depends_on` refs to the proposal afterwards via `update_issue`).
+- `issuekit request` does not use the implicit `#0` origin: each routed
+  proposal gets a per-request, per-target origin
+  (`<pm-project>#request-<id>-target-<index>-<project>@<commit>`), so separate
+  PM requests to one target do not collide.
 - Check the propose result for `deduplicated` before assuming the proposal
   was created; when `true`, the returned `id` belongs to the earlier
   proposal, not a new one. If the title or body also differs from what was

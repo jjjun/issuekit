@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +18,7 @@ from issuekit.commands.request.state import (
     now,
     qa_rounds,
     resolve_depends_on,
+    routed_origin,
     save_state,
     state_targets,
     target_state,
@@ -260,10 +262,20 @@ def send_route_targets(
             blocking=target.blocking,
             depends_on=resolved_depends_on,
         )
+        proposal = replace(
+            proposal,
+            origin=routed_origin(
+                config,
+                cwd,
+                request_id=request_id,
+                target_index=index,
+                target_project=target.project,
+            ),
+        )
         sent = proposals_api.send_proposal(config, proposal)
         if sent.get("payload_mismatch"):
             save_state(cwd, state)
-            raise ProposalError(str(sent.get("warning") or "Proposal payload mismatch."))
+            raise ProposalError(_routed_payload_mismatch_message(request_id, target.project, sent))
         proposal_ref = f"{target.project}#{sent.get('id')}"
         dependency_ref = str(sent.get("dependency_ref") or proposal_ref)
         refs_by_index[index] = dependency_ref
@@ -282,6 +294,22 @@ def send_route_targets(
         save_state(cwd, state)
         output.append(dict(updated))
     return output
+
+
+def _routed_payload_mismatch_message(
+    request_id: int,
+    project: str,
+    sent: dict[str, Any],
+) -> str:
+    proposal_id = sent.get("id")
+    fields = ", ".join(sent.get("payload_mismatch_fields") or ()) or "payload"
+    return (
+        f"Proposal was not sent: {project} already has pending proposal #{proposal_id} "
+        f"from PM request {request_id} with different {fields}. If that proposal is the "
+        f"one this request should use, record it with `issuekit request --link "
+        f"{request_id} --target {project} {project}#{proposal_id}`; otherwise withdraw "
+        f"it with `issuekit discard {proposal_id} --to {project}` and rerun the request."
+    )
 
 
 def require_router_config(config: IssuekitConfig) -> None:

@@ -209,6 +209,21 @@ def compose_amended_body(
     return "\n\n".join(section for section in sections if section).strip()
 
 
+def routed_origin(
+    config: IssuekitConfig,
+    cwd: Path,
+    *,
+    request_id: int,
+    target_index: int,
+    target_project: str,
+) -> str:
+    commit = git_short_head(cwd) or "unknown"
+    return (
+        f"{config.project}#request-{request_id}-target-{target_index}-"
+        f"{target_project}@{commit}"
+    )
+
+
 def amended_origin(
     config: IssuekitConfig,
     cwd: Path,
