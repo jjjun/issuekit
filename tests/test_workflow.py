@@ -350,6 +350,63 @@ def test_claim_issue_surfaces_api_transition_error(monkeypatch) -> None:
     assert "issuekit#162 and issuekit#163" in message
 
 
+def test_fake_claim_allows_same_name_changes_continuation() -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                1,
+                "Changes",
+                status="in_progress",
+                assignee="codex",
+                stage="changes_requested",
+                implementer="codex",
+                author="codex",
+            )
+        ]
+    )
+
+    issue = client.claim(1, assignee="codex")
+
+    assert issue["stage"] == "implementing"
+    assert issue["implementer"] == "codex"
+
+
+def test_fake_claim_next_allows_open_pool_same_name_without_author_session() -> None:
+    client = FakeIssuekitClient([api_issue(1, "Ready", author="codex")])
+
+    issue = client.claim_next(assignee="codex")
+
+    assert issue is not None
+    assert issue["id"] == 1
+    assert issue["assignee"] == "codex"
+    assert issue["stage"] == "implementing"
+
+
+def test_fake_claim_rejects_assigned_same_name_without_sessions() -> None:
+    client = FakeIssuekitClient(
+        [api_issue(1, "Assigned", assignee="codex", author="codex")]
+    )
+
+    with pytest.raises(WorkflowError) as excinfo:
+        client.claim(1, assignee="codex")
+
+    assert excinfo.value.code == "forbidden_self_implement"
+
+
+def test_fake_claim_allows_distinct_author_and_implementer_sessions() -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(1, "Ready", author="codex")
+            | {"author_session": "author-session"}
+        ]
+    )
+
+    issue = client.claim(1, assignee="codex", session="implementer-session")
+
+    assert issue["stage"] == "implementing"
+    assert issue["implementer_session"] == "implementer-session"
+
+
 def test_author_guard_blocks_claim_in_same_checkout(tmp_path, monkeypatch) -> None:
     client = FakeIssuekitClient([api_issue(1, "Ready", author="claude")])
     config = _config(client, monkeypatch)

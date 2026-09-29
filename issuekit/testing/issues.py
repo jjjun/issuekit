@@ -659,16 +659,29 @@ class FakeIssueSurface:
                 f"{issue.get('target_worker')}, not {worker or '-'}.",
                 code="invalid_transition",
             )
-        if not allow_self_implement and issue.get("author") == assignee:
-            if issue.get("author_session") and session and issue.get("author_session") != session:
-                pass
-            else:
-                raise WorkflowError(
-                    f"Issue #{issue_id} was authored by {assignee}. Same-name implementation "
-                    "is allowed only when both the authoring and implementing requests "
-                    "supply distinct session identities.",
-                    code="forbidden_self_implement",
-                )
+        has_author_session = bool(issue.get("author_session"))
+        is_changes_continuation = (
+            issue.get("implementer") == assignee
+            and issue.get("stage") == "changes_requested"
+        )
+        has_conflicting_author_session = has_author_session and (
+            not session or issue.get("author_session") == session
+        )
+        is_assigned_without_author_session = (
+            not has_author_session and issue.get("assignee") == assignee
+        )
+        if (
+            not allow_self_implement
+            and issue.get("author") == assignee
+            and not is_changes_continuation
+            and (has_conflicting_author_session or is_assigned_without_author_session)
+        ):
+            raise WorkflowError(
+                f"Issue #{issue_id} was authored by {assignee}. Same-name implementation "
+                "is allowed only when both the authoring and implementing requests "
+                "supply distinct session identities.",
+                code="forbidden_self_implement",
+            )
         issue["status"] = "in_progress"
         issue["assignee"] = assignee
         issue["stage"] = "implementing"
