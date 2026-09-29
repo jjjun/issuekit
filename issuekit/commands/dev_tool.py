@@ -242,6 +242,7 @@ def _run_install(args, *, editable: bool, runner: Runner | None = None) -> int:
     payload = _empty_payload()
     mode = "install_editable" if editable else "reinstall"
     if not _is_windows():
+        payload["ok"] = False
         payload["diagnostics"].append(
             _diagnostic("error", "issuekit dev-tool is currently supported only on Windows.")
         )
@@ -250,6 +251,7 @@ def _run_install(args, *, editable: bool, runner: Runner | None = None) -> int:
     try:
         repo = _resolve_repo_path(args.repo)
     except ValueError as exc:
+        payload["ok"] = False
         payload["diagnostics"].append(_diagnostic("error", str(exc)))
         return _finish(payload, json_output=args.json)
     payload["diagnostics"].append(_diagnostic("info", f"Repository: {repo}"))

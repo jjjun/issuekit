@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from issuekit import cli
 from issuekit.commands import dev_tool
 
@@ -115,6 +117,43 @@ def test_reinstall_fails_on_unexpected_uninstall_error(
     assert payload["ok"] is False
     assert {"action": "uninstall", "ok": False} in payload["actions"]
     assert not any(command["argv"] == dev_tool.build_reinstall_command(repo.resolve()) for command in payload["commands"])
+
+
+@pytest.mark.parametrize("action", ["install-editable", "reinstall"])
+def test_install_fails_on_non_windows(tmp_path: Path, monkeypatch, capsys, action: str) -> None:
+    repo = _repo(tmp_path)
+    monkeypatch.setattr(dev_tool, "_is_windows", lambda: False)
+
+    def runner(argv):
+        raise AssertionError(f"unexpected command: {list(argv)}")
+
+    monkeypatch.setattr(dev_tool, "default_runner", runner)
+
+    exit_code = cli.main(["dev-tool", action, "--repo", str(repo), "--json"])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 1
+    assert payload["ok"] is False
+    assert payload["commands"] == []
+    assert any("only on Windows" in item["message"] for item in payload["diagnostics"])
+
+
+@pytest.mark.parametrize("action", ["install-editable", "reinstall"])
+def test_install_fails_on_invalid_repo(tmp_path: Path, monkeypatch, capsys, action: str) -> None:
+    monkeypatch.setattr(dev_tool, "_is_windows", lambda: True)
+
+    def runner(argv):
+        raise AssertionError(f"unexpected command: {list(argv)}")
+
+    monkeypatch.setattr(dev_tool, "default_runner", runner)
+
+    exit_code = cli.main(["dev-tool", action, "--repo", str(tmp_path / "missing"), "--json"])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 1
+    assert payload["ok"] is False
+    assert payload["commands"] == []
+    assert any("pyproject.toml" in item["message"] for item in payload["diagnostics"])
 
 
 def test_reload_mcp_stops_only_issuekit_mcp_processes(monkeypatch, capsys) -> None:

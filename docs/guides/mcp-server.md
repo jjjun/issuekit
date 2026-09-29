@@ -30,8 +30,9 @@ uv run issuekit dev-tool reload-mcp
 uv run issuekit dev-tool reinstall
 ```
 
-`install-editable` and `reinstall` are Windows-only; on other platforms they
-print an error diagnostic and change nothing. Both stop running
+`install-editable` and `reinstall` are Windows-only; on other platforms, or
+when `--repo` is not an issuekit checkout, they print an error diagnostic,
+report `ok: false`, exit 1, and change nothing. Both stop running
 `issuekit-mcp.exe` processes first unless you pass `--no-stop`. `reload-mcp`
 works on Windows and POSIX.
 
