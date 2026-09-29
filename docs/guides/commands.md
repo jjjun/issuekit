@@ -15,8 +15,8 @@
 | `issuekit author-guard show\|check\|clear` | Diagnose or recover the local author-session separation-of-duties guard; see [Separation of duties](separation-of-duties.md). |
 | `issuekit complete <id> [(--summary "..." \| --summary-file <path>)] [(--verification "..." \| --verification-file <path>)] [--force]` | Complete an issue through the API; use `--force` to close an active no-op, duplicate, obsolete, or anchor issue without claim and review ceremony. |
 | `issuekit approve <id> (--verification "..." \| --verification-file <path>) [(--summary "..." \| --summary-file <path>)] [--reviewer claude]` | Approve a review-stage issue and move it to completed. |
-| `issuekit claim --assignee codex` | Claim the next active issue for an implementer. |
-| `issuekit claim --id <id> --assignee codex` | Claim a specific active issue for an implementer. |
+| `issuekit claim [--assignee <agent>] [--priority high\|medium\|low] [--allow-author-session] [--allow-any-branch] [--no-sync]` | Claim the next active issue for an implementer. Without `--assignee`, the resolved default implementer is used. |
+| `issuekit claim --id <id> [--assignee <agent>] [--allow-author-session] [--allow-any-branch] [--no-sync]` | Claim a specific active issue for an implementer. `--priority` cannot be combined with `--id`. |
 | `issuekit claims [--worker <worker>] [--stage <stage>] [--json]` | List issue claims, optionally filtered by worker or workflow stage. |
 | `issuekit implement <id> [--agent <agent>] [--model <model-id>] [--reasoning-effort <value>] [--timeout-sec <seconds>] [--follow] [--allow-no-changes] [--allow-missing-report] [--allow-author-session] [--allow-any-branch] [--no-sync]` | Claim and run a configured implementer agent for an issue. |
 | `issuekit submit-review <id> (--summary "..." \| --summary-file <path>) [--reviewer claude]` | Submit implemented work to a reviewer. |
@@ -30,10 +30,10 @@
 | `issuekit dispatch <id> --target-worker <worker.repo[@machine]> [--assignee <agent>] [--stage todo\|planned] [--allow-unregistered-worker] [--json]` | Direct a ready issue to a specific registered worker. |
 | `issuekit readdress <id> [--reason "..."] [--json]` | Return a directed issue to the repo pool. |
 | `issuekit check-encoding [--json] [--fail-on-unconfirmed] [--gate]` | Check tracked source files for encoding problems, or reproduce the submit-gate mojibake verdict with `--gate`. |
-| `issuekit protocol [--agent codex\|claude]` | Print the canonical handoff protocol. |
+| `issuekit protocol [--agent <agent>] [--role author\|implementer\|pm\|reviewer\|triage]` | Print the canonical handoff protocol: every role with no flags, the agent's default role with `--agent`, or one role with `--role`. |
 | `issuekit init [--with-mcp]` | Install tracker templates, encoding hooks, and optional MCP handoff scaffolding. |
 | `issuekit setup [--force] [--json]` | Run per-repo MCP handoff scaffolding and setup diagnostics. |
-| `issuekit setup check --json` | Check setup state without writing files. |
+| `issuekit setup check [--json]` | Check setup state without writing files. |
 | `issuekit dev-tool install-editable [--repo <path>] [--no-stop] [--json]` | Windows developer command to install this checkout as the global editable tool with the MCP extra. |
 | `issuekit dev-tool reinstall [--repo <path>] [--no-stop] [--json]` | Windows developer recovery command to reinstall the global tool from an absolute checkout path. |
 | `issuekit dev-tool reload-mcp [--json]` | Stop only running `issuekit-mcp.exe` processes; MCP clients own respawn and stdio reconnection. |
@@ -48,13 +48,13 @@
 | `issuekit negotiate --from-proposal <project>#proposal:<id> --initiator-side consumer --provider-agent <agent> --consumer-agent <agent>` | Lock a pending outbound proposal and use its title and body to seed a negotiation. |
 | `issuekit negotiate --cancel <thread-id> --from-proposal <project>#proposal:<id>` | Cancel a proposal-seeded negotiation and return its source proposal to recoverable pending triage. |
 | `issuekit threads [<thread-id>] [--status negotiating\|agreed\|blocked\|cancelled] [--mock] [--json]` | Inspect or list cross-project negotiation threads; see [Cross-project negotiation](negotiation.md). |
-| `issuekit propose --to <project> --title "..."` | Send a proposal to a project API inbox. |
+| `issuekit propose [--to <project>\|<worker.repo[@machine]>] [--title "..."] [--body "..." \| --body-file <path>] [--from-issue <id>] [--reply <id>] [--blocking] [--depends-on <ref>]... [--agent <agent>] [--project <name>] [--json]` | Send a proposal to a project API inbox. `--to` is required unless `--reply` derives it from the adopted issue's origin; `--title` and the body default to the `--reply` or `--from-issue` issue, and `--reply` wins when both are given. |
 | `issuekit incoming [--json]` | List inbound API proposals. |
 | `issuekit outgoing --to <project> [--id <id>] [--status <status>]` | List proposals this project sent to a target project's inbox (read-only, self-scoped). |
 | `issuekit adopt <proposal-id> [--json]` | Adopt an incoming API proposal as a local issue and print the created API issue id. |
 | `issuekit discard <proposal-id> [--to <project>]` | Discard an incoming API proposal. With `--to`, discard a pending proposal this project sent to that target project's inbox instead. |
 | `issuekit proposal-check-request --to <project> --proposal <id> [--worker <address>] [--json]` | Request evaluation of a pending proposal by a registered target worker. |
-| `issuekit proposal-checks [--agent <agent>] [--model <model-id>] [--reasoning-effort <value>] [--list \| --once] [--status pending\|answered] [--timeout-sec <seconds>] [--limit <n>] [--offset <n>] [--json]` | List or run proposal checks addressed to this worker. |
+| `issuekit proposal-checks (--list \| --once) [--agent <agent>] [--model <model-id>] [--reasoning-effort <value>] [--status pending\|answered] [--timeout-sec <seconds>] [--limit <n>] [--offset <n>] [--check <id>] [--json]` | List or run proposal checks addressed to this worker. One of `--list` or `--once` is required; `--offset` works only with `--list`, and `--check` only with `--once`. |
 | `issuekit triage --once [--model <model-id>] [--reasoning-effort <value>] [--timeout-sec <seconds>] [--json]` | Launch a single agent triage loop that pulls pending inbound proposals. |
 | `issuekit request [<text>] [--answer <request-id>] [--status [<request-id>]] [--inbox] [--target <project>] [--link <request-id>] [--json] [--dry-run] [--timeout-sec <seconds>] [--model <model-id>] [--reasoning-effort <value>]` | Route a PM request to project proposal inboxes; see [PM request router](pm-request.md). |
 

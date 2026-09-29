@@ -90,9 +90,11 @@ root and loads values such as `ISSUEKIT_API_URL`, `ISSUEKIT_API_USER`,
 `ISSUEKIT_PROJECT`. Existing process environment variables are not overwritten.
 Overall precedence is per-run CLI flags, process environment, `.env`, then
 `[tool.issuekit]` or `issuekit.toml`, machine config, and built-in defaults.
-Set `ISSUEKIT_ENFORCE_AUTHOR_HANDOFF=0` to skip only the local author-session
-STOP guard enforcement across checkouts; unset or truthy values keep the default
-enforcement behavior.
+Set `ISSUEKIT_ENFORCE_AUTHOR_HANDOFF=0` to skip the local author-session STOP
+guard enforcement across checkouts. The same switch makes claims send
+`allow_self_implement`, so the server author-implementer guard is relaxed too;
+the two guards cannot be relaxed separately. Unset or truthy values keep the
+default enforcement behavior.
 
 When `ISSUEKIT_API_URL` uses plain `http://` for a non-loopback host, issuekit
 prints a stderr warning because credentials and bearer tokens are sent without
@@ -147,10 +149,10 @@ table without the `tool.issuekit` prefix:
 ```toml
 [tool.issuekit.agents.codex]
 approval_flag = "--full-auto"
-model = "gpt-5.6"
+model = "gpt-6-sol"
 
 [tool.issuekit.agents.codex.model_prompts]
-"gpt-5.6" = "Follow the gpt-5.6 project guidance."
+"gpt-6-sol" = "Follow the gpt-6-sol project guidance."
 ```
 
 For the runtime boundary and how to add a config-only or custom agent adapter,
@@ -166,7 +168,8 @@ config sets `session_flag = "--session-id"` and `resume_flag = "--resume"`.
 By default, issuekit runs Codex without a sandbox and relies on the repository
 worktree plus the review gate. Projects that require the strict sandbox can use
 the override above, or set `approval_flag = "--sandbox"` and
-`approval_value = "workspace-write"`.
+`approval_value = "workspace-write"`. These overrides apply only to the default
+exec runtime; the App Server runtime below ignores them.
 
 Codex implementation runs use `codex exec` by default. API-backed projects can
 opt into issue-owned App Server attempts for Codex implementer runs:
@@ -186,7 +189,13 @@ effects, uploads bounded redacted events, stops on fencing or claim loss, and
 seals the runtime before the existing submit-for-review workflow. A provider
 without the routes returns a clear unsupported-runtime error; issuekit does not
 silently fall back because the mode is explicit. App Server is Codex-only and
-implementer-only in this version. The `issuekit implement --follow` heartbeat
+implementer-only in this version. Its threads always start with approval policy
+`never` and the `dangerFullAccess` sandbox, and it reads only `binary`,
+`known_paths`, `lease_ttl_seconds`, `app_server_argv`, `model`,
+`reasoning_effort`, `prompt_suffix`, and `model_prompts` from the agent
+config: `approval_flag`, `approval_value`,
+`headless_argv`, `speed`, and `speed_argv` have no effect in this mode. The
+`issuekit implement --follow` heartbeat
 applies only to the default exec runtime; it polls `git status` read-only without
 an index lock, so it is safe for issues that rewrite the checkout.
 
@@ -225,7 +234,10 @@ prompt text for keys matching the resolved model id. A key matches exactly, or,
 if it ends in `*`, as a prefix; when several prefixes match, the longest one
 wins, and an exact match always beats a prefix match. This keeps guidance keyed
 to a model family (for example `"claude-sonnet-5*"`) applying when the
-resolved model id gains a date suffix or point revision. Explicit per-run
+resolved model id gains a date suffix or point revision. A prefix also matches
+later model ids that extend it: `"claude-sonnet-5*"` matches
+`claude-sonnet-5-5` as well as `claude-sonnet-5`, so use the exact key
+`"claude-sonnet-5"` for guidance meant for one model only. Explicit per-run
 values take precedence over configured defaults. A serve override applies to
 every agent launched by that loop, so mixed-agent serve setups should configure
 `model` and `reasoning_effort` in each agent's overlay instead.
@@ -236,7 +248,9 @@ coarse a granularity (staleness guards keyed by entity instead of per-request,
 in-flight request sharing that a forced refresh should have bypassed, a limit
 enforced at the outer boundary instead of per-resource) and reset paths that
 handled every branch except an early return. The following `model_prompts`
-fragment is a starting point, not a shipped default; adapt it per project:
+fragment is a starting point, not a shipped default; adapt it per project. Its
+`"claude-sonnet-5*"` key also applies to `claude-sonnet-5-5`; change it to
+`"claude-sonnet-5"` if the guidance should not follow newer Sonnet models:
 
 ```toml
 [tool.issuekit.agents.claude.model_prompts]

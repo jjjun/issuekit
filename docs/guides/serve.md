@@ -22,14 +22,17 @@ implements and reviews runs two serve processes from two registered checkouts.
 
 ## Modes
 
-The four modes are mutually exclusive. The implement pool is the default.
+There are three modes. The implement pool is the default; `--review` and
+`--proposal-checks` select the other two and cannot be combined. `--triage` is
+not a separate mode but an add-on to the implement mode, and `--review` and
+`--proposal-checks` reject both `--triage` and `--priority`.
 
 | Mode | Poll source | Agent work | Terminal call |
 |------|-------------|------------|---------------|
 | default | `claim_next` (implement pool) | implement the claimed issue | `submit_for_review` |
 | `--review` | `next_review` (review pool) | review the submitted issue | `approve` or `request_changes` |
 | `--proposal-checks` | proposal checks addressed to this worker | verify the claim against the code | post the check result |
-| `--triage` | the incoming proposal inbox | adopt matching proposals (or run the triage author agent) | issue creation |
+| `--triage` (implement add-on) | the incoming proposal inbox | adopt matching proposals (or run the triage author agent) | issue creation |
 
 `--triage` layers onto the implement loop: each poll first drains the inbox,
 then attempts a claim. `[triage] auto_adopt = true` enables the same behavior

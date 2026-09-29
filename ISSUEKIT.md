@@ -15,7 +15,10 @@ that API.
 - Python 3.12+, packaged with `uv` / hatchling.
 - `httpx` HTTP client against the mine-py issuekit API (`IssuekitClient`).
 - CLI dispatcher (`issuekit`) plus an optional FastMCP server (`issuekit-mcp`,
-  installed with the `mcp` extra) exposing the same operations as MCP tools.
+  installed with the `mcp` extra) exposing the tracker reads and state changes
+  as MCP tools. Commands that launch other agents (`implement`, `review`,
+  `serve`, `triage`, `request`, `negotiate`) stay CLI-only; see
+  [`docs/guides/mcp-server.md`](docs/guides/mcp-server.md#mcp-boundary).
 - Headless coding-agent adapters (codex, claude, kimi) driven by `AgentRunner`;
   see [`issuekit/agentrun/README.md`](issuekit/agentrun/README.md) for the
   runtime boundary and extension path.
@@ -91,10 +94,13 @@ do not contain implementation; implementation lives in focused submodules.
   request-changes, complete, edit, queue, serve, implement, propose/incoming/
   outgoing/adopt/discard, negotiate/threads, triage, profile, workers, add,
   protocol, check-encoding, and more.
-- MCP tools mirroring the workflow: get_protocol, claim_next_task,
-  submit_for_review, next_review, approve, request_changes, propose,
-  list_incoming/outgoing, adopt/discard_proposal, list_workers,
-  list_project_profiles, get_issue, update_issue, list_queue.
+- MCP tools for tracker reads and state changes: health, get_protocol,
+  claim_next_task, submit_for_review, next_review, request_changes, approve,
+  get_issue, update_issue, list_queue, list_workers, remove_worker,
+  remove_repo, list_orphans, reclaim_issue, readdress_issue, dispatch_issue,
+  list_project_profiles, propose, list_incoming/outgoing,
+  list_negotiation_threads, adopt/discard_proposal, create_proposal_check,
+  list_proposal_checks.
 - Library modules: `workflow`, `proposals/api.py`, `api/`, `config`,
   `agentrun/runner.py`, `agents/` (review, triage_author),
   `config/project_profile.py`.

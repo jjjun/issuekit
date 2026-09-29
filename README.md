@@ -48,8 +48,11 @@ Full documentation lives in [`docs/`](docs).
 | [MCP server](docs/guides/mcp-server.md) | Installing, scaffolding, and troubleshooting the handoff MCP server. |
 | [Handoff protocol](docs/guides/handoff-protocol.md) | Where the canonical author/implementer/reviewer protocol text lives. |
 | [Commands](docs/guides/commands.md) | Full CLI command reference. |
+| [Serve worker loop](docs/guides/serve.md) | Running a checkout as a long-lived implementer, reviewer, proposal-check, or triage worker. |
 | [Configuration](docs/guides/configuration.md) | Config file layers, precedence, agent overlays, reviewer and implementer policy. |
 | [Cross-project proposals](docs/guides/cross-project-proposals.md) | Proposal inboxes, dependencies, refs, adoption and reply flow. |
+| [Cross-project negotiation](docs/guides/negotiation.md) | Bounded agent conversations that settle a shared contract before implementation. |
+| [PM request router](docs/guides/pm-request.md) | Route natural-language development requests to project proposal inboxes. |
 | [Directed addressing](docs/guides/directed-addressing.md) | Repo, worker, and agent axes; `worker.repo@machine` targets. |
 | [Registry maintenance](docs/guides/registry-maintenance.md) | Removing and pruning stale workers and repo catalog entries. |
 | [Orphaned claim detection](docs/guides/orphaned-claim-detection.md) | Finding and reclaiming stalled implementing claims. |

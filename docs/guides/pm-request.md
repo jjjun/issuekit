@@ -37,7 +37,7 @@ max_targets = 3
 max_clarify_rounds = 2
 
 [tool.issuekit.agents.codex.roles.router]
-model = "gpt-5.6"
+model = "gpt-6-sol"
 reasoning_effort = "medium"
 ```
 
@@ -129,14 +129,16 @@ Start by confirming the PM checkout can see eligible stored profiles:
 issuekit profile --all
 ```
 
-Ask for a dry run first:
+Ask for a dry run first. The text output lists only each target's project and
+title, so add `--json` to see the proposal bodies:
 
 ```powershell
-issuekit request --dry-run "Add audit logging to the customer export"
+issuekit request --dry-run --json "Add audit logging to the customer export"
 ```
 
 If the proposed targets and proposal text are right, run the same request
-without `--dry-run` to send it:
+without `--dry-run` to send it. The real run asks the router again, so its
+targets or text can differ from the dry run; check the printed result:
 
 ```powershell
 issuekit request "Add audit logging to the customer export"

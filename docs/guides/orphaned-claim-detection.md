@@ -44,7 +44,8 @@ it, so it skips only the staleness check. If that worker resumes or another
 worker takes the claim between the read and the reclaim request, the API returns
 `race_lost` instead of overwriting the current holder. This keeps the emergency
 path optimistic-concurrency safe; there is intentionally no unconditional
-override flag that sends `expected_worker=None`.
+override flag. The one case where `--force` sends `expected_worker=None` is an
+issue with no recorded worker, where there is no holder to guard against.
 
 Use `issuekit readdress <id>` to clear a directed `target_worker` and return
 that issue to the repo pool. The command sends the target worker it observed as

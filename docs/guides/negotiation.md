@@ -89,11 +89,13 @@ cases:
 
 ## Rounds and escalation
 
-By default, a run allows four total agent turns (`--max-rounds 4`) and gives
-each turn 120 seconds (`--timeout-sec 120`). If the turn budget is exhausted
-while the thread remains `negotiating`, the result is `outcome=escalate`.
-Escalation is a stop, not a failure; normally rerun with a larger
-`--max-rounds` value.
+`--max-rounds` (default 4) caps the total number of turns stored in the
+thread, counted across every invocation and including the opening turn; it is
+not a per-invocation budget. Each turn gets 120 seconds by default
+(`--timeout-sec 120`). If the thread reaches the cap while it remains
+`negotiating`, the result is `outcome=escalate`. Escalation is a stop, not a
+failure; rerun with a `--max-rounds` value larger than the current number of
+turns, because rerunning with the same value runs no turns and escalates again.
 
 Each side keeps one agent session for the whole run when its agent can
 continue a session, so later rounds resume the session the side opened on its

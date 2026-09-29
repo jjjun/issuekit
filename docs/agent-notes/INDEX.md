@@ -3,8 +3,9 @@
 One line per note. Add an entry when you add a note; remove it when you delete
 one. See [README.md](README.md) for the rules.
 
-- [Waiting on issuekit implement runs](waiting-on-implement-runs.md) - the run
-  must be polled in the foreground; background waits do not observe completion.
+- [Waiting on issuekit implement runs](waiting-on-implement-runs.md) - wait for
+  the process to exit (foreground or background with an exit notification) and
+  branch on `post_run`; a completed `.agent-runs` status precedes submit.
 - [ASCII-only review fields](ascii-only-review-fields.md) - `approve` and
   `submit-review` text fields reject non-ASCII characters.
 - [CI policy](ci-policy.md) - which workflows are automatic and which are
@@ -37,3 +38,6 @@ one. See [README.md](README.md) for the rules.
 - [Adopt append failures](adopt-append-failures.md) - a failed append exits 1
   and leaves a claimable issue without its scope; the mine-py API commits after
   responding, so an immediate read can miss a write.
+- [Checking agent model ids and effort levels](checking-agent-model-ids.md) -
+  model ids pass through unchecked; bare `gpt-5.6` fails under ChatGPT sign-in.
+  Where to find valid slugs and efforts, and how to smoke-test them.

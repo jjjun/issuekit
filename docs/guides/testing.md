@@ -17,7 +17,15 @@ mojibake, stray carriage returns, and CRLF. The `--gate` mode separately
 reproduces the submit gate for the current worktree, including its changed-line
 scope and unconfirmed mojibake failures.
 
-Run the full suite, including MCP tests, with `uv run --with mcp pytest`.
+`mcp` is in the `dev` dependency group, so `uv run pytest` already runs the MCP
+tests. If `mcp` is not installed, the MCP test file skips silently and the
+suite still passes; set `ISSUEKIT_REQUIRE_MCP=1` to make that a failure, as the
+`Tests` workflow does:
+
+```powershell
+$env:ISSUEKIT_REQUIRE_MCP = "1"
+uv run pytest
+```
 
 Pytest uses concise progress output by default while retaining failure details
 and the final test summary. For verbose progress during interactive diagnosis,

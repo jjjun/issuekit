@@ -2,15 +2,18 @@
 
 **Applies to:** `issuekit implement <id> --agent <agent> --timeout-sec <n>`
 
-An `implement` run launches a configured agent CLI as a subprocess and blocks
-until that agent finishes or the timeout expires. Wait for it in the
-foreground.
+An `implement` run launches a configured agent CLI as a subprocess, then
+submits the result for review, and only then exits. Wait for the
+`issuekit implement` process itself to exit, either in the foreground or in the
+background with an exit notification, and branch on its final `post_run` line.
+Real runs often outlast a foreground tool-call cap, so a background run with an
+exit notification is usually the practical choice. The default
+`--timeout-sec` is 600; raise it for larger issues.
 
-Backgrounding the command and watching for a completion signal does not work
-reliably: the wrapper's exit is what carries the result, and the run artifacts
-under `.agent-runs/` are only complete once the process has exited. Poll the
-foreground command instead, with `--timeout-sec` set generously enough for the
-agent to finish the work.
+Do not treat `.agent-runs/` or `issuekit runs` as the completion signal. The
+runner writes the terminal status (for example `completed`) as soon as the
+agent subprocess exits, before issuekit runs the submit step, so a completed
+run status does not mean the issue was submitted.
 
 If a run does die without submitting, the claim is left at
 `stage=implementing`. Recover it with `issuekit orphans` and
@@ -19,9 +22,11 @@ If a run does die without submitting, the claim is left at
 
 ## Output contract for orchestrators
 
-`issuekit implement` always prints a `post_run` line to stdout as the last
-line of output, regardless of outcome. That is the single line an
-orchestrator should branch on:
+Once the claim succeeds, `issuekit implement` prints a `post_run` line to
+stdout as the last line of output, whatever the outcome. Failures before or
+during the claim (no implementer resolves, the issue is not found, or a claim
+guard or API error) exit 1 with only a stderr message and no `post_run` line.
+Otherwise `post_run` is the single line an orchestrator should branch on:
 
     post_run id=<id> stage=<stage> submitted=<true|false> agent_exit=<n> cli_exit=<n>
 
@@ -58,3 +63,8 @@ orchestrator should branch on:
   background run to finish; no need to poll" is the signature of that
   failure mode - the agent never restarted the run, so it exited with no
   diff.
+- For `reason=no_changes` on a run that resumed over uncommitted edits left
+  by an earlier attempt, the `HINT:` line differs: it says the worktree
+  changes predate this run and suggests
+  `issuekit implement <id> --allow-no-changes` to submit them if they are
+  complete.
