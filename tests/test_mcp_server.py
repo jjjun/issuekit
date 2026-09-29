@@ -730,6 +730,34 @@ def test_get_protocol_uses_configured_agent_role(tmp_path: Path) -> None:
     assert _call(server, "get_protocol", {"agent": "claude"}) == render_protocol("codex")
 
 
+def test_get_protocol_discovers_client_workspace_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    process_root = tmp_path / "process"
+    repo_root = tmp_path / "repo"
+    process_root.mkdir()
+    repo_root.mkdir()
+    (process_root / "pyproject.toml").write_text(
+        "[project]\nname = 'launcher'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    (repo_root / "issuekit.toml").write_text(
+        "[agent_roles]\nclaude = 'implementer'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    async def fake_client_roots(ctx):
+        return (repo_root,)
+
+    monkeypatch.setattr(mcp_server, "_client_roots", fake_client_roots)
+    server = create_server(process_root)
+
+    assert _call(server, "get_protocol", {"agent": "claude"}) == render_protocol("codex")
+
+
 def test_claim_next_task_claims_only_once(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     client = FakeIssuekitClient([api_issue(1, "First")])
     _configure_api(tmp_path, monkeypatch, client)

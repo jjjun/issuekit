@@ -85,8 +85,13 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
         return await _health_status(root, ctx)
 
     @server.tool(description="Read the current issuekit handoff protocol.")
-    def get_protocol(agent: str | None = None, role: str | None = None) -> str:
-        config = load_config(root)
+    async def get_protocol(
+        agent: str | None = None,
+        role: str | None = None,
+        ctx: Context | None = None,
+    ) -> str:
+        config_root = await _resolve_config_root(root, ctx)
+        config = load_config(config_root)
         return render_protocol(agent, role=role, agent_roles=config.agent_roles)
 
     @server.tool(

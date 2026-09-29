@@ -123,7 +123,7 @@ lists the cause when `issuekit.local.toml` or the issuekit config cannot be
 loaded. `token_cached` and `token_expires_at` describe the cached API token for
 the configured API URL.
 
-`cwd` is the resolved config root that the tracker tools load configuration
+`cwd` is the resolved config root that the MCP tools load configuration
 from. The server uses its own working directory when that directory has
 `issuekit.toml` or a `[tool.issuekit]` table in `pyproject.toml`. Otherwise it
 tries the enclosing git root, which qualifies when it has such config or the
