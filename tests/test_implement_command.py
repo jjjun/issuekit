@@ -1715,7 +1715,7 @@ def test_implement_command_reports_author_self_assignment(
 
     assert exit_code == 1
     assert not FakeRunner.calls
-    assert "self-implementation is not allowed" in capsys.readouterr().err
+    assert "Same-name implementation is allowed only" in capsys.readouterr().err
 
 
 def test_implement_command_reports_missing_issue(

@@ -340,9 +340,10 @@ def test_reclaim_issue_rejects_non_ascii_reason(monkeypatch) -> None:
 def test_claim_issue_surfaces_api_transition_error(monkeypatch) -> None:
     client = FakeIssuekitClient([api_issue(1, "First", assignee="codex", author="codex")])
 
-    with pytest.raises(WorkflowError, match="self-implementation is not allowed") as excinfo:
+    with pytest.raises(WorkflowError, match="Same-name implementation is allowed only") as excinfo:
         claim_issue(1, "codex", config=_config(client, monkeypatch))
 
+    assert excinfo.value.code == "forbidden_self_implement"
     message = str(excinfo.value)
     assert "Guard: server author-implementer guard (mine-py)." in message
     assert "`--allow-author-session` does not bypass it" in message

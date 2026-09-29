@@ -664,8 +664,10 @@ class FakeIssueSurface:
                 pass
             else:
                 raise WorkflowError(
-                    f"Issue #{issue_id} was authored by {assignee}; self-implementation is not allowed.",
-                    code="invalid_transition",
+                    f"Issue #{issue_id} was authored by {assignee}. Same-name implementation "
+                    "is allowed only when both the authoring and implementing requests "
+                    "supply distinct session identities.",
+                    code="forbidden_self_implement",
                 )
         issue["status"] = "in_progress"
         issue["assignee"] = assignee
