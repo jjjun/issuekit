@@ -31,7 +31,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         type=float,
         default=DEFAULT_STALE_AFTER_SEC,
         help=(
-            "Flag a claim whose worker has not sent a heartbeat for at least "
+            "Flag a claim whose worker has not sent a heartbeat for more than "
             f"this many seconds (default: {int(DEFAULT_STALE_AFTER_SEC)})."
         ),
     )

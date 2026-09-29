@@ -49,5 +49,8 @@ means the deployment predates it. Every mine-py transition request schema sets
 `extra="forbid"`, so an unknown field fails the whole request and the
 transition does not happen.
 
-`client._request` swallows the detail and reports only "Unprocessable Entity";
-use `_send` as above when the detail is what you need.
+`client._request` does not print the detail: the `WorkflowError` it raises has
+only the reason phrase ("Unprocessable Entity") as its message, because a 422
+`detail` is a list rather than a string. The parsed body is kept on the
+exception, so read `exc.details["detail"]`, or use `_send` as above to see the
+raw response.

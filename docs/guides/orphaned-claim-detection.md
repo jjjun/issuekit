@@ -12,13 +12,20 @@ command cross-references the two and flags an implementing issue when either:
 
 - `no_worker`: no registered worker matches the claim's worker key, so the
   holder is gone; or
-- `expired_heartbeat`: a matching worker exists but has not sent a heartbeat
-  for at least `--stale-after-sec` seconds (default 300).
+- `expired_heartbeat`: a matching worker exists but its last heartbeat is
+  more than `--stale-after-sec` seconds old (default 300).
 
 Directed but unclaimed work is also reported when its `target_worker` is gone
 or stale, using `directed_no_worker` or `directed_expired_heartbeat`. These
 issues are not implementing claims, but they will not return to the repo pool
 until the directed target is cleared.
+
+Two cases are never flagged, because there is no liveness signal to judge:
+
+- An implementing issue with no recorded worker. `reclaim` refuses it unless
+  you pass `--force`.
+- An issue whose matching worker has a missing or unparseable `last_seen`.
+  That worker counts as live.
 
 ```console
 $ issuekit orphans
@@ -31,21 +38,30 @@ on `issuekit add`), not by a one-shot `issuekit claim`/`issuekit implement`.
 A long-running implementer run through `serve` heartbeats at the configured
 interval (default 60s) and is not flagged; a manual one-shot implementer that
 holds a claim without running `serve` may show as `expired_heartbeat`. Keep the
-staleness window several heartbeat periods wide.
+staleness window several heartbeat periods wide. `orphans` prints a warning
+when `--stale-after-sec` is not wider than the configured
+`worker_heartbeat_interval_sec`, since a healthy worker may then look stale
+between beats.
 
 ## Recovery
 
 Use `issuekit reclaim <id>` to return a listed stale claim to the implement
 pool. The command re-checks `orphans` before calling the API and passes the
-detected worker as a race guard, so a resumed holder is not overwritten. Use
-`--force` only for human emergency recovery when the staleness check should be
-skipped. `--force` still sends the worker that held the issue when issuekit read
-it, so it skips only the staleness check. If that worker resumes or another
-worker takes the claim between the read and the reclaim request, the API returns
-`race_lost` instead of overwriting the current holder. This keeps the emergency
-path optimistic-concurrency safe; there is intentionally no unconditional
-override flag. The one case where `--force` sends `expected_worker=None` is an
-issue with no recorded worker, where there is no holder to guard against.
+detected worker as a race guard, so a resumed holder is not overwritten. That
+re-check uses `--stale-after-sec` (default 300), so pass the same window you
+used with `orphans`. `--reason <text>` records an optional ASCII audit reason
+with the reclaim event.
+
+Use `--force` only for human emergency recovery when the staleness check should
+be skipped. `--force` still sends the worker that held the issue when issuekit
+read it, so it skips only the staleness check. If that worker resumes or
+another worker takes the claim between the read and the reclaim request, the
+API returns `race_lost` instead of overwriting the current holder. This keeps
+the emergency path optimistic-concurrency safe; there is intentionally no
+unconditional override flag. The one case where `--force` sends
+`expected_worker=None` is an issue with no recorded worker, where there is no
+holder to guard against; `--force` is the only way to reclaim such an issue,
+because `orphans` never lists it.
 
 Use `issuekit readdress <id>` to clear a directed `target_worker` and return
 that issue to the repo pool. The command sends the target worker it observed as

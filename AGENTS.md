@@ -24,7 +24,7 @@ from the repo root so the MCP server resolves the repo configuration.
 - Repo-local `.env` is trusted input for `ISSUEKIT_*` keys only; sensitive API
   settings loaded from `.env` print a stderr notice.
 - Write all files as UTF-8 without a BOM and with LF line endings.
-- Build and test with `uv sync`, `uv run pytest`, and
+- Build and test with `uv sync`, `uv run ruff check`, `uv run pytest`, and
   `uv run issuekit check-encoding`. Before submit, also run
   `uv run issuekit check-encoding --gate`.
 - The dependency audit is automated. Code tests run manually only via

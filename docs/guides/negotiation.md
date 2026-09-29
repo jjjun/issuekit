@@ -36,6 +36,9 @@ checkout instead; it must declare the same project as `--to`:
 issuekit negotiate --from-issue <id> --to <project> --initiator-side provider --provider-agent <agent> --consumer-agent <agent> --counterpart-ref <ref>
 ```
 
+`--model` and `--reasoning-effort` apply to both agents for the run, and
+`--json` prints the result as JSON.
+
 A pending proposal authored by the current project can seed the thread instead.
 The proposal target is inferred from its qualified ref, and the initiating
 project must be the consumer because the target proposal becomes the provider
@@ -54,11 +57,18 @@ pending triage, cancel the thread explicitly:
 issuekit negotiate --cancel <thread_id> --from-proposal <project>#proposal:<id>
 ```
 
+`--cancel` also accepts `--to <project>` in place of the proposal ref; either
+way it cancels the thread in the target project's thread store.
+
 The initiating checkout still supplies the configuration for the thread,
 agent selection, and issues created by finalization. The counterpart ref is only
 the counterpart agent's inspection directory; its checkout configuration is read
-only to verify its declared project, and its worker identity is not loaded. The
-counterpart-ref checkout must be clean before the run starts.
+only to verify its declared project, and its worker identity is not loaded. An
+explicit `--counterpart-ref` must point to a clean checkout, or the command
+fails. When no ref declares the target project, the counterpart agent inspects
+the initiating checkout instead. The same fallback applies when the
+automatically picked ref's checkout is dirty; issuekit prints a warning and
+ignores that ref.
 
 Both agents are instructed to inspect their checkout read-only. As a backstop,
 issuekit discards a turn's output when it leaves worktree changes or moves HEAD
@@ -76,8 +86,11 @@ Each entry has one of these verdicts:
 - `blocked`
 
 A thread's status is `negotiating`, `agreed`, `blocked`, or `cancelled`. Any
-`blocked` entry makes the thread blocked. Cancellation applies only to
-proposal-seeded threads.
+`blocked` entry makes the thread blocked. `--cancel` moves a thread that is
+still `negotiating` to `cancelled` in the store of the project named by `--to`
+or the `--from-proposal` ref. It is meant for proposal-seeded threads, which
+live in the target project's store; an issue-seeded thread lives in the
+initiating project's store, so cancelling one takes `--to <initiating-project>`.
 
 A thread becomes agreed only when the contract text matches after normalization,
 not merely because both sides chose `agree`. It converges in either of these
@@ -85,7 +98,8 @@ cases:
 
 - The latest entry is `agree` and an earlier entry from the other side has the
   identical contract.
-- Both sides have an `agree` entry and every agreed contract hash is identical.
+- Each side has an `agree` entry with a contract, and the latest such contract
+  from each side is identical. Earlier `agree` entries are not compared.
 
 ## Rounds and escalation
 
@@ -107,6 +121,24 @@ invocation starts new sessions, because thread storage does not record session
 ids and the counterpart side may run on another machine. The round prompt is
 unchanged either way, so a side that cannot resume behaves exactly as before.
 
+## Resuming and failed turns
+
+Rerunning the same command continues the existing thread:
+
+- With `--from-issue`, issuekit looks only at `negotiating` threads and resumes
+  the one whose entries came from that issue. If several match, the command
+  fails and asks you to inspect them with `issuekit threads`.
+- With `--from-proposal`, issuekit reuses the thread linked to the proposal. If
+  that thread is already `agreed` or `blocked`, the command returns the stored
+  outcome without running agents. A `cancelled` thread cannot be resumed.
+
+A rerun must pass the same `--initiator-side` as the run that opened the
+thread; otherwise it fails.
+
+If an agent turn times out, exits non-zero, returns output that cannot be
+parsed, or changes the repository, the command exits 1 without storing that
+turn. The thread stays `negotiating`; rerun the same command to continue it.
+
 ## Inspect and finalize
 
 Use `issuekit threads` to list negotiation threads, or pass a thread id to
@@ -120,6 +152,11 @@ issuekit threads --status agreed
 
 `threads --status` filters the listed threads by their stored thread status:
 `negotiating`, `agreed`, `blocked`, or `cancelled`.
+
+`threads` and the MCP `list_negotiation_threads` tool read only the current
+project's thread store. Issue-seeded threads are stored in the initiating
+project, but proposal-seeded threads are stored in the target project, so
+inspect those from a checkout of the target project.
 
 After a thread is agreed, finalize it with the target project:
 
@@ -135,18 +172,21 @@ issuekit negotiate --finalize <thread_id> --from-proposal <project>#proposal:<id
 ```
 
 Finalization creates and cross-links provider and consumer implementation
-issues. For a proposal-seeded thread, the API atomically adopts the source as
-the provider issue and creates or reuses the dependent consumer issue; retrying
-the command returns the same refs. It refuses threads that are not agreed. The
-author agent
-is resolved from `--author-agent`, then `default_implementer`, then a single
-enabled assignee. `--priority` controls the priority of the created issues.
+issues, and the consumer issue depends on the provider issue. For an
+issue-seeded thread, issuekit creates both issues. For a proposal-seeded
+thread, the API atomically adopts the source as the provider issue and creates
+or reuses the dependent consumer issue. Either way, rerunning `--finalize` on a
+finalized thread returns the existing refs. It refuses threads that are not
+agreed. The author agent is resolved from `--author-agent`, then
+`default_implementer`, then a single enabled assignee. `--priority` controls
+the priority of the created issues.
 
 ## Mock mode
 
 `--mock` uses `MockNegotiationStore`, persisted at
 `.agent-runs/negotiations/mock.json`, and `MockIssueCreator`. It prevents API
-proposals and issues from being created.
+proposals and issues from being created. `--cancel`, and running rounds with
+`--from-proposal`, require the API store and reject `--mock`.
 
 Mock mode does not mock the agents. The configured agent CLIs still run and
 consume real tokens, so it is not a dry run.

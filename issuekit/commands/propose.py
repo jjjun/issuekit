@@ -61,7 +61,10 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         "propose",
         help="Send a cross-repository proposal to a related repository.",
     )
-    propose_parser.add_argument("--to", help="Target related repository ref.")
+    propose_parser.add_argument(
+        "--to",
+        help="Target API project, or worker.repo[@machine] to direct the proposal to a worker.",
+    )
     propose_parser.add_argument("--title", help="Proposal title.")
     propose_parser.add_argument("--body", help="Inline proposal body.")
     propose_parser.add_argument("--body-file", help="File containing proposal body.")

@@ -21,8 +21,8 @@ they keep a stdio connection to the old server process.
 
 ## Developer commands
 
-Issuekit developers working from a Windows checkout should use the repeatable
-developer commands instead:
+Issuekit developers working from a checkout should use the repeatable developer
+commands instead:
 
 ```powershell
 uv run issuekit dev-tool install-editable
@@ -30,15 +30,21 @@ uv run issuekit dev-tool reload-mcp
 uv run issuekit dev-tool reinstall
 ```
 
+`install-editable` and `reinstall` are Windows-only; on other platforms they
+print an error diagnostic and change nothing. Both stop running
+`issuekit-mcp.exe` processes first unless you pass `--no-stop`. `reload-mcp`
+works on Windows and POSIX.
+
 `install-editable` reflects source edits the next time a global `issuekit` or
-`issuekit-mcp` process starts. `reload-mcp` stops only matching
-`issuekit-mcp.exe` processes and reports their PIDs and executable paths when
-available. It cannot respawn or reconnect an already-open codex or Claude Code
-stdio MCP transport; the MCP client owns that connection. If MCP tools still
-return `Transport closed` after `reload-mcp`, reload or restart the MCP client
-session, reload the thread/window if supported, or start a fresh session so the
-client can spawn a new `issuekit-mcp` transport. `reinstall` is the recovery
-path when editable metadata gets stale or a global tool environment is
+`issuekit-mcp` process starts. `reload-mcp` stops only matching MCP server
+processes (`issuekit-mcp.exe` on Windows; on POSIX, processes whose command
+line runs an `issuekit-mcp` script) and reports their PIDs and executable paths
+when available. It cannot respawn or reconnect an already-open codex or Claude
+Code stdio MCP transport; the MCP client owns that connection. If MCP tools
+still return `Transport closed` after `reload-mcp`, reload or restart the MCP
+client session, reload the thread/window if supported, or start a fresh session
+so the client can spawn a new `issuekit-mcp` transport. `reinstall` is the
+recovery path when editable metadata gets stale or a global tool environment is
 partially broken. All generated uv install commands use an absolute checkout
 path, never a bare `.`.
 
@@ -68,7 +74,8 @@ Automation should use the stable JSON contract:
 issuekit setup --json
 ```
 
-This still scaffolds the repo, but prints one JSON object with `ok`, `scaffold`,
+This still scaffolds the repo, but prints one JSON object with `ok`,
+`client_transport_check`, `scaffold` (`written`, `skipped`, and `guidance`),
 and `diagnostics` fields instead of the human checklist. `ok: false` means at
 least one diagnostic still needs action, often an optional global install or
 configuration step; the command still exits 0 when repo scaffolding succeeds.
@@ -80,25 +87,50 @@ issuekit setup check --json
 ```
 
 The check does not write files or run subprocesses. Its JSON object reports
-`ok`, `needs_setup`, `would_write`, `would_update`, `client_transport_check`,
-`diagnostics`, and `actions` so automation can decide whether to run the
-applying command. `client_transport_check.status` is `unsupported_from_cli`
-because a standalone CLI can verify static readiness but cannot prove that an
-already-open codex or Claude Code stdio transport is live. `issuekit setup`
-keeps its applying behavior, and `issuekit setup apply --json` is an explicit
-alias for that path.
+`ok`, `state`, `needs_setup`, `would_write`, `would_update`,
+`client_transport_check`, `diagnostics`, and `actions` so automation can decide
+whether to run the applying command. `state` summarizes the actions as
+`current`, `missing`, `stale`, or `blocked`. `client_transport_check.status` is
+`unsupported_from_cli` because a standalone CLI can verify static readiness but
+cannot prove that an already-open codex or Claude Code stdio transport is live.
+`issuekit setup --check` is an alias for `issuekit setup check`.
+`issuekit setup` keeps its applying behavior, and `issuekit setup apply --json`
+is an explicit alias for that path.
 
-The repo scaffold writes `.mcp.json`, appends `.codex/config.toml` when needed,
-and adds thin handoff references to `AGENTS.md` and `CLAUDE.md`. The generated
-MCP entries run the global `issuekit-mcp` binary; they do not use `uv run`, so
-they work outside the issuekit checkout. Launch codex or Claude Code from the
-target repo root so the server resolves repo configuration.
+Because it runs `init`, `issuekit setup` writes the base init files:
+`.gitattributes`, `.editorconfig`, the issues directory `README.md`
+(`docs/issues/README.md` by default), `.pre-commit-config.yaml` with the
+`check-encoding` and `author-guard` hooks, and the `issuekit.local.toml` and
+`.agent-runs/` entries in `.gitignore`. Existing templated files are skipped
+unless you pass `--force`; an existing `.pre-commit-config.yaml` without the
+hooks gets printed guidance instead of an edit.
+
+The MCP part of the scaffold writes `.mcp.json`, appends `.codex/config.toml`
+when needed, and adds thin handoff references to `AGENTS.md` and `CLAUDE.md`.
+The generated MCP entries run the global `issuekit-mcp` binary; they do not use
+`uv run`, so they work outside the issuekit checkout. Launch codex or Claude
+Code from the target repo root so the server resolves repo configuration.
 
 ## Health and troubleshooting
 
-When the MCP transport is live, the MCP `health` tool reports the server cwd,
-issuekit version, resolved project, API URL presence, local worker presence,
-and author guard state without mutating issue lifecycle state.
+When the MCP transport is live, the MCP `health` tool reports configuration
+status without calling the tracker or mutating issue lifecycle state. Its
+object has `ok`, `version`, `cwd`, `project`, `api_url_configured`,
+`token_cached`, `token_expires_at`, `worker_present`, `worker`,
+`author_guard_active`, `author_guard`, and `errors`. `ok` is false and `errors`
+lists the cause when `issuekit.local.toml` or the issuekit config cannot be
+loaded. `token_cached` and `token_expires_at` describe the cached API token for
+the configured API URL.
+
+`cwd` is the resolved config root that the tracker tools load configuration
+from. The server uses its own working directory when that directory has
+`issuekit.toml` or a `[tool.issuekit]` table in `pyproject.toml`. Otherwise it
+tries the enclosing git root, which qualifies when it has such config or the
+machine config sets `api_url`, and then each workspace root the MCP client
+reports, with the same checks. If none qualifies, it falls back to the server
+working directory. A `cwd` pointing somewhere unexpected usually means the
+client launched the server outside the repo and did not report a matching
+workspace root.
 
 If an MCP client still exposes `mcp__issuekit` tools but every call fails with
 `Transport closed`, tool discovery is stale. Until the client transport is
@@ -121,6 +153,40 @@ from a checkout with:
 ```powershell
 uv run --group mcp issuekit-mcp
 ```
+
+## MCP tools
+
+The server registers these tools. The listed CLI command performs the same
+operation, so it is the fallback when the MCP transport is down.
+
+| Tool | Purpose | CLI equivalent |
+|------|---------|----------------|
+| `health` | Read-only server and configuration status. | none; `info --json` is closest |
+| `get_protocol` | Read the handoff protocol for an agent or role. | `protocol` |
+| `claim_next_task` | Claim the next eligible issue for an implementer. | `claim` |
+| `submit_for_review` | Submit an implemented issue for review. | `submit-review` |
+| `next_review` | Read the next issue waiting for a reviewer. | `next-review` |
+| `request_changes` | Return a review issue to its implementer with notes. | `request-changes` |
+| `approve` | Approve a review issue and complete it. | `approve` |
+| `get_issue` | Read one active or completed issue. | `show` |
+| `update_issue` | Edit title, body, appended text, priority, or dependencies. | `edit` |
+| `list_queue` | List active issues, filtered by assignee and stage. | `queue` |
+| `list_workers` | List registered workers and their roles. | `workers` |
+| `remove_worker` | Remove a registered worker. | `workers remove` |
+| `remove_repo` | Remove a repo catalog entry. | `repos remove` |
+| `list_orphans` | List implementing claims whose worker is gone or silent. | `orphans` |
+| `reclaim_issue` | Return an orphaned claim to the implement pool. | `reclaim` |
+| `readdress_issue` | Return a directed issue to the repo pool. | `readdress` |
+| `dispatch_issue` | Direct an issue to a registered worker. | `dispatch` |
+| `list_project_profiles` | List stored project capability profiles. | `profile --all` |
+| `propose` | Send a proposal to another project's inbox. | `propose` |
+| `list_incoming` | List pending incoming proposals. | `incoming` |
+| `list_outgoing` | List proposals this project sent to a target. | `outgoing --to` |
+| `list_negotiation_threads` | Inspect negotiation threads without launching agents. | `threads` |
+| `adopt_proposal` | Adopt an incoming proposal as an active issue. | `adopt` |
+| `discard_proposal` | Discard an incoming or sent pending proposal. | `discard` |
+| `create_proposal_check` | Ask a target worker to evaluate a proposal. | `proposal-check-request` |
+| `list_proposal_checks` | List proposal checks addressed to this checkout. | `proposal-checks --list` |
 
 ## MCP boundary
 

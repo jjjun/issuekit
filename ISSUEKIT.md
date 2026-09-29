@@ -19,8 +19,12 @@ that API.
   as MCP tools. Commands that launch other agents (`implement`, `review`,
   `serve`, `triage`, `request`, `negotiate`) stay CLI-only; see
   [`docs/guides/mcp-server.md`](docs/guides/mcp-server.md#mcp-boundary).
-- Headless coding-agent adapters (codex, claude, kimi) driven by `AgentRunner`;
-  see [`issuekit/agentrun/README.md`](issuekit/agentrun/README.md) for the
+- Headless coding-agent adapters (codex, claude, kimi) driven by `AgentRunner`
+  through the default `exec` runtime. Codex implementer runs can opt into the
+  `codex_app_server` runtime (`agentrun/app_server.py` transport,
+  `agents/app_server_runtime.py` issue-owned attempts); see
+  [`docs/guides/configuration.md`](docs/guides/configuration.md) and
+  [`issuekit/agentrun/README.md`](issuekit/agentrun/README.md) for the
   runtime boundary and extension path.
 - `pytest` for the test suite; a `check-encoding` gate enforces UTF-8 without
   BOM, no CRLF, and no mojibake in tracked files.
@@ -75,6 +79,11 @@ These modules are deliberately not nested: moving them only for symmetry would
 blur the central workflow boundary. Reconsider their placement only when a
 specific responsibility has a clear package boundary and its callers can depend
 on that boundary instead of the shared workflow core.
+
+The remaining top-level modules are small standard-library-only leaves shared
+across packages: `file_permissions.py` (owner-only file and directory
+permissions), `timestamps.py` (UTC timestamp parsing), and
+`worker_constants.py` (worker heartbeat timing).
 
 Dependencies point inward from entry points and workflows toward the API and
 tracker layers. `commands`, `mcp`, `agents`, and `negotiation` sit above those

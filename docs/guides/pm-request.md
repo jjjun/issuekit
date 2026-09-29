@@ -43,10 +43,12 @@ reasoning_effort = "medium"
 
 `agent` defaults to an empty value. It is the only way to select the router
 agent because `request` has no `--agent` flag; without it the command fails.
-`max_targets` defaults to 3 and limits how many projects one request can
-reach. `max_clarify_rounds` defaults to 2. After that many requester answers,
-issuekit calls the router with `force_final`. If it still returns `clarify`,
-issuekit forcibly converts the decision to a rejection with the reason
+`max_targets` defaults to 3 and limits how many targets one route decision can
+list. A decision with more targets is a parse error: the command fails without
+sending anything instead of truncating the list. `max_clarify_rounds` defaults
+to 2. After that many requester answers, issuekit calls the router with
+`force_final`. If it still returns `clarify`, issuekit forcibly converts the
+decision to a rejection with the reason
 `Clarification limit reached and the router still requested clarification.`
 
 `[agents.<name>.roles.router]` supplies the router role's model and reasoning
@@ -100,6 +102,18 @@ with `--answer`, or an existing proposal reference passed with `--link`.
 `--target` is valid only with `--answer` or `--link`. `--link` also requires
 both `--target` and the proposal reference as positional `text`.
 
+## Route targets
+
+In a route decision, as `--dry-run --json` shows it, each target names a
+candidate project and supplies the proposal title and body. A target can also
+set `blocking`, which becomes the proposal's blocking flag, and `depends_on`, a
+list of dependency refs (`project#N`, `project#issue:N`, or
+`project#proposal:N`) or `target:<index>` placeholders. A placeholder points at
+an earlier target in the same decision by its zero-based position. Targets are
+sent in order, so the placeholder resolves to that earlier target's sent
+proposal ref, such as `project#proposal:N`. A placeholder that points at the
+same or a later target is a parse error.
+
 ## Clarifications and saved state
 
 The PM checkout stores request state in `.agent-runs/pm-requests.json`. This
@@ -115,7 +129,12 @@ state lets the command distinguish two similarly named flows:
    question. Run `issuekit request --inbox` to find these target-side replies,
    then answer with `issuekit request --answer REQUEST_ID --target PROJECT
    "answer text"`. Issuekit sends an amended proposal to that target and
-   records the clarification.
+   records the clarification. The amended proposal keeps the original body,
+   adds a `## Clarifications` section with every question and answer so far,
+   and ends with `Supersedes: <old ref>`, so the target's
+   [agent triage](cross-project-proposals.md#agent-triage) discards the old
+   pending proposal when it adopts the new one. The request state switches to
+   the new proposal ref, and the reply in the PM inbox is discarded.
 
 `--inbox` is only for replies from target-project triage. It does not show a
 pre-routing router question; that question is printed by the original request

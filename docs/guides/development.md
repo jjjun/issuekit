@@ -3,13 +3,17 @@
 This repo dogfoods issuekit. Implementation tasks and cross-project proposals
 live in the configured API project.
 
-Windows developer global-tool workflow:
+Developer global-tool workflow:
 
 ```powershell
 uv run issuekit dev-tool install-editable
 uv run issuekit dev-tool reload-mcp
 uv run issuekit dev-tool reinstall
 ```
+
+`install-editable` and `reinstall` are Windows-only. `reload-mcp` works on
+Windows and POSIX; see [MCP server](mcp-server.md#developer-commands) for what
+each action does.
 
 Pass `--json` to any `dev-tool` action for automation. The JSON payload includes
 `ok`, `actions`, `stopped_processes`, `commands`, `diagnostics`, and

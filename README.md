@@ -21,7 +21,9 @@ uv run issuekit --help
 uv run issuekit dev-tool install-editable
 ```
 
-See [docs/guides/installation.md](docs/guides/installation.md) for details.
+`dev-tool install-editable` installs the checkout as the global editable tool
+and is Windows-only. See
+[docs/guides/installation.md](docs/guides/installation.md) for details.
 
 ## Quick start
 
@@ -58,7 +60,7 @@ Full documentation lives in [`docs/`](docs).
 | [Orphaned claim detection](docs/guides/orphaned-claim-detection.md) | Finding and reclaiming stalled implementing claims. |
 | [Separation-of-duties guards](docs/guides/separation-of-duties.md) | The four guards, their error strings, and recovery paths. |
 | [Testing](docs/guides/testing.md) | Local gates, live contract tests, CI workflows. |
-| [Development](docs/guides/development.md) | Dogfooding workflow and Windows developer commands. |
+| [Development](docs/guides/development.md) | Dogfooding workflow and developer global-tool commands. |
 
 Agents working in this repo also keep operational memory in
 [`docs/agent-notes/`](docs/agent-notes).
@@ -66,9 +68,10 @@ Agents working in this repo also keep operational memory in
 ## Tests
 
 ```powershell
+uv run ruff check
 uv run pytest
 uv run issuekit check-encoding
 ```
 
-See [docs/guides/testing.md](docs/guides/testing.md) for live contract tests and
-the manual CI workflow.
+See [docs/guides/testing.md](docs/guides/testing.md) for the submit gate, live
+contract tests, and the CI workflows.
