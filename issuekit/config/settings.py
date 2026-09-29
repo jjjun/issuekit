@@ -93,7 +93,6 @@ class IssuekitConfig:
     api_url: str = ""
     project: str = "issuekit"
     api_timeout: float = 30.0
-    ascii_id_threshold: int = 0
     issues_dir: str = "docs/issues"
     assignees: tuple[str, ...] = ("codex", "claude", "kimi")
     stages: tuple[str, ...] = (
@@ -333,9 +332,6 @@ def load_config(cwd: Path | str = ".") -> IssuekitConfig:
         project=project,
         api_timeout=float(
             os.getenv("ISSUEKIT_API_TIMEOUT", raw_config.get("api_timeout", IssuekitConfig.api_timeout))
-        ),
-        ascii_id_threshold=int(
-            raw_config.get("ascii_id_threshold", IssuekitConfig.ascii_id_threshold)
         ),
         issues_dir=str(raw_config.get("issues_dir", IssuekitConfig.issues_dir)),
         assignees=assignees,
