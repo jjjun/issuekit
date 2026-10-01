@@ -49,6 +49,7 @@ def run(args) -> int:
                 f"ref={issue.ref}",
                 f"assignee={issue.assignee or '-'}",
                 f"stage={issue.stage or '-'}",
+                f"priority={issue.priority or '-'}",
             ]
             if issue.target_worker:
                 parts.append(f"target_worker={issue.target_worker}")

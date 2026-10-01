@@ -34,7 +34,7 @@ def test_edit_command_updates_title_body_priority_and_prints_json(
             "--body",
             "New body",
             "--priority",
-            "high",
+            "low",
             "--json",
         ]
     )
@@ -43,11 +43,12 @@ def test_edit_command_updates_title_body_priority_and_prints_json(
     output = json.loads(capsys.readouterr().out)
     assert output["title"] == "New title"
     assert output["body"] == "New body"
+    assert output["priority"] == "low"
     assert client.calls == [
         {
             "method": "update_issue",
             "number": 1,
-            "body": {"title": "New title", "body": "New body", "priority": "high"},
+            "body": {"title": "New title", "body": "New body", "priority": "low"},
         }
     ]
 

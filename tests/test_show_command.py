@@ -110,6 +110,16 @@ def test_show_does_not_flag_fresh_run(tmp_path: Path, monkeypatch, capsys) -> No
     assert "stale_run" not in payload
 
 
+def test_show_json_includes_issue_priority(tmp_path: Path, monkeypatch, capsys) -> None:
+    client = FakeIssuekitClient([api_issue(1, "First", priority="high")])
+    _configure_api(tmp_path, monkeypatch, client)
+
+    assert cli.main(["show", "1", "--json"]) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["priority"] == "high"
+
+
 def test_show_ignores_stale_run_when_issue_not_implementing(
     tmp_path: Path, monkeypatch, capsys
 ) -> None:

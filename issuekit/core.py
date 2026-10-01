@@ -57,6 +57,7 @@ def issue_dict(issue: Issue, *, include_body: bool = False) -> dict[str, object]
         "status": issue.issue_status,
         "assignee": issue.assignee,
         "stage": issue.stage,
+        "priority": issue.priority,
         "implementer": issue.implementer,
         "author": issue.author,
         "ref": issue.ref,

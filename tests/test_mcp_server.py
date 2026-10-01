@@ -1117,6 +1117,7 @@ def test_read_only_cli_payloads_match_mcp_tools(
     before = client.get_issue(1)
 
     mcp_issue = _call(server, "get_issue", {"id": 1})
+    assert mcp_issue["priority"] == "medium"
     assert cli.main(["show", "1", "--json"]) == 0
     cli_issue = json.loads(capsys.readouterr().out)
 
@@ -1239,6 +1240,7 @@ def test_list_queue_includes_target_worker(tmp_path: Path, monkeypatch) -> None:
             "status": "active",
             "assignee": "codex",
             "stage": "",
+            "priority": "medium",
             "implementer": "",
             "author": "",
             "ref": "demo#1",
