@@ -1282,9 +1282,22 @@ def test_shipped_codex_defaults_enable_guardrails() -> None:
     assert codex.model is None
     assert codex.prompt_suffix is not None
     assert "minimal, additive diffs" in codex.prompt_suffix
+    assert "does not ask you to change" in codex.prompt_suffix
+    assert "in a comment" in codex.prompt_suffix
     assert "mojibake" in codex.prompt_suffix
     assert policy.mojibake_gate is True
     assert policy.diff_shape_warn_deletions == 40
+
+
+def test_shipped_claude_defaults_enable_guardrails() -> None:
+    claude = dict(IssuekitConfig.agents)["claude"]
+    policy = dict(IssuekitConfig.agent_policies)["claude"]
+
+    assert claude.prompt_suffix is not None
+    assert "does not ask you to change" in claude.prompt_suffix
+    assert "in a comment" in claude.prompt_suffix
+    assert "mojibake" in claude.prompt_suffix
+    assert policy.mojibake_gate is True
 
 
 def test_shipped_kimi_defaults_do_not_enable_guardrails() -> None:
