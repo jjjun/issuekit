@@ -146,6 +146,10 @@ class IssueResourceMixin:
         payload = self._request("GET", f"/{number}")
         return ensure_dict(payload, "Issue response")
 
+    def get_issue_edit(self, number: int) -> JsonDict:
+        payload = self._request("GET", f"/{number}/edit")
+        return ensure_dict(payload, "Issue edit response")
+
     def create_issue(self, issue: Mapping[str, Any], *, session: str | None = None) -> JsonDict:
         body = dict(issue)
         if session is not None:

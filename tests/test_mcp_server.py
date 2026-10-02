@@ -1509,11 +1509,57 @@ def test_mcp_update_issue_edits_and_appends(tmp_path: Path, monkeypatch) -> None
             "body": {"title": "New", "body": "Replacement", "priority": "high"},
         },
         {
+            "method": "get_issue_edit",
+            "number": 1,
+            "body": {},
+        },
+        {
             "method": "update_issue",
             "number": 1,
             "body": {"body": "Replacement\n\nPlan section"},
         },
     ]
+
+
+def test_mcp_update_issue_append_uses_stored_body_without_rendered_workflow_sections(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stored_body = "Original body"
+    rendered_suffix = (
+        "\n\n## Handoff\n\nImplemented by codex.\n\n"
+        "## Review Feedback\n\nPlease correct the plan.\n"
+    )
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                1,
+                "Append",
+                status="in_progress",
+                stage="changes_requested",
+                body=stored_body,
+            )
+        ],
+        rendered_issue_suffixes={1: rendered_suffix},
+    )
+    _configure_api(tmp_path, monkeypatch, client)
+    server = create_server(tmp_path)
+
+    _call(
+        server,
+        "update_issue",
+        {"id": 1, "append": "Plan correction", "force": True},
+    )
+
+    update = client.calls[-1]
+    assert update == {
+        "method": "update_issue",
+        "number": 1,
+        "body": {"body": f"{stored_body}\n\nPlan correction"},
+    }
+    assert "## Handoff" not in update["body"]["body"]
+    assert "## Review Feedback" not in update["body"]["body"]
+    assert [call["method"] for call in client.calls] == ["get_issue_edit", "update_issue"]
 
 
 def test_mcp_update_issue_accepts_dependency_refs(tmp_path: Path, monkeypatch) -> None:

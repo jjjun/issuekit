@@ -24,6 +24,7 @@ class FakeIssuekitClient(FakeIssueSurface, FakeProposalSurface):
         stored_target_worker_override: str | None = None,
         adopt_not_found_attempts: int = 0,
         drop_adopted_issue_body_patch: bool = False,
+        rendered_issue_suffixes: dict[int, str] | None = None,
     ) -> None:
         if adopt_not_found_attempts < 0:
             raise ValueError("adopt_not_found_attempts must not be negative")
@@ -42,6 +43,7 @@ class FakeIssuekitClient(FakeIssueSurface, FakeProposalSurface):
         self._adopt_not_found_attempts = adopt_not_found_attempts
         self._adopted_issue_not_found_attempts: dict[int, int] = {}
         self._drop_adopted_issue_body_patch = drop_adopted_issue_body_patch
+        self._rendered_issue_suffixes = dict(rendered_issue_suffixes or {})
         self.calls: list[JsonDict] = []
         self.stored_target_worker_override = stored_target_worker_override
         # Real IssuekitClient carries the target project; the fake defaults to the
@@ -120,7 +122,17 @@ class FakeIssuekitClient(FakeIssueSurface, FakeProposalSurface):
             if remaining_attempts:
                 self._adopted_issue_not_found_attempts[number] = remaining_attempts - 1
                 raise WorkflowError(f"Issue #{number} was not found.", code="not_found")
-            return deepcopy(self._find(number))
+            issue = deepcopy(self._find(number))
+            if number in self._rendered_issue_suffixes:
+                issue["body"] = (
+                    f"{issue.get('body', '')}{self._rendered_issue_suffixes[number]}"
+                )
+            return issue
+
+    def get_issue_edit(self, number: int) -> JsonDict:
+        with self._lock:
+            self._record("get_issue_edit", number=number)
+            return {"body": deepcopy(self._find(number).get("body", ""))}
 
     def update_issue(self, number: int, issue: JsonDict) -> JsonDict:
         with self._lock:

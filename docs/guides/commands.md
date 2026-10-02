@@ -59,6 +59,9 @@
 | `issuekit triage --once [--model <model-id>] [--reasoning-effort <value>] [--timeout-sec <seconds>] [--json]` | Launch a single agent triage loop that pulls pending inbound proposals. |
 | `issuekit request [<text>] [--answer <request-id>] [--status [<request-id>]] [--inbox] [--target <project>] [--link <request-id>] [--json] [--dry-run] [--timeout-sec <seconds>] [--model <model-id>] [--reasoning-effort <value>]` | Route a PM request to project proposal inboxes; see [PM request router](pm-request.md). |
 
+Text appended with `issuekit edit --append` or `--append-file` appears before
+workflow-rendered Handoff, Review Feedback, and Completion Notes sections.
+
 `issuekit info --json` includes `defaultReviewer`, the resolved
 `defaultImplementer`, its raw `configuredDefaultImplementer` value, and
 effective `agentRoles` including built-in role fallbacks. The text output shows

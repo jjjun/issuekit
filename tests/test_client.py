@@ -88,6 +88,26 @@ def test_client_list_issues_uses_collection_path_without_trailing_slash() -> Non
     assert seen_requests[0].url.path == "/api/issues/demo_project/issues"
 
 
+def test_client_get_issue_edit_uses_edit_endpoint() -> None:
+    seen_requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen_requests.append(request)
+        return httpx.Response(200, json={"body": "Stored body"})
+
+    client = IssuekitClient(
+        "https://mine.example",
+        project="demo_project",
+        token="static-token",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    assert client.get_issue_edit(42) == {"body": "Stored body"}
+    assert len(seen_requests) == 1
+    assert seen_requests[0].method == "GET"
+    assert seen_requests[0].url.path == "/api/issues/demo_project/issues/42/edit"
+
+
 def test_client_health_gets_unauthenticated_top_level_endpoint() -> None:
     seen_requests: list[httpx.Request] = []
 

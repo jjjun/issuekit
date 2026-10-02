@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import argparse
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from issuekit.commands._common import (
@@ -118,7 +118,7 @@ def edit_issue(
             )
 
         update_body = _body_update(
-            existing=existing,
+            stored_body=lambda: active_store.get_issue_edit_body(issue_id),
             body=body,
             body_file=body_file,
             append=append,
@@ -163,7 +163,7 @@ def _validate_edit_input(
 
 def _body_update(
     *,
-    existing: Issue,
+    stored_body: Callable[[], str],
     body: str | None,
     body_file: str | None,
     append: str | None,
@@ -180,11 +180,11 @@ def _body_update(
     if append is not None:
         append_body = append.strip()
         require_ascii(append_body, message="--append and --append-file must be ASCII-only.")
-        return f"{existing.body}\n\n{append_body}"
+        return f"{stored_body()}\n\n{append_body}"
     if append_file is not None:
         append_body = read_text_file(append_file)
         require_ascii(append_body, message="--append and --append-file must be ASCII-only.")
-        return f"{existing.body}\n\n{append_body}"
+        return f"{stored_body()}\n\n{append_body}"
     return None
 
 

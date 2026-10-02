@@ -71,6 +71,9 @@ class IssueStore(Protocol):
     def get_issue(self, issue_id: int) -> Issue | None:
         """Read one issue by id."""
 
+    def get_issue_edit_body(self, issue_id: int) -> str:
+        """Read the stored issue body without rendered workflow sections."""
+
     def update_issue(
         self,
         issue_id: int,
@@ -149,6 +152,16 @@ class ApiStore:
             if exc.code == "not_found":
                 return None
             raise
+
+    def get_issue_edit_body(self, issue_id: int) -> str:
+        response = self.client.get_issue_edit(issue_id)
+        body = response.get("body")
+        if not isinstance(body, str):
+            raise WorkflowError(
+                "Issue edit response body was not a string.",
+                code="invalid_response",
+            )
+        return body
 
     def find_for(self, assignee: str | None = None, stage: str | None = None) -> list[Issue]:
         return self._list_issues(assignee=assignee, stage=stage)

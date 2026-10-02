@@ -92,6 +92,68 @@ def test_edit_command_append_file_preserves_original_body(
     assert client.get_issue(1)["body"] == "Original body\n\n## Implementation Plan\n\nDo this."
 
 
+def test_edit_command_append_uses_stored_body_without_rendered_workflow_sections(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    stored_body = "Original body"
+    rendered_suffix = (
+        "\n\n## Handoff\n\nImplemented by codex.\n\n"
+        "## Review Feedback\n\nPlease correct the plan.\n"
+    )
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                1,
+                "Append",
+                status="in_progress",
+                stage="changes_requested",
+                body=stored_body,
+            )
+        ],
+        rendered_issue_suffixes={1: rendered_suffix},
+    )
+    _configure_api(tmp_path, monkeypatch, client)
+
+    exit_code = cli.main(
+        ["edit", "1", "--append", "## Plan correction\n\nUpdated plan.", "--force"]
+    )
+
+    assert exit_code == 0
+    capsys.readouterr()
+    update = client.calls[-1]
+    assert update == {
+        "method": "update_issue",
+        "number": 1,
+        "body": {"body": f"{stored_body}\n\n## Plan correction\n\nUpdated plan."},
+    }
+    assert "## Handoff" not in update["body"]["body"]
+    assert "## Review Feedback" not in update["body"]["body"]
+    assert [call["method"] for call in client.calls] == ["get_issue_edit", "update_issue"]
+
+
+def test_edit_command_title_only_does_not_read_stored_body(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient([api_issue(1, "Old title", body="Original body")])
+    _configure_api(tmp_path, monkeypatch, client)
+
+    exit_code = cli.main(["edit", "1", "--title", "New title"])
+
+    assert exit_code == 0
+    capsys.readouterr()
+    assert [call["method"] for call in client.calls] == ["update_issue"]
+
+
+def test_fake_client_preserves_null_issue_body_without_rendered_suffix() -> None:
+    client = FakeIssuekitClient([{"id": 1, "body": None}])
+
+    assert client.get_issue(1)["body"] is None
+
+
 def test_edit_command_reports_missing_issue(tmp_path: Path, monkeypatch, capsys) -> None:
     client = FakeIssuekitClient()
     _configure_api(tmp_path, monkeypatch, client)
