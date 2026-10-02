@@ -13,6 +13,7 @@ _SENSITIVE_DOTENV_KEYS = {
     "ISSUEKIT_API_PASSWORD",
     "ISSUEKIT_API_TOKEN",
 }
+_LOADED_DOTENV_VALUES: dict[str, str] = {}
 
 
 def load_dotenv(cwd: Path | str = ".") -> None:
@@ -33,11 +34,17 @@ def load_dotenv(cwd: Path | str = ".") -> None:
         if key in os.environ:
             continue
         os.environ[key] = value
+        _LOADED_DOTENV_VALUES[key] = value
         if key in _SENSITIVE_DOTENV_KEYS:
             print(
                 f"Notice: loaded {key} from repo-local dotenv file {dotenv_path}.",
                 file=sys.stderr,
             )
+
+
+def is_loaded_from_dotenv(key: str) -> bool:
+    """Return whether the current value was injected from a repo-local dotenv file."""
+    return key in _LOADED_DOTENV_VALUES and os.environ.get(key) == _LOADED_DOTENV_VALUES[key]
 
 
 def _parse_dotenv_line(line: str) -> tuple[str, str] | None:

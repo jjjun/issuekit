@@ -95,6 +95,46 @@ def test_load_config_reads_machine_config(tmp_path: Path, monkeypatch) -> None:
     assert config.machine_config_path == machine_path
 
 
+def test_load_config_tracks_api_url_source_by_configuration_layer(
+    tmp_path: Path, monkeypatch
+) -> None:
+    machine_path = tmp_path / "machine.toml"
+    machine_path.write_text("api_url = 'https://machine.example'\n", encoding="utf-8")
+    monkeypatch.setenv("ISSUEKIT_CONFIG", str(machine_path))
+
+    assert load_config(tmp_path).api_url_source == "machine_config"
+
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://repo.example'\n", encoding="utf-8"
+    )
+    assert load_config(tmp_path).api_url_source == "repo_config"
+
+    monkeypatch.setenv("ISSUEKIT_API_URL", "https://environment.example")
+    assert load_config(tmp_path).api_url_source == "env"
+
+
+def test_load_config_reports_unreadable_machine_config_clearly(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from issuekit.config import settings
+
+    machine_path = tmp_path / "machine.toml"
+    machine_path.write_text("api_url = 'https://private.example'\n", encoding="utf-8")
+    monkeypatch.setenv("ISSUEKIT_CONFIG", str(machine_path))
+
+    def raise_permission_error(_path: Path) -> dict[str, object]:
+        raise PermissionError(13, "Permission denied", str(machine_path))
+
+    monkeypatch.setattr(settings, "_load_config_toml", raise_permission_error)
+
+    with pytest.raises(ValueError, match="Cannot read machine config") as excinfo:
+        load_config(tmp_path)
+
+    assert str(machine_path) in str(excinfo.value)
+    assert "sandboxed process may be denied access" in str(excinfo.value)
+    assert "private.example" not in str(excinfo.value)
+
+
 def test_repo_config_overrides_machine_and_merges_agent_keys(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -585,6 +625,7 @@ def test_load_config_reads_api_url_from_dotenv(
 
     assert config.api_url == "https://mine.env"
     assert config.api_url == "https://mine.env"
+    assert config.api_url_source == "dotenv"
 
 
 def test_load_config_real_environment_overrides_dotenv(
@@ -602,6 +643,7 @@ def test_load_config_real_environment_overrides_dotenv(
     config = load_config(tmp_path)
 
     assert config.api_url == "https://mine.real-env"
+    assert config.api_url_source == "env"
     assert capsys.readouterr().err == ""
 
 

@@ -117,11 +117,45 @@ Code from the target repo root so the server resolves repo configuration.
 When the MCP transport is live, the MCP `health` tool reports configuration
 status without calling the tracker or mutating issue lifecycle state. Its
 object has `ok`, `version`, `cwd`, `project`, `api_url_configured`,
-`token_cached`, `token_expires_at`, `worker_present`, `worker`,
-`author_guard_active`, `author_guard`, and `errors`. `ok` is false and `errors`
-lists the cause when `issuekit.local.toml` or the issuekit config cannot be
-loaded. `token_cached` and `token_expires_at` describe the cached API token for
-the configured API URL.
+`api_url_source`, `api_url_origin`, `repo_config_source`, `machine_config_path`,
+`machine_config_status`, `env_present`, `token_cached`, `token_expires_at`,
+`worker_present`, `worker`, `author_guard_active`, `author_guard`, and `errors`.
+`api_url_origin` includes only the URL scheme, host, and port.
+`machine_config_status` is `missing`, `readable`, or
+`unreadable: <ExceptionClass>`. `env_present` maps selected `ISSUEKIT_*` names
+and `XDG_CONFIG_HOME` to booleans; it never reports their values. `ok` is false
+and `errors` lists the cause when `issuekit.local.toml` or the issuekit config
+cannot be loaded. `token_cached` and `token_expires_at` describe the cached API
+token for the configured API URL.
+
+### Environment seen by the MCP server
+
+MCP clients can start `issuekit-mcp` with a filtered environment. Codex forwards
+only its default allowlist and variables named in the server's `env_vars` list.
+For a repository server, add the settings issuekit uses to
+`.codex/config.toml`:
+
+```toml
+[mcp_servers.issuekit]
+command = "issuekit-mcp"
+args = []
+env_vars = ["ISSUEKIT_API_URL", "ISSUEKIT_PROJECT", "ISSUEKIT_CONFIG", "ISSUEKIT_TOKEN_CACHE", "ISSUEKIT_ALLOW_INSECURE", "ISSUEKIT_ENFORCE_AUTHOR_HANDOFF", "XDG_CONFIG_HOME"]
+```
+
+Alternatively, set `api_url` in the machine config at
+`~/.config/issuekit/config.toml` (or the path selected by `ISSUEKIT_CONFIG`).
+The MCP server re-reads TOML config on each tool call. Its process environment
+and values loaded from `.env` are fixed at server start, so restart the MCP
+server and reload the client session after changing them.
+
+Compare `issuekit info --json` fields `apiUrlSource` and `apiUrlOrigin` with
+MCP `health` fields `api_url_source` and `api_url_origin`. A client config `env`
+block (`.mcp.json` `env` or Codex `env`) overrides a value inherited from the
+shell, while `api_url_source` still reports `env` for either case. Tokens are
+cached per exact `api_url` string. If the client uses a second spelling of the
+same server, run `issuekit login` with `ISSUEKIT_API_URL` set to that spelling
+to cache a token for it. Compare `apiUrlOrigin` and `api_url_origin` when both
+processes report `env`; the origin omits userinfo, path, query, and fragment.
 
 `cwd` is the resolved config root that the MCP tools load configuration
 from. The server uses its own working directory when that directory has

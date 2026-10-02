@@ -51,6 +51,8 @@ def test_info_json_output(tmp_path: Path, monkeypatch, capsys) -> None:
     payload = json.loads(capsys.readouterr().out)
 
     assert payload["counts"] == {"active": 1, "completed": 1, "total": 2}
+    assert payload["apiUrlSource"] == "repo_config"
+    assert payload["apiUrlOrigin"] == "https://mine.example"
     assert "nextIssueId" not in payload
     assert "duplicateIds" not in payload
     assert "indexes" not in payload
@@ -220,6 +222,26 @@ def test_info_json_surfaces_machine_config_path(
     payload = json.loads(capsys.readouterr().out)
 
     assert payload["machineConfigPath"] == str(machine_path)
+
+
+def test_info_json_api_url_origin_strips_credentials_and_path(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    _configure_api(tmp_path, monkeypatch, _issue_client())
+    monkeypatch.setenv(
+        "ISSUEKIT_API_URL",
+        "https://user:secret@mine.example:8443/private/path?token=hidden#fragment",
+    )
+
+    cli.main(["info", "--json"])
+    output = capsys.readouterr().out
+    payload = json.loads(output)
+
+    assert payload["apiUrlSource"] == "env"
+    assert payload["apiUrlOrigin"] == "https://mine.example:8443"
+    assert "secret" not in output
+    assert "private/path" not in output
+    assert "token=hidden" not in output
 
 
 def test_info_reads_issue_list_once_for_counts(tmp_path: Path, monkeypatch, capsys) -> None:

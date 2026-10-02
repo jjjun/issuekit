@@ -133,6 +133,9 @@ def test_health_tool_reports_config_and_local_state(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("ISSUEKIT_TOKEN_CACHE", str(tmp_path / "token.json"))
+    machine_path = tmp_path / "machine.toml"
+    machine_path.write_text("issues_dir = 'machine/issues'\n", encoding="utf-8")
+    monkeypatch.setenv("ISSUEKIT_CONFIG", str(machine_path))
     expires_at = time.time() + 3600
     token_cache_module.write_cached_token("https://mine.example", "cached-token", expires_at)
     (tmp_path / "issuekit.toml").write_text(
@@ -169,6 +172,13 @@ def test_health_tool_reports_config_and_local_state(
     assert status["cwd"] == str(tmp_path.resolve())
     assert status["project"] == "demo"
     assert status["api_url_configured"] is True
+    assert status["api_url_source"] == "repo_config"
+    assert status["api_url_origin"] == "https://mine.example"
+    assert status["repo_config_source"] == "issuekit.toml"
+    assert status["machine_config_path"] == str(machine_path)
+    assert status["machine_config_status"] == "readable"
+    assert status["env_present"]["ISSUEKIT_TOKEN_CACHE"] is True
+    assert status["env_present"]["ISSUEKIT_API_TOKEN"] is False
     assert status["token_cached"] is True
     assert status["token_expires_at"] == expires_at
     assert status["worker_present"] is True
@@ -201,6 +211,60 @@ def test_health_tool_reports_token_cache_miss_for_resolved_url(
     assert status["token_cached"] is False
     assert status["token_expires_at"] is None
     assert status["errors"] == []
+
+
+def test_health_reloads_toml_config_after_server_creation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ISSUEKIT_CONFIG", "")
+    config_path = tmp_path / "issuekit.toml"
+    config_path.write_text(
+        "api_url = 'https://first.example'\nproject = 'first'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    server = create_server(tmp_path)
+
+    first_status = _call(server, "health", {})
+    config_path.write_text(
+        "api_url = 'https://second.example'\nproject = 'second'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    second_status = _call(server, "health", {})
+
+    assert first_status["project"] == "first"
+    assert first_status["api_url_origin"] == "https://first.example"
+    assert second_status["project"] == "second"
+    assert second_status["api_url_origin"] == "https://second.example"
+
+
+def test_health_reports_redacted_api_url_origin_and_environment_presence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(
+        "ISSUEKIT_API_URL",
+        "https://user:password@mine.example:8443/private/path?token=hidden#fragment",
+    )
+    monkeypatch.setenv("ISSUEKIT_API_TOKEN", "credential-value")
+    monkeypatch.setenv("ISSUEKIT_CONFIG", "")
+    monkeypatch.setenv("ISSUEKIT_TOKEN_CACHE", str(tmp_path / "tokens.json"))
+    (tmp_path / "issuekit.toml").write_text(
+        "project = 'demo'\n", encoding="utf-8", newline="\n"
+    )
+
+    status = _call(create_server(tmp_path), "health", {})
+    rendered = json.dumps(status)
+
+    assert status["api_url_source"] == "env"
+    assert status["api_url_origin"] == "https://mine.example:8443"
+    assert status["env_present"]["ISSUEKIT_API_TOKEN"] is True
+    assert status["machine_config_path"] is None
+    assert status["machine_config_status"] == "missing"
+    assert "password" not in rendered
+    assert "private/path" not in rendered
+    assert "token=hidden" not in rendered
+    assert "credential-value" not in rendered
 
 
 def test_list_proposal_checks_tool_returns_raw_checks(
@@ -925,7 +989,14 @@ def test_mcp_lifecycle_tools_discover_client_workspace_root(
     ]
 
 
-def test_mcp_lifecycle_missing_api_url_reports_searched_config_paths(tmp_path: Path) -> None:
+def test_mcp_lifecycle_missing_api_url_reports_config_statuses(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "pyproject.toml").write_text(
+        "[tool.issuekit]\nproject = 'demo'\n", encoding="utf-8"
+    )
+    monkeypatch.delenv("ISSUEKIT_API_URL", raising=False)
+    monkeypatch.setenv("ISSUEKIT_CONFIG", "")
     server = create_server(tmp_path)
 
     with pytest.raises(Exception) as excinfo:
@@ -934,12 +1005,33 @@ def test_mcp_lifecycle_missing_api_url_reports_searched_config_paths(tmp_path: P
     message = str(excinfo.value)
     assert "API store requires api_url" in message
     assert f"MCP resolved the repository root to {tmp_path.resolve()}" in message
-    assert str(tmp_path / "pyproject.toml") in message
-    assert str(tmp_path / "issuekit.toml") in message
-    assert str(tmp_path / ".env") in message
-    assert "Machine config:" in message
-    assert "(exists: False)" in message
-    assert "If the CLI succeeds" in message
+    assert "ISSUEKIT_API_URL is set in this process: not set" in message
+    assert (
+        "Repository config source: pyproject [tool.issuekit] (api_url: absent)."
+        in message
+    )
+    assert "Machine config: disabled (ISSUEKIT_CONFIG is empty)." in message
+    assert "If the CLI finds a machine config" not in message
+    assert "filtered environment" in message
+    assert 'env_vars = ["ISSUEKIT_API_URL"' in message
+    assert "issuekit show <id>" in message
+    assert "issuekit next-review" in message
+
+
+def test_missing_api_url_message_hints_when_machine_config_is_missing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    machine_path = tmp_path / "missing-machine.toml"
+    monkeypatch.delenv("ISSUEKIT_API_URL", raising=False)
+    monkeypatch.setenv("ISSUEKIT_CONFIG", str(machine_path))
+
+    message = mcp_server._missing_api_url_message(tmp_path)
+
+    assert f"Machine config: {machine_path} (missing)." in message
+    assert (
+        "If the CLI finds a machine config, this process has a different "
+        "ISSUEKIT_CONFIG, HOME, or XDG_CONFIG_HOME."
+    ) in message
 
 
 def test_mcp_loads_api_config_from_machine_config_at_git_root(
@@ -955,6 +1047,7 @@ def test_mcp_loads_api_config_from_machine_config_at_git_root(
         encoding="utf-8",
         newline="\n",
     )
+    monkeypatch.delenv("ISSUEKIT_API_URL", raising=False)
     monkeypatch.setenv("ISSUEKIT_CONFIG", str(machine_path))
     monkeypatch.setattr(mcp_server, "git_root", lambda root: repo_root)
 
@@ -965,10 +1058,81 @@ def test_mcp_loads_api_config_from_machine_config_at_git_root(
     assert config.api_url == "https://mine.example"
     assert config_root == repo_root
     message = mcp_server._missing_api_url_message(repo_root)
-    assert str(machine_path) in message
-    assert "(exists: True)" in message
+    assert f"Machine config: {machine_path} (readable; api_url: present)" in message
+    assert "If the CLI finds a machine config" not in message
     assert "issuekit show <id>" in message
     assert "issuekit next-review" in message
+
+
+def test_missing_api_url_message_explains_empty_process_api_url(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    (repo_root / "issuekit.toml").write_text("project = 'demo'\n", encoding="utf-8")
+    machine_path = tmp_path / "machine.toml"
+    machine_path.write_text(
+        "api_url = 'https://machine.example'\n", encoding="utf-8", newline="\n"
+    )
+    monkeypatch.setenv("ISSUEKIT_CONFIG", str(machine_path))
+    monkeypatch.setenv("ISSUEKIT_API_URL", " \t ")
+
+    with pytest.raises(Exception) as excinfo:
+        asyncio.run(mcp_server._load_api_config(repo_root))
+
+    message = str(excinfo.value)
+    assert (
+        "ISSUEKIT_API_URL is set in this process: set but empty "
+        "(an empty value overrides api_url from config; unset it)"
+    ) in message
+    assert f"Machine config: {machine_path} (readable; api_url: present)." in message
+
+
+def test_configured_git_root_uses_process_api_url(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo_root = tmp_path / "repo"
+    nested_root = repo_root / "nested"
+    nested_root.mkdir(parents=True)
+    monkeypatch.setenv("ISSUEKIT_CONFIG", "")
+    monkeypatch.setenv("ISSUEKIT_API_URL", "https://mine.example")
+    monkeypatch.setattr(mcp_server, "git_root", lambda _root: repo_root)
+
+    assert mcp_server._configured_root(nested_root) == repo_root
+
+
+def test_unreadable_machine_config_is_reported_without_crashing_root_resolution(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    (repo_root / "issuekit.toml").write_text("project = 'demo'\n", encoding="utf-8")
+    machine_path = tmp_path / "machine.toml"
+    machine_path.write_text("api_url = 'https://private.example'\n", encoding="utf-8")
+    monkeypatch.setenv("ISSUEKIT_CONFIG", str(machine_path))
+    monkeypatch.setattr(mcp_server, "git_root", lambda _root: repo_root)
+    original_read_text = Path.read_text
+
+    def read_text(path: Path, *args, **kwargs) -> str:
+        if path == machine_path:
+            raise PermissionError(13, "Permission denied", str(machine_path))
+        return original_read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", read_text)
+
+    assert mcp_server._machine_config_has_api_url() is False
+    assert mcp_server._configured_root(repo_root) == repo_root
+
+    status = _call(create_server(repo_root), "health", {})
+
+    assert status["ok"] is False
+    assert status["machine_config_path"] == str(machine_path)
+    assert status["machine_config_status"] == "unreadable: PermissionError"
+    assert "Cannot read machine config" in status["errors"][0]
+    assert "private.example" not in json.dumps(status)
+    message = mcp_server._missing_api_url_message(repo_root)
+    assert f"Machine config: {machine_path} (unreadable: PermissionError)." in message
+    assert "If the CLI finds a machine config" not in message
 
 
 def test_mcp_lifecycle_tools_reuse_one_process_session(

@@ -6,7 +6,7 @@ import argparse
 from pathlib import Path
 
 from issuekit.commands._common import print_json
-from issuekit.config import load_config
+from issuekit.config import api_url_origin, load_config
 from issuekit.core import issue_dict
 from issuekit.guards.author import guard_dict, read_author_guard
 from issuekit.issues.display import dependency_detail_lines, dependency_marker
@@ -56,6 +56,8 @@ def run(args) -> int:
             str(config.machine_config_path) if config.machine_config_path is not None else None
         ),
         "repoConfigSource": config.repo_config_source,
+        "apiUrlSource": config.api_url_source,
+        "apiUrlOrigin": api_url_origin(config.api_url),
         "agentConfigs": {
             name: {
                 "binary": run_config.binary,

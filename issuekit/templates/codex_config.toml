@@ -1,3 +1,4 @@
 [mcp_servers.issuekit]
 command = "issuekit-mcp"
 args = []
+env_vars = ["ISSUEKIT_API_URL", "ISSUEKIT_PROJECT", "ISSUEKIT_CONFIG", "ISSUEKIT_TOKEN_CACHE", "ISSUEKIT_ALLOW_INSECURE", "ISSUEKIT_ENFORCE_AUTHOR_HANDOFF", "XDG_CONFIG_HOME"]

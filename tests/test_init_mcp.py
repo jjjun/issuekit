@@ -25,6 +25,17 @@ def test_init_with_mcp_writes_global_binary_scaffold(tmp_path: Path) -> None:
     assert ".codex/config.toml" in result.written
     assert '"command": "issuekit-mcp"' in mcp_json
     assert 'command = "issuekit-mcp"' in codex_config
+    for name in (
+        "ISSUEKIT_API_URL",
+        "ISSUEKIT_PROJECT",
+        "ISSUEKIT_CONFIG",
+        "ISSUEKIT_TOKEN_CACHE",
+        "ISSUEKIT_ALLOW_INSECURE",
+        "ISSUEKIT_ENFORCE_AUTHOR_HANDOFF",
+        "XDG_CONFIG_HOME",
+    ):
+        assert f'"{name}"' in codex_config
+    assert "ISSUEKIT_API_TOKEN" not in codex_config
     assert "uv" not in mcp_json
     assert "uv run" not in codex_config
     assert "issuekit protocol --agent" in agents

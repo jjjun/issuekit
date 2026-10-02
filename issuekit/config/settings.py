@@ -6,6 +6,7 @@ import os
 import warnings
 from dataclasses import dataclass, field, fields, replace
 from pathlib import Path
+from urllib.parse import urlparse
 
 from issuekit.agentrun.config import AgentRunConfig
 from issuekit.core import (
@@ -19,7 +20,7 @@ from issuekit.core import (
 from issuekit.encoding import has_non_ascii
 from issuekit.worker_constants import WORKER_HEARTBEAT_INTERVAL_SEC
 
-from .dotenv import load_dotenv
+from .dotenv import is_loaded_from_dotenv, load_dotenv
 from .local import LocalConfigError, load_toml, read_local_config
 
 _SENTINEL = object()
@@ -130,6 +131,7 @@ class IssuekitConfig:
     agent_role_overlays: tuple[tuple[str, tuple[tuple[str, RoleOverlay], ...]], ...] = ()
     machine_config_path: Path | None = None
     repo_config_source: str = field(default="none", compare=False)
+    api_url_source: str = field(default="none", compare=False)
     agents: tuple[tuple[str, AgentRunConfig], ...] = (
         (
             "kimi",
@@ -249,7 +251,15 @@ def load_config(cwd: Path | str = ".") -> IssuekitConfig:
     config_cwd = Path(cwd)
     load_dotenv(config_cwd)
     machine_path = resolve_machine_config_path()
-    raw_config, repo_config_source = _load_raw_config(config_cwd, machine_path)
+    raw_config, repo_config_source, config_api_url_source = _load_raw_config(
+        config_cwd, machine_path
+    )
+    if "ISSUEKIT_API_URL" in os.environ:
+        api_url_source = (
+            "dotenv" if is_loaded_from_dotenv("ISSUEKIT_API_URL") else "env"
+        )
+    else:
+        api_url_source = config_api_url_source
     api_url = str(
         os.getenv("ISSUEKIT_API_URL", raw_config.get("api_url", IssuekitConfig.api_url))
     ).strip()
@@ -393,6 +403,7 @@ def load_config(cwd: Path | str = ".") -> IssuekitConfig:
         agent_role_overlays=agent_role_overlays,
         machine_config_path=machine_path if machine_path is not None and machine_path.is_file() else None,
         repo_config_source=repo_config_source,
+        api_url_source=api_url_source,
         agents=agents,
         agent_policies=agent_policies,
     )
@@ -423,8 +434,11 @@ def resolve_machine_config_path() -> Path | None:
     return config_home / "issuekit" / "config.toml"
 
 
-def _load_raw_config(cwd: Path, machine_path: Path | None) -> tuple[dict[str, object], str]:
+def _load_raw_config(
+    cwd: Path, machine_path: Path | None
+) -> tuple[dict[str, object], str, str]:
     raw_config = _load_machine_config(machine_path)
+    api_url_source = "machine_config" if "api_url" in raw_config else "none"
     repo_config_source = "none"
     pyproject_path = cwd / "pyproject.toml"
     if pyproject_path.exists():
@@ -432,6 +446,8 @@ def _load_raw_config(cwd: Path, machine_path: Path | None) -> tuple[dict[str, ob
         pyproject_config = data.get("tool", {}).get("issuekit")
         if pyproject_config is not None:
             repo_config_source = "pyproject [tool.issuekit]"
+            if "api_url" in pyproject_config:
+                api_url_source = "repo_config"
             # pyproject's [tool.issuekit] wins when present so Python repos keep
             # their existing behavior even if a standalone config also exists.
             raw_config = _merge_config_layers(raw_config, dict(pyproject_config))
@@ -439,20 +455,47 @@ def _load_raw_config(cwd: Path, machine_path: Path | None) -> tuple[dict[str, ob
     issuekit_path = cwd / "issuekit.toml"
     if repo_config_source == "none" and issuekit_path.exists():
         repo_config_source = "issuekit.toml"
-        raw_config = _merge_config_layers(raw_config, _load_config_toml(issuekit_path))
+        issuekit_config = _load_config_toml(issuekit_path)
+        if "api_url" in issuekit_config:
+            api_url_source = "repo_config"
+        raw_config = _merge_config_layers(raw_config, issuekit_config)
 
-    return _merge_local_config(cwd, raw_config), repo_config_source
+    return _merge_local_config(cwd, raw_config), repo_config_source, api_url_source
 
 
 def _load_machine_config(path: Path | None) -> dict[str, object]:
-    if path is None or not path.is_file():
+    if path is None:
         return {}
-    config = _load_config_toml(path)
+    try:
+        if not path.is_file():
+            return {}
+        config = _load_config_toml(path)
+    except OSError as exc:
+        detail = exc.strerror or type(exc).__name__
+        raise ValueError(
+            f"Cannot read machine config {path}: {detail}. "
+            "A sandboxed process may be denied access to the user profile config."
+        ) from exc
     if "worker" in config:
         raise ValueError(
             f"Machine config {path} cannot define worker; use issuekit.local.toml"
         )
     return _discard_unsupported_machine_config(config, path)
+
+
+def api_url_origin(api_url: str) -> str | None:
+    """Return the API URL origin without userinfo, path, query, or fragment."""
+    try:
+        parsed = urlparse(api_url)
+        hostname = parsed.hostname
+        port = parsed.port
+    except ValueError:
+        return None
+    if not parsed.scheme or not hostname:
+        return None
+    host = f"[{hostname}]" if ":" in hostname else hostname
+    netloc = host if port is None else f"{host}:{port}"
+    return f"{parsed.scheme}://{netloc}"
 
 
 def _discard_unsupported_machine_config(
@@ -485,6 +528,7 @@ _MACHINE_CONFIG_EXCLUDED_KEYS = frozenset(
         # These record config loading provenance rather than TOML settings.
         "machine_config_path",
         "repo_config_source",
+        "api_url_source",
     }
 )
 _MACHINE_CONFIG_KEYS = frozenset(

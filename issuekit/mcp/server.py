@@ -21,7 +21,12 @@ from issuekit.commands.edit import edit_issue
 from issuekit.commands.proposal_check_request import request_proposal_check
 from issuekit.commands.readdress import readdress_result_dict
 from issuekit.commands.reclaim import reclaim_result_dict
-from issuekit.config import IssuekitConfig, load_config, resolve_machine_config_path
+from issuekit.config import (
+    IssuekitConfig,
+    api_url_origin,
+    load_config,
+    resolve_machine_config_path,
+)
 from issuekit.config.local import LocalConfigError, load_toml, read_local_config
 from issuekit.core import issue_dict, worker_display_from_row
 from issuekit.gitutil import git_root
@@ -69,6 +74,16 @@ from issuekit.workflow import (
 )
 
 MCP_SESSION = new_session_token("mcp")
+_HEALTH_ENV_KEYS = (
+    "ISSUEKIT_API_URL",
+    "ISSUEKIT_PROJECT",
+    "ISSUEKIT_CONFIG",
+    "ISSUEKIT_TOKEN_CACHE",
+    "ISSUEKIT_API_TOKEN",
+    "ISSUEKIT_ALLOW_INSECURE",
+    "ISSUEKIT_ENFORCE_AUTHOR_HANDOFF",
+    "XDG_CONFIG_HOME",
+)
 
 
 def create_server(cwd: Path | str | None = None) -> FastMCP:
@@ -612,12 +627,19 @@ def _negotiation_thread_summary_dict(
 
 async def _health_status(root: Path, ctx: Context | None = None) -> dict[str, Any]:
     config_root = await _resolve_config_root(root, ctx)
+    machine_path = resolve_machine_config_path()
     payload: dict[str, Any] = {
         "ok": True,
         "version": __version__,
         "cwd": str(config_root.resolve()),
         "project": None,
         "api_url_configured": False,
+        "api_url_source": "none",
+        "api_url_origin": None,
+        "repo_config_source": "none",
+        "machine_config_path": None if machine_path is None else str(machine_path),
+        "machine_config_status": _machine_config_status(machine_path),
+        "env_present": {key: key in os.environ for key in _HEALTH_ENV_KEYS},
         "token_cached": False,
         "token_expires_at": None,
         "worker_present": False,
@@ -646,6 +668,9 @@ async def _health_status(root: Path, ctx: Context | None = None) -> dict[str, An
 
     payload["project"] = config.project
     payload["api_url_configured"] = bool(config.api_url)
+    payload["api_url_source"] = config.api_url_source
+    payload["api_url_origin"] = api_url_origin(config.api_url)
+    payload["repo_config_source"] = config.repo_config_source
     cached_token = read_cached_token(config.api_url.rstrip("/")) if config.api_url else None
     payload["token_cached"] = cached_token is not None
     payload["token_expires_at"] = None if cached_token is None else cached_token["expires_at"]
@@ -661,7 +686,9 @@ async def _load_api_config(
     config_root = await _resolve_config_root(root, ctx)
     config = load_config(config_root)
     if not config.api_url:
-        raise WorkflowError(_missing_api_url_message(config_root), code="missing_api_url")
+        raise WorkflowError(
+            _missing_api_url_message(config_root), code="missing_api_url"
+        )
     return config, config_root
 
 
@@ -705,7 +732,9 @@ def _configured_root(root: Path) -> Path | None:
     # A machine API config is sufficient for an existing repository root, but
     # does not make an arbitrary MCP process directory a project context.
     if repository_root is not None and (
-        _has_config_candidate(repository_root) or _machine_config_has_api_url()
+        _has_config_candidate(repository_root)
+        or bool(os.getenv("ISSUEKIT_API_URL", "").strip())
+        or _machine_config_has_api_url()
     ):
         return repository_root
     return None
@@ -727,13 +756,27 @@ def _has_config_candidate(root: Path) -> bool:
 
 def _machine_config_has_api_url() -> bool:
     machine_path = resolve_machine_config_path()
-    if machine_path is None or not machine_path.is_file():
+    if machine_path is None:
         return False
     try:
+        if not machine_path.is_file():
+            return False
         data = load_toml(machine_path)
-    except LocalConfigError:
+    except (LocalConfigError, OSError):
         return False
     return bool(str(data.get("api_url", "")).strip())
+
+
+def _machine_config_status(machine_path: Path | None) -> str:
+    if machine_path is None:
+        return "missing"
+    try:
+        if not machine_path.is_file():
+            return "missing"
+        machine_path.read_text(encoding="utf-8-sig")
+    except OSError as exc:
+        return f"unreadable: {type(exc).__name__}"
+    return "readable"
 
 
 async def _client_roots(ctx: Context | None) -> tuple[Path, ...]:
@@ -769,21 +812,96 @@ def _path_from_file_uri(uri: str) -> Path | None:
 
 def _missing_api_url_message(root: Path) -> str:
     machine_path = resolve_machine_config_path()
-    machine_config = "disabled" if machine_path is None else str(machine_path)
-    machine_exists = machine_path is not None and machine_path.is_file()
-    return (
-        "API store requires api_url. Set api_url in issuekit.toml/[tool.issuekit] "
-        "or ISSUEKIT_API_URL. MCP resolved the repository root to "
-        f"{root.resolve()} and searched {root / 'pyproject.toml'} [tool.issuekit], "
-        f"{root / 'issuekit.toml'}, and {root / '.env'}. Machine config: "
-        f"{machine_config} (exists: {machine_exists}). If the CLI succeeds, it is "
-        "probably running from a different working directory or shell environment; "
-        "launch issuekit-mcp from the repo root, configure the MCP client workspace "
-        "root, or ensure the MCP server process receives the same ISSUEKIT_CONFIG, "
-        "HOME, or XDG_CONFIG_HOME setting as the CLI. To continue reviewing before "
-        "that is resolved, `issuekit show <id>` and `issuekit next-review` are "
-        "read-only CLI equivalents of the get_issue and next_review tools."
+    repo_config_source, repo_api_url_status = _repo_config_api_url_status(root)
+    machine_status = _machine_config_status(machine_path)
+    if machine_path is None:
+        machine_config = "disabled (ISSUEKIT_CONFIG is empty)"
+    elif machine_status == "missing":
+        machine_config = f"{machine_path} (missing)"
+    elif machine_status != "readable":
+        machine_config = f"{machine_path} ({machine_status})"
+    else:
+        machine_api_url_status = _machine_config_api_url_status(
+            machine_path, machine_status
+        )
+        if machine_api_url_status.startswith("unreadable:"):
+            machine_config = f"{machine_path} ({machine_api_url_status})"
+        else:
+            machine_config = (
+                f"{machine_path} (readable; api_url: {machine_api_url_status})"
+            )
+
+    api_url_env_value = os.environ.get("ISSUEKIT_API_URL")
+    if api_url_env_value is None:
+        api_url_env_status = "not set"
+    elif not api_url_env_value.strip():
+        api_url_env_status = (
+            "set but empty (an empty value overrides api_url from config; unset it)"
+        )
+    else:
+        api_url_env_status = "set"
+    missing_machine_config_hint = (
+        " If the CLI finds a machine config, this process has a different "
+        "ISSUEKIT_CONFIG, HOME, or XDG_CONFIG_HOME."
+        if machine_path is not None and machine_status == "missing"
+        else ""
     )
+    return (
+        "API store requires api_url. MCP resolved the repository root to "
+        f"{root.resolve()}. ISSUEKIT_API_URL is set in this process: "
+        f"{api_url_env_status}. Repository config source: {repo_config_source} "
+        f"(api_url: {repo_api_url_status}). Machine config: {machine_config}."
+        f"{missing_machine_config_hint} The CLI usually "
+        "gets api_url from ISSUEKIT_API_URL in the user's shell, while MCP clients "
+        "may start servers with a filtered environment. In Codex, add "
+        'env_vars = ["ISSUEKIT_API_URL", "ISSUEKIT_PROJECT", "ISSUEKIT_CONFIG", '
+        '"ISSUEKIT_TOKEN_CACHE", "ISSUEKIT_ALLOW_INSECURE", '
+        '"ISSUEKIT_ENFORCE_AUTHOR_HANDOFF", "XDG_CONFIG_HOME"] to '
+        "[mcp_servers.issuekit], or set api_url in the machine config. To continue "
+        "reviewing before that is resolved, `issuekit show <id>` and "
+        "`issuekit next-review` are read-only CLI equivalents of the get_issue "
+        "and next_review tools."
+    )
+
+
+def _repo_config_api_url_status(root: Path) -> tuple[str, str]:
+    pyproject_path = root / "pyproject.toml"
+    if pyproject_path.exists():
+        try:
+            data = load_toml(pyproject_path)
+        except (LocalConfigError, OSError) as exc:
+            return "pyproject [tool.issuekit]", f"unreadable: {type(exc).__name__}"
+        tool_config = data.get("tool")
+        if isinstance(tool_config, dict):
+            issuekit_config = tool_config.get("issuekit")
+            if isinstance(issuekit_config, dict):
+                return (
+                    "pyproject [tool.issuekit]",
+                    "present" if "api_url" in issuekit_config else "absent",
+                )
+
+    issuekit_path = root / "issuekit.toml"
+    if issuekit_path.exists():
+        try:
+            data = load_toml(issuekit_path)
+        except (LocalConfigError, OSError) as exc:
+            return "issuekit.toml", f"unreadable: {type(exc).__name__}"
+        return "issuekit.toml", "present" if "api_url" in data else "absent"
+    return "none", "absent"
+
+
+def _machine_config_api_url_status(
+    machine_path: Path | None, machine_status: str
+) -> str:
+    if machine_path is None:
+        return "not configured"
+    if machine_status != "readable":
+        return machine_status
+    try:
+        data = load_toml(machine_path)
+    except (LocalConfigError, OSError) as exc:
+        return f"unreadable: {type(exc).__name__}"
+    return "present" if "api_url" in data else "absent"
 
 
 def main() -> None:
