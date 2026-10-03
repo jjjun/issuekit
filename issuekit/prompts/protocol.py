@@ -102,10 +102,10 @@ work in any project surfaces an issuekit bug, limitation, or improvement idea
 (CLI, MCP tools, protocol text, agent adapters), report it before finishing
 the task with `issuekit propose --to issuekit --title <t> --body <b>` (or the
 MCP `propose` tool). Include reproduction steps or the concrete gap, and pass
-`--from-issue <id>` when the report stems from a specific local issue so each
-report gets a distinct origin. The issuekit project triages its inbox
-continuously and adopts worthwhile reports as issues; check the outcome later
-with `issuekit outgoing --to issuekit`.
+`--from-issue <id>` when the report stems from a specific local issue; proposals
+to the same target from that issue and commit share one origin. The issuekit
+project triages its inbox continuously and adopts worthwhile reports as issues;
+check the outcome later with `issuekit outgoing --to issuekit`.
 Adoption notes are recorded only on the receiving project's issue and never
 reach the sender; anything the sender must act on requires a proposal.
 Automated triage can use `adopt_and_reply` for a required follow-up; discard
@@ -156,6 +156,12 @@ Authoring constraints:
   Write bodies in English and check before submitting; non-ASCII input
   (em dashes, curly quotes, non-English characters) is rejected at author,
   propose, edit, submit-review, request-changes, approve, and complete.
+- A target inbox keeps one pending proposal per origin `<project>#<id>@<commit>`.
+  `--from-issue` and `--reply` make the origin distinct per source issue, not per
+  proposal; a second, different proposal with that origin is not sent and
+  `propose` exits 1 with `payload_mismatch: true`. Send a separate proposal
+  without `--from-issue` (implicit `#0` origin; dropping `--reply` also drops the
+  reply link), or resolve the pending proposal first.
 - Mentioning another configured project ref in a local issue body triggers the
   cross-project preflight and blocks direct creation with `issuekit author`.
   Decision rule: if the change belongs to the other project, send

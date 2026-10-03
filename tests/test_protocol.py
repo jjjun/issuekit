@@ -196,6 +196,24 @@ def test_render_protocol_returns_triage_role() -> None:
     triage.encode("ascii")
 
 
+def test_proposal_origin_deduplication_guidance_is_shared_across_roles() -> None:
+    expected_phrases = (
+        "A target inbox keeps one pending proposal per origin `<project>#<id>@<commit>`",
+        "`--from-issue` and `--reply` make the origin distinct per source issue, not per proposal",
+        "a second, different proposal with that origin is not sent",
+        "`propose` exits 1 with `payload_mismatch: true`",
+        "without `--from-issue` (implicit `#0` origin; dropping `--reply` also drops the reply link), or resolve the pending proposal first",
+    )
+    for role in ("author", "implementer", "pm", "reviewer", "triage"):
+        rendered = " ".join(render_protocol(role=role).split())
+        for phrase in expected_phrases:
+            assert phrase in rendered
+
+    server = " ".join(render_server_instructions().split())
+    for phrase in expected_phrases:
+        assert phrase in server
+
+
 def test_render_protocol_returns_pm_role() -> None:
     pm = render_protocol(role="pm")
     assert "Delegation cycle overview" in pm

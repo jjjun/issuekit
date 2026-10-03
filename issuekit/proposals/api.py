@@ -313,6 +313,11 @@ def proposal_payload_mismatch(proposal: Proposal, created: Mapping[str, Any]) ->
     return mismatched
 
 
+def _proposal_origin_issue_id(origin: str) -> int | None:
+    match = re.fullmatch(r"[^#]+#(?P<issue_id>[0-9]+)@[^@]+", origin)
+    return int(match.group("issue_id")) if match is not None else None
+
+
 def auto_adopt_incoming_proposals(config: IssuekitConfig) -> list[dict]:
     """Adopt pending inbox proposals that match this target project's policy."""
     policy = config.triage
@@ -341,6 +346,18 @@ def payload_mismatch_guidance(
     created: Mapping[str, Any],
     mismatched: Sequence[str],
 ) -> str:
+    source_issue_id = _proposal_origin_issue_id(proposal.origin)
+    if source_issue_id not in (None, 0):
+        proposal_id = created.get("id")
+        return (
+            f"Proposal was not sent: source issue #{source_issue_id} already has pending proposal "
+            f"#{proposal_id} in {proposal.to} from this commit with different {', '.join(mismatched)}. "
+            "One source issue can have only "
+            "one pending proposal per target project per commit. Send a separate proposal "
+            "without --from-issue (implicit #0 origin; dropping --reply also drops the reply link), "
+            "or adopt/discard "
+            f"pending proposal #{proposal_id} first."
+        )
     return (
         f"Proposal was not sent: {proposal.to} already has pending proposal "
         f"#{created.get('id')} with origin {proposal.origin} but different "

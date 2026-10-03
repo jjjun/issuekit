@@ -1103,6 +1103,63 @@ def test_api_cli_propose_same_origin_payload_mismatch_fails(
     assert "--from-issue" in captured.err
 
 
+def test_api_cli_propose_nonzero_origin_payload_mismatch_guidance(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient(issues=[api_issue(7, "Source Issue", body="Source body.")])
+    client.register_catalog_project("target")
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'source'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.setattr("issuekit.store.IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.chdir(tmp_path)
+
+    first_argv = [
+        "propose",
+        "--to",
+        "target",
+        "--from-issue",
+        "7",
+        "--title",
+        "First title",
+        "--body",
+        "First body.",
+        "--json",
+    ]
+    assert cli.main(first_argv) == 0
+    first = json.loads(capsys.readouterr().out)
+
+    second_argv = [
+        "propose",
+        "--to",
+        "target",
+        "--from-issue",
+        "7",
+        "--title",
+        "Second title",
+        "--body",
+        "Second body.",
+        "--json",
+    ]
+    assert cli.main(second_argv) == 1
+    captured = capsys.readouterr()
+    second = json.loads(captured.out)
+
+    assert first["id"] == second["id"] == 1
+    assert second["payload_mismatch"] is True
+    assert second["payload_mismatch_fields"] == ["title", "body"]
+    assert "source issue #7" in captured.err
+    assert "pending proposal #1 in target" in captured.err
+    assert "different title, body" in captured.err
+    assert "without --from-issue (implicit #0 origin; dropping --reply also drops the reply link)" in captured.err
+    assert "Use --from-issue" not in captured.err
+
+
 def test_api_cli_propose_deduplicated_matching_payload_reports_deduplicated(
     tmp_path: Path,
     monkeypatch,
