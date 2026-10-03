@@ -16,9 +16,12 @@ agent subprocess exits, before issuekit runs the submit step, so a completed
 run status does not mean the issue was submitted.
 
 If a run does die without submitting, the claim is left at
-`stage=implementing`. Recover it with `issuekit orphans` and
-`issuekit reclaim <id>` - see
-[../guides/orphaned-claim-detection.md](../guides/orphaned-claim-detection.md).
+`stage=implementing`. Inspect `issuekit show <id> --json` for its `stale_run`
+warning, then rerun `issuekit implement <id>` to recover it. `issuekit orphans`
+and `issuekit reclaim` use API worker heartbeats; they do not inspect
+`.agent-runs` and cannot identify a dead one-shot `implement` process. See
+[../guides/orphaned-claim-detection.md](../guides/orphaned-claim-detection.md)
+for worker-heartbeat detection.
 
 ## Output contract for orchestrators
 
@@ -32,9 +35,8 @@ Otherwise `post_run` is the single line an orchestrator should branch on:
 
 - `agent_exit` is the agent subprocess exit code; `cli_exit` is the
   `issuekit implement` process exit code (also the process's real exit
-  status). Do not confuse this with the run report's `agent_exit_code=`
-  field printed earlier in the run (renamed from `exit_code=` - update any
-  existing grep for that field name).
+  status). The run report's `agent_exit_code=` field is separate from this
+  summary line.
 - `stage` is the issue's stage after the run: `review` on a successful
   submit, or whatever stage the issue was left at otherwise. It can be
   `unknown` if the post-run stage lookup itself fails (for example the API

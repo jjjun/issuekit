@@ -1,26 +1,15 @@
-# Multiple proposals from one session need distinct origins
+# Proposal origins are per source issue and commit
 
-When a session sends several unrelated proposals to the same target project
-without `--from-issue`, every proposal gets the implicit origin
-`<project>#0@<commit>`. The origin embeds the current HEAD commit, so two
-propose calls only share an origin if no commit landed between them; a commit
-in between means the calls do NOT collide even with the same implicit `#0`.
-The server deduplicates by origin: when a propose call's origin matches a
-pending proposal already on the target, the server returns that existing
-proposal instead of creating a new one.
+**Applies to:** `issuekit propose` and pending proposals in a target inbox
 
-Recovery / correct flow:
+An origin is `<project>#<issue|0>@<commit>`: the source project, the issue id
+from `--from-issue` or `--reply` (or `0` when neither is supplied), and the
+current commit. Proposals from the same source issue and commit share an
+origin; it is not distinct per proposal.
 
-- Pass `--from-issue <local-issue-id>` (CLI) or `from_issue=` (MCP `propose`)
-  so each proposal derives a distinct origin such as `issuekit#286@<commit>`.
-- If no motivating local issue exists yet, author it first (it can gain
-  `depends_on` refs to the proposal afterwards via `update_issue`).
-- `issuekit request` does not use the implicit `#0` origin: each routed
-  proposal gets a per-request, per-target origin
-  (`<pm-project>#request-<id>-target-<index>-<project>@<commit>`), so separate
-  PM requests to one target do not collide.
-- Check the propose result for `deduplicated` before assuming the proposal
-  was created; when `true`, the returned `id` belongs to the earlier
-  proposal, not a new one. If the title or body also differs from what was
-  sent, the CLI instead exits 1 with `payload_mismatch: true` and a warning,
-  since that combination would silently lose the new content.
+The target de-duplicates only pending proposals with the same origin. A
+matching payload returns the existing id with `deduplicated: true`. If the
+payload differs, the command exits 1 with `payload_mismatch: true`; compared
+fields are `title`, `body`, `reply_to`, `blocking`, `depends_on`, and
+`target_worker`. Check both flags before treating a propose call as a new
+proposal.

@@ -1,5 +1,7 @@
 # Checking the mine-py API contract
 
+**Applies to:** issuekit changes that depend on the deployed mine-py API contract
+
 **Do not fetch `/openapi.json` from the deployed API.** It returns 404 there;
 the schema route is disabled in that deployment. Parsing that 404 body yields
 an empty document whose `paths` and `components` are missing, which silently
