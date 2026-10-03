@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import threading
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -60,6 +60,7 @@ class WorkerPruneResult:
     candidates: tuple[WorkerPruneCandidate, ...]
     deleted: tuple[JsonDict, ...]
     dry_run: bool
+    skipped_projects: tuple[JsonDict, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -187,7 +188,17 @@ def remove_api_worker(
             "or ISSUEKIT_API_URL."
         )
     worker = resolve_api_worker(config, address)
-    issues = _worker_implementing_issues(config, worker)
+    try:
+        issues = _worker_implementing_issues(config, worker)
+    except Exception as exc:
+        if not force:
+            project = _worker_project(config, worker)
+            reason = str(exc) or type(exc).__name__
+            raise WorkerRemovalError(
+                f"Cannot read issues for worker project {project}: {reason}; "
+                "rerun with --force to remove it anyway."
+            ) from exc
+        issues = []
     if issues and not force:
         issue_list = ", ".join(f"#{issue.id}" for issue in issues)
         raise WorkerRemovalError(
@@ -213,7 +224,7 @@ def prune_api_workers(
     *,
     stale_after_sec: float,
     dry_run: bool,
-    expected_count: int | None = None,
+    expected_candidates: tuple[WorkerPruneCandidate, ...] | None = None,
     now: datetime | None = None,
 ) -> WorkerPruneResult:
     if not config.api_url:
@@ -223,19 +234,52 @@ def prune_api_workers(
         )
     current = now or datetime.now(UTC)
     workers = list_api_workers(config)
-    with get_store(config) as store:
-        issues = store.find_for()
+    workers_by_project: dict[str, list[JsonDict]] = {}
+    for worker in workers:
+        workers_by_project.setdefault(_worker_project(config, worker), []).append(worker)
+
+    issues_by_project: dict[str, list[Issue]] = {}
+    skipped_projects: list[JsonDict] = []
+    for project in workers_by_project:
+        try:
+            issues_by_project[project] = _project_issues(config, project)
+        except Exception as exc:
+            skipped_projects.append(
+                {"project": project, "error": str(exc) or type(exc).__name__}
+            )
+
     candidates = tuple(
         _candidate
-        for worker in workers
-        if (_candidate := _prune_candidate(worker, issues, current, stale_after_sec))
+        for project, project_workers in workers_by_project.items()
+        if project in issues_by_project
+        for worker in project_workers
+        if (
+            _candidate := _prune_candidate(
+                worker,
+                issues_by_project[project],
+                current,
+                stale_after_sec,
+            )
+        )
         is not None
     )
     if dry_run:
-        return WorkerPruneResult(candidates=candidates, deleted=(), dry_run=True)
-    if expected_count is not None and len(candidates) != expected_count:
+        return WorkerPruneResult(
+            candidates=candidates,
+            deleted=(),
+            dry_run=True,
+            skipped_projects=tuple(skipped_projects),
+        )
+    candidate_ids = {_worker_delete_id(candidate.worker) for candidate in candidates}
+    expected_ids = (
+        {_worker_delete_id(candidate.worker) for candidate in expected_candidates}
+        if expected_candidates is not None
+        else None
+    )
+    if expected_ids is not None and candidate_ids != expected_ids:
         raise WorkerRemovalError(
-            "Worker prune candidate count changed; rerun --dry-run and confirm again."
+            "Worker prune candidate count changed or the candidate set changed; "
+            "rerun --dry-run and confirm again."
         )
     deleted: list[JsonDict] = []
     with IssuekitClient(
@@ -249,6 +293,7 @@ def prune_api_workers(
         candidates=candidates,
         deleted=tuple(deleted),
         dry_run=False,
+        skipped_projects=tuple(skipped_projects),
     )
 
 
@@ -471,11 +516,25 @@ def _worker_implementing_issues(
     worker: Mapping[str, object],
 ) -> list[Issue]:
     keys = worker_keys_from_row(worker)
+    project_config = replace(config, project=_worker_project(config, worker))
     return [
         claim.issue
-        for claim in list_worker_claims(config, stage="implementing")
+        for claim in list_worker_claims(project_config, stage="implementing")
         if any(worker_keys_match(claim.worker, key) for key in keys)
     ]
+
+
+def _worker_project(config: IssuekitConfig, worker: Mapping[str, object]) -> str:
+    for value in (worker.get("project"), worker.get("repo_id")):
+        project = str(value or "").strip()
+        if project:
+            return project
+    return config.project
+
+
+def _project_issues(config: IssuekitConfig, project: str) -> list[Issue]:
+    with get_store(replace(config, project=project)) as store:
+        return store.find_for()
 
 
 def _worker_delete_id(worker: Mapping[str, object]) -> str:

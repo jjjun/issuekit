@@ -21,6 +21,38 @@ def _configure_api(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, client) -> N
     monkeypatch.chdir(tmp_path)
 
 
+def _configure_project_api(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    worker_client: FakeIssuekitClient,
+    project_issues: dict[str, list[dict[str, object]]],
+    project_errors: dict[str, Exception] | None = None,
+) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'demo'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    issue_clients = {
+        project: FakeIssuekitClient(issues)
+        for project, issues in project_issues.items()
+    }
+    errors = project_errors or {}
+
+    def issue_client(api_url: str, *, project: str, timeout: float):
+        if project in errors:
+            raise errors[project]
+        return issue_clients.setdefault(project, FakeIssuekitClient())
+
+    monkeypatch.setattr(
+        worker_registry,
+        "IssuekitClient",
+        lambda *args, **kwargs: worker_client,
+    )
+    monkeypatch.setattr(store_module, "IssuekitClient", issue_client)
+    monkeypatch.chdir(tmp_path)
+
+
 def test_workers_command_lists_registered_workers(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -226,6 +258,132 @@ def test_workers_remove_force_deletes_implementing_holder(
     payload = json.loads(capsys.readouterr().out)
     assert payload["implementing_issues"][0]["id"] == 7
     assert client.calls[-1]["method"] == "delete_worker"
+
+
+def test_workers_prune_and_remove_check_implementing_claim_in_worker_project(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    client = FakeIssuekitClient()
+    client.upsert_worker(
+        machine_id="machine",
+        repo_id="remote-repo",
+        worker_name="checkout",
+        project="remote",
+        path="/remote",
+    )
+    client._workers["checkout.remote-repo"]["last_seen"] = "2000-01-01T00:00:00Z"
+    _configure_project_api(
+        tmp_path,
+        monkeypatch,
+        client,
+        {
+            "demo": [],
+            "remote": [
+                api_issue(
+                    251,
+                    "Held remotely",
+                    status="in_progress",
+                    stage="implementing",
+                    worker="checkout.remote-repo",
+                )
+            ],
+        },
+    )
+
+    assert cli.main(["workers", "prune", "--dry-run", "--json"]) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["candidates"] == []
+
+    assert cli.main(["workers", "remove", "checkout.remote-repo"]) == 1
+
+    assert "holds implementing issue(s) #251" in capsys.readouterr().err
+    assert "delete_worker" not in [call["method"] for call in client.calls]
+
+
+def test_workers_prune_skips_and_remove_requires_force_when_project_is_unreadable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    client = FakeIssuekitClient()
+    client.upsert_worker(
+        machine_id="machine",
+        repo_id="remote-repo",
+        worker_name="checkout",
+        project="remote",
+        path="/remote",
+    )
+    client._workers["checkout.remote-repo"]["last_seen"] = "2000-01-01T00:00:00Z"
+    _configure_project_api(
+        tmp_path,
+        monkeypatch,
+        client,
+        {"demo": []},
+        {"remote": OSError("backend unavailable")},
+    )
+
+    assert cli.main(["workers", "prune", "--dry-run"]) == 0
+
+    out = capsys.readouterr().out
+    assert "Warning: skipped workers from project remote" in out
+    assert "backend unavailable" in out
+
+    assert cli.main(["workers", "prune", "--dry-run", "--json"]) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["candidates"] == []
+    assert payload["skipped_projects"] == [
+        {"project": "remote", "error": "backend unavailable"}
+    ]
+
+    assert cli.main(["workers", "remove", "checkout.remote-repo"]) == 1
+
+    assert "Cannot read issues for worker project remote" in capsys.readouterr().err
+    assert "delete_worker" not in [call["method"] for call in client.calls]
+
+    assert cli.main(["workers", "remove", "checkout.remote-repo", "--force"]) == 0
+
+    assert "delete_worker" in [call["method"] for call in client.calls]
+
+
+def test_workers_prune_aborts_when_candidate_ids_change_with_same_count(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    client = FakeIssuekitClient()
+    for worker_name in ("first", "second"):
+        client.upsert_worker(
+            machine_id="machine",
+            repo_id="demo",
+            worker_name=worker_name,
+            project="demo",
+            path=f"/{worker_name}",
+        )
+        client._workers[f"{worker_name}.demo"]["last_seen"] = "2000-01-01T00:00:00Z"
+    _configure_api(tmp_path, monkeypatch, client)
+    worker_rows = [
+        dict(client._workers["first.demo"]),
+        dict(client._workers["second.demo"]),
+    ]
+    listed_workers = iter(([worker_rows[0]], [worker_rows[1]]))
+    monkeypatch.setattr(
+        worker_registry,
+        "list_api_workers",
+        lambda config: next(listed_workers),
+    )
+    monkeypatch.setattr("builtins.input", lambda prompt: "1")
+
+    assert cli.main(["workers", "prune"]) == 1
+
+    assert (
+        "candidate count changed or the candidate set changed"
+        in capsys.readouterr().err
+    )
+    assert "delete_worker" not in [call["method"] for call in client.calls]
 
 
 def test_workers_prune_dry_run_filters_to_stale_issueless_untargeted_workers(

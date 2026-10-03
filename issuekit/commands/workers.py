@@ -134,7 +134,7 @@ def run_prune(args) -> int:
             config,
             stale_after_sec=args.stale_after_sec,
             dry_run=False,
-            expected_count=len(preview.candidates),
+            expected_candidates=preview.candidates,
         )
         if args.json:
             print_json(worker_prune_result_dict(result))
@@ -166,6 +166,7 @@ def worker_prune_result_dict(result: WorkerPruneResult) -> dict[str, object]:
         "count": len(result.candidates),
         "candidates": [_candidate_dict(candidate) for candidate in result.candidates],
         "deleted": list(result.deleted),
+        "skipped_projects": list(result.skipped_projects),
     }
 
 
@@ -217,6 +218,7 @@ def _print_removal_result(result: WorkerRemovalResult) -> None:
 
 
 def _print_prune_preview(result: WorkerPruneResult) -> None:
+    _print_skipped_projects(result)
     if not result.candidates:
         print("No stale worker prune candidates.")
         return
@@ -226,6 +228,7 @@ def _print_prune_preview(result: WorkerPruneResult) -> None:
 
 
 def _print_prune_result(result: WorkerPruneResult) -> None:
+    _print_skipped_projects(result)
     if not result.candidates:
         print("No stale worker prune candidates.")
         return
@@ -241,6 +244,14 @@ def _print_prune_candidate(candidate: WorkerPruneCandidate) -> None:
         f"(last_seen={worker.get('last_seen') or '-'}, "
         f"stale_seconds={int(candidate.stale_seconds)})"
     )
+
+
+def _print_skipped_projects(result: WorkerPruneResult) -> None:
+    for skipped in result.skipped_projects:
+        print(
+            f"Warning: skipped workers from project {skipped['project']} because "
+            f"its issues could not be read: {skipped['error']}"
+        )
 
 
 def _candidate_dict(candidate: WorkerPruneCandidate) -> dict[str, object]:
