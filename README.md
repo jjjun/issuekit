@@ -64,7 +64,7 @@ Full documentation lives in [`docs/`](docs).
 | [Directed addressing](docs/guides/directed-addressing.md) | Repo, worker, and agent axes; `worker.repo@machine` targets. |
 | [Registry maintenance](docs/guides/registry-maintenance.md) | Removing and pruning stale workers and repo catalog entries. |
 | [Orphaned claim detection](docs/guides/orphaned-claim-detection.md) | Finding and reclaiming stalled implementing claims. |
-| [Separation-of-duties guards](docs/guides/separation-of-duties.md) | The four guards, their error strings, and recovery paths. |
+| [Separation-of-duties guards](docs/guides/separation-of-duties.md) | The five guards, their error strings, and recovery paths. |
 | [Testing](docs/guides/testing.md) | Local gates, live contract tests, CI workflows. |
 | [Development](docs/guides/development.md) | Dogfooding workflow and developer global-tool commands. |
 

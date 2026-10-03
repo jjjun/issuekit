@@ -6,23 +6,27 @@ populated, the pull-based pool never re-offers it, so no idle agent picks it
 up and the issue silently stalls.
 
 `issuekit orphans` surfaces these without out-of-band forensics. An implementer
-claim records which worker checkout (`worker.repo`) holds the issue, and the
-worker registry tracks each live checkout's `last_seen` heartbeat. The
-command cross-references the two and flags an implementing issue when either:
+claim records which machine-qualified worker checkout (`worker.repo@machine`)
+holds the issue, and the worker registry tracks each live checkout's `last_seen`
+heartbeat. The command cross-references the two and flags an implementing
+issue when either:
 
 - `no_worker`: no registered worker matches the claim's worker key, so the
   holder is gone; or
 - `expired_heartbeat`: a matching worker exists but its last heartbeat is
   more than `--stale-after-sec` seconds old (default 300).
 
-Machine-qualified worker keys (`worker.repo@machine`) match only a registry row
-for that machine. Older claims that record only `worker.repo` remain
-machine-agnostic and match registered checkouts with that worker and repo.
+Machine-qualified worker keys match only a registry row for that machine.
+Older claims that record only `worker.repo` remain machine-agnostic and match
+registered checkouts with that worker and repo.
 
 Directed but unclaimed work is also reported when its `target_worker` is gone
 or stale, using `directed_no_worker` or `directed_expired_heartbeat`. These
 issues are not implementing claims, but they will not return to the repo pool
 until the directed target is cleared.
+The scan covers directed issues at `todo` and `changes_requested`, but not
+`planned`, even though `issuekit dispatch --stage planned` can direct an issue.
+Such an issue is not reported until it reaches a scanned stage or is readdressed.
 
 Two cases are never flagged, because there is no liveness signal to judge:
 
@@ -34,7 +38,7 @@ Two cases are never flagged, because there is no liveness signal to judge:
 ```console
 $ issuekit orphans
 Orphaned or stale implementing claims: 1
-- #168: ... [assignee=claude worker=issuekit.issuekit] (stale: no heartbeat since 2026-07-03T01:32:30Z)
+- #168: ... [assignee=claude worker=issuekit.issuekit@pike3] (stale: no heartbeat since 2026-07-03T01:32:30Z)
 ```
 
 The `last_seen` heartbeat is refreshed by the `issuekit serve` worker loop (and

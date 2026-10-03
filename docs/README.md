@@ -27,7 +27,7 @@ install it, and where to go next.
 | [Directed addressing](guides/directed-addressing.md) | Repo, worker, and agent axes; `worker.repo@machine` targets. |
 | [Registry maintenance](guides/registry-maintenance.md) | Removing and pruning stale workers and repo catalog entries. |
 | [Orphaned claim detection](guides/orphaned-claim-detection.md) | Finding and reclaiming stalled implementing claims. |
-| [Separation-of-duties guards](guides/separation-of-duties.md) | The four guards, their error strings, and recovery paths. |
+| [Separation-of-duties guards](guides/separation-of-duties.md) | The five guards, their error strings, and recovery paths. |
 | [Testing](guides/testing.md) | Local gates, live contract tests, CI workflows. |
 | [Development](guides/development.md) | Dogfooding workflow and developer global-tool commands. |
 

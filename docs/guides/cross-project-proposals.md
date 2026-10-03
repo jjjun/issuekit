@@ -34,9 +34,11 @@ issuekit complete <direct-issue-id> --force --summary "Superseded by proposal <p
 
 ## Proposal targets
 
-`--to` takes a registered target API project key, not an arbitrary alias. A
-project becomes visible to other repos after that project runs `issuekit add` or
-`issuekit register` against the API, or otherwise pushes a project profile.
+`--to` accepts a registered target API project key or a directed worker address
+in the form `worker.repo[@machine]`. For example, `--to prod.mine-py@main1`
+sends the proposal to the `mine-py` project and directs it to that worker. A
+project becomes visible to other repos after that project runs `issuekit add`
+or `issuekit register` against the API, or otherwise pushes a project profile.
 Issuekit combines registered worker projects and project profiles when the API
 exposes both catalogs, so either registration path makes the project visible.
 If the API exposes its project catalog, issuekit rejects unknown targets before
@@ -54,7 +56,7 @@ instead of creating a proposal in an unwatched inbox.
 
 The old workspace ref registry is kept only as an optional local map of
 sibling project names and checkout paths. Proposal delivery does not consult
-it: `--to` is used exactly as given and must be a registered API project key.
+it: `--to` must name a registered API project key or a directed worker address.
 Refs are read in three places: the `issuekit author` cross-project preflight
 (a title or body that names another project's ref makes `author` stop), the
 `propose` dependency warning, and the counterpart checkout lookup in

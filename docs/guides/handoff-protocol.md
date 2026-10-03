@@ -3,7 +3,7 @@
 The role-based author, implementer, reviewer, triage, and pm protocol is
 centralized in issuekit:
 
-```powershell
+```console
 issuekit protocol
 issuekit protocol --agent codex
 issuekit protocol --agent claude

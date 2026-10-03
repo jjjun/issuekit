@@ -151,10 +151,12 @@ inspect its entries and current outcome:
 issuekit threads
 issuekit threads <thread_id>
 issuekit threads --status agreed
+issuekit threads --mock
 ```
 
 `threads --status` filters the listed threads by their stored thread status:
 `negotiating`, `agreed`, `blocked`, or `cancelled`.
+Use `threads --mock` to inspect the local mock negotiation store.
 
 `threads` and the MCP `list_negotiation_threads` tool read only the current
 project's thread store. Issue-seeded threads are stored in the initiating

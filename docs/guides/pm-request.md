@@ -41,8 +41,9 @@ model = "gpt-6-sol"
 reasoning_effort = "medium"
 ```
 
-`agent` defaults to an empty value. It is the only way to select the router
-agent because `request` has no `--agent` flag; without it the command fails.
+`agent` defaults to an empty value. New requests and pre-routing answers need a
+configured router agent because `request` has no `--agent` flag. Status, inbox,
+link, and target-project reply-answer operations do not use the router.
 `max_targets` defaults to 3 and limits how many targets one route decision can
 list. A decision with more targets is a parse error: the command fails without
 sending anything instead of truncating the list. `max_clarify_rounds` defaults
@@ -62,12 +63,13 @@ stored profile with:
 
 ```powershell
 issuekit profile
-issuekit profile --all
+issuekit profile --all --json
 ```
 
 A project with no stored profile, or a profile marked stale, cannot receive
-routed work. If the router rejects everything, check `issuekit profile --all`
-first.
+routed work. Use `issuekit profile --all --json` to inspect stale flags and all
+stored profiles. The text output from `profile --all` omits stale status and
+includes the PM project's own profile.
 
 ## Command surface
 
@@ -85,7 +87,10 @@ with `--answer`, or an existing proposal reference passed with `--link`.
 - `--status [REQUEST_ID]` shows the recorded request and routed proposal
   statuses. With no id, it shows all saved requests.
 - `--inbox` lists pending clarification replies from target projects in the PM
-  proposal inbox.
+  proposal inbox. `--target` is ignored with `--inbox`. It cannot be combined
+  with request text, `--answer`, `--status`, `--link`, or `--dry-run`; the
+  rejection message currently lists its other conflicting flags but omits
+  `--link`.
 - `--target PROJECT` selects which target project's clarification is being
   answered. It is required with `--link`; use it with `--answer` when more than
   one target has a pending question.
@@ -93,14 +98,17 @@ with `--answer`, or an existing proposal reference passed with `--link`.
   an unsent target of a saved route. Use it to recover request state after a
   proposal exists but its reference was not recorded.
 - `--json` prints structured output.
-- `--dry-run` prints the router decision without sending proposals or saving a
-  decision.
+- `--dry-run` prints the router decision for a new request or pre-routing
+  answer, without sending proposals or saving a decision. For a target-project
+  reply answer, it prints an answer preview with the target and superseded
+  proposal instead of running the router. It cannot be combined with
+  `--status`, `--inbox`, or `--link`.
 - `--timeout-sec SECONDS` sets the router agent's hard timeout (default 600).
 - `--model MODEL_ID` and `--reasoning-effort VALUE` override the router agent
   settings for the run.
 
-`--target` is valid only with `--answer` or `--link`. `--link` also requires
-both `--target` and the proposal reference as positional `text`.
+`--target` is valid with `--answer` or `--link`. `--link` also requires both
+`--target` and the proposal reference as positional `text`.
 
 ## Route targets
 
@@ -144,6 +152,9 @@ Each routed proposal carries an origin unique to its request and target,
 `<pm-project>#request-<id>-target-<index>-<project>@<commit>`, so separate
 requests can route to the same project while earlier proposals are still
 pending there. The target index is fixed when the project is first routed.
+Amended proposals use a different origin:
+`<pm-project>#request-<id>-<project>-<prevId>-round-<n>@<commit>`, where
+`<prevId>` is the prior proposal id and `<n>` is the clarification round.
 Rerunning the same request text reuses its unfinished saved request id, matches
 targets by project, and skips projects that already have a recorded proposal
 ref.
@@ -159,7 +170,7 @@ without sending and suggests either recording the existing proposal with
 Start by confirming the PM checkout can see eligible stored profiles:
 
 ```powershell
-issuekit profile --all
+issuekit profile --all --json
 ```
 
 Ask for a dry run first. The text output lists only each target's project and
