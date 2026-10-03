@@ -3,9 +3,10 @@
 ## Handoff protocol
 
 This repo uses the issuekit multi-agent handoff. For the current steps, run
-`issuekit protocol --agent <agent>` (e.g. `codex`, `claude`, or `kimi`) or
-`issuekit protocol --role <role>` (e.g. `implementer` or `reviewer`), or read
-the issuekit MCP server instructions / `get_protocol` tool.
+`issuekit protocol --role <role>` (e.g. `author`, `implementer`, `reviewer`,
+`triage`, or `pm`), or read the issuekit MCP server instructions /
+`get_protocol` tool. `issuekit protocol --agent <agent>` prints the configured
+default role for that agent.
 
 Do not copy the steps here; issuekit is the source of truth. Launch your agent
 from the repo root so the MCP server resolves the repo configuration.
@@ -20,6 +21,12 @@ from the repo root so the MCP server resolves the repo configuration.
 ## Project notes
 
 - Implementation tasks and cross-project proposals live in the configured API project.
+- Authors write proposals and implementation-ready issues, then stop.
+- Implementers claim active issues from the configured API project.
+- Reviewers decide submitted issues and may also be the original author when a
+  different implementer did the work.
+- If the proposal-system MCP tools hang or error, use the equivalent CLI with
+  `--json` (`issuekit propose/incoming/adopt`); they share one implementation.
 - This repo dogfoods its own issue tracker.
 - Repo-local `.env` is trusted input for `ISSUEKIT_*` keys only; sensitive API
   settings loaded from `.env` print a stderr notice.

@@ -17,7 +17,7 @@ that API.
 - CLI dispatcher (`issuekit`) plus an optional FastMCP server (`issuekit-mcp`,
   installed with the `mcp` extra) exposing the tracker reads and state changes
   as MCP tools. Commands that launch other agents (`implement`, `review`,
-  `serve`, `triage`, `request`, `negotiate`) stay CLI-only; see
+  `serve`, `triage`, `request`, `negotiate`, `proposal-checks`) stay CLI-only; see
   [`docs/guides/mcp-server.md`](docs/guides/mcp-server.md#mcp-boundary).
 - Headless coding-agent adapters (codex, claude, kimi) driven by `AgentRunner`
   through the default `exec` runtime. Codex implementer runs can opt into the
@@ -36,13 +36,14 @@ it serves rather than moving modules for symmetry.
 
 - `agentrun`: reusable headless coding-agent process runtime; see
   [`issuekit/agentrun/README.md`](issuekit/agentrun/README.md) for its boundary
-  and extension path. Tests: `test_agentrun_*.py`.
+  and extension path. Tests: `test_agentrun_*.py` and `test_app_server.py`.
 - `agents`: issuekit workflows that invoke agents, including implementation,
   review, routing, proposal checks, and triage. Tests: the corresponding
   `test_implement_command.py`, `test_review_command.py`, `test_router.py`,
-  `test_proposal_checks.py`, and `test_triage_author.py` files.
-- `api`: HTTP client, API resources, authentication, and token caching. Tests:
-  `test_client.py`.
+  `test_proposal_checks.py`, `test_triage_author.py`, `test_readonly.py`, and
+  `test_app_server_runtime.py` files.
+- `api`: HTTP client, API resources, authentication, agent sessions, and token
+  caching. Tests: `test_client.py` and `test_agent_sessions_client.py`.
 - `commands`: CLI subcommand implementations and setup helpers. Tests: the
   command-named `test_*_command.py` files, plus `test_setup.py` and
   `test_validate.py`.
@@ -70,7 +71,8 @@ it serves rather than moving modules for symmetry.
 - `testing`: reusable in-memory test doubles for issue and proposal APIs. Tests
   use these helpers throughout `tests/`; no separate test module owns them.
 - `workers`: worker identity, registration, and API registry helpers. Tests:
-  `test_worker.py`, `test_worker_keys.py`, and `test_workers_command.py`.
+  `test_worker.py`, `test_worker_keys.py`, `test_worker_addressing.py`, and
+  `test_workers_command.py`.
 
 `store.py` and `workflow.py` remain top-level because they are the workflow
 core shared across the tracker-facing packages. `core.py` and `gitutil.py` are
@@ -96,8 +98,9 @@ and must not import workflow state. In particular, nothing under
 ## Public surface
 
 Every subpackage ``__init__.py`` has a module docstring and exposes its public
-surface through an ``__all__`` facade when one is appropriate. Package initializers
-do not contain implementation; implementation lives in focused submodules.
+surface through an ``__all__`` facade when one is appropriate. Most package
+initializers are facades; `issuekit/commands/request/__init__.py` also implements
+the PM request command.
 
 - CLI subcommands: author, claim, submit-review, review, approve,
   request-changes, complete, edit, queue, serve, implement, propose/incoming/
@@ -116,11 +119,9 @@ do not contain implementation; implementation lives in focused submodules.
 
 ## Example in-scope requests
 
-- "Add a `--priority` filter to the claim loop."
+- "Add a `--dry-run` option to `issuekit init` that previews scaffold files."
+- "Add JSON output to `issuekit init` so scripts can inspect scaffold results."
 - "Make `serve --review` recover orphaned review-stage issues."
-- "Enforce ASCII-only proposal bodies across the CLI and MCP entry points."
-- "Add an agent-refined triage step that authors an implementation-ready spec
-  before adopting a proposal."
 
 ## Example out-of-scope requests
 

@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from issuekit.commands.init import (
+    CLAUDE_AGENTS_IMPORT,
     CODEX_MCP_HEADER,
     HANDOFF_HEADER,
     append_codex_issuekit_table,
@@ -52,7 +53,7 @@ def collect_setup_actions(cwd: Path) -> list[SetupAction]:
     _add_mcp_json_action(cwd, actions)
     _add_codex_config_action(cwd, actions)
     _add_handoff_action(cwd, actions, "AGENTS.md")
-    _add_handoff_action(cwd, actions, "CLAUDE.md")
+    _add_claude_import_action(cwd, actions)
     return actions
 
 
@@ -262,3 +263,31 @@ def _add_handoff_action(cwd: Path, actions: list[SetupAction], filename: str) ->
                 "issuekit setup would append the handoff reference.",
             )
         )
+
+
+def _add_claude_import_action(cwd: Path, actions: list[SetupAction]) -> None:
+    path = cwd / "CLAUDE.md"
+    if not path.exists():
+        actions.append(
+            SetupAction(
+                "CLAUDE.md",
+                "missing",
+                "write",
+                "issuekit setup would create it with an @AGENTS.md import.",
+            )
+        )
+        return
+
+    content = path.read_text(encoding="utf-8-sig", errors="ignore")
+    if any(line.strip() == CLAUDE_AGENTS_IMPORT for line in content.splitlines()):
+        return
+
+    actions.append(
+        SetupAction(
+            "CLAUDE.md",
+            "blocked",
+            "manual",
+            "CLAUDE.md does not import AGENTS.md. Add `@AGENTS.md` so Claude Code "
+            "reads the shared repository guidance.",
+        )
+    )

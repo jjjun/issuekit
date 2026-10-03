@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from importlib import import_module
 from pathlib import Path
 
-from issuekit.commands.init import CODEX_MCP_HEADER, HANDOFF_HEADER
+from issuekit.commands.init import CLAUDE_AGENTS_IMPORT, CODEX_MCP_HEADER, HANDOFF_HEADER
 from issuekit.config import load_config
 from issuekit.guards.author import read_author_guards
 
@@ -36,7 +36,7 @@ def collect_diagnostics(
         _mcp_json_diagnostic(cwd),
         _codex_config_diagnostic(cwd),
         _handoff_reference_diagnostic(cwd, "AGENTS.md"),
-        _handoff_reference_diagnostic(cwd, "CLAUDE.md"),
+        _claude_import_diagnostic(cwd),
         _agent_config_diagnostic(cwd),
         _author_guard_diagnostic(cwd),
     ]
@@ -126,6 +126,20 @@ def _handoff_reference_diagnostic(cwd: Path, filename: str) -> Diagnostic:
         "ACTION",
         f"{filename} does not contain the handoff reference.",
         ("Run issuekit setup.",),
+    )
+
+
+def _claude_import_diagnostic(cwd: Path) -> Diagnostic:
+    path = cwd / "CLAUDE.md"
+    if not path.exists():
+        return Diagnostic("ACTION", "CLAUDE.md is missing.", ("Run issuekit setup.",))
+    content = path.read_text(encoding="utf-8-sig", errors="ignore")
+    if any(line.strip() == CLAUDE_AGENTS_IMPORT for line in content.splitlines()):
+        return Diagnostic("OK", "CLAUDE.md imports AGENTS.md.")
+    return Diagnostic(
+        "ACTION",
+        "CLAUDE.md does not import AGENTS.md.",
+        ("Add `@AGENTS.md` so Claude Code reads the shared repository guidance.",),
     )
 
 

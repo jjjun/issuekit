@@ -15,6 +15,7 @@ from issuekit.config.local import ensure_gitignore_entries
 
 CODEX_MCP_HEADER = "[mcp_servers.issuekit]"
 HANDOFF_HEADER = "## Handoff protocol"
+CLAUDE_AGENTS_IMPORT = "@AGENTS.md"
 PRE_COMMIT_GUIDANCE = """Add these hooks to .pre-commit-config.yaml:
 
 repos:
@@ -124,7 +125,7 @@ def _write_mcp_scaffold(cwd: Path, force: bool, result: InitResult) -> None:
     _write_mcp_json(cwd, force, result)
     _write_codex_config(cwd, force, result)
     _write_handoff_reference(cwd, cwd / "AGENTS.md", result)
-    _write_handoff_reference(cwd, cwd / "CLAUDE.md", result)
+    _write_claude_agents_import(cwd, result)
 
 
 def _write_mcp_json(cwd: Path, force: bool, result: InitResult) -> None:
@@ -296,6 +297,25 @@ def _write_handoff_reference(cwd: Path, path: Path, result: InitResult) -> None:
     with path.open("a", encoding="utf-8", newline="\n") as handle:
         handle.write(f"{prefix}{reference}\n")
     result.written.append(_display_path(cwd, path))
+
+
+def _write_claude_agents_import(cwd: Path, result: InitResult) -> None:
+    path = cwd / "CLAUDE.md"
+    if not path.exists():
+        path.write_text(f"{CLAUDE_AGENTS_IMPORT}\n", encoding="utf-8", newline="\n")
+        result.written.append(_display_path(cwd, path))
+        return
+
+    content = path.read_text(encoding="utf-8-sig", errors="ignore")
+    if any(line.strip() == CLAUDE_AGENTS_IMPORT for line in content.splitlines()):
+        result.skipped.append(_display_path(cwd, path))
+        return
+
+    result.skipped.append(_display_path(cwd, path))
+    result.guidance.append(
+        "CLAUDE.md does not import AGENTS.md. Add `@AGENTS.md` so Claude Code "
+        "reads the shared repository guidance."
+    )
 
 
 def _template_text(template_name: str) -> str:

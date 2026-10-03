@@ -106,6 +106,22 @@ def test_documented_issuekit_module_references_reject_missing_modules(tmp_path: 
     ]
 
 
+def test_handoff_guidance_leads_with_role_protocol() -> None:
+    root = Path(__file__).parents[1]
+    for relative_path in ("AGENTS.md", "issuekit/templates/handoff_reference.md"):
+        contents = " ".join((root / relative_path).read_text(encoding="utf-8").split())
+        assert "`issuekit protocol --role <role>`" in contents
+        assert "author`, `implementer`, `reviewer`, `triage`, or `pm`" in contents
+        assert (
+            "`issuekit protocol --agent <agent>` prints the configured default role "
+            "for that agent."
+        ) in contents
+        assert "run `issuekit protocol --agent <agent>`" not in contents
+
+    claude = (root / "CLAUDE.md").read_text(encoding="utf-8")
+    assert claude.startswith("@AGENTS.md\n")
+
+
 def test_tests_workflow_is_manual_only() -> None:
     root = Path(__file__).parents[1]
     workflow = (root / ".github/workflows/tests.yml").read_text(encoding="utf-8")

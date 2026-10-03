@@ -75,6 +75,8 @@ def test_setup_empty_repo_scaffolds_mcp_and_prints_checklist(
     assert (tmp_path / ".codex" / "config.toml").exists()
     assert (tmp_path / "AGENTS.md").exists()
     assert (tmp_path / "CLAUDE.md").exists()
+    assert "## Handoff protocol" in (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
+    assert (tmp_path / "CLAUDE.md").read_text(encoding="utf-8") == "@AGENTS.md\n"
     assert not (tmp_path / "docs" / "issues" / "incoming").exists()
 
 
@@ -294,6 +296,53 @@ def test_setup_check_json_stale_repo_reports_updates_without_writing(
     assert "AGENTS.md" in paths
     assert "docs/issues/indexes/active.md" not in paths
     assert _file_snapshot(tmp_path) == before
+
+
+def test_setup_check_and_apply_request_import_for_existing_claude_file(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    _force_mcp_available(monkeypatch)
+    init_repo(tmp_path, with_mcp=True)
+    claude_path = tmp_path / "CLAUDE.md"
+    original = "# Custom Claude guidance\n"
+    claude_path.write_text(original, encoding="utf-8", newline="\n")
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["setup", "check", "--json"]) == 0
+    check_payload = json.loads(capsys.readouterr().out)
+    action = next(item for item in check_payload["actions"] if item["path"] == "CLAUDE.md")
+    assert action["state"] == "blocked"
+    assert action["action"] == "manual"
+    assert "Add `@AGENTS.md`" in action["reason"]
+    claude_diagnostic = _diagnostic_status(
+        setup.collect_diagnostics(tmp_path),
+        "CLAUDE.md does not import AGENTS.md.",
+    )
+    assert claude_diagnostic == "ACTION"
+    assert claude_path.read_text(encoding="utf-8") == original
+
+    assert cli.main(["setup", "--json", "apply"]) == 0
+    apply_payload = json.loads(capsys.readouterr().out)
+    assert "CLAUDE.md" in apply_payload["scaffold"]["skipped"]
+    assert any(
+        "Add `@AGENTS.md`" in guidance
+        for guidance in apply_payload["scaffold"]["guidance"]
+    )
+    assert claude_path.read_text(encoding="utf-8") == original
+
+
+def test_setup_check_accepts_existing_agents_import_line(tmp_path: Path) -> None:
+    (tmp_path / "CLAUDE.md").write_text(
+        "# Existing Claude notes\n\n@AGENTS.md\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    actions = collect_setup_actions(tmp_path)
+
+    assert not any(action.path == "CLAUDE.md" for action in actions)
 
 
 def test_setup_check_reports_precommit_missing_hook_as_manual(
