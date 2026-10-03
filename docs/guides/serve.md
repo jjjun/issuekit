@@ -46,6 +46,11 @@ not a separate mode but an add-on to the implement mode, and `--review` and
 | `--proposal-checks` | proposal checks addressed to this worker | verify the claim against the code | post the check result |
 | `--triage` (implement add-on) | the incoming proposal inbox | adopt matching proposals (or run the triage author agent) | issue creation |
 
+Review, proposal-check, and configured triage agents run through the read-only
+evaluation guard. It removes API credentials from the child environment and
+rejects changes to the worktree, Git config, hook and info files, and local
+credential or agent settings.
+
 `--triage` layers onto the implement loop: each poll adopts up to
 `max_adoptions_per_cycle` matching proposals (default 5), then attempts a claim.
 `[triage] auto_adopt = true` enables the same behavior without the flag. When

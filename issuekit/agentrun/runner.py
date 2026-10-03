@@ -9,6 +9,7 @@ import subprocess
 import sys
 import threading
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
@@ -221,6 +222,7 @@ class AgentRunner:
         resume_session: bool = False,
         issuekit_session: str | None = None,
         implementer_report: bool = False,
+        drop_env: Sequence[str] = (),
     ) -> AgentResult:
         plan_path = prompt.path.resolve()
         repo = repo.resolve()
@@ -296,13 +298,15 @@ class AgentRunner:
                 "stderr": log_f,
                 "cwd": str(repo),
             }
+            env = os.environ.copy()
+            for key in drop_env:
+                env.pop(key, None)
             if issuekit_session is not None or report_path is not None:
-                env = os.environ.copy()
                 if issuekit_session is not None:
                     env["ISSUEKIT_SESSION"] = issuekit_session
                 if report_path is not None:
                     env["ISSUEKIT_IMPLEMENTER_REPORT_FILE"] = str(report_path)
-                kwargs["env"] = env
+            kwargs["env"] = env
             if os.name == "nt":
                 kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
             else:

@@ -234,7 +234,10 @@ cycle with `issuekit triage --once` (`--once` is currently required), or let
 proposals that match the `[triage]` policy: the origin project is listed in
 `trusted_origins`, the proposal is blocking when `require_blocking` is set, and
 a negotiation has not locked it. It evaluates at most `max_adoptions_per_cycle`
-of them. The agent inspects the checkout read-only and returns one decision:
+of them. The agent inspects the checkout read-only and returns one decision.
+Read-only evaluations remove API credentials from the agent environment and
+reject changes to Git config, hook and info files, and local credential or
+agent settings as well as repository worktree changes.
 
 - `adopt`: adopt the proposal at `[triage] default_priority` and append the
   agent's implementation spec to the new issue.

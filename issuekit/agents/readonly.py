@@ -90,6 +90,11 @@ def run_readonly_evaluation(
         resume_session=resume_session,
         follow=follow,
         abort_event=abort_event,
+        drop_env=(
+            "ISSUEKIT_API_TOKEN",
+            "ISSUEKIT_API_USER",
+            "ISSUEKIT_API_PASSWORD",
+        ),
     )
     repository_error = None
     try:
@@ -263,19 +268,52 @@ def _durable_state_fingerprint(cwd: Path) -> tuple[tuple[str, str], ...]:
     paths = [
         run_dir / "pm-requests.json",
         run_dir / "triage-author-state.json",
+        cwd / ".env",
+        cwd / "issuekit.local.toml",
+        cwd / ".mcp.json",
+        cwd / ".claude" / "settings.json",
+        cwd / ".claude" / "settings.local.json",
     ]
     negotiations_dir = run_dir / "negotiations"
     try:
         paths.extend(path for path in negotiations_dir.rglob("*") if path.is_file())
     except OSError:
         pass
-    return tuple(
-        sorted(
-            (
-                path.relative_to(cwd).as_posix(),
-                _file_digest(path),
+
+    entries = {
+        path.relative_to(cwd).as_posix(): _file_digest(path)
+        for path in paths
+        if path.is_file()
+    }
+    for git_path_name in ("config", "hooks", "info"):
+        result = run_git(["rev-parse", "--git-path", git_path_name], cwd)
+        if result is None or result.returncode != 0 or not result.stdout.strip():
+            raise WorkflowError(
+                "Cannot establish read-only repository fingerprint: "
+                f"Git {git_path_name} path snapshot failed."
             )
-            for path in paths
-            if path.is_file()
-        )
-    )
+        git_path = Path(result.stdout.strip())
+        if not git_path.is_absolute():
+            git_path = cwd / git_path
+        try:
+            display_path = git_path.relative_to(cwd).as_posix()
+        except ValueError:
+            display_path = f"git/{git_path_name}"
+
+        if git_path.is_file():
+            entries[display_path] = _file_digest(git_path)
+            continue
+        if not git_path.is_dir():
+            continue
+        try:
+            for path in git_path.rglob("*"):
+                if path.is_file():
+                    relative_path = path.relative_to(git_path).as_posix()
+                    entries[f"{display_path}/{relative_path}"] = _file_digest(path)
+        except OSError as exc:
+            raise WorkflowError(
+                "Cannot establish read-only repository fingerprint: "
+                f"Git {git_path_name} files snapshot failed."
+            ) from exc
+
+    return tuple(sorted(entries.items()))

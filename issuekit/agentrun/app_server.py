@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import queue
+import re
 import subprocess
 import threading
 from collections.abc import Callable, Mapping
@@ -35,6 +36,11 @@ SENSITIVE_KEYS = frozenset(
         "lease_token",
         "token",
     }
+)
+SENSITIVE_VALUE_PATTERN = re.compile(
+    r"(?i:bearer\s+\S+)|"
+    r"eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*|"
+    r"ISSUEKIT_API_(?:TOKEN|PASSWORD)=\S+"
 )
 
 
@@ -364,7 +370,7 @@ def redact_payload(value: Any) -> Any:
     if isinstance(value, bytes):
         return "[binary omitted]"
     if isinstance(value, str):
-        return value[:MAX_TEXT_CHARS]
+        return SENSITIVE_VALUE_PATTERN.sub("[redacted]", value)[:MAX_TEXT_CHARS]
     if value is None or isinstance(value, (bool, int, float)):
         return value
     return str(value)[:MAX_TEXT_CHARS]

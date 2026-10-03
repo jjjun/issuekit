@@ -74,10 +74,11 @@ automatically picked ref's checkout is dirty; issuekit prints a warning and
 ignores that ref.
 
 Both agents are instructed to inspect their checkout read-only. As a backstop,
-issuekit discards a turn's output when it leaves worktree changes or moves HEAD
-or the current branch; this includes a turn that commits its changes. The check
-does not detect pushes, API or other external side effects, or edits that the
-turn reverts before it finishes, so the prompt is the primary control.
+issuekit discards a turn's output when it leaves worktree changes, changes Git
+config or hook/info files, changes local credential or agent settings, or moves
+HEAD or the current branch; this includes a turn that commits its changes. The
+check does not detect pushes, API or other external side effects, or edits that
+the turn reverts before it finishes, so the prompt is the primary control.
 
 ## Verdicts and thread status
 

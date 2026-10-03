@@ -93,6 +93,72 @@ def test_runner_captures_stdout_stderr_and_returns_result(tmp_path: Path) -> Non
     assert status["agent_log"].endswith(".agent.log")
 
 
+def test_runner_drops_requested_environment_variables(tmp_path: Path, monkeypatch) -> None:
+    names = (
+        "ISSUEKIT_API_TOKEN",
+        "ISSUEKIT_API_USER",
+        "ISSUEKIT_API_PASSWORD",
+    )
+    for name in names:
+        monkeypatch.setenv(name, f"secret-{name}")
+    monkeypatch.setenv("ISSUEKIT_OTHER_VALUE", "retained")
+    script = tmp_path / "script.py"
+    script.write_text(
+        "import json, os; "
+        f"print(json.dumps({{name: os.environ.get(name) for name in {names!r}}}))",
+        encoding="utf-8",
+        newline="\n",
+    )
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / ".git").mkdir()
+
+    result = AgentRunner().run(
+        FakeAdapter([sys.executable, str(script)]),
+        agent_prompt(tmp_path / "plan.md"),
+        repo,
+        timeout=10.0,
+        drop_env=names,
+    )
+
+    assert json.loads(result.stdout_path.read_text(encoding="utf-8")) == dict.fromkeys(
+        names
+    )
+    assert os.environ["ISSUEKIT_OTHER_VALUE"] == "retained"
+
+
+def test_runner_preserves_environment_variables_by_default(
+    tmp_path: Path, monkeypatch
+) -> None:
+    names = (
+        "ISSUEKIT_API_TOKEN",
+        "ISSUEKIT_API_USER",
+        "ISSUEKIT_API_PASSWORD",
+    )
+    expected = {name: f"secret-{name}" for name in names}
+    for name, value in expected.items():
+        monkeypatch.setenv(name, value)
+    script = tmp_path / "script.py"
+    script.write_text(
+        "import json, os; "
+        f"print(json.dumps({{name: os.environ.get(name) for name in {names!r}}}))",
+        encoding="utf-8",
+        newline="\n",
+    )
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / ".git").mkdir()
+
+    result = AgentRunner().run(
+        FakeAdapter([sys.executable, str(script)]),
+        agent_prompt(tmp_path / "plan.md"),
+        repo,
+        timeout=10.0,
+    )
+
+    assert json.loads(result.stdout_path.read_text(encoding="utf-8")) == expected
+
+
 def test_runner_records_codex_jsonl_result_and_preserves_raw_log(tmp_path: Path) -> None:
     fixture = Path(__file__).parent / "fixtures" / "codex_exec_success.jsonl"
     script = (

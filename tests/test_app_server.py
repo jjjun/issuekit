@@ -61,6 +61,47 @@ def test_redact_payload_omits_raw_files_binary_and_bounds_text() -> None:
     assert len(redacted["message"]) == MAX_TEXT_CHARS
 
 
+def test_redact_payload_scrubs_token_like_values_inside_strings() -> None:
+    value = (
+        "curl -H 'Authorization: bEaReR bearer-secret' "
+        "--data eyJheader.payload.signature "
+        "ISSUEKIT_API_TOKEN=api-token ISSUEKIT_API_PASSWORD=api-password"
+    )
+
+    redacted = redact_payload({"command": value, "message": "ordinary text"})
+
+    assert redacted["command"] == (
+        "curl -H 'Authorization: [redacted] "
+        "--data [redacted] [redacted] [redacted]"
+    )
+    assert redacted["message"] == "ordinary text"
+    assert "bearer-secret" not in redacted["command"]
+    assert "api-token" not in redacted["command"]
+    assert "api-password" not in redacted["command"]
+
+
+def test_normalize_notification_redacts_command_tokens_before_upload() -> None:
+    event = normalize_notification(
+        {
+            "method": "item/started",
+            "params": {
+                "item": {
+                    "id": "item-1",
+                    "type": "command_execution",
+                    "command": "curl -H 'Authorization: Bearer uploaded-secret'",
+                }
+            },
+        },
+        event_key="session:event",
+    )
+
+    assert event is not None
+    assert event["payload"]["item"]["command"] == (
+        "curl -H 'Authorization: [redacted]"
+    )
+    assert "uploaded-secret" not in json.dumps(event)
+
+
 def test_turn_text_truncation_logs_original_and_limited_lengths(
     monkeypatch, caplog
 ) -> None:

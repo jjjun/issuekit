@@ -279,6 +279,11 @@ roles and disable configured MCP servers with `-c mcp_servers={}`. Triage,
 routing, and negotiation use `--sandbox read-only`; review uses
 `--sandbox workspace-write`, which lets it run tests while keeping `.git`
 read-only and network access off by default.
+Every read-only evaluation also removes `ISSUEKIT_API_TOKEN`,
+`ISSUEKIT_API_USER`, and `ISSUEKIT_API_PASSWORD` from the agent environment.
+Its before-and-after repository check covers `.git/config`, files under Git's
+hooks and info directories, and local credential or agent configuration files
+such as `.env`, `issuekit.local.toml`, `.mcp.json`, and Claude settings.
 On Linux, these defaults require Codex's bubblewrap sandbox to create
 unprivileged user namespaces. issuekit probes the configured sandbox before
 launch and stops with the probe error if the host blocks it. On Ubuntu with

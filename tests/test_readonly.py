@@ -40,6 +40,18 @@ def _init_git_repo(path: Path) -> None:
         subprocess.run(["git", *args], cwd=path, check=True)
 
 
+def _git_path(path: Path, name: str) -> Path:
+    result = subprocess.run(
+        ["git", "rev-parse", "--git-path", name],
+        cwd=path,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    git_path = Path(result.stdout.strip())
+    return git_path if git_path.is_absolute() else path / git_path
+
+
 class ResultRunner:
     def __init__(
         self,
@@ -52,9 +64,11 @@ class ResultRunner:
         self.exit_code = exit_code
         self.timed_out = timed_out
         self.calls = 0
+        self.kwargs: dict[str, object] = {}
 
     def run(self, *args, **kwargs) -> AgentResult:
         self.calls += 1
+        self.kwargs = kwargs
         if self.mutate is not None:
             self.mutate()
         return AgentResult(
@@ -110,6 +124,30 @@ def test_readonly_evaluation_identifies_failed_status_snapshot(
     assert runner.calls == 0
 
 
+def test_readonly_evaluation_drops_issuekit_api_credentials(
+    tmp_path: Path,
+) -> None:
+    _init_git_repo(tmp_path)
+    runner = ResultRunner()
+
+    run_readonly_evaluation(
+        agent="codex",
+        adapter=object(),
+        cwd=tmp_path,
+        timeout=1,
+        runner_factory=lambda: runner,
+        prompt=AgentPrompt(tmp_path / ".agent-runs/prompt.md", "body", "pointer"),
+        label="Test",
+        subject="subject",
+    )
+
+    assert runner.kwargs["drop_env"] == (
+        "ISSUEKIT_API_TOKEN",
+        "ISSUEKIT_API_USER",
+        "ISSUEKIT_API_PASSWORD",
+    )
+
+
 @pytest.mark.parametrize(
     "relative_path",
     [
@@ -147,6 +185,79 @@ def test_readonly_evaluation_protects_durable_agent_run_state(
 
     assert run.repository_modified is True
     assert run.repository_changed_paths == (relative_path.as_posix(),)
+
+
+@pytest.mark.parametrize(
+    "relative_path",
+    [
+        Path("git:config"),
+        Path("git:hooks/pre-commit"),
+        Path("git:info/exclude"),
+        Path(".env"),
+        Path("issuekit.local.toml"),
+        Path(".mcp.json"),
+        Path(".claude/settings.json"),
+        Path(".claude/settings.local.json"),
+    ],
+)
+def test_readonly_evaluation_rejects_git_and_local_config_changes(
+    tmp_path: Path,
+    relative_path: Path,
+) -> None:
+    _init_git_repo(tmp_path)
+    if relative_path.parts[0] == "git:config":
+        path = _git_path(tmp_path, "config")
+    elif relative_path.parts[0] == "git:hooks":
+        path = _git_path(tmp_path, "hooks") / relative_path.parts[1]
+    elif relative_path.parts[0] == "git:info":
+        path = _git_path(tmp_path, "info") / relative_path.parts[1]
+    else:
+        path = tmp_path / relative_path
+
+    def mutate() -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("changed\n", encoding="utf-8", newline="\n")
+
+    run = run_readonly_evaluation(
+        agent="codex",
+        adapter=object(),
+        cwd=tmp_path,
+        timeout=1,
+        runner_factory=lambda: ResultRunner(mutate=mutate),
+        prompt=AgentPrompt(tmp_path / ".agent-runs/prompt.md", "body", "pointer"),
+        label="Test",
+        subject="subject",
+    )
+
+    assert run.repository_modified is True
+    with pytest.raises(WorkflowError, match="modified repository state"):
+        require_clean_run(
+            run,
+            err=sys.stderr,
+            mutation_log_message="ERROR: repository mutation detected.",
+        )
+
+
+def test_readonly_evaluation_passes_when_durable_state_is_unchanged(
+    tmp_path: Path,
+) -> None:
+    _init_git_repo(tmp_path)
+    run = run_readonly_evaluation(
+        agent="codex",
+        adapter=object(),
+        cwd=tmp_path,
+        timeout=1,
+        runner_factory=ResultRunner,
+        prompt=AgentPrompt(tmp_path / ".agent-runs/prompt.md", "body", "pointer"),
+        label="Test",
+        subject="subject",
+    )
+
+    assert require_clean_run(
+        run,
+        err=sys.stderr,
+        mutation_log_message="ERROR: repository mutation detected.",
+    ) == "ok"
 
 
 def test_readonly_evaluation_ignores_content_change_to_already_dirty_path(
