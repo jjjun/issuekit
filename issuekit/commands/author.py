@@ -125,7 +125,7 @@ def run(args) -> int:
             session=session,
         )
         for warning in _author_warnings(authored):
-            print(warning, file=sys.stderr)
+            print(_format_author_warning(authored, warning), file=sys.stderr)
         guard = create_author_guard(
             Path.cwd(),
             config=config,
@@ -270,6 +270,22 @@ def _author_warnings(authored: Issue) -> tuple[str, ...]:
         warnings.extend(line for line in authored.warning.splitlines() if line.strip())
     warnings.extend(bare_ref_collision_warnings(authored.dependencies))
     return _dedupe_warnings(warnings)
+
+
+def _format_author_warning(authored: Issue, warning: str) -> str:
+    if warning == "directed_expired_heartbeat":
+        return (
+            f"Warning ({warning}): target worker {authored.target_worker} has no recent "
+            f"heartbeat; issue {authored.id} waits for that worker. Return it to the "
+            f"pool with issuekit readdress {authored.id}."
+        )
+    if warning == "directed_no_worker":
+        return (
+            f"Warning ({warning}): target worker {authored.target_worker} is not "
+            f"registered; issue {authored.id} waits for that worker. Return it to the "
+            f"pool with issuekit readdress {authored.id}."
+        )
+    return warning
 
 
 def _dedupe_warnings(warnings: list[str]) -> tuple[str, ...]:

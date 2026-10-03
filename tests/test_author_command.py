@@ -27,6 +27,17 @@ class CloseTrackingClient(FakeIssuekitClient):
         self.close_count += 1
 
 
+class WarningClient(FakeIssuekitClient):
+    def __init__(self, warning: str) -> None:
+        super().__init__()
+        self.warning = warning
+
+    def create_issue(self, issue, *, session=None):
+        created = super().create_issue(issue, session=session)
+        created["warnings"] = [self.warning]
+        return created
+
+
 def _configure_api(tmp_path: Path, monkeypatch, client: FakeIssuekitClient) -> None:
     (tmp_path / "issuekit.toml").write_text(
         "api_url = 'https://mine.example'\nproject = 'demo'\n",
@@ -99,6 +110,82 @@ def test_author_command_creates_issue_via_api(tmp_path: Path, monkeypatch, capsy
         },
     }
     assert client.close_count == 1
+
+
+def test_author_json_formats_directed_expired_heartbeat_warning(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    warning = "directed_expired_heartbeat"
+    client = WarningClient(warning)
+    client.upsert_worker(
+        machine_id="machine",
+        repo_id="demo",
+        worker_id="checkout",
+        project="demo",
+    )
+    client.calls.clear()
+    _configure_api(tmp_path, monkeypatch, client)
+
+    exit_code = cli.main(
+        [
+            "author",
+            "--title",
+            "Directed work",
+            "--body",
+            "Run verification on this host.",
+            "--agent",
+            "codex",
+            "--target-worker",
+            "checkout.demo@machine",
+            "--json",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    payload = json.loads(captured.out)
+    assert payload["warning"] == warning
+    assert payload["target_worker"] == "checkout.demo@machine"
+    assert captured.err == (
+        "Warning (directed_expired_heartbeat): target worker checkout.demo@machine "
+        "has no recent heartbeat; issue 1 waits for that worker. Return it to the "
+        "pool with issuekit readdress 1.\n"
+    )
+
+
+def test_author_text_formats_directed_no_worker_warning(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = WarningClient("directed_no_worker")
+    _configure_api(tmp_path, monkeypatch, client)
+
+    exit_code = cli.main(
+        [
+            "author",
+            "--title",
+            "Directed work",
+            "--body",
+            "Run verification on this host.",
+            "--agent",
+            "codex",
+            "--target-worker",
+            "missing.demo@machine",
+            "--allow-unregistered-worker",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "Authored issue: demo#1" in captured.out
+    assert captured.err == (
+        "Warning (directed_no_worker): target worker missing.demo@machine is not "
+        "registered; issue 1 waits for that worker. Return it to the pool with "
+        "issuekit readdress 1.\n"
+    )
 
 
 def test_author_command_directs_issue_to_registered_worker(

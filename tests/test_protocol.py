@@ -333,6 +333,23 @@ def test_render_server_instructions_is_substantially_smaller_than_full() -> None
     assert len(lean) < len(full) // 2
 
 
+def test_machine_readable_output_guidance_is_shared() -> None:
+    expected = (
+        "Machine-readable output:",
+        "stdout contains exactly one JSON document",
+        "non-zero means the request was not fully applied",
+        "`payload_mismatch` or `append_error`",
+        "Do not merge stderr into stdout (`2>&1`)",
+        "`${PIPESTATUS[0]}`",
+        "do not retry until `issuekit queue` or",
+        "`issuekit outgoing --to <project>`",
+    )
+    for rendered in (render_protocol(role="author"), render_server_instructions()):
+        normalized = " ".join(rendered.split())
+        for phrase in expected:
+            assert phrase in normalized
+
+
 def test_render_protocol_roles_remain_self_contained() -> None:
     for role in ("author", "implementer", "pm", "reviewer", "triage"):
         rendered = render_protocol(role=role)

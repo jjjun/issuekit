@@ -22,6 +22,15 @@ The canonical delegation cycle is:
 6. Changes loop: the implementer reclaims or continues the issue, addresses only
    the review feedback, and submits for review again.
 
+Machine-readable output: With `--json`, stdout contains exactly one JSON
+document; warnings and diagnostics go to stderr. Trust the exit status: non-zero
+means the request was not fully applied, even if JSON was printed (for example,
+`payload_mismatch` or `append_error`). Do not merge stderr into stdout (`2>&1`)
+before parsing or let a pipeline (`| grep`, `| tail`) hide the command status;
+check it, for example with `${{PIPESTATUS[0]}}`. After a parse failure for
+`author` or `propose`, do not retry until `issuekit queue` or
+`issuekit outgoing --to <project>` confirms whether the first call created the item.
+
 The model is pull-based: authors publish work to a pool, implementers pull from
 that pool, and reviewers pull from the review pool. No central orchestrator is
 required for the normal author -> implement -> review cycle.
