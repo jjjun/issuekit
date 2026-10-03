@@ -42,11 +42,13 @@ When both files exist, `[tool.issuekit]` in `pyproject.toml` wins and
 `pyproject.toml` exists without `[tool.issuekit]`, issuekit falls back to
 `issuekit.toml`.
 
-Repository config is strict about values but not about names: an invalid value
-fails config loading, while an unknown or misspelled key is silently ignored.
-Run `issuekit info` to see which repository
-config source and machine config file were loaded, along with the effective
-agent settings.
+Unknown config keys are often ignored, but not every typo is: a misspelled role
+table such as `[agents.claude.roles.reviwer]` fails with
+`Invalid agents.claude.roles role`. Value handling also varies by setting and
+shape. For example, `check_encoding_exclude = 5` becomes an empty list, a
+non-table `agents.x` is skipped, and `api_timeout <= 0` is accepted. Run
+`issuekit info` to see which repository config source and machine config file
+were loaded, along with the effective agent settings.
 
 `project` names the API issue and proposal namespace. When it is unset, it
 defaults to the registered worker's `repo_id` from `issuekit.local.toml`, then
@@ -56,6 +58,11 @@ locally: lifecycle commands fail with `Unknown stage: <name>` when their target
 stage (`implementing`, `review`, or `changes_requested`) is missing, and a
 stage filter such as `issuekit queue --stage` must name a listed stage. Adding
 a name does not create a workflow stage, so keep the default list.
+
+`issues_dir` sets the directory for local issue documents and defaults to
+`docs/issues`. `issuekit init` writes its issue-directory README there. During
+an agent run, changes under this directory do not count as implementation
+changes, and the submit-time mojibake scan excludes it.
 
 ## Machine config
 
@@ -166,10 +173,9 @@ require_distinct_reviewer = true
 
 `default_reviewer` controls where MCP and CLI review handoffs go when no
 reviewer is specified. It must be one of the configured `assignees`, or `auto`.
-With `auto`, issuekit keeps the current review assignee when possible and
-otherwise uses a stable configured assignee. When `require_distinct_reviewer` is
-true, `auto` chooses an assignee that differs from the issue implementer and
-same-name review is rejected.
+With `auto`, issuekit chooses the first configured assignee that differs from
+the issue implementer. In API mode, `require_distinct_reviewer` is always true
+for local decisions, so same-name review is rejected.
 
 Without `api_url`, the local defaults are `default_reviewer = "claude"` and
 `require_distinct_reviewer = false`. Because `default_reviewer` must name an
@@ -406,13 +412,14 @@ An agent can also set model and reasoning-effort defaults for the
 model = "claude-sonnet-5"
 
 [tool.issuekit.agents.claude.roles.reviewer]
-model = "claude-opus-4-8"
+model = "claude-opus-5-5"
 ```
 
 Role overlays accept only `model` and `reasoning_effort`, and take precedence
 over the agent default but not explicit per-run values. This lets one agent
-name use different settings for implementation and review within one `serve`
-loop. An agent must define `effort_argv` to support `reasoning_effort`; the
+name use different settings across implement-mode and `serve --review`
+processes, or for implementer and triage work within one `serve --triage` loop.
+An agent must define `effort_argv` to support `reasoning_effort`; the
 built-in Codex adapter uses `("-c", "model_reasoning_effort={value}")` and the
 built-in Claude adapter uses `("--effort", "{value}")`. The `speed` setting is
 a boolean switch; `true` emits the agent's `speed_argv` entries verbatim, while
@@ -447,9 +454,12 @@ be several heartbeat periods wide.
 Set `work_branch` to pin handoff lifecycle work to one branch. When set,
 `claim`, `implement`, `serve`, and `submit-review` fail before mutating issue
 state if the checkout is on another branch or the branch cannot be determined.
-The guard never switches branches. Omit `work_branch` or set it to an empty
-string to disable the guard, which is the default. The config shape is intended
-to grow later to an allowed branch list or glob such as
+The guard never switches branches. For human recovery, the CLI `claim`,
+`implement`, `serve`, and `submit-review` commands accept `--allow-any-branch`;
+the MCP `claim_next_task` and `submit_for_review` tools accept
+`allow_any_branch`. Omit `work_branch` or set it to an empty string to disable
+the guard, which is the default. The config shape is intended to grow later to
+an allowed branch list or glob such as
 `allowed_branches = ["main", "release/*"]`; today it is a single branch string.
 
 See [Separation-of-duties guards](separation-of-duties.md) for the full guard

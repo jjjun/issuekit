@@ -19,7 +19,7 @@ install it, and where to go next.
 | [MCP server](guides/mcp-server.md) | Installing, scaffolding, and troubleshooting the handoff MCP server. |
 | [Handoff protocol](guides/handoff-protocol.md) | Where the canonical author/implementer/reviewer protocol text lives. |
 | [Commands](guides/commands.md) | Full CLI command reference. |
-| [Serve worker loop](guides/serve.md) | Running a checkout as a long-lived implementer, reviewer, proposal-check, or triage worker. |
+| [Serve worker loop](guides/serve.md) | Running implementer, reviewer, and proposal-check workers, with triage as an implement-mode add-on. |
 | [Configuration](guides/configuration.md) | Config file layers, precedence, agent overlays, reviewer and implementer policy. |
 | [Cross-project proposals](guides/cross-project-proposals.md) | Proposal inboxes, dependencies, refs, adoption and reply flow. |
 | [Cross-project negotiation](guides/negotiation.md) | Bounded agent conversations that settle a shared contract before implementation. |
@@ -29,7 +29,7 @@ install it, and where to go next.
 | [Orphaned claim detection](guides/orphaned-claim-detection.md) | Finding and reclaiming stalled implementing claims. |
 | [Separation-of-duties guards](guides/separation-of-duties.md) | The four guards, their error strings, and recovery paths. |
 | [Testing](guides/testing.md) | Local gates, live contract tests, CI workflows. |
-| [Development](guides/development.md) | Dogfooding workflow and Windows developer commands. |
+| [Development](guides/development.md) | Dogfooding workflow and developer global-tool commands. |
 
 ## What does not live here
 

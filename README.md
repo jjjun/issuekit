@@ -4,6 +4,8 @@
 workflow across repositories. Issue lifecycle state and cross-project proposals
 live in a mine-py API project.
 
+The project requires Python 3.12 or newer, `uv`, and `git`.
+
 ## Install
 
 ```powershell
@@ -18,12 +20,16 @@ For local development:
 ```powershell
 uv sync
 uv run issuekit --help
-uv run issuekit dev-tool install-editable
 ```
 
-`dev-tool install-editable` installs the checkout as the global editable tool
-and is Windows-only. See
-[docs/guides/installation.md](docs/guides/installation.md) for details.
+On Windows, `uv run issuekit dev-tool install-editable` installs the checkout
+as the global editable tool. On POSIX, use:
+
+```sh
+uv tool install --editable "<abs-checkout>[mcp]"
+```
+
+See [docs/guides/installation.md](docs/guides/installation.md) for details.
 
 ## Quick start
 
@@ -50,7 +56,7 @@ Full documentation lives in [`docs/`](docs).
 | [MCP server](docs/guides/mcp-server.md) | Installing, scaffolding, and troubleshooting the handoff MCP server. |
 | [Handoff protocol](docs/guides/handoff-protocol.md) | Where the canonical author/implementer/reviewer protocol text lives. |
 | [Commands](docs/guides/commands.md) | Full CLI command reference. |
-| [Serve worker loop](docs/guides/serve.md) | Running a checkout as a long-lived implementer, reviewer, proposal-check, or triage worker. |
+| [Serve worker loop](docs/guides/serve.md) | Running implementer, reviewer, and proposal-check workers, with triage as an implement-mode add-on. |
 | [Configuration](docs/guides/configuration.md) | Config file layers, precedence, agent overlays, reviewer and implementer policy. |
 | [Cross-project proposals](docs/guides/cross-project-proposals.md) | Proposal inboxes, dependencies, refs, adoption and reply flow. |
 | [Cross-project negotiation](docs/guides/negotiation.md) | Bounded agent conversations that settle a shared contract before implementation. |
@@ -71,6 +77,7 @@ Agents working in this repo also keep operational memory in
 uv run ruff check
 uv run pytest
 uv run issuekit check-encoding
+uv run issuekit check-encoding --gate
 ```
 
 See [docs/guides/testing.md](docs/guides/testing.md) for the submit gate, live

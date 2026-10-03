@@ -2,16 +2,16 @@
 
 Install or upgrade the MCP server once as a global tool:
 
-```powershell
+```console
 uv tool install "issuekit[mcp] @ git+https://github.com/jjjun/issuekit.git"
 ```
 
 When upgrading a global tool, stop running issuekit MCP servers first. MCP
-clients hold `issuekit-mcp.exe` while the session is running, so replacing the
-tool underneath them can leave the install half-removed. Normal users should
-prefer:
+clients hold the `issuekit-mcp` process (`issuekit-mcp.exe` on Windows) while
+the session is running, so replacing the tool underneath them can leave the
+install half-removed. Normal users should prefer:
 
-```powershell
+```console
 uv tool install --reinstall "issuekit[mcp] @ <absolute-path-or-url>"
 ```
 
@@ -24,7 +24,7 @@ they keep a stdio connection to the old server process.
 Issuekit developers working from a checkout should use the repeatable developer
 commands instead:
 
-```powershell
+```console
 uv run issuekit dev-tool install-editable
 uv run issuekit dev-tool reload-mcp
 uv run issuekit dev-tool reinstall
@@ -53,21 +53,22 @@ path, never a bare `.`.
 
 Then scaffold each repository that uses issuekit:
 
-```powershell
+```console
 issuekit setup
 ```
 
 This runs `init --with-mcp`, prints setup diagnostics, and shows the optional
 global codex MCP-store command:
 
-```powershell
+```console
 codex mcp add issuekit -- issuekit-mcp
 ```
 
 That global command is unnecessary when codex reads the repo's
 `.codex/config.toml`, but it is useful for users who manage MCP servers through
-the global codex store. `issuekit setup` only edits files inside the current
-repo. It never kills processes and never edits global codex config.
+the global codex store. `issuekit setup` writes into the current working
+directory; it does not discover and switch to the git root, so run it from the
+repository root. It never kills processes and never edits global codex config.
 
 The MCP server instructions are a short pointer to the handoff protocol. Use
 `get_protocol(role=...)` or `issuekit protocol --role <role>` for the full
@@ -75,7 +76,7 @@ steps for one role; omit the role with `issuekit protocol` to read every role.
 
 Automation should use the stable JSON contract:
 
-```powershell
+```console
 issuekit setup --json
 ```
 
@@ -87,7 +88,7 @@ configuration step; the command still exits 0 when repo scaffolding succeeds.
 
 Orchestrators that only need a preflight should use the read-only check:
 
-```powershell
+```console
 issuekit setup check --json
 ```
 
@@ -113,11 +114,13 @@ README); it preserves other MCP servers and settings. An existing
 `.pre-commit-config.yaml` is never overwritten, and missing hooks get printed
 guidance instead of an edit.
 
-The MCP part of the scaffold writes `.mcp.json`, appends `.codex/config.toml`
-when needed, and adds thin handoff references to `AGENTS.md` and `CLAUDE.md`.
-The generated MCP entries run the global `issuekit-mcp` binary; they do not use
-`uv run`, so they work outside the issuekit checkout. Launch codex or Claude
-Code from the target repo root so the server resolves repo configuration.
+The MCP part of the scaffold merges the issuekit entry into `.mcp.json`,
+preserving other servers and settings, appends `.codex/config.toml` when
+needed, and adds thin handoff references to `AGENTS.md` and `CLAUDE.md`, creating
+those files when missing. The generated MCP entries run the global
+`issuekit-mcp` binary; they do not use `uv run`, so they work outside the
+issuekit checkout. Launch codex or Claude Code from the target repo root so the
+server resolves repo configuration.
 
 ## Health and troubleshooting
 
@@ -139,47 +142,53 @@ token for the configured API URL.
 
 MCP clients can start `issuekit-mcp` with a filtered environment. Codex forwards
 only its default allowlist and variables named in the server's `env_vars` list.
-For a repository server, add the settings issuekit uses to
-`.codex/config.toml`:
+`issuekit setup` writes the allowlist to `.codex/config.toml`; if you manage the
+file manually, include the settings issuekit uses:
 
 ```toml
 [mcp_servers.issuekit]
 command = "issuekit-mcp"
 args = []
-env_vars = ["ISSUEKIT_API_URL", "ISSUEKIT_PROJECT", "ISSUEKIT_CONFIG", "ISSUEKIT_TOKEN_CACHE", "ISSUEKIT_ALLOW_INSECURE", "ISSUEKIT_ENFORCE_AUTHOR_HANDOFF", "XDG_CONFIG_HOME"]
+env_vars = ["ISSUEKIT_API_URL", "ISSUEKIT_API_TIMEOUT", "ISSUEKIT_PROJECT", "ISSUEKIT_WORKSPACE", "ISSUEKIT_CONFIG", "ISSUEKIT_TOKEN_CACHE", "ISSUEKIT_ALLOW_INSECURE", "ISSUEKIT_ENFORCE_AUTHOR_HANDOFF", "XDG_CONFIG_HOME"]
 ```
 
 Alternatively, set `api_url` in the machine config at
-`~/.config/issuekit/config.toml` (or the path selected by `ISSUEKIT_CONFIG`).
-The MCP server re-reads TOML config on each tool call. Its process environment
-and values loaded from `.env` are fixed at server start, so restart the MCP
-server and reload the client session after changing them.
+`~/.config/issuekit/config.toml`, or
+`$XDG_CONFIG_HOME/issuekit/config.toml` when `XDG_CONFIG_HOME` is set. Set
+`ISSUEKIT_CONFIG` to choose another file; an empty value disables machine
+config. The MCP server re-reads TOML config and the repository `.env` file on
+each tool call. `.env` fills only variables that are not already in the server
+process environment: new keys can be picked up on the next call, but values for
+keys already present in the server environment are not replaced or removed.
+Restart the MCP server to apply changes to those keys.
 
 Compare `issuekit info --json` fields `apiUrlSource` and `apiUrlOrigin` with
 MCP `health` fields `api_url_source` and `api_url_origin`. A client config `env`
 block (`.mcp.json` `env` or Codex `env`) overrides a value inherited from the
 shell, while `api_url_source` still reports `env` for either case. Tokens are
-cached per exact `api_url` string. If the client uses a second spelling of the
-same server, run `issuekit login` with `ISSUEKIT_API_URL` set to that spelling
-to cache a token for it. Compare `apiUrlOrigin` and `api_url_origin` when both
-processes report `env`; the origin omits userinfo, path, query, and fragment.
+cached by `api_url` after trailing `/` characters are removed, so URLs that
+differ only by trailing slashes share a cache entry. Other spelling differences
+use separate entries; run `issuekit login` with `ISSUEKIT_API_URL` set to the
+same URL spelling to cache a token for that entry. Compare `apiUrlOrigin` and
+`api_url_origin` when both processes report `env`; the origin omits userinfo,
+path, query, and fragment.
 
 `cwd` is the resolved config root that the MCP tools load configuration
 from. The server uses its own working directory when that directory has
 `issuekit.toml` or a `[tool.issuekit]` table in `pyproject.toml`. Otherwise it
-tries the enclosing git root, which qualifies when it has such config or the
-machine config sets `api_url`, and then each workspace root the MCP client
-reports, with the same checks. If none qualifies, it falls back to the server
-working directory. A `cwd` pointing somewhere unexpected usually means the
-client launched the server outside the repo and did not report a matching
-workspace root.
+tries the enclosing git root, which qualifies when it has such config, the
+machine config sets `api_url`, or a non-empty `ISSUEKIT_API_URL` is set, and
+then each workspace root the MCP client reports, with the same checks. If none
+qualifies, it falls back to the server working directory. A `cwd` pointing
+somewhere unexpected usually means the client launched the server outside the
+repo and did not report a matching workspace root.
 
 If an MCP client still exposes `mcp__issuekit` tools but every call fails with
 `Transport closed`, tool discovery is stale. Until the client transport is
 reloaded, use the equivalent CLI commands for read-only inspection and proposal
 inbox work:
 
-```powershell
+```console
 issuekit protocol --role author
 issuekit incoming --json
 issuekit info --json
@@ -192,7 +201,7 @@ stderr so credential redirection is visible.
 For local development, install the optional MCP group and start the stdio server
 from a checkout with:
 
-```powershell
+```console
 uv run --group mcp issuekit-mcp
 ```
 

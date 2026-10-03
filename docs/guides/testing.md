@@ -13,7 +13,8 @@ Ruff is the local lint gate. Run `uv run ruff check --fix` to apply its safe
 automatic fixes before resolving any remaining findings deliberately.
 
 The default encoding check scans complete tracked source files for BOM, likely
-mojibake, stray carriage returns, and CRLF. The `--gate` mode separately
+mojibake, and stray carriage returns. Its CRLF check covers every tracked text
+file, not only source files. The `--gate` mode separately
 reproduces the submit gate for the current worktree, including its changed-line
 scope and unconfirmed mojibake failures.
 
@@ -38,6 +39,12 @@ $env:ISSUEKIT_REQUIRE_MCP = "1"
 uv run pytest
 ```
 
+In POSIX shells, use:
+
+```sh
+ISSUEKIT_REQUIRE_MCP=1 uv run pytest
+```
+
 Pytest uses concise progress output by default while retaining failure details
 and the final test summary. For verbose progress during interactive diagnosis,
 run `uv run pytest -o addopts= -v`.
@@ -46,7 +53,8 @@ run `uv run pytest -o addopts= -v`.
 
 The default pytest suite is intended for offline development and CI. Tests that
 would call a live issuekit API backend are marked `live_contract` and skip
-unless explicitly enabled.
+unless explicitly enabled. When enabled, they also skip rather than fail if the
+backend cannot be reached.
 
 Run only the live contract checks with a reachable delete-safe test backend:
 
@@ -54,6 +62,12 @@ Run only the live contract checks with a reachable delete-safe test backend:
 $env:ISSUEKIT_RUN_LIVE_CONTRACTS = "1"
 $env:ISSUEKIT_API_URL = "https://mine.example"
 uv run pytest -m live_contract
+```
+
+In POSIX shells, use:
+
+```sh
+ISSUEKIT_RUN_LIVE_CONTRACTS=1 ISSUEKIT_API_URL="https://mine.example" uv run pytest -m live_contract
 ```
 
 `ISSUEKIT_RUN_LIVE_CONTRACTS=1` is the opt-in switch. `ISSUEKIT_API_URL` must
@@ -64,8 +78,9 @@ endpoints.
 
 ## CI
 
-Maintainers can also run the same pytest and encoding checks from GitHub
-Actions with the manual `Tests` workflow using the `Run workflow` button.
+Maintainers can run Ruff, pytest, and both encoding checks from GitHub Actions
+with the manual `Tests` workflow using the `Run workflow` button. It runs only
+on `workflow_dispatch`.
 
 The `Dependency audit` workflow (`.github/workflows/dependency-audit.yml`) runs
 `pip-audit` over the locked dependencies. It runs weekly on a schedule, on any

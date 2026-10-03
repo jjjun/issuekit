@@ -1,5 +1,7 @@
 # Installation
 
+The project requires Python 3.12 or newer, `uv`, and `git`.
+
 ## Global tool
 
 ```powershell
@@ -14,14 +16,22 @@ server. Without the extra, `issuekit-mcp` cannot start.
 ```powershell
 uv sync
 uv run issuekit --help
-uv run issuekit dev-tool install-editable
 ```
 
 On Windows, `dev-tool install-editable` installs the global `issuekit` and
-`issuekit-mcp` tool shims from this checkout in editable mode. It stops stale
-`issuekit-mcp.exe` processes first, uninstalls any existing global `issuekit`
-tool if present, installs with the `mcp` extra, and verifies the resulting tool
-environment.
+`issuekit-mcp` tool shims from this checkout in editable mode:
+
+```powershell
+uv run issuekit dev-tool install-editable
+```
+
+It stops stale `issuekit-mcp.exe` processes first, uninstalls any existing
+global `issuekit` tool if present, installs with the `mcp` extra, and verifies
+the resulting tool environment. On POSIX, install the editable checkout with:
+
+```sh
+uv tool install --editable "<abs-checkout>[mcp]"
+```
 
 ## Next steps
 

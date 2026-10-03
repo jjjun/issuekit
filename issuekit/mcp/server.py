@@ -80,16 +80,18 @@ from issuekit.workflow import (
 )
 
 MCP_SESSION = new_session_token("mcp")
-_HEALTH_ENV_KEYS = (
+_CODEX_ENV_VARS = (
     "ISSUEKIT_API_URL",
+    "ISSUEKIT_API_TIMEOUT",
     "ISSUEKIT_PROJECT",
+    "ISSUEKIT_WORKSPACE",
     "ISSUEKIT_CONFIG",
     "ISSUEKIT_TOKEN_CACHE",
-    "ISSUEKIT_API_TOKEN",
     "ISSUEKIT_ALLOW_INSECURE",
     "ISSUEKIT_ENFORCE_AUTHOR_HANDOFF",
     "XDG_CONFIG_HOME",
 )
+_HEALTH_ENV_KEYS = (*_CODEX_ENV_VARS, "ISSUEKIT_API_TOKEN")
 
 
 def create_server(cwd: Path | str | None = None) -> FastMCP:
@@ -846,6 +848,7 @@ def _missing_api_url_message(root: Path) -> str:
         if machine_path is not None and machine_status == "missing"
         else ""
     )
+    codex_env_vars = ", ".join(f'"{name}"' for name in _CODEX_ENV_VARS)
     return (
         "API store requires api_url. MCP resolved the repository root to "
         f"{root.resolve()}. ISSUEKIT_API_URL is set in this process: "
@@ -854,9 +857,7 @@ def _missing_api_url_message(root: Path) -> str:
         f"{missing_machine_config_hint} The CLI usually "
         "gets api_url from ISSUEKIT_API_URL in the user's shell, while MCP clients "
         "may start servers with a filtered environment. In Codex, add "
-        'env_vars = ["ISSUEKIT_API_URL", "ISSUEKIT_PROJECT", "ISSUEKIT_CONFIG", '
-        '"ISSUEKIT_TOKEN_CACHE", "ISSUEKIT_ALLOW_INSECURE", '
-        '"ISSUEKIT_ENFORCE_AUTHOR_HANDOFF", "XDG_CONFIG_HOME"] to '
+        f"env_vars = [{codex_env_vars}] to "
         "[mcp_servers.issuekit], or set api_url in the machine config. To continue "
         "reviewing before that is resolved, `issuekit show <id>` and "
         "`issuekit next-review` are read-only CLI equivalents of the get_issue "

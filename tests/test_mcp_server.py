@@ -192,6 +192,8 @@ def test_health_tool_reports_config_and_local_state(
     assert status["machine_config_path"] == str(machine_path)
     assert status["machine_config_status"] == "readable"
     assert status["env_present"]["ISSUEKIT_TOKEN_CACHE"] is True
+    assert status["env_present"]["ISSUEKIT_API_TIMEOUT"] is False
+    assert status["env_present"]["ISSUEKIT_WORKSPACE"] is False
     assert status["env_present"]["ISSUEKIT_API_TOKEN"] is False
     assert status["token_cached"] is True
     assert status["token_expires_at"] == expires_at
@@ -1037,6 +1039,8 @@ def test_mcp_lifecycle_missing_api_url_reports_config_statuses(
     assert "If the CLI finds a machine config" not in message
     assert "filtered environment" in message
     assert 'env_vars = ["ISSUEKIT_API_URL"' in message
+    assert '"ISSUEKIT_API_TIMEOUT"' in message
+    assert '"ISSUEKIT_WORKSPACE"' in message
     assert "issuekit show <id>" in message
     assert "issuekit next-review" in message
 

@@ -28,7 +28,9 @@ def test_init_with_mcp_writes_global_binary_scaffold(tmp_path: Path) -> None:
     assert 'command = "issuekit-mcp"' in codex_config
     for name in (
         "ISSUEKIT_API_URL",
+        "ISSUEKIT_API_TIMEOUT",
         "ISSUEKIT_PROJECT",
+        "ISSUEKIT_WORKSPACE",
         "ISSUEKIT_CONFIG",
         "ISSUEKIT_TOKEN_CACHE",
         "ISSUEKIT_ALLOW_INSECURE",
