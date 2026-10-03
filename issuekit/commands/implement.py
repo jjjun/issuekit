@@ -9,6 +9,7 @@ from pathlib import Path
 from issuekit.agentrun import AgentResult
 from issuekit.agents.run_claimed import (
     RunOutcome,
+    preflight_agent,
     resumed_changes_hint,
     review_feedback_prompt,
     run_and_submit,
@@ -105,6 +106,19 @@ def run(args) -> int:
             if issue.stage == "changes_requested"
             else None
         )
+        try:
+            adapter = preflight_agent(
+                agent,
+                config=config,
+                model=args.model,
+                reasoning_effort=args.reasoning_effort,
+                role="implementer",
+            )
+        except _MAPPED_ERRORS as exc:
+            reason = f"run_error:{str(exc).replace(chr(10), ' ')}"
+            _print_terminal_lines_for_error(issue_id, None, reason, config)
+            raise
+
         run_session = new_session_token("run")
         orchestration = AuthorOrchestrationContext(
             implementer_agent=agent,
@@ -133,6 +147,7 @@ def run(args) -> int:
             outcome = run_and_submit(
                 claimed_issue,
                 agent=agent,
+                adapter=adapter,
                 config=config,
                 cwd=cwd,
                 issues_dir=issues_dir,

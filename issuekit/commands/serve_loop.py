@@ -11,6 +11,7 @@ from pathlib import Path
 from types import FrameType
 from typing import Literal
 
+from issuekit.agentrun.adapter import AgentAdapter
 from issuekit.agents.review import (
     ReviewParseError,
     ReviewRunParseError,
@@ -174,6 +175,7 @@ def run_claimed_issue(
     log_path: Path,
     controller: ShutdownController,
     backoff: float,
+    adapter: AgentAdapter | None = None,
     store=None,
 ) -> IssueRunResult:
     try:
@@ -186,6 +188,7 @@ def run_claimed_issue(
             timeout=float(args.timeout_sec),
             model=getattr(args, "model", None),
             reasoning_effort=getattr(args, "reasoning_effort", None),
+            adapter=adapter,
             prompt_suffix=review_feedback_prompt(issue.body),
             abort_event=controller.abort_event,
             store=store,
@@ -293,6 +296,7 @@ def recover_orphaned_issues(
     controller: ShutdownController,
     submitted_count: int,
     backoff: Backoff,
+    adapter: AgentAdapter | None = None,
     store,
     log_submitted: Callable[[Path, Issue | None, int], None],
 ) -> tuple[int, int | None, object]:
@@ -324,6 +328,7 @@ def recover_orphaned_issues(
             log_path=log_path,
             controller=controller,
             backoff=backoff.current,
+            adapter=adapter,
         )
         if result.status == "submitted":
             submitted_count += 1

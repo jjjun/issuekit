@@ -198,6 +198,10 @@ def _configure_registered_api(
     monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
     monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
     monkeypatch.setattr(worker_registry, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.setattr(
+        "issuekit.agentrun.adapter.shutil.which",
+        lambda binary: f"/test-bin/{binary}",
+    )
     monkeypatch.chdir(tmp_path)
 
 
@@ -871,6 +875,83 @@ def test_serve_no_orphan_claims_normally(
     assert exit_code == 0
     assert [call["method"] for call in client.calls] == ["upsert_repo", "upsert_worker", "claim_next", "submit"]
     assert [call[4] for call in FakeRunner.calls] == [1]
+
+
+def test_serve_preflight_failure_does_not_claim_issue(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient([api_issue(1, "Ready", author="claude")])
+    _configure_registered_api(tmp_path, monkeypatch, client)
+    issue_before = client.get_issue(1)
+
+    exit_code = cli.main(
+        [
+            "serve",
+            "--agent",
+            "kimi",
+            "--reasoning-effort",
+            "high",
+            "--once",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert client.calls == []
+    assert client.get_issue(1) == issue_before
+    assert "Agent preflight failed:" in captured.err
+    assert "has no effort_argv" in captured.err
+
+
+def test_serve_preflight_rejects_missing_binary_without_claiming(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient([api_issue(1, "Ready", author="claude")])
+    _configure_registered_api(tmp_path, monkeypatch, client)
+    issue_before = client.get_issue(1)
+    with (tmp_path / "issuekit.toml").open("a", encoding="utf-8", newline="\n") as fh:
+        fh.write("[agents.codex]\nbinary = 'missing-codex'\nknown_paths = []\n")
+    monkeypatch.setattr("issuekit.agentrun.adapter.shutil.which", lambda _binary: None)
+
+    exit_code = cli.main(["serve", "--agent", "codex", "--once"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert client.calls == []
+    assert client.get_issue(1) == issue_before
+    assert "Agent preflight failed: missing-codex executable not found." in captured.err
+
+
+@pytest.mark.parametrize(
+    ("mode_option", "expected_role"),
+    (("--review", "reviewer"), ("--proposal-checks", "triage")),
+)
+def test_serve_preflights_the_agent_role_for_each_mode(
+    tmp_path: Path,
+    monkeypatch,
+    mode_option: str,
+    expected_role: str,
+) -> None:
+    client = FakeIssuekitClient()
+    _configure_registered_api(tmp_path, monkeypatch, client)
+    roles: list[str] = []
+
+    class AvailableAdapter:
+        def resolve_binary(self) -> Path:
+            return Path("/test-bin/codex")
+
+    def preflight(agent, *, config, model, reasoning_effort, role):
+        roles.append(role)
+        return AvailableAdapter()
+
+    monkeypatch.setattr(serve, "preflight_agent", preflight)
+
+    assert cli.main(["serve", "--agent", "codex", mode_option, "--once"]) == 0
+    assert roles == [expected_role]
 
 
 def test_serve_recovery_error_continues_to_poll(

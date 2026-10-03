@@ -10,7 +10,13 @@ from functools import partial
 from pathlib import Path
 from typing import TextIO
 
-from issuekit.agentrun import AgentPrompt, AgentResult, AgentRunner
+from issuekit.agentrun import (
+    AgentBinaryNotFoundError,
+    AgentPrompt,
+    AgentResult,
+    AgentRunner,
+)
+from issuekit.agentrun.adapter import AgentAdapter
 from issuekit.agentrun.runner import implementation_report_instruction
 from issuekit.agentrun.status import is_dead, list_statuses, read_status
 from issuekit.agents.app_server_runtime import AppServerAttemptRunner
@@ -32,7 +38,7 @@ from issuekit.gitutil import GitStatusEntry, git_root, git_status_entries, run_g
 from issuekit.guards.author import AuthorOrchestrationContext
 from issuekit.prompts import render_review_feedback_prompt
 from issuekit.store import managed_issue_store
-from issuekit.workflow import submit_for_review
+from issuekit.workflow import reclaim_issue, submit_for_review
 
 
 @dataclass(frozen=True)
@@ -61,6 +67,53 @@ class ImplementationChangeSnapshot:
 RunReporter = Callable[[Issue, AgentResult], None]
 RunnerFactory = Callable[[], AgentRunner]
 MAX_IMPLEMENTER_REPORT_CHARS = 4000
+
+
+def preflight_agent(
+    agent: str,
+    *,
+    config: IssuekitConfig,
+    model: str | None = None,
+    reasoning_effort: str | None = None,
+    role: str = "implementer",
+) -> AgentAdapter:
+    """Resolve the configured agent and verify its executable before claiming work."""
+
+    adapter = resolve_adapter(
+        agent,
+        config=config,
+        model=model,
+        reasoning_effort=reasoning_effort,
+        role=role,
+    )
+    # App Server uses this same adapter binary to launch the local runtime.
+    adapter.resolve_binary()
+    return adapter
+
+
+def _release_claim_after_run_error(
+    issue_id: int,
+    *,
+    config: IssuekitConfig,
+    store,
+    err: TextIO,
+) -> None:
+    try:
+        result = reclaim_issue(
+            issue_id,
+            force=True,
+            reason="agent setup failed before execution",
+            config=config,
+            store=store,
+        )
+    except Exception as exc:
+        detail = " ".join(sanitize_to_ascii(str(exc)).split())
+        print(f"claim_release id={issue_id} result=failed error={detail}", file=err)
+    else:
+        print(
+            f"claim_release id={issue_id} result=reclaimed stage={result.issue.stage}",
+            file=err,
+        )
 
 
 def resumed_changes_hint(issue_id: int) -> str:
@@ -120,6 +173,7 @@ def run_and_submit(
     abort_event: threading.Event | None = None,
     reporter: RunReporter | None = None,
     runner_factory: RunnerFactory | None = None,
+    adapter: AgentAdapter | None = None,
     store=None,
     out: TextIO | None = None,
     err: TextIO | None = None,
@@ -132,14 +186,25 @@ def run_and_submit(
     if issue_id is None:
         raise ValueError("Claimed issue is missing an id.")
 
-    adapter = resolve_adapter(
-        agent,
-        config=config,
-        model=model,
-        reasoning_effort=reasoning_effort,
-        role="implementer",
-    )
-    agent_model, agent_reasoning_effort = adapter.effective_runtime()
+    if adapter is None:
+        try:
+            adapter = resolve_adapter(
+                agent,
+                config=config,
+                model=model,
+                reasoning_effort=reasoning_effort,
+                role="implementer",
+            )
+        except (RuntimeError, ValueError):
+            _release_claim_after_run_error(issue_id, config=config, store=store, err=err)
+            raise
+
+    try:
+        adapter.resolve_binary()
+        agent_model, agent_reasoning_effort = adapter.effective_runtime()
+    except (FileNotFoundError, RuntimeError, ValueError):
+        _release_claim_after_run_error(issue_id, config=config, store=store, err=err)
+        raise
     if not config.send_agent_runtime:
         agent_model = None
         agent_reasoning_effort = None
@@ -163,20 +228,24 @@ def run_and_submit(
             runner_factory = AgentRunner
     fingerprint_before = worktree_fingerprint(cwd)
     _warn_if_resuming_stale_run(issue_id, cwd, issues_dir, run_dir, out=out)
-    result = runner_factory().run(
-        adapter,
-        prompt,
-        cwd,
-        timeout=float(timeout),
-        agent_name=agent,
-        issue_id=issue_id,
-        follow=follow,
-        prompt_suffix=prompt_suffix,
-        run_dir=run_dir,
-        abort_event=abort_event,
-        issuekit_session=session,
-        implementer_report=True,
-    )
+    try:
+        result = runner_factory().run(
+            adapter,
+            prompt,
+            cwd,
+            timeout=float(timeout),
+            agent_name=agent,
+            issue_id=issue_id,
+            follow=follow,
+            prompt_suffix=prompt_suffix,
+            run_dir=run_dir,
+            abort_event=abort_event,
+            issuekit_session=session,
+            implementer_report=True,
+        )
+    except (AgentBinaryNotFoundError, FileNotFoundError, ValueError):
+        _release_claim_after_run_error(issue_id, config=config, store=store, err=err)
+        raise
     if reporter is not None:
         reporter(issue, result)
     snapshot = _implementation_change_snapshot(cwd, fingerprint_before)

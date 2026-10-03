@@ -10,6 +10,10 @@ from pathlib import Path
 from issuekit.agentrun.config import AgentRunConfig
 
 
+class AgentBinaryNotFoundError(RuntimeError):
+    """Raised when an agent executable cannot be resolved."""
+
+
 class AgentAdapter(ABC):
     """Pluggable adapter for a headless coding agent."""
 
@@ -85,7 +89,7 @@ class ConfigAgentAdapter(AgentAdapter):
             expanded = Path(p).expanduser()
             if expanded.exists():
                 return expanded
-        raise RuntimeError(
+        raise AgentBinaryNotFoundError(
             f"{self.run_config.binary} executable not found. "
             "Tried PATH and known per-OS locations."
         )

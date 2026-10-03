@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from issuekit.agentrun import AgentRunConfig, ConfigAgentAdapter
+from issuekit.agentrun import AgentBinaryNotFoundError, AgentRunConfig, ConfigAgentAdapter
 from issuekit.agents.registry import resolve_adapter
 
 
@@ -487,5 +487,5 @@ def test_kimi_adapter_resolve_binary_raises_when_not_found(
     monkeypatch.setattr("os.path.expanduser", lambda p: str(p).replace("~", str(tmp_path)))
     adapter = resolve_adapter("kimi")
 
-    with pytest.raises(RuntimeError, match="not found"):
+    with pytest.raises(AgentBinaryNotFoundError, match="not found"):
         adapter.resolve_binary()

@@ -14,10 +14,12 @@ from enum import StrEnum
 from pathlib import Path
 
 from issuekit.agentrun import AgentRunner
+from issuekit.agentrun.adapter import AgentAdapter
 from issuekit.agents.proposal_check import (
     ProposalCheckParseError,
     run_proposal_check_cycle,
 )
+from issuekit.agents.run_claimed import preflight_agent
 from issuekit.agents.triage_author import run_triage_author_cycle
 from issuekit.commands._heartbeat import warn_if_staleness_not_wider
 from issuekit.commands.serve_loop import (
@@ -231,6 +233,23 @@ def run(args) -> int:
         print("--proposal-check-limit must be greater than zero.", file=sys.stderr)
         return 1
 
+    role = {
+        ServeMode.IMPLEMENT: "implementer",
+        ServeMode.REVIEW: "reviewer",
+        ServeMode.PROPOSAL_CHECKS: "triage",
+    }[mode]
+    try:
+        adapter = preflight_agent(
+            agent,
+            config=config,
+            model=args.model,
+            reasoning_effort=args.reasoning_effort,
+            role=role,
+        )
+    except (FileNotFoundError, RuntimeError, ValueError) as exc:
+        print(f"Agent preflight failed: {exc}", file=sys.stderr)
+        return 1
+
     issues_dir = config.issues_path(cwd)
     run_dir = cwd / ".agent-runs"
     run_dir.mkdir(exist_ok=True)
@@ -260,6 +279,7 @@ def run(args) -> int:
                     issues_dir=issues_dir,
                     log_path=log_path,
                     controller=controller,
+                    adapter=adapter,
                 )
     except ServeLockError as exc:
         print(str(exc), file=sys.stderr)
@@ -278,6 +298,7 @@ def _serve_loop(
     issues_dir: Path,
     log_path: Path,
     controller: ShutdownController,
+    adapter: AgentAdapter | None = None,
 ) -> int:
     submitted_count = 0
     if mode is ServeMode.PROPOSAL_CHECKS:
@@ -318,6 +339,7 @@ def _serve_loop(
             controller=controller,
             submitted_count=submitted_count,
             backoff=backoff,
+            adapter=adapter,
             store=recovery_store,
             log_submitted=_log_submitted,
         )
@@ -325,6 +347,19 @@ def _serve_loop(
             return exit_code
 
         def poll(attempt: int, backoff_seconds: float):
+            if adapter is not None:
+                try:
+                    adapter.resolve_binary()
+                except (FileNotFoundError, RuntimeError, ValueError) as exc:
+                    _log(
+                        sys.stderr,
+                        log_path,
+                        "preflight_error",
+                        error=str(exc),
+                        backoff=backoff_seconds,
+                    )
+                    return PollResult(status="error", exit_code=1)
+
             if _triage_enabled(args, config):
                 try:
                     if config.triage.author_agent:
@@ -390,6 +425,7 @@ def _serve_loop(
                 log_path=log_path,
                 controller=controller,
                 backoff=backoff_seconds,
+                adapter=adapter,
                 store=store,
             )
             if result.status == "error":

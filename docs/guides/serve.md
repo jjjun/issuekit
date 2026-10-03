@@ -165,6 +165,7 @@ still alive, check the log for these events before re-registering.
 |---------|-------|-----|
 | `This checkout is not registered as an issuekit worker.` | no `issuekit.local.toml` | run `issuekit add` |
 | `No implementer is configured.` | several enabled assignees, no default | pass `--agent` or set `default_implementer` |
+| `Agent preflight failed` | the selected agent has invalid runtime settings or its executable is unavailable | fix the agent configuration or install the executable before starting serve |
 | `issuekit serve is already running for this checkout` | live PID holds the lock | stop the other process, or serve from a second checkout |
 | Repeated `claim_error` with growing backoff | API unreachable or auth expired | check `issuekit info --json`, re-authenticate |
 | `claim_error` with `Claim-sync guard blocks claim-next` | dirty working tree, or a failed `git status`, `git fetch`, or `git merge --ff-only` for `work_branch` | commit or stash, fix the Git failure, or pass `--no-sync`; see [Topologies](#topologies) |

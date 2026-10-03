@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 from issuekit import cli
 from issuekit import store as store_module
-from issuekit.agentrun import AgentPrompt
+from issuekit.agentrun import AgentBinaryNotFoundError, AgentPrompt
 from issuekit.agents import run_claimed as run_claimed_agent
 from issuekit.agents.run_claimed import review_feedback_prompt
 from issuekit.config import IssuekitConfig
@@ -131,6 +131,9 @@ class CloseTrackingClient(FakeIssuekitClient):
 
 
 class SelectionAdapter:
+    def resolve_binary(self) -> Path:
+        return Path("/test-bin/agent")
+
     def effective_runtime(self) -> tuple[None, None]:
         return None, None
 
@@ -267,6 +270,10 @@ def _configure_api(
         newline="\n",
     )
     monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.setattr(
+        "issuekit.agentrun.adapter.shutil.which",
+        lambda binary: f"/test-bin/{binary}",
+    )
     monkeypatch.chdir(tmp_path)
 
 
@@ -1425,6 +1432,111 @@ def test_implement_command_prints_post_run_line_on_successful_submit(
         "post_run id=1 stage=review submitted=true agent_exit=0 cli_exit=0"
         in captured.out
     )
+
+
+def test_implement_preflight_failure_does_not_claim_issue(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
+    _configure_api(tmp_path, monkeypatch, client)
+    issue_before = client.get_issue(1)
+
+    exit_code = cli.main(
+        ["implement", "1", "--agent", "kimi", "--reasoning-effort", "high"]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert all(call["method"] != "claim" for call in client.calls)
+    assert client.get_issue(1) == issue_before
+    assert "has no effort_argv" in captured.err
+    assert "not_submitted id=1 stage= reason=run_error:" in captured.out
+    assert (
+        "post_run id=1 stage= submitted=false agent_exit=unknown cli_exit=1"
+        in captured.out
+    )
+
+
+def test_implement_releases_claim_when_binary_disappears_after_preflight(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
+    _configure_api(tmp_path, monkeypatch, client)
+
+    class DisappearingBinaryAdapter:
+        calls = 0
+
+        def resolve_binary(self) -> Path:
+            self.calls += 1
+            if self.calls == 3:
+                raise AgentBinaryNotFoundError(
+                    "codex executable not found. Tried PATH and known per-OS locations."
+                )
+            return Path("/test-bin/codex")
+
+        def effective_runtime(self) -> tuple[None, None]:
+            return None, None
+
+    def preflight(*args, **kwargs):
+        adapter = DisappearingBinaryAdapter()
+        adapter.resolve_binary()
+        return adapter
+
+    monkeypatch.setattr(
+        "issuekit.commands.implement.preflight_agent",
+        preflight,
+    )
+
+    exit_code = cli.main(["implement", "1", "--agent", "codex"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert [call["method"] for call in client.calls] == ["claim", "reclaim"]
+    released_issue = client.get_issue(1)
+    assert released_issue["stage"] == "todo"
+    assert released_issue["assignee"] == ""
+    assert released_issue["worker"] == ""
+    assert "claim_release id=1 result=reclaimed stage=todo" in captured.err
+    assert "not_submitted id=1 stage=todo reason=run_error:" in captured.out
+
+
+def test_implement_releases_claim_when_adapter_fails_after_preflight(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
+    _configure_api(tmp_path, monkeypatch, client)
+
+    class FailingAdapter:
+        def resolve_binary(self) -> Path:
+            return Path("/test-bin/codex")
+
+        def effective_runtime(self) -> tuple[None, None]:
+            raise ValueError("adapter runtime setup failed")
+
+    def preflight(*args, **kwargs):
+        adapter = FailingAdapter()
+        adapter.resolve_binary()
+        return adapter
+
+    monkeypatch.setattr("issuekit.commands.implement.preflight_agent", preflight)
+
+    exit_code = cli.main(["implement", "1", "--agent", "codex"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert [call["method"] for call in client.calls] == ["claim", "reclaim"]
+    released_issue = client.get_issue(1)
+    assert released_issue["stage"] == "todo"
+    assert released_issue["assignee"] == ""
+    assert released_issue["worker"] == ""
+    assert "claim_release id=1 result=reclaimed stage=todo" in captured.err
+    assert "not_submitted id=1 stage=todo reason=run_error:" in captured.out
 
 
 def test_implement_command_prints_not_submitted_reason_for_failed_run(
