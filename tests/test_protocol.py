@@ -1,6 +1,11 @@
+import re
+import shlex
+from pathlib import Path
+
 import pytest
 
 from issuekit import cli
+from issuekit.guards.separation import SEPARATION_GUARD_REFERENCE
 from issuekit.prompts.protocol import render_protocol, render_server_instructions
 
 
@@ -31,7 +36,8 @@ def test_render_protocol_returns_each_agent_and_both() -> None:
         assert "docs/guides/separation-of-duties.md" in rendered
         assert "Server author-implementer guard" in normalized
         assert "Distinct-reviewer guard" in normalized
-        assert "issuekit#162 and issuekit#163" in rendered
+        assert "issuekit#162 and issuekit#163" not in rendered
+        assert "issuekit repository's" in rendered
         assert "belongs to another project" in normalized
         assert "issuekit propose --to <project>" in rendered
         assert "owns triage" in normalized
@@ -39,6 +45,9 @@ def test_render_protocol_returns_each_agent_and_both() -> None:
         assert "--depends-on <project#N|project#issue:N|project#proposal:N>" in rendered
         assert "project#proposal:N" in rendered
         assert "issuekit implement <id> --agent <agent> --timeout-sec <n>" in rendered
+        assert "issuekit negotiate --finalize <thread_id>" in rendered
+        assert "uv run issuekit" not in rendered
+        assert "non-API mode" not in rendered
         assert "launches the configured agent" in normalized
         assert "submits the completed work for review" in normalized
         assert "sanctioned orchestration path" in normalized
@@ -85,11 +94,16 @@ def test_render_protocol_returns_each_agent_and_both() -> None:
     assert "explicit claim returns a dependency warning" in normalized_codex
     assert "otherwise obfuscate string literals" in normalized_codex
     assert "`importlib`, `getattr`, `setattr`, or `globals()`" in codex
+    assert "When `issuekit implement` or `issuekit serve` launched you" in normalized_codex
+    assert "skip steps 1, 5 and 6" in normalized_codex
     assert "next_review" in claude
     assert "request_changes" in claude
     assert "ASCII verification" in normalized_claude
     assert "ASCII notes" in normalized_claude
     assert "issuekit approve <id> --verification <text>" in claude
+    assert "whether assigned or in the open review pool" in normalized_claude
+    assert "The CLI Pass" not in normalized_claude
+    assert "Pass `--summary <text>` to `issuekit approve`" in normalized_claude
     assert "issuekit complete <id>" in claude
     assert "once it is available" not in normalized_claude
     assert "work is incomplete" in normalized_claude
@@ -106,6 +120,34 @@ def test_render_protocol_returns_each_agent_and_both() -> None:
     assert "Cross-project negotiation is a bounded, agent-driven design conversation" in both
     assert "Negotiation is CLI-only because it launches multiple long-running agent turns" in normalized_both
     both.encode("ascii")
+
+
+def test_copyable_protocol_commands_parse() -> None:
+    rendered = render_protocol(None)
+    examples = rendered.split("Copyable CLI examples:\n", 1)[1].split(
+        "\n\n# Handoff protocol", 1
+    )[0]
+    commands = re.findall(r"`(issuekit [^`]+)`", examples)
+
+    assert commands
+    parser = cli.build_parser()
+    for command in commands:
+        command = re.sub(r"<[^>]+>", "sample", command)
+        parser.parse_args(shlex.split(command)[1:])
+
+
+def test_separation_of_duties_guide_matches_protocol_table() -> None:
+    reference_rows = [
+        line for line in SEPARATION_GUARD_REFERENCE.splitlines() if line.startswith("|")
+    ]
+    guide_path = Path(__file__).parents[1] / "docs/guides/separation-of-duties.md"
+    guide_rows = [
+        line
+        for line in guide_path.read_text(encoding="utf-8").splitlines()
+        if line.startswith("|")
+    ]
+
+    assert guide_rows == reference_rows
 
 
 def test_rendered_protocol_does_not_recommend_removed_codex_flag() -> None:
@@ -171,12 +213,16 @@ def test_render_protocol_uses_injected_agent_roles() -> None:
 
 def test_render_protocol_returns_author_role() -> None:
     author = render_protocol(role="author")
+    normalized_author = " ".join(author.split())
     assert "Delegation cycle overview" in author
     assert "issuekit author" in author
     assert "API allocates the issue id" in author
     assert "pass\n   `--depends-on <project#N|project#issue:N|project#proposal:N>`" in author
     assert "respect the dependency state" in author
-    assert "records that authoring session" in author
+    assert (
+        "records an authoring session, using `ISSUEKIT_SESSION` when set or generating one otherwise"
+        in normalized_author
+    )
     assert "Do not call `claim_next_task`" in author
     assert "the author may run" in author
     assert "that same token" in author

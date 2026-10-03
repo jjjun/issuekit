@@ -465,9 +465,8 @@ def _resolve_auto_reviewer(config: IssuekitConfig, *, issue: Issue | None) -> st
         raise WorkflowError(
             "Distinct-reviewer guard (require_distinct_reviewer) blocks auto reviewer "
             "resolution: no configured reviewer is distinct from the issue implementer. "
-            "Recovery: configure an assignee distinct from issue.implementer. In "
-            "non-API mode only, set require_distinct_reviewer = false if local policy "
-            "permits.",
+            "Recovery: configure an assignee distinct from issue.implementer; "
+            "API-backed mode always enforces this guard.",
             code="distinct_reviewer_guard",
         )
 

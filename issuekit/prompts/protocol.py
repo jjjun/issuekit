@@ -127,8 +127,9 @@ Cross-project negotiation is a bounded, agent-driven design conversation
 between two sides that converges on a contract. Use `propose` when the change
 belongs to the other project and you can already specify it; use `negotiate`
 when the interface between two projects is undecided and must be settled before
-either side can be specified. After agreement, `issuekit negotiate --finalize`
-creates cross-linked implementation issues on both sides. Negotiation is
+either side can be specified. After agreement, use
+`issuekit negotiate --finalize <thread_id>` to create cross-linked
+implementation issues on both sides. Negotiation is
 CLI-only because it launches multiple long-running agent turns and holding an
 MCP stdio transport open for that orchestration is fragile. MCP provides only
 read-only negotiation thread inspection. Both sides receive read-only
@@ -196,8 +197,9 @@ Separation-of-duties invariants:
   self-review is rejected.
 - The author may also be the reviewer when a different implementer did the work.
 
-Canonical guard diagnostics: see docs/guides/separation-of-duties.md or run
-`issuekit author-guard --help` to diagnose which guard blocked a command.
+Canonical guard diagnostics: see the issuekit repository's
+docs/guides/separation-of-duties.md or run `issuekit author-guard --help` to
+diagnose which guard blocked a command.
 
 {SEPARATION_GUARD_REFERENCE}
 
@@ -209,7 +211,7 @@ Copyable CLI examples:
 - Dispatch existing work: `issuekit dispatch 123 --target-worker <worker.repo@machine> --json`
 - Return directed work to the pool: `issuekit readdress 123 --json`
 - Author with upstream dependency: `issuekit author --title "Short title" --body-file issue.md --priority medium --agent <agent> --depends-on upstream#proposal:123`
-- Author a local issue that references another project: `issuekit author --title "Short title" --body-file issue.md --direct-local-author`
+- Author a local issue that references another project: `issuekit author --title "Short title" --body-file issue.md --agent <agent> --direct-local-author`
 - Claim next: `issuekit claim --assignee <agent>`
 - Claim specific issue: `issuekit claim --id 123 --assignee <agent>`
 - Submit review: `issuekit submit-review 123 --summary "Implemented." --branch main --commit abc123`
@@ -224,6 +226,7 @@ Copyable CLI examples:
 - Incoming proposals: `issuekit incoming --json`
 - Adopt proposal: `issuekit adopt 42 --priority medium --json`
 - Outgoing proposal status: `issuekit outgoing --to <project> --json`
+- Finalize negotiated thread: `issuekit negotiate --finalize <thread_id>`
 - Serve with target-owned inbox triage: `issuekit serve --agent <agent> --triage`
 - Serve as a reviewer worker: `issuekit serve --agent <agent> --review`
 """
@@ -333,10 +336,13 @@ PM invariants:
 
 IMPLEMENTER_PROTOCOL = """# Handoff protocol (implementer)
 
+When `issuekit implement` or `issuekit serve` launched you, issuekit has
+already claimed the issue and will submit it: skip steps 1, 5 and 6 and do not
+call `claim_next_task` or `submit_for_review`.
+
 The implementer handles issuekit tasks from the API-backed project queue. Any
 configured agent can be the implementer or the reviewer. The reviewer is the
-agent assigned at stage=review and defaults to `default_reviewer`, which may be
-`auto`.
+agent assigned at stage=review and defaults to `auto` in API mode.
 Same-name review is allowed through the open review pool by omitting `reviewer`;
 an implementer may not explicitly assign itself as reviewer at submit time.
 
@@ -408,14 +414,14 @@ commands. Run this protocol end to end:
    `ISSUEKIT_IMPLEMENTER_REPORT_FILE` is set, write the closing implementation
    and verification report to that path; the report is mandatory and a run
    that ends without one is refused at submit time, the same way the submit
-   gate refuses new binaries and encoding violations. Include a section
+   gate refuses encoding violations. Include a section
    listing every acceptance criterion you could not verify in this
    environment and why (for example: no browser available in a headless run);
    leaving such a criterion unmentioned is worse than reporting it unverified.
    Issuekit sanitizes the report to ASCII, bounds its length, and includes it
    in the submit summary.
-4. Run the relevant tests, `uv run issuekit check-encoding`, and
-   `uv run issuekit check-encoding --gate` before submitting. This run is a
+4. Run the relevant tests and `issuekit check-encoding --gate` before
+   submitting. This run is a
    single turn: background tasks cannot wake you, no completion notification
    will ever arrive, and ending the turn ends the run. Await every
    verification command you start and record its actual exit result; starting
@@ -496,10 +502,11 @@ When asked to write or plan an issue:
    exists, pass
    `--depends-on <project#N|project#issue:N|project#proposal:N>` so
    implementers can see and respect the dependency state. Use
-   `project#proposal:N` for not-yet-adopted proposals. When `ISSUEKIT_SESSION` is set,
-   issuekit records that authoring session so a later same-name delegated
-   implementer can be distinguished by session.
-   Include `uv run issuekit check-encoding --gate` in the Test Plan so the
+   `project#proposal:N` for not-yet-adopted proposals. issuekit records an
+   authoring session, using `ISSUEKIT_SESSION` when set or generating one
+   otherwise, so a later same-name delegated implementer can be distinguished
+   by session.
+   Include `issuekit check-encoding --gate` in the Test Plan so the
    implementer verifies the submit-gate verdict before submission.
 3. Leave the issue unstarted with no assignee unless a specific implementer is
    required.
@@ -528,9 +535,9 @@ REVIEWER_PROTOCOL = """# Handoff protocol (reviewer)
 
 The reviewer handles issuekit tasks after an implementer submits them for
 review. Any configured reviewer can use this flow. The reviewer is the agent
-assigned at stage=review and defaults to `default_reviewer`, which may be
-`auto`. Same-name review is allowed through the open review pool; an
-implementer may not explicitly assign itself as reviewer at submit time.
+assigned at stage=review and defaults to `auto` in API mode. Same-name review
+is allowed through the open review pool; an implementer may not explicitly
+assign itself as reviewer at submit time.
 
 When review reveals that a needed change belongs to another project, originate
 a proposal instead of only reporting it. Use `issuekit propose --to <project>
@@ -547,8 +554,9 @@ after that upstream issue or proposal exists, and reference it with
 
 1. Call the issuekit MCP tool `next_review(reviewer=None)`. Omit reviewer to
    use `default_reviewer`, or pass the reviewer assignee to inspect. With
-   `default_reviewer = "auto"`, omitted reviewer means the next issue already
-   assigned at stage=review. If MCP is unavailable, use the read-only CLI
+   `default_reviewer = "auto"`, omitted reviewer means the next issue at
+   stage=review, whether assigned or in the open review pool. If MCP is
+   unavailable, use the read-only CLI
    fallback `issuekit next-review [--reviewer <name>] --json`, then use
    `issuekit show <id> --json` to reread a specific issue.
 2. Review the implementation diff in the checkout that holds it (the
@@ -562,9 +570,9 @@ after that upstream issue or proposal exists, and reference it with
    unexplained style deviations, even when tests pass.
 3. If the implementation is acceptable, approve it through the reviewer flow:
    call `approve(id, verification, reviewer=None)` with ASCII verification, or
-   use the CLI `issuekit approve <id> --verification <text>` command. The CLI
-   `issuekit complete <id>` command remains available when a completion summary
-   is needed. Use `issuekit complete <id> --force --summary <text>
+   use the CLI `issuekit approve <id> --verification <text>` command. Pass
+   `--summary <text>` to `issuekit approve` when a completion summary is
+   needed. Use `issuekit complete <id> --force --summary <text>
    --verification <text>` to close an active no-op, duplicate, obsolete, or
    anchor issue without creating a fake implementation and review cycle.
    After `approve`, the approving or orchestrating session commits the approved

@@ -347,7 +347,7 @@ def test_claim_issue_surfaces_api_transition_error(monkeypatch) -> None:
     message = str(excinfo.value)
     assert "Guard: server author-implementer guard (mine-py)." in message
     assert "`--allow-author-session` does not bypass it" in message
-    assert "issuekit#162 and issuekit#163" in message
+    assert "issuekit#162 and issuekit#163" not in message
 
 
 def test_fake_claim_allows_same_name_changes_continuation() -> None:
@@ -1329,6 +1329,7 @@ def test_distinct_reviewer_guard_names_recovery() -> None:
     assert "Distinct-reviewer guard (require_distinct_reviewer)" in message
     assert "no configured reviewer is distinct from the issue implementer" in message
     assert "configure an assignee distinct from issue.implementer" in message
+    assert "API-backed mode always enforces this guard" in message
     assert "compares against `issue.implementer`, not the author" in message
 
 
