@@ -80,6 +80,26 @@ def test_every_prompt_spec_renders_ascii_representative_context() -> None:
         assert rendered.isascii()
 
 
+@pytest.mark.parametrize(
+    "name",
+    (
+        "review",
+        "triage",
+        "router",
+        "proposal_check",
+        "negotiation_round",
+        "negotiation_round_resumed",
+    ),
+)
+def test_read_only_prompt_templates_render_shared_instruction(name: str) -> None:
+    rendered = PROMPT_SPECS[name].render(**SPEC_CONTEXTS[name])
+
+    assert rendered.count("Read-only run:") == 1
+    assert "issuekit claim, implement, review, submit-review, request-changes" in rendered
+    assert "approve, complete, adopt, discard, or propose" in rendered
+    assert rendered.isascii()
+
+
 @pytest.mark.parametrize("name", ["negotiation_round", "negotiation_round_resumed"])
 def test_negotiation_prompts_require_ascii_output(name: str) -> None:
     rendered = PROMPT_SPECS[name].render(**SPEC_CONTEXTS[name])

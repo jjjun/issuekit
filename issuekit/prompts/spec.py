@@ -45,6 +45,12 @@ SHARED_PARTIALS = MappingProxyType(
         "ascii_only_rule": (
             "All text must be ASCII-only (English; no em dashes or curly quotes)."
         ),
+        "read_only_run_instruction": (
+            "Read-only run: Inspect the repository only. Do not edit files or run "
+            "git commit or push. Do not run issuekit claim, implement, review, "
+            "submit-review, request-changes, approve, complete, adopt, discard, "
+            "or propose, or otherwise mutate tracker or issue lifecycle state."
+        ),
         "negotiation_read_budget": (
             "Read only the files needed to judge this specific contract; do not "
             "implement code; do not modify the tracker."

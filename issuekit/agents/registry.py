@@ -23,6 +23,8 @@ def resolve_adapter(
     run_config = dict(config.agents).get(agent_name)
     if run_config is None:
         raise ValueError(f"Unknown agent: {agent_name}")
+    if role is not None and role != "implementer":
+        run_config = replace(run_config, prompt_suffix=None)
     role_overlay = dict(dict(config.agent_role_overlays).get(agent_name, ())).get(role)
     if role_overlay is not None:
         run_config = replace(

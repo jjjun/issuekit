@@ -413,12 +413,14 @@ def run_negotiation(
             config=config,
             model=model,
             reasoning_effort=reasoning_effort,
+            role="negotiation",
         ),
         consumer_side: resolve_adapter(
             consumer_agent,
             config=config,
             model=model,
             reasoning_effort=reasoning_effort,
+            role="negotiation",
         ),
     }
     agents = {

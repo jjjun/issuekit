@@ -128,12 +128,22 @@ def resumed_changes_hint(issue_id: int) -> str:
     )
 
 
-def implementation_prompt(plan_path: Path) -> str:
+def implementation_prompt(
+    plan_path: Path,
+    *,
+    changes_requested: bool = False,
+) -> str:
     """Return the Issuekit implementation prompt for a claimed issue."""
 
+    scope_instruction = (
+        "The issue is back from review: address only the review feedback below, "
+        "keeping the rest of the implementation as it is."
+        if changes_requested
+        else "Implement it fully by editing files directly in this repository."
+    )
     return (
-        f"Read the plan file at: {plan_path} . Implement it fully by editing "
-        "files directly in this repository. Do NOT run git commit or git push - "
+        f"Read the plan file at: {plan_path} . {scope_instruction} "
+        "Do NOT run git commit or git push - "
         "leave all changes unstaged for review. Edit only code, tests, and "
         "supporting project files needed for the implementation. Write "
         "maintainable, idiomatic code that matches surrounding imports, naming, "
@@ -211,14 +221,16 @@ def run_and_submit(
     run_dir = cwd / ".agent-runs"
     plan_path = run_dir / f"issue-{issue_id}.md"
     plan_body = issue.body
-    pointer = implementation_prompt(plan_path)
+    pointer = implementation_prompt(
+        plan_path,
+        changes_requested=bool(prompt_suffix),
+    )
     if prompt_suffix:
         if plan_body:
             if not plan_body.endswith("\n"):
                 plan_body += "\n"
             plan_body += "\n"
         plan_body += f"## Review feedback to address\n\n{prompt_suffix}\n"
-        pointer += "\n\nAddress the review feedback section at the end of the plan file."
     prompt = AgentPrompt(
         path=plan_path,
         body=plan_body,
@@ -552,6 +564,13 @@ def _display_path(path: Path, cwd: Path) -> str:
         return path.as_posix()
 
 
+ISSUEKIT_BODY_SECTION_HEADINGS = (
+    "## Handoff",
+    "## Review Feedback",
+    "## Completion Notes",
+)
+
+
 def review_feedback_prompt(issue_body: str) -> str | None:
     lines = issue_body.splitlines()
     start = None
@@ -563,7 +582,7 @@ def review_feedback_prompt(issue_body: str) -> str | None:
 
     collected: list[str] = []
     for line in lines[start:]:
-        if line.startswith("## "):
+        if line.strip() in ISSUEKIT_BODY_SECTION_HEADINGS:
             break
         collected.append(line)
     notes = "\n".join(collected).strip()

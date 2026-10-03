@@ -661,7 +661,7 @@ def test_negotiate_passes_single_line_pointer_prompt_and_writes_full_plan(tmp_pa
     plan_text = prompt.body
     assert "You are participating in an issuekit cross-repo design negotiation." in plan_text
     assert "Perspective: you represent the frontend side." in plan_text
-    assert "Inspect the repository read-only." in plan_text
+    assert "Read-only run: Inspect the repository only." in plan_text
     assert "Compact thread so far:" in plan_text
 
 

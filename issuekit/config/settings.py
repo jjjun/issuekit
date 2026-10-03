@@ -27,6 +27,22 @@ from .dotenv import is_loaded_from_dotenv, load_dotenv
 from .local import LocalConfigError, load_toml, read_local_config
 
 _SENTINEL = object()
+_IMPLEMENTER_PROMPT_SUFFIX = (
+    "Make minimal, additive diffs. Do not reformat, re-quote, "
+    "re-order imports, or rewrite/translate comments on lines "
+    "unrelated to your change.\n"
+    "Never alter existing non-ASCII (e.g. Japanese) text that the "
+    "task does not ask you to change. When the task asks you to "
+    "correct such text, rewrite it in place in the same language "
+    "unless the task asks for a translation, keep the file encoding "
+    "(UTF-8, no BOM, LF), and do not keep the replaced text in a "
+    "comment. Preserve existing comments byte-for-byte unless the "
+    "task is specifically to change them. After editing, verify "
+    "you introduced no mojibake.\n"
+    "When a task says 'add X alongside Y, do not change Y,' the diff "
+    "must touch only the added region; if you cannot, stop and report "
+    "instead of reformatting."
+)
 
 # Repo-level worker metadata length limits agreed with the mine-py backend
 # (negotiation thread 18): role stays short, description allows a sentence or two.
@@ -161,22 +177,7 @@ class IssuekitConfig:
                 model_flag="--model",
                 effort_argv=("-c", "model_reasoning_effort={value}"),
                 speed_argv=("-c", "service_tier=priority"),
-                prompt_suffix=(
-                    "Make minimal, additive diffs. Do not reformat, re-quote, "
-                    "re-order imports, or rewrite/translate comments on lines "
-                    "unrelated to your change.\n"
-                    "Never alter existing non-ASCII (e.g. Japanese) text that the "
-                    "task does not ask you to change. When the task asks you to "
-                    "correct such text, rewrite it in place in the same language "
-                    "unless the task asks for a translation, keep the file encoding "
-                    "(UTF-8, no BOM, LF), and do not keep the replaced text in a "
-                    "comment. Preserve existing comments byte-for-byte unless the "
-                    "task is specifically to change them. After editing, verify "
-                    "you introduced no mojibake.\n"
-                    "When a task says 'add X alongside Y, do not change Y,' the diff "
-                    "must touch only the added region; if you cannot, stop and report "
-                    "instead of reformatting."
-                ),
+                prompt_suffix=_IMPLEMENTER_PROMPT_SUFFIX,
             ),
         ),
         (
@@ -200,22 +201,7 @@ class IssuekitConfig:
                 model_flag="--model",
                 effort_argv=("--effort", "{value}"),
                 speed_argv=("--settings", '{"fastMode": true}'),
-                prompt_suffix=(
-                    "Make minimal, additive diffs. Do not reformat, re-quote, "
-                    "re-order imports, or rewrite/translate comments on lines "
-                    "unrelated to your change.\n"
-                    "Never alter existing non-ASCII (e.g. Japanese) text that the "
-                    "task does not ask you to change. When the task asks you to "
-                    "correct such text, rewrite it in place in the same language "
-                    "unless the task asks for a translation, keep the file encoding "
-                    "(UTF-8, no BOM, LF), and do not keep the replaced text in a "
-                    "comment. Preserve existing comments byte-for-byte unless the "
-                    "task is specifically to change them. After editing, verify "
-                    "you introduced no mojibake.\n"
-                    "When a task says 'add X alongside Y, do not change Y,' the diff "
-                    "must touch only the added region; if you cannot, stop and report "
-                    "instead of reformatting."
-                ),
+                prompt_suffix=_IMPLEMENTER_PROMPT_SUFFIX,
             ),
         ),
     )

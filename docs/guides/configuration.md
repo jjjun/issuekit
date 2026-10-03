@@ -230,7 +230,7 @@ Agent tables accept these keys:
 | `reasoning_effort`, `effort_argv` | Default effort and its argv template using `{value}`. |
 | `speed`, `speed_argv` | Boolean switch and the literal arguments it emits. |
 | `resumable`, `session_flag`, `resume_flag` | Session support; see below. |
-| `prompt_suffix`, `model_prompts` | Text appended to every prompt, and per-model text. |
+| `prompt_suffix`, `model_prompts` | Text appended to implementer prompts, and per-model text appended to every matching prompt. |
 | `adapter` | Marker for a custom adapter class; only `kimi` is built in, and an unknown marker fails with `Unknown adapter`. |
 | `runtime`, `app_server_argv`, `lease_ttl_seconds` | Runtime selection; see the App Server paragraphs below. |
 | `mojibake_gate`, `diff_shape_warn_deletions` | Submit-time policy; see [Encoding checks](#encoding-checks). |
@@ -307,12 +307,12 @@ config: `approval_flag`, `approval_value`,
 applies only to the default exec runtime; it polls `git status` read-only without
 an index lock, so it is safe for issues that rewrite the checkout.
 
-Both runtimes send the plan pointer plus the agent's `prompt_suffix` and any
-matching `model_prompts` entry. For the implementer report destination, the exec
-prompt names `ISSUEKIT_IMPLEMENTER_REPORT_FILE`; the App Server prompt replaces
-that instruction with the concrete path because its session does not receive
-the exec environment. App Server attempts also record token usage. Codex reports
-it through `thread/tokenUsage/updated`
+On implementer runs, both runtimes send the plan pointer plus the agent's
+`prompt_suffix`; every run also receives any matching `model_prompts` entry.
+The exec prompt names `ISSUEKIT_IMPLEMENTER_REPORT_FILE` as the report
+destination; the App Server prompt replaces it with the concrete path because
+its session does not receive the exec environment. App Server attempts also
+record token usage. Codex reports it through `thread/tokenUsage/updated`
 notifications, which issuekit uploads as `turn_progress` events carrying a
 `usage` payload with `last` and `total` breakdowns. The cumulative thread total
 is repeated in the final `runtime_stopped` event, in the run's

@@ -2,9 +2,8 @@
 
 You are triaging one incoming cross-project proposal for this project.
 Inspect this repository read-only to judge whether the request belongs
-here and how it should be specified. Do NOT edit files, run git commit or
-push, and do NOT run issuekit claim, submit-review, request-changes,
-approve, complete, or otherwise mutate tracker or issue lifecycle state.
+here and how it should be specified.
+$read_only_run_instruction
 
 Proposal title: $title
 Origin: $origin

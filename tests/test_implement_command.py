@@ -21,13 +21,15 @@ from issuekit.workflow import WorkflowError
 from tests.issue_helpers import api_issue
 
 
-def test_review_feedback_prompt_stops_at_immediate_next_section() -> None:
-    assert (
-        review_feedback_prompt(
-            "## Review Feedback\n\n## Implementation Notes\n\nDo not include this."
-        )
-        is None
+def test_review_feedback_prompt_keeps_markdown_headings_until_handoff() -> None:
+    prompt = review_feedback_prompt(
+        "## Review Feedback\n\n## Required changes\n\nFix this.\n\n"
+        "## Handoff\n\nDo not include this."
     )
+
+    assert prompt is not None
+    assert "## Required changes\n\nFix this." in prompt
+    assert "Do not include this." not in prompt
 
 
 def test_rename_across_issues_directory_is_an_implementation_change(
@@ -1415,8 +1417,10 @@ def test_implement_command_keeps_review_feedback_in_plan_body(
     assert "## Review feedback to address" in prompt.body
     assert prompt.body.endswith(review_feedback_prompt(body) + "\n")
     assert (
-        "Address the review feedback section at the end of the plan file" in argv[1]
-    )
+        "The issue is back from review: address only the review feedback below, "
+        "keeping the rest of the implementation as it is."
+    ) in argv[1]
+    assert "Implement it fully" not in argv[1]
     assert "review note." not in " ".join(argv)
     assert PromptCapturingRunner.calls[0][6] is None
 

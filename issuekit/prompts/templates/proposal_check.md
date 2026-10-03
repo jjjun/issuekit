@@ -3,9 +3,8 @@
 You are checking whether this incoming cross-project proposal should
 be accepted by this local repository. Inspect this repository read-only
 for feasibility, project scope fit, dependency conflicts, and obvious
-implementation risks. Do NOT edit files, run git commit or push, and
-do NOT run issuekit claim, submit-review, request-changes, approve,
-complete, adopt, discard, or otherwise mutate tracker state.
+implementation risks.
+$read_only_run_instruction
 
 Target project: $target_project
 Proposal id: $proposal_id

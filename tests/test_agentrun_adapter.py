@@ -6,6 +6,7 @@ import pytest
 
 from issuekit.agentrun import AgentBinaryNotFoundError, AgentRunConfig, ConfigAgentAdapter
 from issuekit.agents.registry import resolve_adapter
+from issuekit.config import IssuekitConfig
 
 
 def test_config_adapter_appends_session_flag_only_when_resumable() -> None:
@@ -71,6 +72,46 @@ def test_config_adapter_uses_configured_model_and_prompt_suffix() -> None:
 
     assert argv[:2] == ["exec", "base\n\nGeneral guardrail.\n\nSpark guardrail."]
     assert argv[argv.index("--model") + 1] == "gpt-5.3-codex-spark"
+
+
+def test_builtin_edit_suffix_is_only_added_for_implementers() -> None:
+    reviewer = resolve_adapter("codex", role="reviewer")
+    implementer = resolve_adapter("codex", role="implementer")
+
+    reviewer_prompt = reviewer.build_argv("base", Path("/plan.md"))[1]
+    implementer_prompt = implementer.build_argv("base", Path("/plan.md"))[1]
+
+    assert "Make minimal, additive diffs." not in reviewer_prompt
+    assert "Make minimal, additive diffs." in implementer_prompt
+
+
+def test_role_prompt_suffix_is_implementer_only_and_model_prompts_still_apply() -> None:
+    config = IssuekitConfig(
+        agents=(
+            (
+                "codex",
+                AgentRunConfig(
+                    binary="codex",
+                    headless_argv=("exec",),
+                    model_flag="--model",
+                    model="test-model",
+                    prompt_suffix="Implementation guidance.",
+                    model_prompts=(("test-model", "Model guidance."),),
+                ),
+            ),
+        ),
+    )
+    reviewer = resolve_adapter("codex", config=config, role="reviewer")
+    implementer = resolve_adapter("codex", config=config, role="implementer")
+
+    reviewer_argv = reviewer.build_argv("base", Path("/plan.md"))
+    implementer_argv = implementer.build_argv("base", Path("/plan.md"))
+
+    assert reviewer_argv[1] == "base\n\nModel guidance."
+    assert reviewer_argv[reviewer_argv.index("--model") + 1] == "test-model"
+    assert implementer_argv[1] == (
+        "base\n\nImplementation guidance.\n\nModel guidance."
+    )
 
 
 def test_config_adapter_run_model_overrides_config_model() -> None:

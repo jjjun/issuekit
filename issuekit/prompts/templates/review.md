@@ -1,7 +1,7 @@
 # Review issue $issue_ref
 
 You are the reviewer. Review $review_target against the issue.
-Do not edit files, commit, push, claim, submit, approve, request changes, or mutate tracker state.
+$read_only_run_instruction
 Review correctness, tests, readability, maintainability, and fit with surrounding style.
 When no local implementation diff is present, review the handoff evidence, command evidence,
 and any referenced live state; request changes if the evidence is insufficient to decide.
