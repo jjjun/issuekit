@@ -15,6 +15,7 @@ from issuekit.file_permissions import chmod_600, open_owner_only
 
 MAX_TEXT_CHARS = 32 * 1024
 MAX_EVENT_BYTES = 64 * 1024
+DANGER_FULL_ACCESS_SANDBOX = "danger-full-access"
 USAGE_TOKEN_FIELDS = (
     ("cachedInputTokens", "cached_input_tokens"),
     ("inputTokens", "input_tokens"),
@@ -162,7 +163,7 @@ class AppServerTransport:
         params: dict[str, Any] = {
             "cwd": str(cwd),
             "approvalPolicy": "never",
-            "sandbox": "dangerFullAccess",
+            "sandbox": DANGER_FULL_ACCESS_SANDBOX,
             "serviceName": "issuekit",
         }
         if model:

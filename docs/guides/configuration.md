@@ -251,7 +251,7 @@ the override above, or set `approval_flag = "--sandbox"` and
 exec runtime; the App Server runtime below ignores them.
 
 Codex implementation runs use `codex exec` by default. API-backed projects can
-opt into issue-owned App Server attempts for Codex implementer runs:
+opt into issue-owned App Server attempts for Codex implement and serve runs:
 
 ```toml
 [tool.issuekit.agents.codex]
@@ -272,8 +272,9 @@ events, stops on fencing or claim loss, and seals the runtime before the
 existing submit-for-review workflow. A provider
 without the routes returns a clear unsupported-runtime error; issuekit does not
 silently fall back because the mode is explicit. App Server is Codex-only and
-implementer-only in this version. Its threads always start with approval policy
-`never` and the `dangerFullAccess` sandbox, and it reads only `binary`,
+implementer-only in this version. Both `implement` and `serve` honor this
+runtime. Its threads always start with approval policy `never` and the
+`danger-full-access` sandbox, and it reads only `binary`,
 `known_paths`, `lease_ttl_seconds`, `app_server_argv`, `model`,
 `reasoning_effort`, `prompt_suffix`, and `model_prompts` from the agent
 config: `approval_flag`, `approval_value`,

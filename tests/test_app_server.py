@@ -4,8 +4,11 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 from issuekit.agentrun.app_server import (
     MAX_TEXT_CHARS,
+    AppServerError,
     AppServerTransport,
     CommandJournal,
     normalize_notification,
@@ -157,9 +160,10 @@ def test_normalize_notification_omits_usage_without_token_counts() -> None:
 
 
 def test_app_server_transport_initializes_starts_thread_and_turn(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch
 ) -> None:
     server = tmp_path / "fake_app_server.py"
+    captured_params = tmp_path / "thread-start.json"
     server.write_text(
         (
             "import json, sys\n"
@@ -169,12 +173,18 @@ def test_app_server_transport_initializes_starts_thread_and_turn(
             "        continue\n"
             "    method = message['method']\n"
             "    if method == 'thread/start':\n"
-            "        result = {'thread': {'id': 'thread-1'}}\n"
+            "        params = message.get('params', {})\n"
+            "        if params.get('sandbox') not in {'read-only', 'workspace-write', 'danger-full-access'}:\n"
+            "            response = {'id': message['id'], 'error': {'code': -32600, 'message': \"Invalid request: unknown variant\"}}\n"
+            "        else:\n"
+            "            with open(sys.argv[1], 'w', encoding='utf-8') as stream:\n"
+            "                json.dump(params, stream)\n"
+            "            response = {'id': message['id'], 'result': {'thread': {'id': 'thread-1'}}}\n"
             "    elif method == 'turn/start':\n"
-            "        result = {'turn': {'id': 'turn-1'}}\n"
+            "        response = {'id': message['id'], 'result': {'turn': {'id': 'turn-1'}}}\n"
             "    else:\n"
-            "        result = {}\n"
-            "    print(json.dumps({'id': message['id'], 'result': result}), flush=True)\n"
+            "        response = {'id': message['id'], 'result': {}}\n"
+            "    print(json.dumps(response), flush=True)\n"
         ),
         encoding="utf-8",
         newline="\n",
@@ -184,15 +194,28 @@ def test_app_server_transport_initializes_starts_thread_and_turn(
     with (tmp_path / "stderr.log").open("w", encoding="utf-8") as stderr:
         transport = AppServerTransport(
             Path(sys.executable),
-            (str(server),),
+            (str(server), str(captured_params)),
             cwd=tmp_path,
             stderr=stderr,
             notification=notifications.append,
         )
         transport.initialize()
         thread_id = transport.start_thread(cwd=tmp_path, model="gpt-test")
+        monkeypatch.setattr(
+            "issuekit.agentrun.app_server.DANGER_FULL_ACCESS_SANDBOX",
+            "dangerFullAccess",
+        )
+        with pytest.raises(AppServerError, match="unknown variant"):
+            transport.start_thread(cwd=tmp_path, model="gpt-test")
         turn_id = transport.start_turn(thread_id, "Inspect the worktree.")
         assert transport.close() == 0
 
     assert thread_id == "thread-1"
     assert turn_id == "turn-1"
+    assert json.loads(captured_params.read_text(encoding="utf-8")) == {
+        "cwd": str(tmp_path),
+        "approvalPolicy": "never",
+        "sandbox": "danger-full-access",
+        "serviceName": "issuekit",
+        "model": "gpt-test",
+    }

@@ -6,7 +6,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from issuekit.agentrun import AgentResult, AgentRunner
+from issuekit.agentrun import AgentResult
 from issuekit.agents.run_claimed import (
     RunOutcome,
     resumed_changes_hint,
@@ -149,7 +149,6 @@ def run(args) -> int:
                 orchestration=orchestration,
                 submit_summary=_submit_summary(agent, cwd, config, resolved_issue_id),
                 reporter=reporter,
-                runner_factory=AgentRunner,
             )
         except _MAPPED_ERRORS as exc:
             reason_prefix = "submit_error" if agent_result is not None else "run_error"

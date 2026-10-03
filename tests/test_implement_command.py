@@ -293,7 +293,7 @@ def test_implement_command_materializes_api_issue_and_submits_review(
     FakeRunner.calls.clear()
     FakeRunner.issuekit_sessions.clear()
     _configure_api(tmp_path, monkeypatch, client)
-    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", FakeRunner)
+    monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", FakeRunner)
 
     exit_code = cli.main(["implement", "1", "--agent", "kimi", "--timeout-sec", "12"])
 
@@ -325,6 +325,46 @@ def test_implement_command_materializes_api_issue_and_submits_review(
         "(orchestrated by issuekit@unregistered-worker).\n"
         "Run log: `out.log`"
     )
+
+
+def test_implement_command_selects_app_server_runtime(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
+    constructed: list[str] = []
+
+    class SelectedAgentRunner(FakeRunner):
+        def __init__(self) -> None:
+            constructed.append("exec")
+
+        def run(self, *args, **kwargs) -> FakeResult:
+            return FakeResult(exit_code=1, status_short=None)
+
+    class SelectedAppServerRunner(FakeRunner):
+        def __init__(
+            self, config: IssuekitConfig, issue: Issue, *, recovery: bool
+        ) -> None:
+            constructed.append("app_server")
+
+        def run(self, *args, **kwargs) -> FakeResult:
+            return FakeResult(exit_code=1, status_short=None)
+
+    _configure_api(
+        tmp_path,
+        monkeypatch,
+        client,
+        extra_config="[agents.codex]\nruntime = 'codex_app_server'\n",
+    )
+    monkeypatch.setattr(run_claimed_agent, "AgentRunner", SelectedAgentRunner)
+    monkeypatch.setattr(
+        run_claimed_agent, "AppServerAttemptRunner", SelectedAppServerRunner
+    )
+
+    exit_code = cli.main(["implement", "1", "--agent", "codex", "--timeout-sec", "12"])
+
+    assert exit_code == 1
+    assert constructed == ["app_server"]
+    assert "agent_exit_code=1" in capsys.readouterr().out
 
 
 def test_submission_summary_includes_sanitized_implementer_report(tmp_path: Path) -> None:
@@ -384,7 +424,7 @@ def test_implement_command_uses_default_implementer(tmp_path: Path, monkeypatch,
     client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
     FakeRunner.calls.clear()
     _configure_api(tmp_path, monkeypatch, client, extra_config="default_implementer = 'kimi'\n")
-    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", FakeRunner)
+    monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", FakeRunner)
 
     assert cli.main(["implement", "1"]) == 0
     assert "agent=kimi" in capsys.readouterr().out
@@ -404,7 +444,7 @@ def test_implement_command_sends_effective_agent_runtime(tmp_path: Path, monkeyp
             "reasoning_effort = 'medium'\n"
         ),
     )
-    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", FakeRunner)
+    monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", FakeRunner)
 
     assert cli.main(["implement", "1", "--agent", "codex"]) == 0
 
@@ -425,7 +465,7 @@ def test_implement_command_omits_agent_runtime_when_disabled(tmp_path: Path, mon
         client,
         extra_config="send_agent_runtime = false\n[agents.codex]\nmodel = 'configured-model'\n",
     )
-    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", FakeRunner)
+    monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", FakeRunner)
 
     assert cli.main(["implement", "1", "--agent", "codex"]) == 0
 
@@ -442,7 +482,7 @@ def test_implement_command_blocks_wrong_work_branch_before_agent(
     FakeRunner.calls.clear()
     _configure_api(tmp_path, monkeypatch, client, extra_config="work_branch = 'main'\n")
     monkeypatch.setattr("issuekit.guards.branch.git_current_branch", lambda cwd: "feature")
-    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", FakeRunner)
+    monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", FakeRunner)
 
     exit_code = cli.main(["implement", "1", "--agent", "codex"])
 
@@ -471,7 +511,7 @@ def test_implement_command_does_not_commit_or_push(
         raise AssertionError(f"unexpected subprocess call: {argv}")
 
     monkeypatch.setattr("subprocess.run", reject_commit_or_push)
-    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", FakeRunner)
+    monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", FakeRunner)
 
     assert cli.main(["implement", "1", "--agent", "codex"]) == 0
 
@@ -493,7 +533,7 @@ def test_implement_command_mojibake_gate_blocks_submit(
             )
             return FakeResult(status_short=" M code.py")
 
-    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", MojibakeRunner)
+    monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", MojibakeRunner)
 
     exit_code = cli.main(["implement", "1", "--agent", "codex"])
 
@@ -534,7 +574,7 @@ def test_implement_command_mojibake_gate_scans_full_file_when_diff_fails(
         return original_run_git(args, cwd, **kwargs)
 
     monkeypatch.setattr(run_claimed_agent, "run_git", fail_changed_line_diff)
-    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", MojibakeRunner)
+    monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", MojibakeRunner)
 
     assert cli.main(["implement", "1", "--agent", "codex"]) == 1
     assert "mojibake gate blocked submit_for_review" in capsys.readouterr().err
@@ -559,7 +599,7 @@ def test_implement_command_mojibake_gate_blocks_non_ascii_path(
             )
             return FakeResult(status_short=" M 日本語.py")
 
-    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", MojibakeRunner)
+    monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", MojibakeRunner)
 
     assert cli.main(["implement", "1", "--agent", "codex"]) == 1
     assert "- 日本語.py:1:12: U+7E67" in capsys.readouterr().err
@@ -584,7 +624,7 @@ def test_implement_command_mojibake_gate_allows_legitimate_japanese(
             )
             return FakeResult(status_short=" M code.py")
 
-    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", JapaneseRunner)
+    monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", JapaneseRunner)
 
     assert cli.main(["implement", "1", "--agent", "codex"]) == 0
     assert [call["method"] for call in client.calls] == ["claim", "submit"]
@@ -609,7 +649,7 @@ def test_implement_command_mojibake_gate_blocks_unconfirmed_changed_text(
             )
             return FakeResult(status_short=" M code.py")
 
-    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", LossyRunner)
+    monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", LossyRunner)
 
     assert cli.main(["implement", "1", "--agent", "codex"]) == 1
     captured = capsys.readouterr()
@@ -645,7 +685,7 @@ def test_check_encoding_gate_matches_submit_gate_for_issue_308_tree(
             gate_exit_codes.append(cli.main(["check-encoding", "--gate"]))
             return FakeResult(status_short=" M tests/test_gitutil.py")
 
-    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", IncidentRunner)
+    monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", IncidentRunner)
 
     assert cli.main(["implement", "1", "--agent", "codex"]) == 1
     assert gate_exit_codes == [1]
@@ -675,7 +715,7 @@ def test_implement_command_mojibake_gate_allows_excluded_legitimate_japanese(
             )
             return FakeResult(status_short=" M titles/anime.py")
 
-    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", JapaneseRunner)
+    monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", JapaneseRunner)
 
     assert cli.main(["implement", "1", "--agent", "codex"]) == 0
     assert [call["method"] for call in client.calls] == ["claim", "submit"]
@@ -707,7 +747,7 @@ def test_implement_command_mojibake_gate_blocks_confirmed_excluded_text(
             )
             return FakeResult(status_short=" M titles/anime.py")
 
-    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", MojibakeRunner)
+    monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", MojibakeRunner)
 
     assert cli.main(["implement", "1", "--agent", "codex"]) == 1
     captured = capsys.readouterr()
@@ -739,7 +779,7 @@ def test_implement_command_mojibake_gate_scans_file_without_source_extension(
             )
             return FakeResult(status_short=" M script.sh")
 
-    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", MojibakeRunner)
+    monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", MojibakeRunner)
 
     assert cli.main(["implement", "1", "--agent", "codex"]) == 1
     assert "- script.sh:1:7: U+7E67" in capsys.readouterr().err
@@ -765,7 +805,7 @@ def test_implement_command_mojibake_gate_reports_invalid_utf8(
             (repo / "code.py").write_bytes(b"value = '\xff'\n")
             return FakeResult(status_short=" M code.py")
 
-    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", InvalidUtf8Runner)
+    monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", InvalidUtf8Runner)
 
     assert cli.main(["implement", "1", "--agent", "codex"]) == 1
     assert "- code.py:1:1: invalid UTF-8" in capsys.readouterr().err
@@ -791,7 +831,7 @@ def test_implement_command_mojibake_gate_ignores_unchanged_corruption(
             return FakeResult(status_short=" M code.py")
 
     monkeypatch.setattr(
-        "issuekit.commands.implement.AgentRunner", UnchangedCorruptionRunner
+        "issuekit.agents.run_claimed.AgentRunner", UnchangedCorruptionRunner
     )
 
     assert cli.main(["implement", "1", "--agent", "codex"]) == 0
@@ -825,7 +865,7 @@ def test_implement_command_mojibake_gate_allows_configured_halfwidth_kana(
             )
             return FakeResult(status_short=" M code.py")
 
-    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", HalfwidthKanaRunner)
+    monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", HalfwidthKanaRunner)
 
     assert cli.main(["implement", "1", "--agent", "codex"]) == 0
     assert [call["method"] for call in client.calls] == ["claim", "submit"]
@@ -845,7 +885,7 @@ def test_implement_command_blocks_when_git_has_no_implementation_changes(
         def run(self, adapter, prompt: AgentPrompt, repo, timeout, **kwargs) -> FakeResult:
             return FakeResult(status_short="")
 
-    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", CleanRunner)
+    monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", CleanRunner)
     monkeypatch.setattr(
         run_claimed_agent,
         "read_status",
@@ -878,7 +918,7 @@ def test_implement_command_prefers_failure_reason_over_last_log_line(
         def run(self, adapter, prompt: AgentPrompt, repo, timeout, **kwargs) -> FakeResult:
             return FakeResult(status_short="")
 
-    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", CleanRunner)
+    monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", CleanRunner)
     monkeypatch.setattr(
         run_claimed_agent,
         "read_status",
@@ -914,7 +954,7 @@ def test_implement_command_blocks_preexisting_dirty_worktree_without_agent_chang
         def run(self, adapter, prompt: AgentPrompt, repo, timeout, **kwargs) -> FakeResult:
             return FakeResult(status_short=" M modified.py\n?? untracked.py")
 
-    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", CleanRunner)
+    monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", CleanRunner)
 
     exit_code = cli.main(["implement", "1", "--agent", "codex"])
 
@@ -979,7 +1019,7 @@ def test_implement_command_warns_before_run_when_resuming_over_stale_prior_run(
         def run(self, adapter, prompt: AgentPrompt, repo, timeout, **kwargs) -> FakeResult:
             return FakeResult(status_short=" M modified.py")
 
-    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", CleanRunner)
+    monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", CleanRunner)
 
     exit_code = cli.main(["implement", "1", "--agent", "codex"])
 
@@ -1033,7 +1073,7 @@ def test_implement_command_does_not_warn_when_prior_run_is_fresh(
         def run(self, adapter, prompt: AgentPrompt, repo, timeout, **kwargs) -> FakeResult:
             return FakeResult(status_short=" M modified.py")
 
-    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", CleanRunner)
+    monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", CleanRunner)
 
     cli.main(["implement", "1", "--agent", "codex"])
 
@@ -1085,7 +1125,7 @@ def test_implement_command_warns_when_prior_run_already_reconciled_to_abandoned(
         def run(self, adapter, prompt: AgentPrompt, repo, timeout, **kwargs) -> FakeResult:
             return FakeResult(status_short=" M modified.py")
 
-    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", CleanRunner)
+    monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", CleanRunner)
 
     exit_code = cli.main(["implement", "1", "--agent", "codex"])
 
@@ -1119,7 +1159,7 @@ def test_implement_command_submits_agent_change_with_preexisting_dirty_worktree(
                 status_short=" M changed.py\n M modified.py\n?? untracked.py"
             )
 
-    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", ChangingRunner)
+    monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", ChangingRunner)
 
     assert cli.main(["implement", "1", "--agent", "codex"]) == 0
     assert [call["method"] for call in client.calls] == ["claim", "submit"]
@@ -1140,7 +1180,7 @@ def test_implement_command_submits_deletion_only_change(
             deleted_path.unlink()
             return FakeResult(status_short=" D obsolete.py")
 
-    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", DeletingRunner)
+    monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", DeletingRunner)
 
     assert cli.main(["implement", "1", "--agent", "codex"]) == 0
     assert [call["method"] for call in client.calls] == ["claim", "submit"]
@@ -1161,7 +1201,7 @@ def test_implement_command_accepts_agent_side_review_when_no_changes(
             client.submit(1, summary="Submitted by agent.")
             return FakeResult(status_short="")
 
-    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", AgentSubmittingRunner)
+    monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", AgentSubmittingRunner)
 
     exit_code = cli.main(["implement", "1", "--agent", "codex"])
 
@@ -1186,7 +1226,7 @@ def test_implement_command_allows_no_change_submit_with_flag(
         def run(self, adapter, prompt: AgentPrompt, repo, timeout, **kwargs) -> FakeResult:
             return FakeResult(status_short="")
 
-    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", CleanRunner)
+    monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", CleanRunner)
 
     exit_code = cli.main(["implement", "1", "--agent", "codex", "--allow-no-changes"])
 
@@ -1210,7 +1250,7 @@ def test_implement_command_blocks_submit_when_report_is_missing(
             (repo / "code.py").write_text("value = 1\n", encoding="utf-8", newline="\n")
             return FakeResult(status_short=" M code.py", report_path=report_path)
 
-    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", NoReportRunner)
+    monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", NoReportRunner)
 
     exit_code = cli.main(["implement", "1", "--agent", "codex"])
 
@@ -1237,7 +1277,7 @@ def test_implement_command_blocks_submit_when_report_is_whitespace_only(
             (repo / "code.py").write_text("value = 1\n", encoding="utf-8", newline="\n")
             return FakeResult(status_short=" M code.py", report_path=report_path)
 
-    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", BlankReportRunner)
+    monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", BlankReportRunner)
 
     exit_code = cli.main(["implement", "1", "--agent", "codex"])
 
@@ -1261,7 +1301,7 @@ def test_implement_command_allows_missing_report_with_flag(
             (repo / "code.py").write_text("value = 1\n", encoding="utf-8", newline="\n")
             return FakeResult(status_short=" M code.py", report_path=report_path)
 
-    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", NoReportRunner)
+    monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", NoReportRunner)
 
     exit_code = cli.main(
         ["implement", "1", "--agent", "codex", "--allow-missing-report"]
@@ -1289,7 +1329,7 @@ def test_implement_command_treats_already_at_review_as_submitted_without_report(
             client.submit(1, summary="Submitted by agent.")
             return FakeResult(status_short="", report_path=report_path)
 
-    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", AgentSubmittingRunner)
+    monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", AgentSubmittingRunner)
 
     exit_code = cli.main(["implement", "1", "--agent", "codex"])
 
@@ -1321,7 +1361,7 @@ def test_implement_command_reinjects_review_feedback(
     )
     FakeRunner.calls.clear()
     _configure_api(tmp_path, monkeypatch, client)
-    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", FakeRunner)
+    monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", FakeRunner)
 
     assert cli.main(["implement", "1", "--agent", "codex"]) == 0
     prompt_suffix = FakeRunner.calls[0][6]
@@ -1341,7 +1381,7 @@ def test_implement_command_does_not_submit_failed_run(
         def run(self, adapter, prompt: AgentPrompt, repo, timeout, **kwargs) -> FakeResult:
             return FakeResult(exit_code=2, status_short=" M tracked.py")
 
-    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", FailingRunner)
+    monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", FailingRunner)
 
     assert cli.main(["implement", "1", "--agent", "codex"]) == 2
     assert [call["method"] for call in client.calls] == ["claim"]
@@ -1354,7 +1394,7 @@ def test_implement_command_prints_post_run_line_on_successful_submit(
 ) -> None:
     client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
     _configure_api(tmp_path, monkeypatch, client)
-    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", FakeRunner)
+    monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", FakeRunner)
 
     exit_code = cli.main(["implement", "1", "--agent", "codex"])
 
@@ -1379,7 +1419,7 @@ def test_implement_command_prints_not_submitted_reason_for_failed_run(
         def run(self, adapter, prompt: AgentPrompt, repo, timeout, **kwargs) -> FakeResult:
             return FakeResult(exit_code=2, status_short=" M tracked.py")
 
-    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", FailingRunner)
+    monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", FailingRunner)
 
     exit_code = cli.main(["implement", "1", "--agent", "codex"])
 
@@ -1408,7 +1448,7 @@ def test_implement_command_prints_not_submitted_reason_for_no_changes(
         def run(self, adapter, prompt: AgentPrompt, repo, timeout, **kwargs) -> FakeResult:
             return FakeResult(status_short="")
 
-    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", CleanRunner)
+    monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", CleanRunner)
 
     exit_code = cli.main(["implement", "1", "--agent", "codex"])
 
@@ -1444,7 +1484,7 @@ def test_implement_command_prints_final_message_tail_and_hint_for_no_changes(
                 },
             )
 
-    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", StalledRunner)
+    monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", StalledRunner)
 
     exit_code = cli.main(["implement", "1", "--agent", "codex"])
 
@@ -1481,7 +1521,7 @@ def test_implement_command_prints_final_message_tail_for_missing_report(
                 parsed={"stdout": "I'll wait for the background test run to complete."},
             )
 
-    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", StalledNoReportRunner)
+    monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", StalledNoReportRunner)
 
     exit_code = cli.main(["implement", "1", "--agent", "codex"])
 
@@ -1510,7 +1550,7 @@ def test_implement_command_truncates_long_final_message_tail(
         def run(self, adapter, prompt: AgentPrompt, repo, timeout, **kwargs) -> FakeResult:
             return FakeResult(status_short="", parsed={"stdout": long_message})
 
-    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", VerboseStalledRunner)
+    monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", VerboseStalledRunner)
 
     exit_code = cli.main(["implement", "1", "--agent", "codex"])
 
@@ -1537,7 +1577,7 @@ def test_implement_command_sanitizes_non_ascii_final_message_tail(
                 parsed={"stdout": "I’ll wait — no need to poll café."},
             )
 
-    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", NonAsciiStalledRunner)
+    monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", NonAsciiStalledRunner)
 
     exit_code = cli.main(["implement", "1", "--agent", "codex"])
 
@@ -1563,7 +1603,7 @@ def test_implement_command_omits_final_message_tail_when_not_stall_shaped(
                 parsed={"stdout": "Should not be surfaced for agent_failed."},
             )
 
-    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", FailingRunner)
+    monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", FailingRunner)
 
     exit_code = cli.main(["implement", "1", "--agent", "codex"])
 
@@ -1580,7 +1620,7 @@ def test_implement_command_prints_submit_error_reason_when_guard_blocks_submit(
 ) -> None:
     client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
     _configure_api(tmp_path, monkeypatch, client)
-    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", FakeRunner)
+    monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", FakeRunner)
 
     def raise_guard_error(*args, **kwargs):
         raise WorkflowError("Author-session guard blocks submit.")
@@ -1617,7 +1657,7 @@ def test_implement_command_prints_unknown_stage_when_stage_lookup_also_fails(
 
     client = FlakyAfterSubmitClient([api_issue(1, "First", author="claude")])
     _configure_api(tmp_path, monkeypatch, client)
-    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", FakeRunner)
+    monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", FakeRunner)
 
     def raise_guard_error(*args, **kwargs):
         should_fail_lookup["value"] = True
@@ -1660,7 +1700,7 @@ def test_implement_command_prints_recovery_hint_for_startup_failure(
                 },
             )
 
-    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", StartupFailureRunner)
+    monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", StartupFailureRunner)
 
     exit_code = cli.main(["implement", "1", "--agent", "codex"])
 
@@ -1693,7 +1733,7 @@ def test_implement_command_omits_recovery_hint_when_usage_is_nonzero(
                 },
             )
 
-    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", RealFailureRunner)
+    monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", RealFailureRunner)
 
     exit_code = cli.main(["implement", "1", "--agent", "codex"])
 
@@ -1709,7 +1749,7 @@ def test_implement_command_reports_author_self_assignment(
     client = FakeIssuekitClient([api_issue(1, "First", assignee="codex", author="codex")])
     FakeRunner.calls.clear()
     _configure_api(tmp_path, monkeypatch, client)
-    monkeypatch.setattr("issuekit.commands.implement.AgentRunner", FakeRunner)
+    monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", FakeRunner)
 
     exit_code = cli.main(["implement", "1", "--agent", "codex"])
 
