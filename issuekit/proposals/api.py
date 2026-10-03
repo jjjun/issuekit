@@ -101,6 +101,53 @@ class ProposalAppendError(ProposalError):
         self.append_error = append_error
 
 
+class AdoptedIssueHoldError(WorkflowError):
+    """Raised when an adopted issue could not be held for human release."""
+
+    def __init__(
+        self,
+        issue_id: int,
+        *,
+        origin: str,
+        reason: str,
+        error: Exception,
+    ) -> None:
+        super().__init__(
+            f"Could not hold adopted issue #{issue_id} for human release: {error}",
+            code="hold_failed",
+        )
+        self.issue_id = issue_id
+        self.origin = origin
+        self.reason = reason
+
+
+def hold_adopted_issue(
+    config: IssuekitConfig,
+    issue_id: int,
+    *,
+    origin: str,
+    reason: str,
+) -> bool:
+    """Keep an automatically adopted issue out of the implement pool."""
+    if not config.triage.hold_auto_adopted:
+        return False
+    note = (
+        f"Held for human release: adopted automatically from {origin} by {reason}. "
+        f"Release with: issuekit plan {issue_id} --stage todo"
+    )
+    try:
+        with api_client(config) as client:
+            client.plan(issue_id, stage="planned", note=note)
+    except (WorkflowError, ProposalError, ValueError) as exc:
+        raise AdoptedIssueHoldError(
+            issue_id,
+            origin=origin,
+            reason=reason,
+            error=exc,
+        ) from exc
+    return True
+
+
 def api_client(config: IssuekitConfig, *, project: str | None = None) -> IssuekitClient:
     if not config.api_url:
         raise ProposalError(
@@ -348,6 +395,28 @@ def auto_adopt_incoming_proposals(
             outcome = adopt_outcome(proposal["id"], config.project, issue)
             outcome["auto_adopted"] = True
             outcome["blocking"] = bool(proposal.get("blocking", False))
+            if outcome.get("issue_id") is not None and policy.hold_auto_adopted:
+                origin = str(proposal.get("origin", ""))
+                outcome["origin"] = origin
+                reason = "serve auto-adopt"
+                outcome["next_command"] = (
+                    f"issuekit plan {outcome['issue_id']} --stage todo"
+                )
+                outcome["instruction"] = (
+                    f"Issue #{outcome['issue_id']} requires human release. "
+                    "Release it with the next command."
+                )
+                try:
+                    outcome["held"] = hold_adopted_issue(
+                        config,
+                        int(outcome["issue_id"]),
+                        origin=origin,
+                        reason=reason,
+                    )
+                except AdoptedIssueHoldError as exc:
+                    outcome["hold_error"] = str(exc)
+                    outcome["hold_origin"] = exc.origin
+                    outcome["hold_reason"] = exc.reason
             adopted.append(outcome)
     return adopted
 

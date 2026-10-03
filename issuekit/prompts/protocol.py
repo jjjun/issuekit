@@ -239,9 +239,15 @@ or triage proposals.
 Projects may automate trusted target-owned triage by configuring
 `[triage] trusted_origins`, `default_priority`, `require_blocking`, and
 `max_adoptions_per_cycle`, then running `issuekit serve --triage`. Each serve
-poll first auto-adopts matching pending proposals, then claims and implements
-through the normal review-gated cycle. Use `issuekit propose --blocking` for
-hard cross-project dependencies when the target requires blocking proposals.
+poll auto-adopts matching pending proposals, holds created issues at `planned`
+by default, then claims and implements other eligible work through the normal
+review-gated cycle. Release an adopted issue with `issuekit plan <id> --stage
+todo`. Set `[triage] hold_auto_adopted = false` to restore automatic claiming
+after adoption. `trusted_origins` filters proposal eligibility but is not
+authentication until issuekit#403 lands, so disabling the hold allows forged
+origins to reach unattended implementation. Use `issuekit propose --blocking`
+for hard cross-project dependencies when the target requires blocking
+proposals.
 
 For proposal-system CLI equivalents, see the Proposal-system CLI fallback list
 in the delegation cycle overview.

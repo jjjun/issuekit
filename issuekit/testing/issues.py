@@ -111,6 +111,28 @@ class FakeIssueSurface:
             stored.update(deepcopy(issue))
             return deepcopy(stored)
 
+    def plan(
+        self,
+        number: int,
+        *,
+        stage: str = "planned",
+        actor: str | None = None,
+        note: str | None = None,
+    ) -> JsonDict:
+        if stage not in {"planned", "todo"}:
+            raise WorkflowError("Plan stage must be planned or todo.", code="invalid_stage")
+        with self._lock:
+            issue = self._find(number)
+            if issue.get("stage", "") not in {"todo", "planned"}:
+                raise WorkflowError(
+                    f"Issue #{number} cannot be planned from stage {issue.get('stage') or 'todo'}.",
+                    code="invalid_transition",
+                )
+            body = drop_none({"stage": stage, "actor": actor, "note": note})
+            self._record("plan", number=number, body=body)
+            issue["stage"] = stage
+            return deepcopy(issue)
+
     def claim(
         self,
         number: int,

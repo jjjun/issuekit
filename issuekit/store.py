@@ -111,6 +111,16 @@ class IssueStore(Protocol):
     ) -> Issue:
         """Direct an issue to a worker."""
 
+    def plan_issue(
+        self,
+        issue_id: int,
+        *,
+        stage: str = "planned",
+        actor: str | None = None,
+        note: str | None = None,
+    ) -> Issue:
+        """Move a todo or planned issue to another planning stage."""
+
     def list_workers(
         self,
         *,
@@ -258,6 +268,25 @@ class ApiStore:
                         "depends_on": list(depends_on) if depends_on is not None else None,
                     }
                 ),
+            )
+        )
+
+    def plan_issue(
+        self,
+        issue_id: int,
+        *,
+        stage: str = "planned",
+        actor: str | None = None,
+        note: str | None = None,
+    ) -> Issue:
+        if stage not in {"planned", "todo"}:
+            raise WorkflowError("Plan stage must be planned or todo.", code="invalid_stage")
+        return self._issue_from_response(
+            self.client.plan(
+                issue_id,
+                stage=stage,
+                actor=actor,
+                note=note,
             )
         )
 

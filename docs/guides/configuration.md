@@ -650,6 +650,7 @@ target-owned policy for handling pending inbox proposals automatically:
 ```toml
 [tool.issuekit.triage]
 auto_adopt = true
+hold_auto_adopted = true
 trusted_origins = ["mine-py", "js-mine"]
 default_priority = "medium"
 require_blocking = false
@@ -666,6 +667,13 @@ or blocked, and, when `require_blocking = true`, it was sent with
 `issuekit propose --blocking`. `trusted_origins` defaults to an empty list, so
 nothing is adopted until origins are listed, even with `auto_adopt = true` or
 `--triage`.
+
+`hold_auto_adopted` defaults to `true`. Mechanical adoption, triage-author
+adoption, and proposal-check approval leave the issue at `planned` until a
+human releases it with `issuekit plan <id> --stage todo`. Set it to `false` to
+restore automatic claiming after adoption. Until issuekit#403 binds proposal
+origins to authenticated senders, `trusted_origins` is not authentication and
+disabling this hold allows forged origins to reach unattended implementation.
 
 `default_priority` is the priority given to issues created from adopted
 proposals: `high`, `medium` (the default), or `low`. Proposal checks that

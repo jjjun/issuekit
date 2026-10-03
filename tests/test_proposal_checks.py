@@ -245,9 +245,11 @@ def test_proposal_check_approve_adopts_and_posts_issue_ref(monkeypatch, tmp_path
             "comment": "Feasible and in scope.",
             "status": "answered",
             "adopted_issue_ref": "target#1",
+            "held": True,
         }
     ]
     assert client.get_proposal(1)["status"] == "adopted"
+    assert client.get_issue(1)["stage"] == "planned"
     assert client.get_issue(1)["body"] == (
         "Add the endpoint.\n\n## Check Addendum\n\nUse the existing API client."
     )
@@ -261,6 +263,87 @@ def test_proposal_check_approve_adopts_and_posts_issue_ref(monkeypatch, tmp_path
             "adopted_issue_ref": "target#1",
         },
     }
+
+
+def test_proposal_check_target_project_mismatch_skips_evaluation_and_adoption(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    client, runner, config = _setup(
+        monkeypatch,
+        tmp_path,
+        output=_check_block(verdict="approve", comment="Looks good."),
+    )
+    client._proposal_checks[1]["target_project"] = "other"
+
+    decisions = run_proposal_check_cycle(
+        config,
+        tmp_path,
+        agent="codex",
+        runner_factory=lambda: runner,
+    )
+
+    assert runner.calls == []
+    assert decisions[0].verdict == "error"
+    assert decisions[0].error_code == "project_mismatch"
+    assert client.get_proposal(1)["status"] == "pending"
+    assert not any(
+        call["method"] in {"adopt_proposal", "post_proposal_check_result"}
+        for call in client.calls
+    )
+
+
+def test_proposal_check_approval_skips_hold_when_disabled(monkeypatch, tmp_path) -> None:
+    client, runner, config = _setup(
+        monkeypatch,
+        tmp_path,
+        output=_check_block(verdict="approve", comment="Feasible."),
+    )
+    config = replace(
+        config,
+        triage=replace(config.triage, hold_auto_adopted=False),
+    )
+
+    decisions = run_proposal_check_cycle(
+        config,
+        tmp_path,
+        agent="codex",
+        runner_factory=lambda: runner,
+    )
+
+    assert decisions[0].held is False
+    assert client.get_issue(1)["stage"] == "todo"
+    assert not any(call["method"] == "plan" for call in client.calls)
+
+
+def test_proposal_check_command_exits_one_when_adopted_issue_hold_fails(
+    monkeypatch,
+    tmp_path: Path,
+    capsys,
+) -> None:
+    client, runner, _config = _setup(
+        monkeypatch,
+        tmp_path,
+        output=_check_block(verdict="approve", comment="Feasible."),
+    )
+
+    def fail_hold(*args, **kwargs):
+        raise WorkflowError("planning unavailable")
+
+    monkeypatch.setattr(client, "plan", fail_hold)
+    monkeypatch.setattr(
+        "issuekit.commands.proposal_checks.AgentRunner",
+        lambda: runner,
+    )
+
+    assert cli.main(["proposal-checks", "--once", "--agent", "codex", "--json"]) == 1
+
+    payload = json.loads(capsys.readouterr().out)[0]
+    assert payload["status"] == "error"
+    assert payload["hold_error"] is True
+    assert payload["hold_issue_id"] == 1
+    assert client.get_proposal(1)["status"] == "adopted"
+    assert client.get_issue(1)["stage"] == "todo"
 
 
 def test_proposal_check_retries_result_after_successful_adoption(

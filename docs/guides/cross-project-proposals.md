@@ -239,6 +239,13 @@ Read-only evaluations remove API credentials from the agent environment and
 reject changes to Git config, hook and info files, and local credential or
 agent settings as well as repository worktree changes.
 
+All automatic adoption paths, including proposal-check approvals, hold the
+created issue at `planned` by default. Release it to the implementation pool
+with `issuekit plan <id> --stage todo`. `hold_auto_adopted = false` disables
+the hold. `trusted_origins` is an eligibility filter, not authentication;
+until issuekit#403 lands, a sender can forge the origin value, so disabling the
+hold permits forged proposals to reach unattended implementation.
+
 - `adopt`: adopt the proposal at `[triage] default_priority` and append the
   agent's implementation spec to the new issue.
 - `adopt_and_reply`: adopt as above, then send the agent's follow-up to the

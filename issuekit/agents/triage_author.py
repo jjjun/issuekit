@@ -48,10 +48,12 @@ from issuekit.prompts import (
 )
 from issuekit.proposals import origin_destination
 from issuekit.proposals.api import (
+    AdoptedIssueHoldError,
     ProposalError,
     adopt_proposal_with_append,
     api_client,
     build_proposal,
+    hold_adopted_issue,
     matches_triage_policy,
     send_proposal,
 )
@@ -85,6 +87,8 @@ class TriageDecision:
     issue_id: int | None = None
     reply_ref: str | None = None
     error: str | None = None
+    held: bool = False
+    hold_error: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         data: dict[str, Any] = {
@@ -99,6 +103,10 @@ class TriageDecision:
             data["reply_ref"] = self.reply_ref
         if self.error is not None:
             data["error"] = self.error
+        if self.held:
+            data["held"] = True
+        if self.hold_error:
+            data["hold_error"] = True
         return data
 
 
@@ -310,6 +318,15 @@ def _apply_decision(
                 priority=config.triage.default_priority,
                 append_text=spec,
             )
+            issue_id = outcome.get("issue_id")
+            held = False
+            if issue_id is not None:
+                held = hold_adopted_issue(
+                    config,
+                    int(issue_id),
+                    origin=origin,
+                    reason="triage author",
+                )
             state.pop(str(proposal_id), None)
             _discard_superseded_pending_proposal(
                 proposal,
@@ -335,6 +352,7 @@ def _apply_decision(
                         detail=str(outcome.get("issue_ref") or ""),
                         issue_id=outcome.get("issue_id"),
                         error=str(exc),
+                        held=held,
                     )
             elif decision == "adopt_and_reply":
                 emit("triage_author_reply_suppressed", proposal=proposal_id)
@@ -343,8 +361,9 @@ def _apply_decision(
                 origin=origin,
                 decision="adopt" if reply_ref is None else decision,
                 detail=str(outcome.get("issue_ref") or ""),
-                issue_id=outcome.get("issue_id"),
+                issue_id=issue_id,
                 reply_ref=reply_ref,
+                held=held,
             )
         if decision == "reply":
             if proposal.get("reply_to"):
@@ -383,6 +402,16 @@ def _apply_decision(
             decision="discard",
             detail=reason,
         )
+    except AdoptedIssueHoldError as exc:
+        return TriageDecision(
+            proposal_id=proposal_id,
+            origin=origin,
+            decision=decision,
+            detail=f"{config.project}#{exc.issue_id}",
+            issue_id=exc.issue_id,
+            error=str(exc),
+            hold_error=True,
+        )
     except (ProposalError, WorkflowError, ValueError, TimeoutError) as exc:
         return TriageDecision(
             proposal_id=proposal_id,
@@ -418,6 +447,21 @@ def _discard_superseded_pending_proposal(
     try:
         with api_client(config) as client:
             superseded = client.get_proposal(superseded_id)
+            try:
+                same_origin = origin_destination(str(superseded.get("origin", ""))) == (
+                    origin_destination(str(proposal.get("origin", "")))
+                )
+            except ProposalError:
+                same_origin = False
+            if not same_origin:
+                emit(
+                    "triage_author_superseded_ignored",
+                    old_proposal=superseded_id,
+                    new_proposal=proposal_id,
+                    ref=ref,
+                    reason="origin_mismatch",
+                )
+                return
             if superseded.get("status") != "pending":
                 emit(
                     "triage_author_superseded_ignored",

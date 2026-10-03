@@ -6,11 +6,13 @@ import hashlib
 import json
 import subprocess
 import threading
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
 import issuekit.proposals.api as proposals_api
+from issuekit import cli
 from issuekit import store as store_module
 from issuekit.agentrun import AgentPrompt, AgentResult
 from issuekit.agents import triage_author, triage_state
@@ -21,6 +23,7 @@ from issuekit.agents.triage_author import (
 )
 from issuekit.config import load_config
 from issuekit.testing import FakeIssuekitClient
+from issuekit.workflow import WorkflowError
 
 
 def _write_config(tmp_path: Path, *, author_agent: str = "codex", extra: str = "") -> None:
@@ -178,8 +181,85 @@ def test_triage_author_adopt_appends_spec(monkeypatch, tmp_path) -> None:
     assert client.get_proposal(5)["status"] == "adopted"
     issue_id = decisions[0].issue_id
     assert issue_id is not None
+    assert decisions[0].held is True
+    assert client.get_issue(issue_id)["stage"] == "planned"
     assert client.get_issue(issue_id)["body"] == "Please.\n\n## Spec\n\nBuild it."
     assert ("triage_author_decision", {"proposal": 5, "decision": "adopt", "issue": issue_id}) in events
+
+
+def test_triage_author_adoption_skips_hold_when_disabled(monkeypatch, tmp_path) -> None:
+    client, runner, config, _events, log = _setup(
+        monkeypatch,
+        tmp_path,
+        proposals=[
+            {"id": 5, "origin": "mine-py#3@abc", "title": "Do a thing", "body": "Please."}
+        ],
+        outputs=[_triage_block(decision="adopt", spec_markdown="## Spec\n\nBuild it.")],
+    )
+    config = replace(
+        config,
+        triage=replace(config.triage, hold_auto_adopted=False),
+    )
+
+    decisions = run_triage_author_cycle(
+        config, tmp_path, runner_factory=lambda: runner, log=log
+    )
+
+    assert decisions[0].held is False
+    assert client.get_issue(1)["stage"] == "todo"
+    assert not any(call["method"] == "plan" for call in client.calls)
+
+
+def test_triage_author_records_adopted_issue_when_hold_fails(monkeypatch, tmp_path) -> None:
+    client, runner, config, _events, log = _setup(
+        monkeypatch,
+        tmp_path,
+        proposals=[
+            {"id": 5, "origin": "mine-py#3@abc", "title": "Do a thing", "body": "Please."}
+        ],
+        outputs=[_triage_block(decision="adopt", spec_markdown="## Spec\n\nBuild it.")],
+    )
+
+    def fail_hold(*args, **kwargs):
+        raise WorkflowError("planning unavailable")
+
+    monkeypatch.setattr(client, "plan", fail_hold)
+    decisions = run_triage_author_cycle(
+        config, tmp_path, runner_factory=lambda: runner, log=log
+    )
+
+    assert decisions[0].error is not None
+    assert decisions[0].hold_error is True
+    assert decisions[0].issue_id == 1
+    assert client.get_proposal(5)["status"] == "adopted"
+    assert client.get_issue(1)["stage"] == "todo"
+
+
+def test_triage_command_exits_one_when_adopted_issue_hold_fails(
+    monkeypatch,
+    tmp_path,
+    capsys,
+) -> None:
+    client, runner, _config, _events, _log = _setup(
+        monkeypatch,
+        tmp_path,
+        proposals=[
+            {"id": 5, "origin": "mine-py#3@abc", "title": "Do a thing", "body": "Please."}
+        ],
+        outputs=[_triage_block(decision="adopt", spec_markdown="## Spec\n\nBuild it.")],
+    )
+
+    def fail_hold(*args, **kwargs):
+        raise WorkflowError("planning unavailable")
+
+    monkeypatch.setattr(client, "plan", fail_hold)
+    monkeypatch.setattr("issuekit.commands.triage.AgentRunner", lambda: runner)
+
+    assert cli.main(["triage", "--once", "--json"]) == 1
+
+    assert client.get_proposal(5)["status"] == "adopted"
+    assert client.get_issue(1)["stage"] == "todo"
+    assert json.loads(capsys.readouterr().out)[0]["hold_error"] is True
 
 
 def test_triage_author_adopt_and_reply_sends_linked_follow_up(monkeypatch, tmp_path) -> None:
@@ -425,6 +505,8 @@ def test_triage_author_adopt_and_reply_reports_idempotent_reply_as_error(
     assert client.get_proposal(5)["status"] == "adopted"
     assert decisions[0].decision == "adopt_and_reply"
     assert decisions[0].issue_id == 1
+    assert decisions[0].held is True
+    assert client.get_issue(1)["stage"] == "planned"
     assert decisions[0].detail == "issuekit#1"
     assert decisions[0].reply_ref is None
     assert decisions[0].error == "Proposal was not sent."
@@ -486,6 +568,56 @@ def test_triage_author_adopt_discards_superseded_pending_proposal(
     assert (
         "triage_author_superseded",
         {"old_proposal": 10, "new_proposal": 11},
+    ) in events
+
+
+def test_triage_author_ignores_superseded_proposal_from_another_origin(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    client, runner, config, events, log = _setup(
+        monkeypatch,
+        tmp_path,
+        proposals=[
+            {
+                "id": 10,
+                "origin": "mine-py#1@abc",
+                "title": "Old",
+                "body": "Needs clarification.",
+            },
+            {
+                "id": 11,
+                "origin": "other-source#1@def",
+                "title": "New",
+                "body": "Clear now.\n\nSupersedes: issuekit#10",
+            },
+        ],
+        outputs=[_triage_block(decision="adopt", spec_markdown="## Spec\n\nBuild it.")],
+    )
+    config = replace(
+        config,
+        triage=replace(
+            config.triage,
+            trusted_origins=("mine-py", "other-source"),
+        ),
+    )
+    _write_skip_state(tmp_path, 10, "Needs clarification.")
+
+    decisions = run_triage_author_cycle(
+        config, tmp_path, runner_factory=lambda: runner, log=log
+    )
+
+    assert decisions[0].decision == "adopt"
+    assert client.get_proposal(10)["status"] == "pending"
+    assert client.get_proposal(11)["status"] == "adopted"
+    assert (
+        "triage_author_superseded_ignored",
+        {
+            "old_proposal": 10,
+            "new_proposal": 11,
+            "ref": "issuekit#10",
+            "reason": "origin_mismatch",
+        },
     ) in events
 
 

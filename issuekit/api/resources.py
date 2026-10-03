@@ -287,6 +287,27 @@ class IssueResourceMixin:
         )
         return ensure_dict(payload, "Dispatch response")
 
+    def plan(
+        self,
+        number: int,
+        *,
+        stage: str = "planned",
+        actor: str | None = None,
+        note: str | None = None,
+    ) -> JsonDict:
+        payload = self._request(
+            "POST",
+            f"/{number}/plan",
+            json=drop_none(
+                {
+                    "stage": stage,
+                    "actor": actor,
+                    "note": note,
+                }
+            ),
+        )
+        return ensure_dict(payload, "Plan response")
+
     def submit(
         self,
         number: int,

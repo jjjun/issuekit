@@ -1924,9 +1924,12 @@ def test_auto_adopt_incoming_proposals_filters_policy_and_caps(monkeypatch) -> N
     assert [item["proposal_id"] for item in adopted] == ["1"]
     assert adopted[0]["auto_adopted"] is True
     assert adopted[0]["blocking"] is True
+    assert adopted[0]["held"] is True
     assert client.get_proposal(1)["status"] == "adopted"
     assert client.get_issue(1)["priority"] == "high"
     assert client.get_issue(1)["origin_proposal_id"] == "1"
+    assert client.get_issue(1)["stage"] == "planned"
+    assert "issuekit plan 1 --stage todo" in client.calls[-1]["body"]["note"]
     assert client.get_proposal(2)["status"] == "pending"
     assert client.get_proposal(3)["status"] == "pending"
     assert client.get_proposal(4)["status"] == "pending"
@@ -1971,8 +1974,39 @@ def test_auto_adopt_incoming_proposals_does_not_discard_superseded_refs(
     assert client.get_proposal(2)["status"] == "adopted"
     assert [call["method"] for call in client.calls] == [
         "adopt_proposal",
+        "plan",
         "adopt_proposal",
+        "plan",
     ]
+
+
+def test_auto_adopt_incoming_proposals_can_skip_holds(monkeypatch) -> None:
+    client = FakeIssuekitClient(
+        proposals=[
+            {
+                "id": 1,
+                "origin": "source#1@abc123",
+                "title": "Automatic",
+                "body": "Automatic adoption.",
+            }
+        ]
+    )
+    config = IssuekitConfig(
+        api_url="https://mine.example",
+        project="target",
+        triage=TriagePolicy(
+            trusted_origins=("source",),
+            hold_auto_adopted=False,
+        ),
+    )
+    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+
+    adopted = proposals_api.auto_adopt_incoming_proposals(config)
+
+    assert adopted[0]["issue_id"] == 1
+    assert "held" not in adopted[0]
+    assert client.get_issue(1)["stage"] == "todo"
+    assert [call["method"] for call in client.calls] == ["adopt_proposal"]
 
 
 def test_api_cli_adopt_requires_integer_id(tmp_path: Path, monkeypatch, capsys) -> None:

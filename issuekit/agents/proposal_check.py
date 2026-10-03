@@ -6,7 +6,7 @@ import re
 import sys
 import threading
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TextIO
 
@@ -24,7 +24,13 @@ from issuekit.prompts import (
     ProposalCheckParseError,
     canonical_contract_token,
 )
-from issuekit.proposals.api import ProposalError, adopt_proposal_with_append, api_client
+from issuekit.proposals.api import (
+    AdoptedIssueHoldError,
+    ProposalError,
+    adopt_proposal_with_append,
+    api_client,
+    hold_adopted_issue,
+)
 from issuekit.workflow import WorkflowError
 
 PROPOSAL_CHECK_VERDICTS = {"approve", "reject", "revise"}
@@ -44,6 +50,12 @@ class ProposalCheckDecision:
     adopted_issue_ref: str | None = None
     status: str = "answered"
     error: str | None = None
+    error_code: str | None = None
+    held: bool = False
+    hold_error: bool = False
+    hold_issue_id: int | None = None
+    hold_origin: str | None = None
+    hold_reason: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         data: dict[str, Any] = {
@@ -58,6 +70,18 @@ class ProposalCheckDecision:
             data["adopted_issue_ref"] = self.adopted_issue_ref
         if self.error is not None:
             data["error"] = self.error
+        if self.error_code is not None:
+            data["error_code"] = self.error_code
+        if self.held:
+            data["held"] = True
+        if self.hold_error:
+            data["hold_error"] = True
+        if self.hold_issue_id is not None:
+            data["hold_issue_id"] = self.hold_issue_id
+        if self.hold_origin is not None:
+            data["hold_origin"] = self.hold_origin
+        if self.hold_reason is not None:
+            data["hold_reason"] = self.hold_reason
         return data
 
 
@@ -139,6 +163,13 @@ def run_proposal_check_cycle(
                 verdict=decision.verdict,
                 adopted_issue_ref=decision.adopted_issue_ref,
             )
+            if decision.held:
+                emit(
+                    "held_for_release",
+                    issue=decision.adopted_issue_ref,
+                    proposal=decision.proposal_id,
+                    reason="proposal-check approve",
+                )
         except (
             FileNotFoundError,
             RuntimeError,
@@ -149,7 +180,14 @@ def run_proposal_check_cycle(
             WorkflowError,
         ) as exc:
             emit("proposal_check_error", check=check_id, error=str(exc))
-            decisions.append(_error_decision(check, exc))
+            decision = _error_decision(check, exc)
+            if decision.hold_error:
+                emit(
+                    "hold_error",
+                    issue=decision.adopted_issue_ref,
+                    error=str(exc),
+                )
+            decisions.append(decision)
     return decisions
 
 
@@ -272,6 +310,11 @@ def _process_proposal_check(
     check_id = int(check["id"])
     target_project = str(check["target_project"])
     proposal_id = int(check["proposal_id"])
+    if target_project != config.project:
+        raise WorkflowError(
+            f"Proposal check target project {target_project} does not match {config.project}.",
+            code="project_mismatch",
+        )
     with api_client(config, project=target_project) as client:
         proposal = client.get_proposal(proposal_id)
     parsed = _evaluate_check(
@@ -286,16 +329,25 @@ def _process_proposal_check(
         abort_event=abort_event,
     )
     adopted_issue_ref = None
+    held = False
     if parsed["verdict"] == "approve":
         adopted_issue_ref = _recorded_adopted_issue_ref(proposal, target_project)
         if adopted_issue_ref is None:
             outcome = adopt_proposal_with_append(
-                replace(config, project=target_project),
+                config,
                 proposal_id,
                 priority=config.triage.default_priority,
                 append_text=parsed.get("spec_markdown") or None,
             )
             adopted_issue_ref = _valid_adopted_issue_ref(outcome.get("issue_ref"))
+            issue_id = outcome.get("issue_id")
+            if issue_id is not None:
+                held = hold_adopted_issue(
+                    config,
+                    int(issue_id),
+                    origin=str(proposal.get("origin", "")),
+                    reason="proposal-check approve",
+                )
     try:
         result = _post_result(
             config,
@@ -324,6 +376,7 @@ def _process_proposal_check(
         comment=parsed["comment"],
         adopted_issue_ref=adopted_issue_ref,
         status=str(result.get("status", "answered")),
+        held=held,
     )
 
 
@@ -331,6 +384,7 @@ def _error_decision(
     check: Mapping[str, Any],
     error: Exception,
 ) -> ProposalCheckDecision:
+    hold_error = isinstance(error, AdoptedIssueHoldError)
     return ProposalCheckDecision(
         check_id=int(check["id"]),
         target_project=str(check["target_project"]),
@@ -339,6 +393,14 @@ def _error_decision(
         comment="",
         status="error",
         error=str(error),
+        error_code=error.code if isinstance(error, WorkflowError) else None,
+        adopted_issue_ref=(
+            f"{check['target_project']}#{error.issue_id}" if hold_error else None
+        ),
+        hold_error=hold_error,
+        hold_issue_id=error.issue_id if hold_error else None,
+        hold_origin=error.origin if hold_error else None,
+        hold_reason=error.reason if hold_error else None,
     )
 
 

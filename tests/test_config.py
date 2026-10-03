@@ -571,6 +571,17 @@ def test_load_config_reads_triage_policy(tmp_path: Path) -> None:
     )
 
 
+def test_load_config_rejects_non_boolean_hold_auto_adopted(tmp_path: Path) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        '[triage]\nhold_auto_adopted = "false"\n',
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    with pytest.raises(ValueError, match="triage.hold_auto_adopted.*boolean"):
+        load_config(tmp_path)
+
+
 def test_load_config_reads_triage_author_agent(tmp_path: Path) -> None:
     (tmp_path / "issuekit.toml").write_text(
         (

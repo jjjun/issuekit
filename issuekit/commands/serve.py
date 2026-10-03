@@ -20,7 +20,7 @@ from issuekit.agents.proposal_check import (
     run_proposal_check_cycle,
 )
 from issuekit.agents.run_claimed import preflight_agent
-from issuekit.agents.triage_author import run_triage_author_cycle
+from issuekit.agents.triage_author import TriageDecision, run_triage_author_cycle
 from issuekit.commands._heartbeat import warn_if_staleness_not_wider
 from issuekit.commands.serve_loop import (
     Backoff,
@@ -53,7 +53,11 @@ from issuekit.config import IssuekitConfig, load_config
 from issuekit.core import Issue
 from issuekit.issues.orphans import DEFAULT_STALE_AFTER_SEC
 from issuekit.proposals import ProposalError
-from issuekit.proposals.api import auto_adopt_incoming_proposals
+from issuekit.proposals.api import (
+    AdoptedIssueHoldError,
+    auto_adopt_incoming_proposals,
+    hold_adopted_issue,
+)
 from issuekit.store import get_store
 from issuekit.workers.registry import WorkerHeartbeat
 from issuekit.workflow import WorkflowError, claim_next, next_review, resolve_implementer
@@ -299,6 +303,47 @@ def run(args) -> int:
         return 0
 
 
+def _retry_pending_holds(
+    pending_holds: dict[int, tuple[str, str]],
+    *,
+    config: IssuekitConfig,
+    log_path: Path,
+    backoff_seconds: float,
+) -> PollResult | None:
+    for issue_id, (origin, reason) in list(pending_holds.items()):
+        try:
+            hold_adopted_issue(
+                config,
+                issue_id,
+                origin=origin,
+                reason=reason,
+            )
+        except AdoptedIssueHoldError as exc:
+            _log(
+                sys.stderr,
+                log_path,
+                "hold_error",
+                issue=issue_id,
+                error=str(exc),
+                backoff=backoff_seconds,
+            )
+            return PollResult(
+                status="error",
+                exit_code=1,
+                recreate_store=_should_recreate_store(exc),
+            )
+        del pending_holds[issue_id]
+        _log(
+            sys.stderr,
+            log_path,
+            "held_for_release",
+            issue=issue_id,
+            origin=origin,
+            reason=reason,
+        )
+    return None
+
+
 def _serve_loop(
     args,
     *,
@@ -339,6 +384,7 @@ def _serve_loop(
             )
 
         backoff = Backoff()
+        pending_holds: dict[int, tuple[str, str]] = {}
         recovery_store = get_store(config) if config.api_url else None
         submitted_count, exit_code, recovery_store = _recover_orphaned_issues(
             args,
@@ -358,6 +404,15 @@ def _serve_loop(
             return exit_code
 
         def poll(attempt: int, backoff_seconds: float):
+            hold_result = _retry_pending_holds(
+                pending_holds,
+                config=config,
+                log_path=log_path,
+                backoff_seconds=backoff_seconds,
+            )
+            if hold_result is not None:
+                return hold_result
+
             if adapter is not None:
                 try:
                     adapter.resolve_binary()
@@ -374,13 +429,40 @@ def _serve_loop(
             if _triage_enabled(args, config):
                 try:
                     if config.triage.author_agent:
-                        _run_triage_author_cycle(
+                        decisions = _run_triage_author_cycle(
                             args,
                             config=config,
                             cwd=cwd,
                             log_path=log_path,
                             controller=controller,
                         )
+                        hold_failed = False
+                        for decision in decisions:
+                            if decision.held:
+                                _log(
+                                    sys.stderr,
+                                    log_path,
+                                    "held_for_release",
+                                    issue=decision.issue_id,
+                                    origin=decision.origin,
+                                    reason="triage author",
+                                )
+                            if decision.hold_error and decision.issue_id is not None:
+                                pending_holds[decision.issue_id] = (
+                                    decision.origin,
+                                    "triage author",
+                                )
+                                hold_failed = True
+                                _log(
+                                    sys.stderr,
+                                    log_path,
+                                    "hold_error",
+                                    issue=decision.issue_id,
+                                    error=decision.error,
+                                    backoff=backoff_seconds,
+                                )
+                        if hold_failed:
+                            return PollResult(status="error", exit_code=1)
                     else:
                         def log_adoption_error(
                             proposal_id: object,
@@ -395,6 +477,7 @@ def _serve_loop(
                                 backoff=backoff_seconds,
                             )
 
+                        hold_failed = False
                         for outcome in auto_adopt_incoming_proposals(
                             config,
                             on_adoption_error=log_adoption_error,
@@ -407,6 +490,37 @@ def _serve_loop(
                                 issue=outcome.get("issue_id"),
                                 priority=config.triage.default_priority,
                             )
+                            if outcome.get("held"):
+                                _log(
+                                    sys.stderr,
+                                    log_path,
+                                    "held_for_release",
+                                    issue=outcome.get("issue_id"),
+                                    proposal=outcome.get("proposal_id"),
+                                    origin=outcome.get("hold_origin")
+                                    or outcome.get("origin"),
+                                    reason="serve auto-adopt",
+                                )
+                            if outcome.get("hold_error"):
+                                issue_id = outcome.get("issue_id")
+                                if issue_id is not None:
+                                    origin = str(outcome.get("hold_origin", ""))
+                                    reason = str(
+                                        outcome.get("hold_reason", "serve auto-adopt")
+                                    )
+                                    pending_holds[int(issue_id)] = (origin, reason)
+                                hold_failed = True
+                                _log(
+                                    sys.stderr,
+                                    log_path,
+                                    "hold_error",
+                                    issue=outcome.get("issue_id"),
+                                    proposal=outcome.get("proposal_id"),
+                                    error=outcome.get("hold_error"),
+                                    backoff=backoff_seconds,
+                                )
+                        if hold_failed:
+                            return PollResult(status="error", exit_code=1)
                 except (ProposalError, TimeoutError, WorkflowError, ValueError) as exc:
                     _log(
                         sys.stderr,
@@ -516,9 +630,18 @@ def _serve_proposal_checks_loop(
 ) -> int:
     backoff = Backoff()
     answered_count = 0
+    pending_holds: dict[int, tuple[str, str]] = {}
 
     def poll(attempt: int, backoff_seconds: float):
         nonlocal answered_count
+        hold_result = _retry_pending_holds(
+            pending_holds,
+            config=config,
+            log_path=log_path,
+            backoff_seconds=backoff_seconds,
+        )
+        if hold_result is not None:
+            return hold_result
         _log(
             sys.stderr,
             log_path,
@@ -562,6 +685,12 @@ def _serve_proposal_checks_loop(
             return PollResult("error", exit_code=1)
 
         errors = [decision for decision in decisions if decision.error is not None]
+        for decision in decisions:
+            if decision.hold_error and decision.hold_issue_id is not None:
+                pending_holds[decision.hold_issue_id] = (
+                    decision.hold_origin or "",
+                    decision.hold_reason or "proposal-check approve",
+                )
         if decisions:
             answered_count += sum(
                 1
@@ -728,11 +857,11 @@ def _run_triage_author_cycle(
     cwd: Path,
     log_path: Path,
     controller: ShutdownController,
-) -> None:
+) -> list[TriageDecision]:
     def emit(event: str, **fields: object) -> None:
         _log(sys.stderr, log_path, event, **fields)
 
-    run_triage_author_cycle(
+    return run_triage_author_cycle(
         config,
         cwd,
         timeout=float(args.timeout_sec),

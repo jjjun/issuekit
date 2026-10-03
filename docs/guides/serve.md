@@ -55,7 +55,16 @@ credential or agent settings.
 `max_adoptions_per_cycle` matching proposals (default 5), then attempts a claim.
 `[triage] auto_adopt = true` enables the same behavior without the flag. When
 `[triage] author_agent` is set, the triage step runs that agent instead of the
-mechanical auto-adopt.
+mechanical auto-adopt. Automatically adopted issues are held at `planned` by
+default, so the same poll cannot claim them. A human can release one with
+`issuekit plan <id> --stage todo`. If a hold request fails, the poll stops
+before claiming and retries the hold before work on its next poll.
+
+`[triage] hold_auto_adopted = false` disables this release gate for mechanical,
+triage-author, and proposal-check approvals. `trusted_origins` only filters
+which proposals are eligible; it does not authenticate their sender until
+issuekit#403 is implemented. Turning the hold off therefore allows a forged
+origin to reach unattended implementation.
 
 ```console
 $ issuekit serve --agent codex                    # implementer worker

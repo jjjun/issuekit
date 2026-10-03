@@ -15,6 +15,7 @@ from issuekit import cli
 from issuekit import store as store_module
 from issuekit.agentrun import AgentPrompt
 from issuekit.commands import serve, serve_loop
+from issuekit.config import TriagePolicy
 from issuekit.testing import FakeIssuekitClient
 from issuekit.workers import registry as worker_registry
 from issuekit.workflow import WorkflowError
@@ -739,7 +740,16 @@ def test_serve_proposal_checks_sleeps_between_successful_cycles(
 
     def successful_cycle(*args, **kwargs):
         controller.events.append("poll")
-        return [SimpleNamespace(error=None, status="answered")]
+        return [
+            SimpleNamespace(
+                error=None,
+                status="answered",
+                hold_error=False,
+                hold_issue_id=None,
+                hold_origin=None,
+                hold_reason=None,
+            )
+        ]
 
     monkeypatch.setattr(serve, "run_proposal_check_cycle", successful_cycle)
 
@@ -796,18 +806,61 @@ def test_serve_triage_auto_adopts_before_claiming(
         "upsert_repo",
         "upsert_worker",
         "adopt_proposal",
+        "plan",
         "claim_next",
-        "submit",
     ]
     assert client.calls[2]["number"] == 1
     assert client.calls[2]["body"] == {"priority": "high"}
-    assert client.calls[3]["body"]["worker"] == "checkout.demo@machine"
+    assert client.calls[3]["body"]["stage"] == "planned"
+    assert client.calls[3]["body"]["note"].endswith(
+        "issuekit plan 1 --stage todo"
+    )
+    assert client.calls[4]["body"]["worker"] == "checkout.demo@machine"
     assert client.get_proposal(1)["status"] == "adopted"
     assert client.get_issue(1)["origin_proposal_id"] == "1"
-    assert [call[4] for call in FakeRunner.calls] == [1]
+    assert FakeRunner.calls == []
     captured = capsys.readouterr()
     assert "event=auto_adopted proposal=1 issue=1 priority=high" in captured.err
-    assert "event=submitted issue=1" in captured.err
+    assert "event=held_for_release issue=1" in captured.err
+
+
+def test_serve_stops_before_claim_when_automatic_hold_fails(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient(
+        proposals=[
+            {
+                "id": 1,
+                "origin": "source#7@abc123",
+                "title": "Adopt me",
+                "body": "# Issue #1: Adopt me\n",
+            }
+        ]
+    )
+    _configure_registered_api(
+        tmp_path,
+        monkeypatch,
+        client,
+        triage="[triage]\ntrusted_origins = ['source']\n",
+    )
+
+    def fail_hold(*args, **kwargs):
+        raise WorkflowError("planning unavailable")
+
+    monkeypatch.setattr(client, "plan", fail_hold)
+
+    exit_code = cli.main(["serve", "--agent", "codex", "--once", "--triage"])
+
+    assert exit_code == 1
+    assert [call["method"] for call in client.calls] == [
+        "upsert_repo",
+        "upsert_worker",
+        "adopt_proposal",
+    ]
+    assert client.get_issue(1)["stage"] == "todo"
+    assert "event=hold_error issue=1 proposal=1" in capsys.readouterr().err
 
 
 def test_serve_triage_adoption_error_logs_and_still_claims(
@@ -850,6 +903,7 @@ def test_serve_triage_adoption_error_logs_and_still_claims(
             "[triage]\n"
             "trusted_origins = ['source']\n"
             "default_priority = 'high'\n"
+            "hold_auto_adopted = false\n"
             "max_adoptions_per_cycle = 3\n"
         ),
     )
@@ -1712,6 +1766,95 @@ def test_serve_loop_reuses_store_across_idle_polls(monkeypatch, tmp_path: Path) 
     assert stores[0].claim_count == 3
     assert stores[0].close_count == 1
     assert stores[1].close_count == 1
+
+
+def test_serve_retries_failed_hold_before_claiming(monkeypatch, tmp_path: Path, capsys) -> None:
+    class Args:
+        priority = None
+        allow_any_branch = False
+        no_sync = False
+        once = False
+        interval = 0
+        timeout_sec = 1
+        max_issues = None
+        triage = False
+
+    client = FakeIssuekitClient(
+        proposals=[
+            {
+                "id": 1,
+                "origin": "source#7@abc123",
+                "title": "Adopt me",
+                "body": "An implementation task.",
+            }
+        ]
+    )
+    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.setattr(serve, "get_store", lambda _config: client)
+    monkeypatch.setattr(
+        serve,
+        "_recover_orphaned_issues",
+        lambda _args, **kwargs: (kwargs["submitted_count"], None, kwargs["store"]),
+    )
+    original_plan = client.plan
+    plan_attempts = 0
+
+    def fail_first_plan(*args, **kwargs):
+        nonlocal plan_attempts
+        plan_attempts += 1
+        if plan_attempts == 1:
+            raise WorkflowError("temporary planning failure")
+        return original_plan(*args, **kwargs)
+
+    monkeypatch.setattr(client, "plan", fail_first_plan)
+    poll_events: list[str] = []
+
+    def claim_next(*args, **kwargs):
+        poll_events.append("claim")
+        assert client.get_issue(1)["stage"] == "planned"
+        return
+
+    monkeypatch.setattr(serve, "claim_next", claim_next)
+    config = serve.IssuekitConfig(
+        api_url="https://mine.example",
+        project="target",
+        triage=TriagePolicy(
+            auto_adopt=True,
+            trusted_origins=("source",),
+        ),
+    )
+    controller = serve.ShutdownController.create()
+    sleep_count = 0
+
+    def sleep(_seconds: float) -> bool:
+        nonlocal sleep_count
+        sleep_count += 1
+        if sleep_count == 2:
+            controller.request()
+        return controller.requested
+
+    controller.sleep = sleep
+
+    assert (
+        serve._serve_loop(
+            Args(),
+            mode=serve.ServeMode.IMPLEMENT,
+            agent="codex",
+            config=config,
+            cwd=tmp_path,
+            issues_dir=tmp_path / "docs" / "issues",
+            log_path=tmp_path / "serve.log",
+            controller=controller,
+        )
+        == 0
+    )
+
+    assert plan_attempts == 2
+    assert poll_events == ["claim"]
+    assert client.get_issue(1)["stage"] == "planned"
+    output = capsys.readouterr().err
+    assert "event=hold_error issue=1" in output
+    assert "event=held_for_release issue=1" in output
 
 
 def test_serve_loop_claim_ignores_author_guard_outside_configured_cwd(

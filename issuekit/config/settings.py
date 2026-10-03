@@ -114,6 +114,7 @@ class TriagePolicy:
     """Target-owned policy for automatic inbox proposal adoption."""
 
     auto_adopt: bool = False
+    hold_auto_adopted: bool = True
     trusted_origins: tuple[str, ...] = ()
     default_priority: str = "medium"
     require_blocking: bool = False
@@ -990,6 +991,12 @@ def _load_triage_policy(raw: object) -> TriagePolicy:
         return TriagePolicy()
     if not isinstance(raw, dict):
         raise ValueError("triage config must be a table.")
+    hold_auto_adopted = raw.get(
+        "hold_auto_adopted",
+        TriagePolicy.hold_auto_adopted,
+    )
+    if not isinstance(hold_auto_adopted, bool):
+        raise ValueError("Invalid triage.hold_auto_adopted: must be a boolean.")
     default_priority = str(raw.get("default_priority", TriagePolicy.default_priority)).strip()
     if default_priority not in VALID_ISSUE_PRIORITIES:
         raise ValueError(f"Invalid triage.default_priority: {default_priority}")
@@ -1017,6 +1024,7 @@ def _load_triage_policy(raw: object) -> TriagePolicy:
         raise ValueError(f"Invalid triage.author_agent token: {author_agent}")
     return TriagePolicy(
         auto_adopt=_bool_value(raw.get("auto_adopt", TriagePolicy.auto_adopt)),
+        hold_auto_adopted=hold_auto_adopted,
         trusted_origins=trusted_origins,
         default_priority=default_priority,
         require_blocking=_bool_value(
