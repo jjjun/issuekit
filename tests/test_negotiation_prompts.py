@@ -46,7 +46,7 @@ def test_render_round_prompt_includes_side_thread_budget_and_contract() -> None:
     )
 
     assert "Perspective: you represent the frontend side." in prompt
-    assert "Round job: propose, counter, agree, or block" in prompt
+    assert "Round job: propose, counter, agree, or blocked" in prompt
     assert "Initial contract | verdict=propose | contract=GET /items" in prompt
     assert "Pagination counter | verdict=counter | contract=GET /items?page=1" in prompt
     assert (

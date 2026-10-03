@@ -141,7 +141,19 @@ def run(args) -> int:
             target_project = _proposal_target(args.from_proposal, args.to)
             target_config = replace(config, project=target_project)
             with get_negotiation_store(target_config, use_mock=False) as store:
-                if store.get_status(args.cancel) is not ThreadStatus.cancelled:
+                status = store.get_status(args.cancel)
+                if status is ThreadStatus.blocked:
+                    proposal_ref = store.get_source_proposal_ref(args.cancel)
+                    proposal_ref = proposal_ref or args.from_proposal
+                    if proposal_ref:
+                        raise WorkflowError(
+                            f"Cannot cancel blocked negotiation thread {args.cancel}: "
+                            f"source proposal {proposal_ref} remains locked because "
+                            "the mine-py API does not support transitioning a blocked "
+                            "proposal negotiation to cancelled.",
+                            code="unsupported_feature",
+                        )
+                if status is not ThreadStatus.cancelled:
                     store.cancel_thread(args.cancel)
                 store.settle_thread_members(args.cancel)
             if args.json:

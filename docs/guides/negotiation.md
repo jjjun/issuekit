@@ -50,15 +50,18 @@ issuekit negotiate --from-proposal <project>#proposal:<id> --initiator-side cons
 
 Starting this path atomically links and locks the pending proposal so inbox
 triage cannot adopt duplicate provider work. A blocked proposal negotiation
-remains linked and recoverable. To abandon it and return the proposal to normal
-pending triage, cancel the thread explicitly:
+remains linked and locked because the current mine-py API does not support
+transitioning a blocked thread to `cancelled`. Until that server support is
+available, `--cancel` reports the locked proposal and the missing transition:
 
 ```powershell
 issuekit negotiate --cancel <thread_id> --from-proposal <project>#proposal:<id>
 ```
 
-`--cancel` also accepts `--to <project>` in place of the proposal ref; either
-way it cancels the thread in the target project's thread store.
+`--cancel` also accepts `--to <project>` in place of the proposal ref. The
+command can cancel a thread only when the target API supports the requested
+transition; a blocked proposal remains locked until mine-py adds
+`blocked` to `cancelled` support.
 
 The initiating checkout still supplies the configuration for the thread,
 agent selection, and issues created by finalization. The counterpart ref is only

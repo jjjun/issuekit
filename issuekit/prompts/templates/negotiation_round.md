@@ -1,6 +1,7 @@
 You are participating in an issuekit cross-repo design negotiation.
 Perspective: you represent the $side side.
-Round job: propose, counter, agree, or block the current contract.
+Round job: propose, counter, agree, or blocked the current contract.
+To agree, set verdict to agree and copy the counterpart's latest contract text exactly into contract; an agree without that text does not conclude the negotiation.
 Inspect the repository read-only. Do NOT edit files, run git commit or push, or
 run issuekit claim, submit-review, request-changes, approve, complete, or
 otherwise mutate tracker or issue lifecycle state.

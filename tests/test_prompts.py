@@ -87,6 +87,17 @@ def test_negotiation_prompts_require_ascii_output(name: str) -> None:
     assert "All text must be ASCII-only" in rendered
 
 
+@pytest.mark.parametrize("name", ["negotiation_round", "negotiation_round_resumed"])
+def test_negotiation_prompts_explain_exact_agreement_rule(name: str) -> None:
+    rendered = PROMPT_SPECS[name].render(**SPEC_CONTEXTS[name])
+
+    assert "Round job: propose, counter, agree, or blocked" in rendered
+    assert (
+        "To agree, set verdict to agree and copy the counterpart's latest contract text "
+        "exactly into contract; an agree without that text does not conclude the negotiation."
+    ) in rendered
+
+
 def test_prompt_render_fails_on_missing_context_key() -> None:
     with pytest.raises(KeyError):
         PROMPT_SPECS["triage"].render(proposal_id=1)

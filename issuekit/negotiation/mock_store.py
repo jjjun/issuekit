@@ -246,6 +246,12 @@ class MockNegotiationStore:
                 f"Negotiation thread {thread_id} has already been finalized.",
                 code="invalid_transition",
             )
+        current_status = self._statuses[thread_id]
+        if current_status is not ThreadStatus.negotiating:
+            raise WorkflowError(
+                f"Negotiation thread {thread_id} is already {current_status.value}.",
+                code="invalid_transition",
+            )
         self._statuses[thread_id] = ThreadStatus.cancelled
         self._persist()
 
