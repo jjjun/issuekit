@@ -89,3 +89,19 @@ Other issuekit components also use this directory: serve stores `serve.lock`
 and `serve.log`, prompts are written there, and triage-author keeps its state
 there. Treat it as shared local run storage rather than a directory owned only
 by the runtime.
+
+## Codex App Server recovery
+
+The App Server runner currently derives its recovery flag from whether the run
+has review feedback. That flag adds a worktree-inspection preamble and permits
+resuming a prior native thread only when the machine, repository, checkout, and
+session state match. An orphaned attempt without review feedback starts a new
+native thread. `thread/resume` sends the thread id, checkout path, and the same
+`never` approval policy and `danger-full-access` sandbox used for new threads.
+
+The runner checks whether the App Server process is still alive while waiting
+for provider commands, and reports its exit status and stderr tail if it exits
+during a turn. Transient `request_failed` heartbeat errors retry until half the
+lease TTL has elapsed since the last successful heartbeat. `turn/start` and
+`turn/steer` input is bounded to Codex's 1 MiB limit, with a warning when text
+has to be truncated.

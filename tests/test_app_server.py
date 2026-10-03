@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import json
+import logging
 import sys
+import time
 from pathlib import Path
+from textwrap import dedent
 
 import pytest
 
+import issuekit.agentrun.app_server as app_server
 from issuekit.agentrun.app_server import (
     MAX_TEXT_CHARS,
     AppServerError,
@@ -55,6 +59,116 @@ def test_redact_payload_omits_raw_files_binary_and_bounds_text() -> None:
     assert redacted["file_content"] == "[omitted]"
     assert redacted["binary"] == "[binary omitted]"
     assert len(redacted["message"]) == MAX_TEXT_CHARS
+
+
+def test_turn_text_truncation_logs_original_and_limited_lengths(
+    monkeypatch, caplog
+) -> None:
+    monkeypatch.setattr(app_server, "MAX_TEXT_CHARS", 5)
+    transport = object.__new__(AppServerTransport)
+    requests: list[tuple[str, dict[str, object]]] = []
+
+    def request(method: str, params: dict[str, object]) -> dict[str, object]:
+        requests.append((method, params))
+        if method == "turn/start":
+            return {"turn": {"id": "turn-1"}}
+        return {}
+
+    monkeypatch.setattr(transport, "request", request)
+    with caplog.at_level(logging.WARNING, logger=app_server.__name__):
+        assert transport.start_turn("thread-1", "abcdefgh") == "turn-1"
+        transport.steer_turn("thread-1", "turn-1", "abcdefgh")
+
+    assert [
+        params["input"][0]["text"] for _, params in requests
+    ] == ["abcde", "abcde"]
+    assert caplog.messages == [
+        "Truncating Codex App Server turn/start input from 8 to 5 characters.",
+        "Truncating Codex App Server turn/steer input from 8 to 5 characters.",
+    ]
+
+
+def test_resume_thread_keeps_issuekit_permission_settings(
+    tmp_path: Path, monkeypatch
+) -> None:
+    transport = object.__new__(AppServerTransport)
+    requests: list[tuple[str, dict[str, object]]] = []
+
+    def request(method: str, params: dict[str, object]) -> dict[str, object]:
+        requests.append((method, params))
+        return {"thread": {"id": "thread-1"}}
+
+    monkeypatch.setattr(transport, "request", request)
+
+    assert transport.resume_thread("native-session-1", cwd=tmp_path) == "thread-1"
+    assert requests == [
+        (
+            "thread/resume",
+            {
+                "threadId": "native-session-1",
+                "cwd": str(tmp_path),
+                "approvalPolicy": "never",
+                "sandbox": "danger-full-access",
+            },
+        )
+    ]
+
+
+def test_app_server_transport_answers_server_requests_with_valid_responses(
+    tmp_path: Path,
+) -> None:
+    server = tmp_path / "fake_server_requests.py"
+    captured = tmp_path / "server-responses.json"
+    server.write_text(
+        dedent(
+            """\
+            import json, sys
+            requests = [
+                {'id': 100, 'method': 'item/tool/requestUserInput'},
+                {'id': 101, 'method': 'mcpServer/elicitation/request'},
+                {'id': 102, 'method': 'item/permissions/requestApproval'},
+                {'id': 103, 'method': 'item/commandExecution/requestApproval'},
+            ]
+            responses = []
+            for line in sys.stdin:
+                message = json.loads(line)
+                if 'id' not in message:
+                    continue
+                if message.get('method') == 'initialize':
+                    print(json.dumps({'id': message['id'], 'result': {}}), flush=True)
+                    for request in requests:
+                        print(json.dumps(request), flush=True)
+                elif message.get('id') in {100, 101, 102, 103}:
+                    responses.append(message)
+                    if len(responses) == len(requests):
+                        with open(sys.argv[1], 'w', encoding='utf-8') as stream:
+                            json.dump(responses, stream)
+            """
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    with (tmp_path / "stderr.log").open("w", encoding="utf-8") as stderr:
+        transport = AppServerTransport(
+            Path(sys.executable),
+            (str(server), str(captured)),
+            cwd=tmp_path,
+            stderr=stderr,
+        )
+        transport.initialize()
+        deadline = time.monotonic() + 2
+        while not captured.exists() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert transport.close() == 0
+
+    responses = {
+        message["id"]: message for message in json.loads(captured.read_text("utf-8"))
+    }
+    assert responses[100]["error"]["code"] == -32601
+    assert responses[101]["error"]["code"] == -32601
+    assert responses[102]["result"] == {"permissions": {}}
+    assert responses[103]["result"] == {"decision": "decline"}
 
 
 def test_normalize_notification_maps_turn_and_agent_message_events() -> None:
@@ -157,6 +271,43 @@ def test_normalize_notification_omits_usage_without_token_counts() -> None:
 
     assert event is not None
     assert "usage" not in event["payload"]
+
+
+@pytest.mark.parametrize(
+    ("message", "event_type", "failure_reason"),
+    [
+        (
+            {
+                "method": "turn/completed",
+                "params": {
+                    "turn": {
+                        "id": "turn-1",
+                        "status": "failed",
+                        "error": {"message": "turn failed"},
+                    }
+                },
+            },
+            "turn_failed",
+            "turn failed",
+        ),
+        (
+            {
+                "method": "error",
+                "params": {"willRetry": False, "error": {"message": "fatal error"}},
+            },
+            "turn_failed",
+            "fatal error",
+        ),
+    ],
+)
+def test_normalize_notification_preserves_non_retryable_failure_details(
+    message: dict[str, object], event_type: str, failure_reason: str
+) -> None:
+    event = normalize_notification(message, event_key="session:failure")
+
+    assert event is not None
+    assert event["event_type"] == event_type
+    assert event["payload"]["message"] == failure_reason
 
 
 def test_app_server_transport_initializes_starts_thread_and_turn(

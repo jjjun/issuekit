@@ -40,6 +40,7 @@ LEASE_STOP_CODES = frozenset(
         "stale_generation",
     }
 )
+STDERR_TAIL_CHARS = 4096
 
 
 def _usage_total(event: Mapping[str, Any]) -> dict[str, int]:
@@ -174,9 +175,10 @@ class AppServerAttemptRunner:
             current_command_id: str | None = None
             turn_finished = threading.Event()
             terminal_event: list[str] = []
+            failure_reason: str | None = None
 
             def on_notification(message: dict[str, Any]) -> None:
-                nonlocal event_number
+                nonlocal event_number, failure_reason
                 event_number += 1
                 event = normalize_notification(
                     message,
@@ -184,6 +186,15 @@ class AppServerAttemptRunner:
                     command_id=current_command_id,
                 )
                 if event is not None:
+                    if event["event_type"] == "turn_failed":
+                        payload = event.get("payload")
+                        message_text = (
+                            payload.get("message")
+                            if isinstance(payload, Mapping)
+                            else None
+                        )
+                        if isinstance(message_text, str):
+                            failure_reason = message_text
                     total = _usage_total(event)
                     if total:
                         usage_total.clear()
@@ -278,6 +289,15 @@ class AppServerAttemptRunner:
                     )
                     deadline = time.monotonic() + timeout
                     while not turn_finished.is_set():
+                        process_exit = transport.process.poll()
+                        if process_exit is not None:
+                            detail = _stderr_tail(agent_log_path)
+                            message = (
+                                f"Codex App Server exited with status {process_exit}."
+                            )
+                            if detail:
+                                message = f"{message} Stderr tail: {detail}"
+                            raise AppServerError(message)
                         if abort_event is not None and abort_event.is_set():
                             transport.interrupt_turn(native_session_id, turn_id)
                         if heartbeat_error:
@@ -298,7 +318,7 @@ class AppServerAttemptRunner:
                             timed_out = True
                             transport.interrupt_turn(native_session_id, turn_id)
                             break
-                        turn_finished.wait(0.1)
+                        turn_finished.wait(1.0)
                     self._flush_events(client, issue_id, context, pending_events)
                     client.acknowledge_agent_command(
                         issue_id,
@@ -456,18 +476,24 @@ class AppServerAttemptRunner:
                 )
                 + "\n"
             )
+        parsed = {
+            "runtime": "codex_app_server",
+            "agent_session_id": session_id or "",
+            "native_session_id": native_session_id or "",
+            **{f"usage_{name}": str(count) for name, count in usage_total.items()},
+        }
+        if failure_reason is not None:
+            parsed["failure_reason"] = failure_reason
+        if terminal_event and terminal_event[-1] == "turn_failed":
+            parsed["is_error"] = "true"
+
         return AgentResult(
             exit_code=exit_code,
             stdout_path=stdout_path,
             agent_log_path=agent_log_path,
             elapsed_sec=time.monotonic() - started,
             timed_out=timed_out,
-            parsed={
-                "runtime": "codex_app_server",
-                "agent_session_id": session_id or "",
-                "native_session_id": native_session_id or "",
-                **{f"usage_{name}": str(count) for name, count in usage_total.items()},
-            },
+            parsed=parsed,
             status_short=None,
             report_path=report_path,
         )
@@ -557,7 +583,17 @@ class AppServerAttemptRunner:
         stop: threading.Event,
         errors: list[BaseException],
     ) -> None:
-        while not stop.wait(max(1.0, ttl * 0.4)):
+        interval = max(1.0, ttl * 0.4)
+        last_success = time.monotonic()
+        last_error: BaseException | None = None
+        while not stop.wait(interval):
+            if (
+                last_error is not None
+                and time.monotonic() - last_success >= ttl * 0.5
+            ):
+                errors.append(last_error)
+                stop.set()
+                return
             try:
                 client.heartbeat_agent_session_lease(
                     issue_id,
@@ -565,9 +601,23 @@ class AppServerAttemptRunner:
                     headers=context.headers,
                     ttl_seconds=ttl,
                 )
+                last_success = time.monotonic()
+                last_error = None
+                interval = max(1.0, ttl * 0.4)
+            except WorkflowError as exc:
+                if exc.code == "request_failed":
+                    age = time.monotonic() - last_success
+                    if age < ttl * 0.5:
+                        last_error = exc
+                        interval = min(1.0, ttl * 0.5 - age)
+                        continue
+                errors.append(exc)
+                stop.set()
+                return
             except BaseException as exc:
                 errors.append(exc)
                 stop.set()
+                return
 
     def _execute_pending_command(
         self,
@@ -754,3 +804,18 @@ class AppServerAttemptRunner:
             )
         except WorkflowError:
             pass
+
+
+def _stderr_tail(path: Path) -> str:
+    try:
+        with path.open("rb") as stream:
+            stream.seek(0, os.SEEK_END)
+            size = stream.tell()
+            stream.seek(max(0, size - STDERR_TAIL_CHARS))
+            return (
+                stream.read(STDERR_TAIL_CHARS)
+                .decode("utf-8", errors="replace")
+                .strip()
+            )
+    except OSError:
+        return ""

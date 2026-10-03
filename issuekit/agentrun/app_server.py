@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import queue
 import subprocess
@@ -13,9 +14,10 @@ from typing import Any, TextIO
 
 from issuekit.file_permissions import chmod_600, open_owner_only
 
-MAX_TEXT_CHARS = 32 * 1024
+MAX_TEXT_CHARS = 1_048_576
 MAX_EVENT_BYTES = 64 * 1024
 DANGER_FULL_ACCESS_SANDBOX = "danger-full-access"
+LOGGER = logging.getLogger(__name__)
 USAGE_TOKEN_FIELDS = (
     ("cachedInputTokens", "cached_input_tokens"),
     ("inputTokens", "input_tokens"),
@@ -176,7 +178,12 @@ class AppServerTransport:
         return _thread_id(
             self.request(
                 "thread/resume",
-                {"threadId": native_session_id, "cwd": str(cwd)},
+                {
+                    "threadId": native_session_id,
+                    "cwd": str(cwd),
+                    "approvalPolicy": "never",
+                    "sandbox": DANGER_FULL_ACCESS_SANDBOX,
+                },
             )
         )
 
@@ -185,7 +192,7 @@ class AppServerTransport:
             "turn/start",
             {
                 "threadId": thread_id,
-                "input": [{"type": "text", "text": text[:MAX_TEXT_CHARS]}],
+                "input": [{"type": "text", "text": _bounded_text(text, "turn/start")}],
             },
         )
         turn = result.get("turn")
@@ -199,7 +206,7 @@ class AppServerTransport:
             {
                 "threadId": thread_id,
                 "expectedTurnId": turn_id,
-                "input": [{"type": "text", "text": text[:MAX_TEXT_CHARS]}],
+                "input": [{"type": "text", "text": _bounded_text(text, "turn/steer")}],
             },
         )
 
@@ -264,12 +271,36 @@ class AppServerTransport:
     def _deny_server_request(self, message: Mapping[str, Any]) -> None:
         request_id = message["id"]
         method = str(message.get("method"))
-        if method.endswith("requestApproval"):
+        if method in {
+            "item/commandExecution/requestApproval",
+            "item/fileChange/requestApproval",
+        }:
             result: dict[str, Any] = {"decision": "decline"}
+            response = {"id": request_id, "result": result}
+        elif method == "item/permissions/requestApproval":
+            response = {"id": request_id, "result": {"permissions": {}}}
         else:
-            result = {"error": f"issuekit cannot handle server request {method}"}
+            response = {
+                "id": request_id,
+                "error": {
+                    "code": -32601,
+                    "message": f"issuekit cannot handle server request {method}",
+                },
+            }
         with self._lock:
-            self._write({"id": request_id, "result": result})
+            self._write(response)
+
+
+def _bounded_text(text: str, method: str) -> str:
+    if len(text) <= MAX_TEXT_CHARS:
+        return text
+    LOGGER.warning(
+        "Truncating Codex App Server %s input from %d to %d characters.",
+        method,
+        len(text),
+        MAX_TEXT_CHARS,
+    )
+    return text[:MAX_TEXT_CHARS]
 
 
 def normalize_notification(
@@ -365,9 +396,11 @@ def _event_type(method: str, params: Mapping[str, Any]) -> str | None:
         return "tool_completed"
     if method == "item/agentMessage/delta":
         return "turn_progress"
+    if method == "error":
+        return "turn_failed" if params.get("willRetry") is False else "diagnostic"
     if method.endswith("/updated") or method.endswith("/delta"):
         return "turn_progress"
-    if method in {"error", "thread/status/changed"}:
+    if method == "thread/status/changed":
         return "diagnostic"
     return None
 
@@ -432,7 +465,19 @@ def _token_count(value: Any) -> int | None:
 
 
 def _message_text(method: str, params: Mapping[str, Any]) -> str | None:
-    if method != "item/agentMessage/delta":
-        return None
-    delta = params.get("delta")
-    return delta[:MAX_TEXT_CHARS] if isinstance(delta, str) else None
+    if method == "item/agentMessage/delta":
+        delta = params.get("delta")
+        return delta[:MAX_TEXT_CHARS] if isinstance(delta, str) else None
+    if method == "turn/completed":
+        turn = params.get("turn")
+        error = turn.get("error") if isinstance(turn, Mapping) else None
+        message = error.get("message") if isinstance(error, Mapping) else None
+        return message if isinstance(message, str) else None
+    if method == "error":
+        error = params.get("error")
+        message = error.get("message") if isinstance(error, Mapping) else None
+        if isinstance(message, str):
+            return message
+        direct_message = params.get("message")
+        return direct_message if isinstance(direct_message, str) else None
+    return None

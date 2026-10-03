@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import threading
+import time
 from pathlib import Path
+from textwrap import dedent
 
 import pytest
 
@@ -144,6 +147,7 @@ class FakeTransport:
         self.complete_on_start = complete_on_start
         self.interruptions: list[tuple[str, str]] = []
         self.prompts: list[str] = []
+        self.process = FakeProcess()
 
     def initialize(self) -> None:
         return None
@@ -186,6 +190,13 @@ class FakeTransport:
 
     def close(self) -> int:
         return 0
+
+
+class FakeProcess:
+    returncode: int | None = None
+
+    def poll(self) -> int | None:
+        return self.returncode
 
 
 def make_issue() -> Issue:
@@ -426,3 +437,151 @@ def test_app_server_runner_interrupts_turn_when_aborted(
             "error_code": "turn_interrupted",
         }
     ]
+
+
+def test_app_server_runner_includes_failed_turn_message_in_result(
+    tmp_path: Path, monkeypatch
+) -> None:
+    FakeAgentSessionClient.instances.clear()
+    FakeAgentSessionClient.create_error = None
+
+    class FailedTransport(FakeTransport):
+        def start_turn(self, native_session_id: str, prompt: str) -> str:
+            turn_id = super().start_turn(native_session_id, prompt)
+            self.notification(
+                {
+                    "method": "turn/completed",
+                    "params": {
+                        "turn": {
+                            "id": turn_id,
+                            "status": "failed",
+                            "error": {"message": "model request failed"},
+                        }
+                    },
+                }
+            )
+            return turn_id
+
+    monkeypatch.setattr(app_server_runtime, "IssuekitClient", FakeAgentSessionClient)
+    runner = AppServerAttemptRunner(
+        make_config(),
+        make_issue(),
+        transport_factory=lambda *args, **kwargs: FailedTransport(
+            *args, complete_on_start=False, **kwargs
+        ),
+    )
+
+    result = runner.run(
+        FakeAdapter(),
+        make_prompt(tmp_path),
+        tmp_path,
+        issue_id=322,
+        agent_name="codex",
+    )
+
+    assert result.exit_code == 1
+    assert result.parsed is not None
+    assert result.parsed["failure_reason"] == "model request failed"
+    assert result.parsed["is_error"] == "true"
+
+
+def test_app_server_runner_fails_fast_when_server_exits_mid_turn(
+    tmp_path: Path, monkeypatch
+) -> None:
+    FakeAgentSessionClient.instances.clear()
+    FakeAgentSessionClient.create_error = None
+    server = tmp_path / "crashing_app_server.py"
+    server.write_text(
+        dedent(
+            """\
+            import json, sys
+            for line in sys.stdin:
+                message = json.loads(line)
+                if 'id' not in message:
+                    continue
+                method = message.get('method')
+                if method == 'initialize':
+                    result = {}
+                elif method == 'thread/start':
+                    result = {'thread': {'id': 'thread-1'}}
+                elif method == 'turn/start':
+                    result = {'turn': {'id': 'turn-1'}}
+                else:
+                    result = {}
+                print(json.dumps({'id': message['id'], 'result': result}), flush=True)
+                if method == 'turn/start':
+                    print('fake server exploded', file=sys.stderr, flush=True)
+                    sys.exit(7)
+            """
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    monkeypatch.setattr(app_server_runtime, "IssuekitClient", FakeAgentSessionClient)
+    adapter = FakeAdapter()
+    adapter.run_config = AgentRunConfig(
+        binary=sys.executable,
+        runtime="codex_app_server",
+        app_server_argv=(str(server),),
+    )
+    adapter.resolve_binary = lambda: Path(sys.executable)
+    runner = AppServerAttemptRunner(make_config(), make_issue())
+    started = time.monotonic()
+
+    with pytest.raises(app_server_runtime.AppServerError) as exc_info:
+        runner.run(
+            adapter,
+            make_prompt(tmp_path),
+            tmp_path,
+            timeout=10,
+            issue_id=322,
+            agent_name="codex",
+        )
+
+    assert time.monotonic() - started < 2
+    assert "status 7" in str(exc_info.value)
+    assert "fake server exploded" in str(exc_info.value)
+
+
+def test_app_server_runner_retries_one_transient_heartbeat_failure() -> None:
+    class RetryStop:
+        waits = 0
+
+        def wait(self, timeout: float) -> bool:
+            self.waits += 1
+            return self.waits == 3
+
+        def set(self) -> None:
+            raise AssertionError("heartbeat should continue after one transient error")
+
+    class TransientHeartbeatClient:
+        calls = 0
+
+        def heartbeat_agent_session_lease(self, *args, **kwargs) -> None:
+            self.calls += 1
+            if self.calls == 1:
+                raise WorkflowError("temporary network failure", code="request_failed")
+
+    client = TransientHeartbeatClient()
+    errors: list[BaseException] = []
+    context = app_server_runtime.AttemptContext(
+        session_id="session-1",
+        generation=1,
+        worker_id="worker-1",
+        lease_token="lease-1",
+        headers={},
+    )
+
+    AppServerAttemptRunner._heartbeat_loop(
+        AppServerAttemptRunner(make_config(), make_issue()),
+        client,
+        322,
+        context,
+        15,
+        RetryStop(),
+        errors,
+    )
+
+    assert client.calls == 2
+    assert errors == []

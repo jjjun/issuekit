@@ -293,11 +293,13 @@ and 300. `runtime` accepts `exec` (the default) or `codex_app_server`, and
 heartbeats below half the configured lease TTL, stores its lease token only in
 memory, journals commands before local side effects, uploads bounded redacted
 events, stops on fencing or claim loss, and seals the runtime before the
-existing submit-for-review workflow. A provider
-without the routes returns a clear unsupported-runtime error; issuekit does not
-silently fall back because the mode is explicit. App Server is Codex-only and
+existing submit-for-review workflow. A transient `request_failed` heartbeat
+retries until half the TTL has elapsed since the last successful heartbeat. A
+provider without the routes returns a clear unsupported-runtime error;
+issuekit does not silently fall back because the mode is explicit. App Server
+is Codex-only and
 implementer-only in this version. Both `implement` and `serve` honor this
-runtime. Its threads always start with approval policy `never` and the
+runtime. Its threads start and resume with approval policy `never` and the
 `danger-full-access` sandbox, and it reads only `binary`,
 `known_paths`, `lease_ttl_seconds`, `app_server_argv`, `model`,
 `reasoning_effort`, `prompt_suffix`, and `model_prompts` from the agent
