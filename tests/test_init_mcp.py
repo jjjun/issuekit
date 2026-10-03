@@ -1,4 +1,5 @@
 import json
+import tomllib
 from pathlib import Path
 
 from issuekit.commands.init import init_repo
@@ -110,14 +111,127 @@ def test_init_with_mcp_skips_existing_issuekit_server(tmp_path: Path) -> None:
     assert ".mcp.json" in result.skipped
 
 
-def test_init_with_mcp_force_overwrites_mcp_json(tmp_path: Path) -> None:
-    existing = {"mcpServers": {"other": {"command": "x"}}}
+def test_init_with_mcp_force_refreshes_only_issuekit_mcp_json_entry(tmp_path: Path) -> None:
+    existing = {
+        "name": "workspace",
+        "mcpServers": {
+            "other": {"command": "x"},
+            "issuekit": {"command": "custom"},
+        },
+    }
     (tmp_path / ".mcp.json").write_text(json.dumps(existing, indent=2) + "\n", encoding="utf-8")
 
     init_repo(tmp_path, with_mcp=True, force=True)
 
-    overwritten = json.loads((tmp_path / ".mcp.json").read_text(encoding="utf-8"))
-    assert overwritten == {"mcpServers": {"issuekit": {"command": "issuekit-mcp", "args": []}}}
+    refreshed = json.loads((tmp_path / ".mcp.json").read_text(encoding="utf-8"))
+    assert refreshed["name"] == "workspace"
+    assert refreshed["mcpServers"]["other"] == {"command": "x"}
+    assert refreshed["mcpServers"]["issuekit"] == {"command": "issuekit-mcp", "args": []}
+
+
+def test_init_with_mcp_force_refreshes_only_standard_codex_server_table(tmp_path: Path) -> None:
+    codex_dir = tmp_path / ".codex"
+    codex_dir.mkdir()
+    config_path = codex_dir / "config.toml"
+    config_path.write_text(
+        'model = "gpt-test"\n'
+        '[mcp_servers.other]\n'
+        'command = "other-mcp"\n'
+        '[mcp_servers.issuekit]\n'
+        'command = "custom-mcp"\n'
+        'args = ["custom"]\n',
+        encoding="utf-8",
+    )
+
+    init_repo(tmp_path, with_mcp=True, force=True)
+
+    refreshed_text = config_path.read_text(encoding="utf-8")
+    refreshed = tomllib.loads(refreshed_text)
+    assert refreshed["model"] == "gpt-test"
+    assert refreshed["mcp_servers"]["other"] == {"command": "other-mcp"}
+    assert refreshed["mcp_servers"]["issuekit"]["command"] == "issuekit-mcp"
+    assert "env_vars" in refreshed["mcp_servers"]["issuekit"]
+
+
+def test_init_with_mcp_force_leaves_quoted_and_inline_codex_entries_parseable(tmp_path: Path) -> None:
+    codex_dir = tmp_path / ".codex"
+    codex_dir.mkdir()
+    config_path = codex_dir / "config.toml"
+    originals = (
+        '[mcp_servers."issuekit"]\ncommand = "custom"\n',
+        'mcp_servers = { issuekit = { command = "custom" } }\n',
+    )
+    for original in originals:
+        config_path.write_text(original, encoding="utf-8")
+
+        result = init_repo(tmp_path, with_mcp=True, force=True)
+
+        assert config_path.read_text(encoding="utf-8") == original
+        assert tomllib.loads(original)["mcp_servers"]["issuekit"]["command"] == "custom"
+        assert ".codex/config.toml" in result.skipped
+        assert any(
+            "Add or refresh this issuekit server manually" in item for item in result.guidance
+        )
+
+
+def test_init_with_mcp_leaves_quoted_codex_entry_unchanged_with_guidance(
+    tmp_path: Path,
+) -> None:
+    codex_dir = tmp_path / ".codex"
+    codex_dir.mkdir()
+    config_path = codex_dir / "config.toml"
+    original = '[mcp_servers."issuekit"]\ncommand = "custom"\n'
+    config_path.write_text(original, encoding="utf-8")
+
+    result = init_repo(tmp_path, with_mcp=True)
+
+    assert config_path.read_text(encoding="utf-8") == original
+    assert tomllib.loads(original)["mcp_servers"]["issuekit"]["command"] == "custom"
+    assert ".codex/config.toml" in result.skipped
+    assert result.guidance
+
+
+def test_init_with_mcp_comment_header_does_not_count_as_codex_server(tmp_path: Path) -> None:
+    codex_dir = tmp_path / ".codex"
+    codex_dir.mkdir()
+    config_path = codex_dir / "config.toml"
+    config_path.write_text("# [mcp_servers.issuekit]\nmodel = \"gpt-test\"\n", encoding="utf-8")
+
+    init_repo(tmp_path, with_mcp=True)
+
+    parsed = tomllib.loads(config_path.read_text(encoding="utf-8"))
+    assert parsed["model"] == "gpt-test"
+    assert parsed["mcp_servers"]["issuekit"]["command"] == "issuekit-mcp"
+
+
+def test_init_with_mcp_adds_env_vars_to_existing_codex_table(tmp_path: Path) -> None:
+    codex_dir = tmp_path / ".codex"
+    codex_dir.mkdir()
+    config_path = codex_dir / "config.toml"
+    config_path.write_text(
+        '[mcp_servers.issuekit]\ncommand = "issuekit-mcp"\nargs = []\n',
+        encoding="utf-8",
+    )
+
+    result = init_repo(tmp_path, with_mcp=True)
+
+    parsed = tomllib.loads(config_path.read_text(encoding="utf-8"))
+    assert parsed["mcp_servers"]["issuekit"]["env_vars"]
+    assert ".codex/config.toml" in result.written
+
+
+def test_init_with_mcp_does_not_write_malformed_codex_config(tmp_path: Path) -> None:
+    codex_dir = tmp_path / ".codex"
+    codex_dir.mkdir()
+    config_path = codex_dir / "config.toml"
+    original = "[mcp_servers.issuekit\n"
+    config_path.write_text(original, encoding="utf-8")
+
+    result = init_repo(tmp_path, with_mcp=True, force=True)
+
+    assert config_path.read_text(encoding="utf-8") == original
+    assert ".codex/config.toml" in result.skipped
+    assert result.guidance
 
 
 def test_init_with_mcp_guides_for_malformed_mcp_json(tmp_path: Path) -> None:

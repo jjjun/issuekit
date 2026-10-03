@@ -103,8 +103,11 @@ Because it runs `init`, `issuekit setup` writes the base init files:
 (`docs/issues/README.md` by default), `.pre-commit-config.yaml` with the
 `check-encoding` and `author-guard` hooks, and the `issuekit.local.toml` and
 `.agent-runs/` entries in `.gitignore`. Existing templated files are skipped
-unless you pass `--force`; an existing `.pre-commit-config.yaml` without the
-hooks gets printed guidance instead of an edit.
+unless you pass `--force`. Force refreshes only the issuekit MCP entries and
+issuekit-owned template files (`.gitattributes`, `.editorconfig`, and the issues
+README); it preserves other MCP servers and settings. An existing
+`.pre-commit-config.yaml` is never overwritten, and missing hooks get printed
+guidance instead of an edit.
 
 The MCP part of the scaffold writes `.mcp.json`, appends `.codex/config.toml`
 when needed, and adds thin handoff references to `AGENTS.md` and `CLAUDE.md`.

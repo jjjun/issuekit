@@ -1,11 +1,13 @@
 import json
 import subprocess
+import tomllib
 from pathlib import Path
 
 from issuekit import cli
 from issuekit.commands import setup
 from issuekit.commands.init import init_repo
 from issuekit.commands.setup import command
+from issuekit.commands.setup.actions import collect_setup_actions
 from issuekit.config import IssuekitConfig
 from issuekit.guards.author import create_author_guard
 
@@ -150,6 +152,54 @@ def test_setup_check_json_current_repo_reports_ok_without_writes(
     assert _file_snapshot(tmp_path) == before
 
 
+def test_setup_apply_force_preserves_other_mcp_servers_and_codex_settings(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    _force_mcp_available(monkeypatch)
+    (tmp_path / ".mcp.json").write_text(
+        json.dumps(
+            {
+                "name": "workspace",
+                "mcpServers": {
+                    "other": {"command": "other-mcp"},
+                    "issuekit": {"command": "custom-mcp"},
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    codex_dir = tmp_path / ".codex"
+    codex_dir.mkdir()
+    codex_config = codex_dir / "config.toml"
+    codex_config.write_text(
+        'model = "gpt-test"\n'
+        '[mcp_servers.other]\n'
+        'command = "other-mcp"\n'
+        '[mcp_servers.issuekit]\n'
+        'command = "custom-mcp"\n',
+        encoding="utf-8",
+    )
+    pre_commit = tmp_path / ".pre-commit-config.yaml"
+    pre_commit.write_text("repos: []\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = cli.main(["setup", "apply", "--force"])
+    capsys.readouterr()
+
+    mcp_config = json.loads((tmp_path / ".mcp.json").read_text(encoding="utf-8"))
+    codex_settings = tomllib.loads(codex_config.read_text(encoding="utf-8"))
+    assert exit_code == 0
+    assert mcp_config["name"] == "workspace"
+    assert mcp_config["mcpServers"]["other"] == {"command": "other-mcp"}
+    assert mcp_config["mcpServers"]["issuekit"]["command"] == "issuekit-mcp"
+    assert codex_settings["model"] == "gpt-test"
+    assert codex_settings["mcp_servers"]["other"] == {"command": "other-mcp"}
+    assert codex_settings["mcp_servers"]["issuekit"]["command"] == "issuekit-mcp"
+    assert pre_commit.read_text(encoding="utf-8") == "repos: []\n"
+
+
 def test_setup_check_json_missing_repo_reports_writes_without_writing(
     tmp_path: Path,
     monkeypatch,
@@ -177,6 +227,27 @@ def test_setup_check_json_missing_repo_reports_writes_without_writing(
     assert _file_snapshot(tmp_path) == {}
 
 
+def test_setup_check_invalid_config_still_lists_missing_scaffold_files(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    (tmp_path / "pyproject.toml").write_text(
+        "[tool.issuekit]\nworker_heartbeat_interval_sec = 0\n",
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = cli.main(["setup", "check"])
+
+    output = capsys.readouterr().out
+    assert exit_code == 0
+    assert "[MISSING] .gitattributes" in output
+    assert "[MISSING] .editorconfig" in output
+    assert "[MISSING] docs/issues/README.md" in output
+    assert "[MISSING] .pre-commit-config.yaml" in output
+
+
 def test_setup_check_json_stale_repo_reports_updates_without_writing(
     tmp_path: Path,
     monkeypatch,
@@ -202,7 +273,7 @@ def test_setup_check_json_stale_repo_reports_updates_without_writing(
     assert _file_snapshot(tmp_path) == before
 
 
-def test_setup_check_reports_stale_precommit_without_author_guard_hook(
+def test_setup_check_reports_precommit_missing_hook_as_manual(
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -226,11 +297,12 @@ def test_setup_check_reports_stale_precommit_without_author_guard_hook(
 
     payload = json.loads(capsys.readouterr().out)
     assert exit_code == 0
-    assert any(
-        item["path"] == ".pre-commit-config.yaml"
-        and "author-session guard hook" in item["reason"]
-        for item in payload["actions"]
+    pre_commit_action = next(
+        item for item in payload["actions"] if item["path"] == ".pre-commit-config.yaml"
     )
+    assert pre_commit_action["state"] == "blocked"
+    assert pre_commit_action["action"] == "manual"
+    assert "author-session guard hook" in pre_commit_action["reason"]
 
 
 def test_setup_diagnostics_warn_when_author_guard_is_active(tmp_path: Path) -> None:
@@ -324,6 +396,68 @@ def test_setup_check_json_blocked_repo_reports_manual_action_without_writing(
         }
     ]
     assert _file_snapshot(tmp_path) == before
+
+
+def test_setup_check_uses_configured_issues_directory(tmp_path: Path) -> None:
+    (tmp_path / "issuekit.toml").write_text('issues_dir = "work/issues"\n', encoding="utf-8")
+
+    init_repo(tmp_path, with_mcp=True)
+
+    actions = collect_setup_actions(tmp_path)
+    missing_paths = {action.path for action in actions if action.state == "missing"}
+    assert "work/issues/README.md" not in missing_paths
+    assert "docs/issues/README.md" not in missing_paths
+
+
+def test_setup_check_reports_codex_env_vars_as_stale_and_apply_adds_them(
+    tmp_path: Path,
+) -> None:
+    codex_dir = tmp_path / ".codex"
+    codex_dir.mkdir()
+    (codex_dir / "config.toml").write_text(
+        'model = "gpt-test"\n'
+        '[mcp_servers.other]\n'
+        'command = "other-mcp"\n'
+        '[mcp_servers.issuekit]\n'
+        'command = "issuekit-mcp"\n'
+        'args = []\n',
+        encoding="utf-8",
+    )
+
+    actions = collect_setup_actions(tmp_path)
+    codex_action = next(action for action in actions if action.path == ".codex/config.toml")
+    assert codex_action.state == "stale"
+    assert codex_action.action == "update"
+
+    init_repo(tmp_path, with_mcp=True)
+
+    parsed = tomllib.loads((codex_dir / "config.toml").read_text(encoding="utf-8"))
+    assert parsed["model"] == "gpt-test"
+    assert parsed["mcp_servers"]["other"] == {"command": "other-mcp"}
+    assert parsed["mcp_servers"]["issuekit"]["env_vars"]
+    assert not any(
+        action.path == ".codex/config.toml"
+        for action in collect_setup_actions(tmp_path)
+    )
+
+
+def test_setup_check_reports_nonstandard_codex_entry_as_manual(tmp_path: Path) -> None:
+    codex_dir = tmp_path / ".codex"
+    codex_dir.mkdir()
+    config_path = codex_dir / "config.toml"
+    config_path.write_text(
+        'mcp_servers = { issuekit = { command = "issuekit-mcp" } }\n',
+        encoding="utf-8",
+    )
+
+    actions = collect_setup_actions(tmp_path)
+
+    codex_action = next(action for action in actions if action.path == ".codex/config.toml")
+    assert codex_action.state == "blocked"
+    assert codex_action.action == "manual"
+    assert tomllib.loads(config_path.read_text(encoding="utf-8"))["mcp_servers"]["issuekit"][
+        "command"
+    ] == "issuekit-mcp"
 
 
 def test_setup_reports_missing_mcp_extra(monkeypatch) -> None:

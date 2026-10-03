@@ -77,6 +77,23 @@ def test_init_preserves_existing_pre_commit_and_prints_guidance(
     assert "issuekit check-encoding" in captured.out
 
 
+def test_init_force_preserves_existing_pre_commit_and_prints_guidance(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    original = "repos: []\n"
+    (tmp_path / ".pre-commit-config.yaml").write_text(original, encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = cli.main(["init", "--force"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert (tmp_path / ".pre-commit-config.yaml").read_text(encoding="utf-8") == original
+    assert "issuekit check-encoding" in captured.out
+
+
 def test_init_written_files_have_no_bom_or_crlf(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
 

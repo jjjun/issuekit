@@ -65,7 +65,7 @@ def _add_setup_apply_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--force",
         action="store_true",
-        help="Overwrite existing templated files.",
+        help="Refresh issuekit entries and issuekit-owned template files.",
     )
     _add_setup_check_options(parser)
 

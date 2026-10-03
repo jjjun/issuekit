@@ -10,8 +10,12 @@ from pathlib import Path
 from issuekit.commands.init import (
     CODEX_MCP_HEADER,
     HANDOFF_HEADER,
+    append_codex_issuekit_table,
+    find_codex_issuekit_table,
 )
+from issuekit.config import IssuekitConfig, load_config
 from issuekit.config.local import missing_gitignore_entries
+from issuekit.workflow import WorkflowError
 
 
 @dataclass(frozen=True)
@@ -24,13 +28,22 @@ class SetupAction:
 
 def collect_setup_actions(cwd: Path) -> list[SetupAction]:
     actions: list[SetupAction] = []
+    try:
+        issues_dir = load_config(cwd).issues_path(cwd)
+    except (ValueError, WorkflowError, OSError):
+        issues_dir = IssuekitConfig().issues_path(cwd)
+    issues_readme = issues_dir / "README.md"
+    try:
+        issues_readme_path = issues_readme.relative_to(cwd).as_posix()
+    except ValueError:
+        issues_readme_path = issues_readme.as_posix()
     _add_missing_file_actions(
         cwd,
         actions,
         (
             ".gitattributes",
             ".editorconfig",
-            "docs/issues/README.md",
+            issues_readme_path,
             ".pre-commit-config.yaml",
         ),
     )
@@ -89,13 +102,20 @@ def _add_pre_commit_action(cwd: Path, actions: list[SetupAction]) -> None:
     if not path.exists():
         return
     content = path.read_text(encoding="utf-8-sig", errors="ignore")
+    missing_hooks = []
+    if "issuekit check-encoding" not in content:
+        missing_hooks.append("issuekit check-encoding hook")
     if "issuekit author-guard check" not in content:
+        missing_hooks.append("optional author-session guard hook")
+    if missing_hooks:
+        missing = " and ".join(missing_hooks)
         actions.append(
             SetupAction(
                 ".pre-commit-config.yaml",
-                "stale",
-                "update",
-                "issuekit setup would add the optional author-session guard hook.",
+                "blocked",
+                "manual",
+                "issuekit setup cannot edit an existing pre-commit file. Add the "
+                f"{missing} manually.",
             )
         )
 
@@ -174,14 +194,48 @@ def _add_codex_config_action(cwd: Path, actions: list[SetupAction]) -> None:
                 display,
                 "blocked",
                 "manual",
-                "invalid TOML should be fixed before issuekit setup appends to this file.",
+                "invalid TOML should be fixed before issuekit setup can merge this file.",
             )
         )
         return
     servers = parsed.get("mcp_servers")
-    if isinstance(servers, dict) and "issuekit" in servers:
+    issuekit_server = servers.get("issuekit") if isinstance(servers, dict) else None
+    if issuekit_server is not None:
+        if isinstance(issuekit_server, dict) and "env_vars" in issuekit_server:
+            return
+        if find_codex_issuekit_table(content) is not None:
+            actions.append(
+                SetupAction(
+                    display,
+                    "stale",
+                    "update",
+                    "issuekit setup would add the missing env_vars to "
+                    f"{CODEX_MCP_HEADER}.",
+                )
+            )
+        else:
+            actions.append(
+                SetupAction(
+                    display,
+                    "blocked",
+                    "manual",
+                    "the issuekit server is not a standard table; add its missing "
+                    "env_vars manually.",
+                )
+            )
         return
-    if CODEX_MCP_HEADER in content:
+
+    try:
+        tomllib.loads(append_codex_issuekit_table(content, "[mcp_servers.issuekit]"))
+    except tomllib.TOMLDecodeError:
+        actions.append(
+            SetupAction(
+                display,
+                "blocked",
+                "manual",
+                "issuekit setup cannot add [mcp_servers.issuekit] to this TOML shape.",
+            )
+        )
         return
     actions.append(
         SetupAction(
