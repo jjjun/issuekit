@@ -26,6 +26,8 @@ from issuekit.agentrun.status import (
 )
 from issuekit.file_permissions import ensure_owner_only_directory, open_owner_only
 
+MAX_PROMPT_CHARS = 24_000
+
 
 @dataclass(frozen=True)
 class AgentResult:
@@ -174,11 +176,18 @@ class AgentRunner:
         if not repo.exists():
             raise FileNotFoundError(f"Repo directory not found: {repo}")
 
-        binary = adapter.resolve_binary()
         if prompt_suffix:
             prompt_text = f"{prompt.pointer}\n\n{prompt_suffix}"
         else:
             prompt_text = prompt.pointer
+        composed_prompt = adapter.compose_prompt(prompt_text)
+        if len(composed_prompt) > MAX_PROMPT_CHARS:
+            raise ValueError(
+                f"Composed prompt is {len(composed_prompt)} characters; "
+                f"limit is {MAX_PROMPT_CHARS}."
+            )
+
+        binary = adapter.resolve_binary()
         argv = [str(binary)] + adapter.build_argv(
             prompt_text,
             plan_path,
@@ -248,7 +257,21 @@ class AgentRunner:
             else:
                 kwargs["start_new_session"] = True
 
-            proc = subprocess.Popen(argv, **kwargs)
+            try:
+                proc = subprocess.Popen(argv, **kwargs)
+            except OSError as exc:
+                write_status(
+                    run_status_path,
+                    replace(
+                        run_status,
+                        status="failed",
+                        ended_at=datetime.now().replace(microsecond=0).isoformat(),
+                        elapsed_sec=time.monotonic() - start,
+                        exit_code=1,
+                        failure_reason=str(exc),
+                    ),
+                )
+                raise RuntimeError(f"Could not launch {binary}: {exc}") from exc
             run_status = replace(run_status, pid=proc.pid)
             write_status(run_status_path, run_status)
 

@@ -200,6 +200,107 @@ def test_runner_uses_caller_prompt(
     assert adapter.prompt == "Caller-owned prompt."
 
 
+def test_runner_keeps_large_plan_body_out_of_argv(tmp_path: Path) -> None:
+    notes = "review note. " * 16_000
+    script = tmp_path / "script.py"
+    script.write_text(
+        "import sys; print(sys.argv[1])", encoding="utf-8", newline="\n"
+    )
+    plan = tmp_path / "plan.md"
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / ".git").mkdir()
+
+    class PromptArgumentAdapter(FakeAdapter):
+        def build_argv(
+            self,
+            prompt: str,
+            plan_path: Path,
+            session_id: str | None = None,
+            resume: bool = False,
+        ) -> list[str]:
+            return [str(script), prompt]
+
+    result = AgentRunner().run(
+        PromptArgumentAdapter([sys.executable]),
+        AgentPrompt(
+            path=plan,
+            body=f"## Review feedback to address\n\n{notes}",
+            pointer="Address the review feedback section at the end of the plan file.",
+        ),
+        repo,
+        timeout=10.0,
+    )
+
+    assert result.exit_code == 0
+    assert plan.read_text(encoding="utf-8") == (
+        f"## Review feedback to address\n\n{notes}"
+    )
+    assert notes not in result.stdout_path.read_text(encoding="utf-8")
+    assert "Address the review feedback section" in result.stdout_path.read_text(
+        encoding="utf-8"
+    )
+
+
+def test_runner_rejects_overlong_prompt_before_creating_status(
+    tmp_path: Path, monkeypatch
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / ".git").mkdir()
+
+    def reject_launch(*args, **kwargs):
+        pytest.fail("overlong prompt must fail before launching")
+
+    monkeypatch.setattr(subprocess, "Popen", reject_launch)
+
+    with pytest.raises(
+        ValueError, match="Composed prompt is 24001 characters; limit is 24000"
+    ):
+        AgentRunner().run(
+            FakeAdapter([sys.executable]),
+            AgentPrompt(
+                path=tmp_path / "plan.md",
+                body="plan",
+                pointer="x" * 24_001,
+            ),
+            repo,
+            timeout=10.0,
+        )
+
+    assert not list((repo / ".agent-runs").glob("*.status.json"))
+
+
+def test_runner_writes_failed_status_when_process_cannot_launch(
+    tmp_path: Path, monkeypatch
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / ".git").mkdir()
+
+    def fail_launch(*args, **kwargs):
+        raise PermissionError(13, "Permission denied", "agent")
+
+    monkeypatch.setattr(subprocess, "Popen", fail_launch)
+
+    with pytest.raises(RuntimeError, match="Could not launch .+ Permission denied"):
+        AgentRunner().run(
+            FakeAdapter([sys.executable]),
+            agent_prompt(tmp_path / "plan.md"),
+            repo,
+            timeout=10.0,
+        )
+
+    status_files = list((repo / ".agent-runs").glob("*.status.json"))
+    assert len(status_files) == 1
+    status = json.loads(status_files[0].read_text(encoding="utf-8"))
+    assert status["status"] == "failed"
+    assert status["exit_code"] == 1
+    assert status["pid"] is None
+    assert status["ended_at"] is not None
+    assert "Permission denied" in status["failure_reason"]
+
+
 def test_runner_passes_session_id_through_to_argv(tmp_path: Path) -> None:
     script = tmp_path / "script.py"
     script.write_text(

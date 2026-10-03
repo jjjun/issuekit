@@ -6,6 +6,7 @@ import os
 import warnings
 from dataclasses import dataclass, field, fields, replace
 from pathlib import Path
+from string import Formatter
 from urllib.parse import urlparse
 
 from issuekit.agentrun.config import AgentRunConfig
@@ -1035,6 +1036,9 @@ def _agent_run_config_overrides(cfg: dict[str, object]) -> dict[str, object]:
         value = cfg.get(key, _SENTINEL)
         if value is not _SENTINEL:
             overrides[key] = loader(value)
+    effort_argv = overrides.get("effort_argv")
+    if effort_argv is not None:
+        _validate_effort_argv(effort_argv)
     runtime = overrides.get("runtime")
     if runtime is not None and runtime not in {"exec", "codex_app_server"}:
         raise ValueError(
@@ -1047,6 +1051,22 @@ def _agent_run_config_overrides(cfg: dict[str, object]) -> dict[str, object]:
     if app_server_argv is not None:
         _validate_app_server_argv(app_server_argv)
     return overrides
+
+
+def _validate_effort_argv(value: object) -> None:
+    for entry in value:
+        try:
+            fields_in_entry = tuple(Formatter().parse(entry))
+        except ValueError as exc:
+            raise ValueError(f"Invalid effort_argv template: {exc}") from exc
+        for _literal, field_name, format_spec, conversion in fields_in_entry:
+            if field_name is not None and (
+                field_name != "value" or format_spec or conversion
+            ):
+                raise ValueError(
+                    "Invalid effort_argv template: only the {value} placeholder "
+                    "is allowed."
+                )
 
 
 def _validate_app_server_argv(value: object) -> None:

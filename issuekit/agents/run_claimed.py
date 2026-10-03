@@ -210,10 +210,19 @@ def run_and_submit(
         agent_reasoning_effort = None
     run_dir = cwd / ".agent-runs"
     plan_path = run_dir / f"issue-{issue_id}.md"
+    plan_body = issue.body
+    pointer = implementation_prompt(plan_path)
+    if prompt_suffix:
+        if plan_body:
+            if not plan_body.endswith("\n"):
+                plan_body += "\n"
+            plan_body += "\n"
+        plan_body += f"## Review feedback to address\n\n{prompt_suffix}\n"
+        pointer += "\n\nAddress the review feedback section at the end of the plan file."
     prompt = AgentPrompt(
         path=plan_path,
-        body=issue.body,
-        pointer=implementation_prompt(plan_path),
+        body=plan_body,
+        pointer=pointer,
     )
     if runner_factory is None:
         run_config = dict(config.agents).get(agent)
@@ -237,7 +246,6 @@ def run_and_submit(
             agent_name=agent,
             issue_id=issue_id,
             follow=follow,
-            prompt_suffix=prompt_suffix,
             run_dir=run_dir,
             abort_event=abort_event,
             issuekit_session=session,

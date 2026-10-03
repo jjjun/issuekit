@@ -1087,6 +1087,17 @@ def test_load_config_reads_agent_guardrail_fields(tmp_path: Path) -> None:
     assert dict(config.agent_policies)["codex"].diff_shape_warn_deletions == 12
 
 
+def test_load_config_rejects_invalid_effort_argv_template(tmp_path: Path) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        '[agents.codex]\neffort_argv = ["--x", "{"]\n',
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    with pytest.raises(ValueError, match="Invalid effort_argv template"):
+        load_config(tmp_path)
+
+
 def test_load_config_reads_false_speed(tmp_path: Path) -> None:
     (tmp_path / "issuekit.toml").write_text(
         "[agents.codex]\nspeed = false\n",

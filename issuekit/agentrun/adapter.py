@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 from abc import ABC, abstractmethod
 from pathlib import Path
@@ -87,7 +88,9 @@ class ConfigAgentAdapter(AgentAdapter):
             return Path(found)
         for p in self.run_config.known_paths:
             expanded = Path(p).expanduser()
-            if expanded.exists():
+            if expanded.is_file() and (
+                os.name == "nt" or os.access(expanded, os.X_OK)
+            ):
                 return expanded
         raise AgentBinaryNotFoundError(
             f"{self.run_config.binary} executable not found. "

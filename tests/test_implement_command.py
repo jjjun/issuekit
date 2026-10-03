@@ -1,3 +1,4 @@
+import json
 import os
 import signal
 import subprocess
@@ -1371,11 +1372,12 @@ def test_implement_command_treats_already_at_review_as_submitted_without_report(
     assert [call["method"] for call in client.calls] == ["claim", "submit"]
 
 
-def test_implement_command_reinjects_review_feedback(
+def test_implement_command_keeps_review_feedback_in_plan_body(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    body = "# Issue #1: First\n\n## Review Feedback\n\n- Add tests only.\n"
+    notes = "- " + "review note. " * 16_000
+    body = f"# Issue #1: First\n\n## Review Feedback\n\n{notes}\n"
     client = FakeIssuekitClient(
         [
             api_issue(
@@ -1392,13 +1394,31 @@ def test_implement_command_reinjects_review_feedback(
     )
     FakeRunner.calls.clear()
     _configure_api(tmp_path, monkeypatch, client)
-    monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", FakeRunner)
+
+    class PromptCapturingRunner(FakeRunner):
+        argvs: list[list[str]] = []
+
+        def run(
+            self, adapter, prompt: AgentPrompt, repo, timeout, **kwargs
+        ) -> FakeResult:
+            self.argvs.append(adapter.build_argv(prompt.pointer, prompt.path))
+            return super().run(adapter, prompt, repo, timeout, **kwargs)
+
+    PromptCapturingRunner.argvs.clear()
+    monkeypatch.setattr(
+        "issuekit.agents.run_claimed.AgentRunner", PromptCapturingRunner
+    )
 
     assert cli.main(["implement", "1", "--agent", "codex"]) == 0
-    prompt_suffix = FakeRunner.calls[0][6]
-    assert prompt_suffix is not None
-    assert "Address ONLY these notes" in prompt_suffix
-    assert "- Add tests only." in prompt_suffix
+    prompt = PromptCapturingRunner.calls[0][1]
+    argv = PromptCapturingRunner.argvs[0]
+    assert "## Review feedback to address" in prompt.body
+    assert prompt.body.endswith(review_feedback_prompt(body) + "\n")
+    assert (
+        "Address the review feedback section at the end of the plan file" in argv[1]
+    )
+    assert "review note." not in " ".join(argv)
+    assert PromptCapturingRunner.calls[0][6] is None
 
 
 def test_implement_command_does_not_submit_failed_run(
@@ -1435,6 +1455,39 @@ def test_implement_command_prints_post_run_line_on_successful_submit(
     assert (
         "post_run id=1 stage=review submitted=true agent_exit=0 cli_exit=0"
         in captured.out
+    )
+
+
+def test_implement_prints_post_run_when_agent_process_cannot_launch(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
+    _configure_api(tmp_path, monkeypatch, client)
+    real_popen = subprocess.Popen
+
+    def fail_agent_launch(argv, *args, **kwargs):
+        if argv[0] == "/test-bin/codex":
+            raise PermissionError(13, "Permission denied", argv[0])
+        return real_popen(argv, *args, **kwargs)
+
+    monkeypatch.setattr(subprocess, "Popen", fail_agent_launch)
+
+    exit_code = cli.main(["implement", "1", "--agent", "codex"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert (
+        "post_run id=1 stage=implementing submitted=false agent_exit=unknown cli_exit=1"
+        in captured.out
+    )
+    assert "Traceback" not in captured.out + captured.err
+    status_files = list((tmp_path / ".agent-runs").glob("*.status.json"))
+    assert len(status_files) == 1
+    assert (
+        json.loads(status_files[0].read_text(encoding="utf-8"))["status"]
+        == "failed"
     )
 
 
@@ -1484,6 +1537,9 @@ def test_implement_releases_claim_when_binary_disappears_after_preflight(
 
         def effective_runtime(self) -> tuple[None, None]:
             return None, None
+
+        def compose_prompt(self, prompt: str) -> str:
+            return prompt
 
     def preflight(*args, **kwargs):
         adapter = DisappearingBinaryAdapter()

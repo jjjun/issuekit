@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -489,3 +490,29 @@ def test_kimi_adapter_resolve_binary_raises_when_not_found(
 
     with pytest.raises(AgentBinaryNotFoundError, match="not found"):
         adapter.resolve_binary()
+
+
+@pytest.mark.skipif(
+    os.name == "nt", reason="POSIX executable mode is not used on Windows"
+)
+def test_config_adapter_known_paths_must_be_executable(
+    monkeypatch, tmp_path: Path
+) -> None:
+    directory = tmp_path / "agent-directory"
+    directory.mkdir()
+    not_executable = tmp_path / "agent-no-exec"
+    not_executable.write_text("agent", encoding="utf-8")
+    not_executable.chmod(0o644)
+    executable = tmp_path / "agent-executable"
+    executable.write_text("agent", encoding="utf-8")
+    executable.chmod(0o755)
+    monkeypatch.setattr("issuekit.agentrun.adapter.shutil.which", lambda _cmd: None)
+    adapter = ConfigAgentAdapter(
+        "custom",
+        AgentRunConfig(
+            binary="agent",
+            known_paths=(str(directory), str(not_executable), str(executable)),
+        ),
+    )
+
+    assert adapter.resolve_binary() == executable
