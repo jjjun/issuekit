@@ -108,16 +108,15 @@ so prefer it whenever the role is known, including when `[agent_roles]` is
 unset. Run `issuekit info` to inspect the effective mapping under `Agent roles`,
 including built-in defaults, before relying on `--agent`.
 
-`[agent_roles]` selects protocol text only. Role-scoped model overlays such as
-`[agents.<name>.roles.<role>]` are resolved by the launch site instead:
+`[agent_roles]` selects protocol text only. Role-scoped model and launch
+overlays such as `[agents.<name>.roles.<role>]` are resolved by the launch site:
 `issuekit implement` and implement-mode `serve` pass `implementer`;
 `issuekit review` and `serve --review` pass `reviewer`; `issuekit request`
 passes `router`; and `issuekit proposal-checks`, `serve --proposal-checks`,
 and the triage author (`issuekit triage --once`, or `serve --triage` with
-`[triage] author_agent`) pass `triage`. `issuekit negotiate` passes no role,
-so role overlays never apply to negotiation runs; use the agent defaults or
-per-run `--model` and `--reasoning-effort` there. Model and effort selection
-is therefore unaffected by `[agent_roles]`.
+`[triage] author_agent`) pass `triage`. `issuekit negotiate` passes
+`negotiation`, so role overlays also apply to both negotiation agents. Model
+and effort selection is unaffected by `[agent_roles]`.
 
 ## Environment and precedence
 
@@ -240,7 +239,28 @@ Agent tables accept these keys:
 | `adapter` | Marker for a custom adapter class; `codex` and `kimi` are built in, and an unknown marker fails with `Unknown adapter`. |
 | `runtime`, `app_server_argv`, `lease_ttl_seconds` | Runtime selection; see the App Server paragraphs below. |
 | `mojibake_gate`, `diff_shape_warn_deletions` | Submit-time policy; see [Encoding checks](#encoding-checks). |
-| `roles` | Per-role `model` and `reasoning_effort` overlays; see below. |
+| `roles` | Per-role `model`, `reasoning_effort`, and `approval_argv` overlays; see below. |
+
+Role overlays accept `implementer`, `reviewer`, `router`, `triage`, and
+`negotiation`. A role's `approval_argv` replaces the built-in launch policy
+and the agent-level `approval_flag` and `approval_value`; it is a complete
+argument list, not an additive list. For example, standalone `issuekit.toml`
+can give Claude reviewers permission to run a project's tests:
+
+```toml
+[agents.claude.roles.reviewer]
+approval_argv = [
+  "--permission-mode", "dontAsk",
+  "--allowedTools",
+  "Read,Grep,Glob,Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git ls-files:*),Bash(uv run pytest:*)",
+  "--strict-mcp-config",
+]
+```
+
+Use a narrowly scoped command pattern for the project's test command. The
+`--allowedTools` value is one comma-separated argument. Keep
+`--strict-mcp-config` when replacing a built-in Claude policy so configured
+MCP servers remain disabled.
 
 For the runtime boundary and how to add a config-only or custom agent adapter,
 see [`issuekit/agentrun/README.md`](../../issuekit/agentrun/README.md).
@@ -254,10 +274,22 @@ config sets `session_flag = "--session-id"` and `resume_flag = "--resume"`.
 
 ### Strict permission modes
 
-Codex runs without a sandbox by default. For the `exec` runtime, configure
-`approval_flag = "--sandbox"` and `approval_value = "workspace-write"` to
-restrict filesystem access. This mode has no network access by default and
-keeps `.git` read-only. Enable network access with
+For the default exec runtime, built-in Codex policies sandbox the read-only
+roles and disable configured MCP servers with `-c mcp_servers={}`. Triage,
+routing, and negotiation use `--sandbox read-only`; review uses
+`--sandbox workspace-write`, which lets it run tests while keeping `.git`
+read-only and network access off by default.
+On Linux, these defaults require Codex's bubblewrap sandbox to create
+unprivileged user namespaces. issuekit probes the configured sandbox before
+launch and stops with the probe error if the host blocks it. On Ubuntu with
+AppArmor user-namespace restrictions, allow unprivileged user namespaces for
+/usr/bin/bwrap, for example with an AppArmor profile containing `userns,` or
+by setting `kernel.apparmor_restrict_unprivileged_userns=0`, then rerun. To
+opt out for a role, set its `approval_argv` explicitly.
+Implementer runs keep the existing unsandboxed defaults. For other `exec`
+runtimes, configure `approval_flag = "--sandbox"` and
+`approval_value = "workspace-write"` to restrict filesystem access. Enable
+network access with
 `headless_argv = ["exec", "-c", "sandbox_workspace_write.network_access=true"]`.
 Codex CLI 0.147.0 added `--approve-for-me`, which uses `workspace-write` and
 automatically reviews sandbox escalations. The old `codex exec --full-auto` flag
@@ -265,12 +297,21 @@ was removed in Codex CLI 0.147.0; use `--sandbox workspace-write` instead.
 These overrides apply only to the default exec runtime; the App Server runtime
 below ignores them.
 
-Claude's `acceptEdits` mode allows file edits and common filesystem commands,
-but other shell commands such as tests need an `--allowedTools` entry or a
-`permissions.allow` rule. In a headless `-p` run without a permission host,
-commands that need permission are denied. Use `approval_value = "auto"` for
-classifier review, or keep `acceptEdits` and add required commands to
-`permissions.allow` in the project's `.claude/settings.json`.
+Built-in Claude read-only roles use `--permission-mode dontAsk`, an allowlist
+for `Read`, `Grep`, `Glob`, and read-only Git commands, and
+`--strict-mcp-config` without `--mcp-config`. This prevents loading the user's
+configured MCP servers. Implementer runs keep the existing
+`bypassPermissions` default. Kimi has no built-in read-only launch policy, so
+resolving it for a read-only role fails before launch unless
+`[agents.kimi.roles.<role>] approval_argv` is configured.
+
+Claude reviewer Bash commands are limited to the read-only Git allowlist by
+default. To run tests, add only the required project commands to a complete
+role-level `approval_argv` list as shown above. The Claude Code Bash sandbox can
+run tests while constraining filesystem and network access, but it depends on
+platform sandbox support and dependencies such as `bubblewrap` and `socat` on
+Linux. If the sandbox cannot be used, keep the restricted allowlist and add
+only the test commands the reviewer needs.
 
 `headless_argv` entries go before the prompt. Do not put a variadic Claude option
 such as `--allowedTools <tools...>` last, because it can consume the prompt;
@@ -309,7 +350,7 @@ runtime. Its threads start and resume with approval policy `never` and the
 `danger-full-access` sandbox, and it reads only `binary`,
 `known_paths`, `lease_ttl_seconds`, `app_server_argv`, `model`,
 `reasoning_effort`, `prompt_suffix`, and `model_prompts` from the agent
-config: `approval_flag`, `approval_value`,
+config: `approval_flag`, `approval_value`, `approval_argv`,
 `headless_argv`, `speed`, and `speed_argv` have no effect in this mode. The
 `issuekit implement --follow` heartbeat
 applies only to the default exec runtime; it polls `git status` read-only without

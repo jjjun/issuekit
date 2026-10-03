@@ -39,3 +39,6 @@ one. See [README.md](README.md) for the rules.
 - [Checking agent model ids and effort levels](checking-agent-model-ids.md) -
   model ids pass through unchecked; bare `gpt-5.6` fails under ChatGPT sign-in.
   Where to find valid slugs and efforts, and how to smoke-test them.
+- [Read-only agent sandbox policies](read-only-agent-sandbox.md) - verified
+  Codex and Claude CLI launch flags, MCP disabling, and the Claude sandbox
+  dependency limitation in this environment.

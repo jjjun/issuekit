@@ -58,7 +58,27 @@ PROFILE_SUMMARY_MAX_LEN = 500
 PROFILE_TAG_MAX_LEN = WORKFLOW_TOKEN_MAX_LEN
 PROFILE_TAGS_MAX = 20
 AGENT_ROLES = frozenset({"author", "implementer", "pm", "reviewer", "triage"})
-ROLE_OVERLAY_ROLES = frozenset({"implementer", "reviewer", "router", "triage"})
+ROLE_OVERLAY_ROLES = frozenset(
+    {"implementer", "reviewer", "router", "triage", "negotiation"}
+)
+READ_ONLY_ROLES = frozenset({"reviewer", "router", "triage", "negotiation"})
+_CLAUDE_READ_ONLY_APPROVAL_ARGV = (
+    "--permission-mode",
+    "dontAsk",
+    "--allowedTools",
+    "Read,Grep,Glob,Bash(git status:*),Bash(git diff:*),Bash(git log:*),"
+    "Bash(git show:*),Bash(git ls-files:*)",
+    "--strict-mcp-config",
+)
+BUILTIN_ROLE_LAUNCH_POLICIES = {
+    "codex": {
+        "triage": ("--sandbox", "read-only", "-c", "mcp_servers={}"),
+        "router": ("--sandbox", "read-only", "-c", "mcp_servers={}"),
+        "negotiation": ("--sandbox", "read-only", "-c", "mcp_servers={}"),
+        "reviewer": ("--sandbox", "workspace-write", "-c", "mcp_servers={}"),
+    },
+    "claude": dict.fromkeys(READ_ONLY_ROLES, _CLAUDE_READ_ONLY_APPROVAL_ARGV),
+}
 
 
 @dataclass(frozen=True)
@@ -71,10 +91,11 @@ class AgentPolicy:
 
 @dataclass(frozen=True)
 class RoleOverlay:
-    """Model settings that apply when an agent runs in one role."""
+    """Model and launch settings that apply when an agent runs in one role."""
 
     model: str | None = None
     reasoning_effort: str | None = None
+    approval_argv: tuple[str, ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -563,7 +584,11 @@ _MACHINE_CONFIG_KEYS = frozenset(
 _TRIAGE_CONFIG_KEYS = frozenset(config_field.name for config_field in fields(TriagePolicy))
 _ROUTER_CONFIG_KEYS = frozenset(config_field.name for config_field in fields(RouterPolicy))
 _AGENT_CONFIG_KEYS = (
-    frozenset(config_field.name for config_field in fields(AgentRunConfig))
+    frozenset(
+        config_field.name
+        for config_field in fields(AgentRunConfig)
+        if config_field.name != "approval_argv"
+    )
     | frozenset(config_field.name for config_field in fields(AgentPolicy))
     | frozenset({"roles"})
 )
@@ -1135,15 +1160,16 @@ def _agent_role_overlays(
         if role not in ROLE_OVERLAY_ROLES:
             raise ValueError(
                 f"Invalid agents.{agent_name}.roles role: {role}; supported roles: "
-                "implementer, reviewer, router, triage."
+                "implementer, reviewer, router, triage, negotiation."
             )
         if not isinstance(raw_overlay, dict):
             raise ValueError(f"agents.{agent_name}.roles.{role} must be a table.")
-        unexpected = set(raw_overlay) - {"model", "reasoning_effort"}
+        unexpected = set(raw_overlay) - {"model", "reasoning_effort", "approval_argv"}
         if unexpected:
             key = sorted(unexpected)[0]
             raise ValueError(
-                f"agents.{agent_name}.roles.{role} only supports model and reasoning_effort; "
+                f"agents.{agent_name}.roles.{role} only supports model, reasoning_effort, "
+                "and approval_argv; "
                 f"got {key}."
             )
         overlays.append(
@@ -1152,6 +1178,11 @@ def _agent_role_overlays(
                 RoleOverlay(
                     model=optional_str(raw_overlay.get("model")),
                     reasoning_effort=optional_str(raw_overlay.get("reasoning_effort")),
+                    approval_argv=(
+                        _string_tuple(raw_overlay["approval_argv"])
+                        if "approval_argv" in raw_overlay
+                        else None
+                    ),
                 ),
             )
         )

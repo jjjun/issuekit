@@ -5,8 +5,9 @@ from pathlib import Path
 import pytest
 
 from issuekit.agentrun import AgentBinaryNotFoundError, AgentRunConfig, ConfigAgentAdapter
+from issuekit.agentrun.adapters.codex import CodexAdapter
 from issuekit.agents.registry import resolve_adapter
-from issuekit.config import IssuekitConfig
+from issuekit.config import IssuekitConfig, RoleOverlay
 
 
 def test_config_adapter_appends_session_flag_only_when_resumable() -> None:
@@ -83,6 +84,195 @@ def test_builtin_edit_suffix_is_only_added_for_implementers() -> None:
 
     assert "Make minimal, additive diffs." not in reviewer_prompt
     assert "Make minimal, additive diffs." in implementer_prompt
+
+
+@pytest.mark.parametrize("role", ("triage", "router", "negotiation"))
+def test_codex_read_only_roles_use_read_only_sandbox_without_mcp(role: str) -> None:
+    argv = resolve_adapter("codex", role=role).build_argv("prompt", Path("/plan.md"))
+
+    assert "--sandbox" in argv
+    assert argv[argv.index("--sandbox") + 1] == "read-only"
+    assert "--dangerously-bypass-approvals-and-sandbox" not in argv
+    assert argv[argv.index("-c") + 1] == "mcp_servers={}"
+
+
+def test_codex_reviewer_uses_workspace_write_without_mcp() -> None:
+    argv = resolve_adapter("codex", role="reviewer").build_argv(
+        "prompt", Path("/plan.md")
+    )
+
+    assert argv[argv.index("--sandbox") + 1] == "workspace-write"
+    assert "--dangerously-bypass-approvals-and-sandbox" not in argv
+    assert argv[argv.index("-c") + 1] == "mcp_servers={}"
+
+
+def test_codex_sandbox_preflight_runs_command_and_caches_success(tmp_path: Path) -> None:
+    binary, calls = _fake_codex_binary(tmp_path, exit_code=0, stderr="")
+    adapter = CodexAdapter(
+        run_config=AgentRunConfig(
+            binary=str(binary),
+            headless_argv=("exec",),
+            approval_argv=("--sandbox", "read-only"),
+        )
+    )
+
+    assert adapter.resolve_binary() == binary
+    assert adapter.resolve_binary() == binary
+    probe_calls = [json.loads(line) for line in calls.read_text().splitlines()]
+    assert probe_calls == [
+        ["sandbox", "-c", 'sandbox_mode="read-only"', "--", "true"]
+    ]
+
+
+def test_codex_sandbox_preflight_blocks_launch_and_caches_failure(
+    tmp_path: Path,
+) -> None:
+    binary, calls = _fake_codex_binary(
+        tmp_path,
+        exit_code=1,
+        stderr="bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted\n",
+    )
+    adapter = CodexAdapter(
+        run_config=AgentRunConfig(
+            binary=str(binary),
+            headless_argv=("exec",),
+            approval_argv=("--sandbox", "read-only"),
+        )
+    )
+
+    for _ in range(2):
+        with pytest.raises(RuntimeError) as error:
+            adapter.resolve_binary()
+        message = str(error.value)
+        assert "bwrap: loopback: Failed RTM_NEWADDR" in message
+        assert "AppArmor profile for /usr/bin/bwrap containing 'userns,'" in message
+        assert "kernel.apparmor_restrict_unprivileged_userns=0" in message
+        assert "[agents.codex.roles.<role>] approval_argv = [...]" in message
+
+    assert len(calls.read_text().splitlines()) == 1
+
+
+def _fake_codex_binary(
+    tmp_path: Path,
+    *,
+    exit_code: int,
+    stderr: str,
+) -> tuple[Path, Path]:
+    binary = tmp_path / "codex"
+    calls = tmp_path / "probe-calls.jsonl"
+    binary.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json, pathlib, sys\n"
+        f"with pathlib.Path({str(calls)!r}).open('a', encoding='utf-8') as stream:\n"
+        "    stream.write(json.dumps(sys.argv[1:]) + '\\n')\n"
+        f"sys.stderr.write({stderr!r})\n"
+        f"raise SystemExit({exit_code})\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    binary.chmod(0o755)
+    return binary, calls
+
+
+@pytest.mark.parametrize("role", ("reviewer", "router", "triage", "negotiation"))
+def test_claude_read_only_roles_use_allowlist_and_disable_mcp(role: str) -> None:
+    argv = resolve_adapter("claude", role=role).build_argv("prompt", Path("/plan.md"))
+
+    assert argv[argv.index("--permission-mode") + 1] == "dontAsk"
+    allowlist = argv[argv.index("--allowedTools") + 1]
+    assert allowlist == (
+        "Read,Grep,Glob,Bash(git status:*),Bash(git diff:*),Bash(git log:*),"
+        "Bash(git show:*),Bash(git ls-files:*)"
+    )
+    assert "--strict-mcp-config" in argv
+    assert "bypassPermissions" not in argv
+
+
+def test_builtin_read_only_policies_leave_implementer_permissions_unchanged() -> None:
+    codex_argv = resolve_adapter("codex", role="implementer").build_argv(
+        "prompt", Path("/plan.md")
+    )
+    claude_argv = resolve_adapter("claude", role="implementer").build_argv(
+        "prompt", Path("/plan.md")
+    )
+
+    assert "--dangerously-bypass-approvals-and-sandbox" in codex_argv
+    assert "--sandbox" not in codex_argv
+    assert claude_argv[claude_argv.index("--permission-mode") + 1] == "bypassPermissions"
+    assert "--strict-mcp-config" not in claude_argv
+
+
+def test_read_only_role_requires_explicit_policy_for_kimi() -> None:
+    with pytest.raises(
+        ValueError,
+        match=(
+            "Agent 'kimi' has no read-only launch policy for role 'reviewer'; "
+            r"configure \[agents\.kimi\.roles\.reviewer\] approval_argv to opt in\."
+        ),
+    ):
+        resolve_adapter("kimi", role="reviewer")
+
+    config = IssuekitConfig(
+        agent_role_overlays=(
+            (
+                "kimi",
+                (("reviewer", RoleOverlay(approval_argv=("--safe-mode",))),),
+            ),
+        ),
+    )
+    argv = resolve_adapter("kimi", config=config, role="reviewer").build_argv(
+        "prompt", Path("/plan.md")
+    )
+
+    assert argv[:3] == ["-p", "prompt", "--safe-mode"]
+
+
+def test_role_approval_argv_overrides_builtin_policy() -> None:
+    config = IssuekitConfig(
+        agent_role_overlays=(
+            (
+                "codex",
+                (("negotiation", RoleOverlay(approval_argv=("--custom-policy",))),),
+            ),
+        ),
+    )
+    argv = resolve_adapter("codex", config=config, role="negotiation").build_argv(
+        "prompt", Path("/plan.md")
+    )
+
+    assert argv[:3] == ["exec", "prompt", "--custom-policy"]
+
+
+def test_config_adapter_merges_role_and_speed_settings() -> None:
+    adapter = ConfigAgentAdapter(
+        "claude",
+        AgentRunConfig(
+            binary="claude",
+            headless_argv=("-p",),
+            approval_argv=(
+                "--settings",
+                '{"sandbox":{"enabled":true,"allowUnsandboxedCommands":false}}',
+            ),
+            speed=True,
+            speed_argv=(
+                "--settings",
+                '{"fastMode":true,"sandbox":{"enabled":false,"autoAllowBashIfSandboxed":true}}',
+            ),
+        ),
+    )
+
+    argv = adapter.build_argv("prompt", Path("/plan.md"))
+    settings = json.loads(argv[argv.index("--settings") + 1])
+
+    assert argv.count("--settings") == 1
+    assert settings == {
+        "fastMode": True,
+        "sandbox": {
+            "enabled": True,
+            "allowUnsandboxedCommands": False,
+            "autoAllowBashIfSandboxed": True,
+        },
+    }
 
 
 def test_role_prompt_suffix_is_implementer_only_and_model_prompts_still_apply() -> None:

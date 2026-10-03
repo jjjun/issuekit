@@ -203,6 +203,10 @@ def _configure_registered_api(
         "issuekit.agentrun.adapter.shutil.which",
         lambda binary: f"/test-bin/{binary}",
     )
+    monkeypatch.setattr(
+        "issuekit.agentrun.adapters.codex._probe_sandbox",
+        lambda _binary, _mode: None,
+    )
     monkeypatch.chdir(tmp_path)
 
 

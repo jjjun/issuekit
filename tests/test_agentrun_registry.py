@@ -244,7 +244,8 @@ def test_resolve_adapter_rejects_role_reasoning_effort_without_template(
     tmp_path: Path,
 ) -> None:
     (tmp_path / "issuekit.toml").write_text(
-        "[agents.kimi.roles.reviewer]\nreasoning_effort = 'medium'\n",
+        "[agents.kimi.roles.reviewer]\n"
+        "reasoning_effort = 'medium'\napproval_argv = ['--safe-mode']\n",
         encoding="utf-8",
         newline="\n",
     )

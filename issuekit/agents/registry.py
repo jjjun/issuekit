@@ -6,6 +6,7 @@ from dataclasses import replace
 
 from issuekit.agentrun.adapter import AgentAdapter, build_adapter
 from issuekit.config import IssuekitConfig
+from issuekit.config.settings import BUILTIN_ROLE_LAUNCH_POLICIES, READ_ONLY_ROLES
 
 
 def resolve_adapter(
@@ -32,6 +33,20 @@ def resolve_adapter(
             model=role_overlay.model or run_config.model,
             reasoning_effort=role_overlay.reasoning_effort or run_config.reasoning_effort,
         )
+    if role in READ_ONLY_ROLES:
+        approval_argv = (
+            role_overlay.approval_argv
+            if role_overlay is not None and role_overlay.approval_argv is not None
+            else BUILTIN_ROLE_LAUNCH_POLICIES.get(agent_name, {}).get(role)
+        )
+        if approval_argv is None:
+            raise ValueError(
+                f"Agent '{agent_name}' has no read-only launch policy for role '{role}'; "
+                f"configure [agents.{agent_name}.roles.{role}] approval_argv to opt in."
+            )
+        run_config = replace(run_config, approval_argv=approval_argv)
+    elif role_overlay is not None and role_overlay.approval_argv is not None:
+        run_config = replace(run_config, approval_argv=role_overlay.approval_argv)
     return build_adapter(
         agent_name,
         run_config,

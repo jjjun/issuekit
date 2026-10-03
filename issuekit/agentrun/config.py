@@ -21,6 +21,7 @@ class AgentRunConfig:
     resume_flag: str | None = None
     approval_flag: str | None = None
     approval_value: str | None = None
+    approval_argv: tuple[str, ...] | None = None
     output_format_flag: str | None = None
     output_format: str | None = None
     model_flag: str | None = None

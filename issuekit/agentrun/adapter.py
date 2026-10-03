@@ -113,10 +113,25 @@ class ConfigAgentAdapter(AgentAdapter):
         prompt = self.compose_prompt(prompt)
         argv = list(self.run_config.headless_argv)
         argv.append(prompt)
-        if self.run_config.approval_flag:
-            argv.append(self.run_config.approval_flag)
-            if self.run_config.approval_value:
-                argv.append(self.run_config.approval_value)
+        approval_argv = self.run_config.approval_argv
+        if approval_argv is None:
+            approval_argv = (
+                (self.run_config.approval_flag,)
+                + ((self.run_config.approval_value,) if self.run_config.approval_value else ())
+                if self.run_config.approval_flag
+                else ()
+            )
+        speed_argv = self.run_config.speed_argv if self.run_config.speed is True else ()
+        if _has_settings_argument(approval_argv) and _has_settings_argument(speed_argv):
+            approval_settings, approval_argv = _without_settings_arguments(approval_argv)
+            speed_settings, speed_argv = _without_settings_arguments(speed_argv)
+            merged_settings = _merge_settings(speed_settings, approval_settings)
+            approval_argv = (
+                *approval_argv,
+                "--settings",
+                json.dumps(merged_settings, separators=(",", ":")),
+            )
+        argv.extend(approval_argv)
         if self.run_config.output_format_flag and self.run_config.output_format:
             argv.extend(
                 [self.run_config.output_format_flag, self.run_config.output_format]
@@ -129,7 +144,7 @@ class ConfigAgentAdapter(AgentAdapter):
                 for entry in self.run_config.effort_argv
             )
         if self.run_config.speed is True:
-            argv.extend(self.run_config.speed_argv)
+            argv.extend(speed_argv)
         if session_id and self.run_config.resumable:
             flag = (
                 self.run_config.resume_flag
@@ -181,6 +196,57 @@ class ConfigAgentAdapter(AgentAdapter):
             if model_prompt:
                 parts.append(model_prompt)
         return "\n\n".join(parts)
+
+
+def _has_settings_argument(argv: tuple[str, ...]) -> bool:
+    return any(entry == "--settings" or entry.startswith("--settings=") for entry in argv)
+
+
+def _without_settings_arguments(
+    argv: tuple[str, ...],
+) -> tuple[dict[str, object], tuple[str, ...]]:
+    settings: dict[str, object] = {}
+    remaining: list[str] = []
+    index = 0
+    while index < len(argv):
+        entry = argv[index]
+        if entry == "--settings":
+            index += 1
+            if index == len(argv):
+                raise ValueError("--settings requires a JSON object to merge.")
+            value = argv[index]
+        elif entry.startswith("--settings="):
+            value = entry.removeprefix("--settings=")
+        else:
+            remaining.append(entry)
+            index += 1
+            continue
+        try:
+            parsed = json.loads(value)
+        except json.JSONDecodeError as exc:
+            raise ValueError(
+                "Cannot merge --settings arguments unless both values are JSON objects."
+            ) from exc
+        if not isinstance(parsed, dict):
+            raise ValueError(
+                "Cannot merge --settings arguments unless both values are JSON objects."
+            )
+        settings = _merge_settings(settings, parsed)
+        index += 1
+    return settings, tuple(remaining)
+
+
+def _merge_settings(
+    lower: dict[str, object], higher: dict[str, object]
+) -> dict[str, object]:
+    merged = dict(lower)
+    for key, value in higher.items():
+        previous = merged.get(key)
+        if isinstance(previous, dict) and isinstance(value, dict):
+            merged[key] = _merge_settings(previous, value)
+        else:
+            merged[key] = value
+    return merged
 
 
 def _resolve_model_prompt(

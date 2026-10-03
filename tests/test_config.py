@@ -1411,6 +1411,20 @@ def test_load_config_reads_agent_role_overlays(tmp_path: Path) -> None:
     }
 
 
+def test_load_config_reads_negotiation_approval_argv(tmp_path: Path) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        '[agents.kimi.roles.negotiation]\napproval_argv = ["--sandbox", "read-only"]\n',
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    config = load_config(tmp_path)
+
+    assert dict(dict(config.agent_role_overlays)["kimi"]) == {
+        "negotiation": RoleOverlay(approval_argv=("--sandbox", "read-only"))
+    }
+
+
 @pytest.mark.parametrize(
     ("body", "message"),
     [
@@ -1420,11 +1434,11 @@ def test_load_config_reads_agent_role_overlays(tmp_path: Path) -> None:
         ),
         (
             "[agents.claude.roles.author]\nmodel = 'claude'\n",
-            "supported roles: implementer, reviewer, router, triage",
+            "supported roles: implementer, reviewer, router, triage, negotiation",
         ),
         (
             "[agents.claude.roles.reviewer]\nbinary = 'claude'\n",
-            "only supports model and reasoning_effort",
+            "only supports model, reasoning_effort, and approval_argv",
         ),
     ],
 )

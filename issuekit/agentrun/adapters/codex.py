@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import subprocess
+from functools import cache
 from pathlib import Path
 
 from issuekit.agentrun.adapter import ConfigAgentAdapter
@@ -11,6 +13,45 @@ from issuekit.agentrun.config import AgentRunConfig
 
 class CodexAdapter(ConfigAgentAdapter):
     """Adapter for the Codex exec JSONL event contract."""
+
+    def resolve_binary(self) -> Path:
+        binary = super().resolve_binary()
+        sandbox_mode = self._sandbox_mode()
+        if sandbox_mode is not None:
+            diagnostic = _probe_sandbox(str(binary), sandbox_mode)
+            if diagnostic is not None:
+                raise RuntimeError(
+                    f"Codex sandbox preflight failed for mode '{sandbox_mode}'; "
+                    "the agent was not launched. Probe stderr: "
+                    f"{diagnostic}\nAllow unprivileged user namespaces for "
+                    "bubblewrap, for example with an AppArmor profile for "
+                    "/usr/bin/bwrap containing 'userns,' or by setting "
+                    "kernel.apparmor_restrict_unprivileged_userns=0, then rerun. "
+                    "To opt out for this role, configure "
+                    "[agents.codex.roles.<role>] approval_argv = [...]."
+                )
+        return binary
+
+    def _sandbox_mode(self) -> str | None:
+        if self.run_config.runtime != "exec":
+            return None
+
+        approval_argv = self.run_config.approval_argv
+        if approval_argv is None:
+            approval_argv = (
+                (self.run_config.approval_flag,)
+                + ((self.run_config.approval_value,) if self.run_config.approval_value else ())
+                if self.run_config.approval_flag
+                else ()
+            )
+
+        for index, argument in enumerate(approval_argv):
+            if argument in ("--sandbox", "-s"):
+                if index + 1 < len(approval_argv):
+                    return approval_argv[index + 1]
+            elif argument.startswith("--sandbox="):
+                return argument.partition("=")[2]
+        return None
 
     def __init__(
         self,
@@ -107,6 +148,41 @@ class CodexAdapter(ConfigAgentAdapter):
         elif turn_completed:
             parsed["is_error"] = "false"
         return parsed
+
+
+@cache
+def _probe_sandbox(binary: str, mode: str) -> str | None:
+    """Return a diagnostic when Codex cannot execute a command in this sandbox."""
+    try:
+        result = subprocess.run(
+            [
+                binary,
+                "sandbox",
+                "-c",
+                f"sandbox_mode={json.dumps(mode)}",
+                "--",
+                "true",
+            ],
+            capture_output=True,
+            check=False,
+            text=True,
+            timeout=10,
+        )
+    except subprocess.TimeoutExpired as exc:
+        diagnostic = exc.stderr or exc.stdout
+        if isinstance(diagnostic, bytes):
+            diagnostic = diagnostic.decode(errors="replace")
+        return (diagnostic or str(exc)).strip()
+    except OSError as exc:
+        return str(exc)
+
+    if result.returncode == 0:
+        return None
+    return (
+        result.stderr.strip()
+        or result.stdout.strip()
+        or f"probe exited with status {result.returncode} without diagnostic output"
+    )
 
 
 def _usage_counts(usage: object) -> dict[str, int]:
