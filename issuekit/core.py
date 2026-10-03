@@ -8,7 +8,12 @@ from dataclasses import dataclass
 from typing import Any
 
 VALID_ISSUE_PRIORITIES = {"high", "medium", "low"}
-WORKFLOW_TOKEN_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]{0,31}$")
+WORKFLOW_TOKEN_MAX_LEN = 32
+WORKFLOW_TOKEN_PATTERN = re.compile(
+    rf"^[a-z0-9][a-z0-9_-]{{0,{WORKFLOW_TOKEN_MAX_LEN - 1}}}$"
+)
+
+
 @dataclass(frozen=True)
 class Issue:
     id: int | None

@@ -370,9 +370,15 @@ def resolve_api_worker(config: IssuekitConfig, address: str) -> JsonDict:
     if not matches:
         raise WorkerRemovalError(f"Worker was not found: {address}")
     if len(matches) > 1:
-        displays = ", ".join(worker_display_from_row(worker) for worker in matches)
+        displays = ", ".join(_qualified_worker_display(worker) for worker in matches)
         raise WorkerRemovalError(f"Worker address is ambiguous: {address} ({displays})")
     return matches[0]
+
+
+def _qualified_worker_display(worker: Mapping[str, object]) -> str:
+    display = worker_display_from_row(worker)
+    machine_id = str(worker.get("machine_id") or "").strip()
+    return f"{display}@{machine_id}" if machine_id else display
 
 
 def try_post_worker_registration(

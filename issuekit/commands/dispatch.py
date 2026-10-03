@@ -8,7 +8,7 @@ from pathlib import Path
 
 from issuekit.commands._common import print_json, run_command
 from issuekit.config import IssuekitConfig, load_config
-from issuekit.core import Issue, issue_dict
+from issuekit.core import Issue, issue_dict, parse_issue_id_arg
 from issuekit.workers.addressing import target_worker_repo_id, validate_target_worker
 from issuekit.workflow import WorkflowError
 
@@ -41,9 +41,10 @@ def register(subparsers: argparse._SubParsersAction) -> None:
 
 def run(args) -> int:
     def action() -> int:
+        issue_id = parse_issue_id_arg(args.id)
         config = load_config(Path.cwd())
         issue = dispatch_issue(
-            int(args.id),
+            issue_id,
             target_worker=args.target_worker,
             assignee=args.assignee,
             stage=args.stage,

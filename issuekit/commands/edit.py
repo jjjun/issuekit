@@ -111,7 +111,7 @@ def edit_issue(
         if existing.issue_status == "completed":
             raise WorkflowError(f"Issue #{issue_id} is completed and cannot be edited.")
         stage = existing.stage or "todo"
-        if stage != "todo" and not force:
+        if stage not in {"todo", "planned"} and not force:
             raise WorkflowError(
                 f"Issue #{issue_id} is at stage {stage}; "
                 "pass --force to edit an issue that is already in flight."

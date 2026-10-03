@@ -242,6 +242,15 @@ def test_claims_command_filters_stage(
     assert "#1: Implement" not in out
 
 
+def test_claims_stage_argument_rejects_unknown_stage(capsys) -> None:
+    assert cli.main(["claims", "--stage", "done"]) == 2
+
+    captured = capsys.readouterr()
+    assert "invalid choice: 'done'" in captured.err
+    assert "implementing" in captured.err
+    assert "review" in captured.err
+
+
 def test_claims_command_handles_empty_result(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

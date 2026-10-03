@@ -401,6 +401,19 @@ def find_for(
         return active_store.find_for(assignee, stage)
 
 
+def validate_queue_stage(stage: str | None, config: IssuekitConfig) -> None:
+    if not stage:
+        return
+    if stage == "done":
+        raise WorkflowError(
+            "queue lists active issues; completed issues have stage done - "
+            "use issuekit show <id>"
+        )
+    if stage not in config.stages:
+        valid_stages = ", ".join(config.stages)
+        raise WorkflowError(f"Unknown stage: {stage}. Valid stages: {valid_stages}")
+
+
 def ensure_assigned_reviewer(
     issue: Issue,
     reviewer_arg: str | None,

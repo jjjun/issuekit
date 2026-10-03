@@ -287,9 +287,49 @@ def test_filter_issuekit_mcp_processes_posix_matches_script_token() -> None:
         dev_tool.PosixProcess(2, "/home/jj/.local/share/uv/tools/issuekit/bin/issuekit-mcp"),
         dev_tool.PosixProcess(3, "/usr/bin/python3 /home/jj/.local/bin/issuekit-mcp"),
         dev_tool.PosixProcess(4, "/home/jj/.venv/bin/issuekit dev-tool reload-mcp"),
+        dev_tool.PosixProcess(5, "/usr/bin/vim /home/jj/.local/bin/issuekit-mcp"),
+        dev_tool.PosixProcess(6, "/home/jj/.venv/bin/issuekit issuekit-mcp"),
     ]
 
     assert dev_tool.filter_issuekit_mcp_processes_posix(processes) == processes[1:3]
+
+
+def test_reload_mcp_reports_missing_ps_without_traceback(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(dev_tool, "_is_windows", lambda: False)
+
+    def runner(argv):
+        raise FileNotFoundError("ps")
+
+    exit_code = dev_tool._run_reload_mcp(SimpleNamespace(json=True), runner=runner)
+
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert exit_code == 1
+    assert payload["ok"] is False
+    assert "Failed to list processes with ps" in payload["diagnostics"][0]["message"]
+    assert "Traceback" not in captured.err
+
+
+def test_reload_mcp_platform_names_in_output_and_no_stop_help(
+    monkeypatch,
+    capsys,
+) -> None:
+    monkeypatch.setattr(dev_tool, "_is_windows", lambda: False)
+    assert cli.main(["dev-tool", "install-editable", "--help"]) == 0
+    assert "Do not stop running issuekit-mcp processes" in capsys.readouterr().out
+
+    assert (
+        dev_tool._run_reload_mcp(
+            SimpleNamespace(json=False),
+            runner=lambda argv: dev_tool.CommandResult(list(argv), 0, ""),
+        )
+        == 0
+    )
+    assert "Stopped issuekit-mcp processes: none" in capsys.readouterr().out
+
+    monkeypatch.setattr(dev_tool, "_is_windows", lambda: True)
+    assert cli.main(["dev-tool", "install-editable", "--help"]) == 0
+    assert "Do not stop running issuekit-mcp.exe processes" in capsys.readouterr().out
 
 
 def test_filter_issuekit_mcp_processes_matches_name_or_executable() -> None:

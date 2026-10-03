@@ -1290,6 +1290,9 @@ def test_api_cli_propose_deduplicated_matching_payload_reports_deduplicated(
     assert cli.main(argv) == 0
     captured = capsys.readouterr()
     assert "already has pending proposal #1" in captured.out
+    assert "Sent proposal" not in captured.out
+    assert "no new proposal was created" in captured.out
+    assert read_author_guard(tmp_path) is None
 
 
 def test_api_cli_propose_deduplicated_response_with_stale_origin_still_reports_mismatch(

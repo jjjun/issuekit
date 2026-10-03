@@ -14,6 +14,7 @@ from issuekit.config import (
     WorkerIdentity,
     load_config,
 )
+from issuekit.config.settings import PROFILE_TAG_MAX_LEN
 
 _ENV_KEYS = (
     "ISSUEKIT_API_PASSWORD",
@@ -661,6 +662,27 @@ def test_load_config_rejects_invalid_profile_tag_token(tmp_path: Path) -> None:
         newline="\n",
     )
 
+    with pytest.raises(ValueError, match="profile_tags"):
+        load_config(tmp_path)
+
+
+def test_profile_tag_length_matches_workflow_token_limit(tmp_path: Path) -> None:
+    assert PROFILE_TAG_MAX_LEN == 32
+    valid_tag = "a" * PROFILE_TAG_MAX_LEN
+    (tmp_path / "issuekit.toml").write_text(
+        f"profile_tags = ['{valid_tag}']\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    assert load_config(tmp_path).profile_tags == ("a" * PROFILE_TAG_MAX_LEN,)
+
+    invalid_tag = "a" * (PROFILE_TAG_MAX_LEN + 1)
+    (tmp_path / "issuekit.toml").write_text(
+        f"profile_tags = ['{invalid_tag}']\n",
+        encoding="utf-8",
+        newline="\n",
+    )
     with pytest.raises(ValueError, match="profile_tags"):
         load_config(tmp_path)
 

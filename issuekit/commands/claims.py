@@ -8,6 +8,7 @@ from pathlib import Path
 from issuekit.commands._common import print_json, run_command
 from issuekit.config import load_config
 from issuekit.workers.registry import (
+    ACTIVE_CLAIM_STAGES,
     WorkerClaim,
     WorkerListingError,
     list_worker_claims,
@@ -22,7 +23,11 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         help="List active worker claims for this project.",
     )
     claims_parser.add_argument("--worker", help="Filter claims by worker key.")
-    claims_parser.add_argument("--stage", help="Filter claims by workflow stage.")
+    claims_parser.add_argument(
+        "--stage",
+        choices=ACTIVE_CLAIM_STAGES,
+        help="Filter claims by active workflow stage.",
+    )
     claims_parser.add_argument("--json", action="store_true", help="Print JSON output.")
     claims_parser.set_defaults(func=run)
 

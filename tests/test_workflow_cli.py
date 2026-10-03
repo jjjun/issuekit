@@ -92,6 +92,53 @@ def test_queue_command_uses_api_store_when_configured(
     assert "id=2" not in captured.out
 
 
+def test_queue_rejects_done_stage_with_show_guidance(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient()
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'demo'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["queue", "--stage", "done", "--json"]) == 1
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "queue lists active issues; completed issues have stage done - use issuekit show <id>" in captured.err
+    assert client.calls == []
+
+
+def test_queue_unknown_stage_lists_valid_stages(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'demo'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["queue", "--stage", "ready"]) == 1
+
+    assert "Unknown stage: ready. Valid stages: planned, todo, implementing, review, changes_requested, done" in capsys.readouterr().err
+
+
+def test_queue_help_lists_valid_stages(capsys) -> None:
+    assert cli.main(["queue", "--help"]) == 0
+
+    help_text = capsys.readouterr().out
+    for stage in ("planned", "todo", "implementing", "review", "changes_requested", "done"):
+        assert stage in help_text
+
+
 def test_queue_treats_empty_project_environment_as_unset(
     tmp_path: Path,
     monkeypatch,

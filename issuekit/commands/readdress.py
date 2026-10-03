@@ -7,7 +7,7 @@ from pathlib import Path
 
 from issuekit.commands._common import print_json, run_command
 from issuekit.config import load_config
-from issuekit.core import issue_dict
+from issuekit.core import issue_dict, parse_issue_id_arg
 from issuekit.workflow import ReaddressResult, WorkflowError, readdress_issue
 
 
@@ -27,7 +27,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
 
 def run(args) -> int:
     def action() -> int:
-        issue_id = int(args.id)
+        issue_id = parse_issue_id_arg(args.id)
         config = load_config(Path.cwd())
         result = readdress_issue(issue_id, reason=args.reason, config=config)
         if args.json:

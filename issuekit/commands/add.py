@@ -8,7 +8,8 @@ from dataclasses import replace
 from pathlib import Path
 
 from issuekit.config import load_config, resolve_repository_root
-from issuekit.core import is_valid_workflow_token
+from issuekit.config.settings import REPO_DESCRIPTION_MAX_LEN
+from issuekit.core import is_valid_workflow_token, optional_str
 from issuekit.workers.identity import WorkerRegistrationError, register_worker
 from issuekit.workers.registry import try_post_worker_registration
 
@@ -48,6 +49,13 @@ def register(subparsers: argparse._SubParsersAction) -> None:
 def run(args) -> int:
     cwd = Path.cwd()
     repo_root = resolve_repository_root(cwd)
+    try:
+        _metadata_flags(args.repo_metadata, "--repo-metadata")
+        _metadata_flags(args.worker_metadata, "--worker-metadata")
+        _validated_repo_description(args.repo_description)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
     try:
         result = register_worker(
             cwd,
@@ -98,10 +106,20 @@ def _apply_metadata_flags(config, args):
     worker_metadata.update(_metadata_flags(args.worker_metadata, "--worker-metadata"))
     return replace(
         config,
-        repo_description=args.repo_description or config.repo_description,
+        repo_description=_validated_repo_description(args.repo_description)
+        or config.repo_description,
         repo_metadata=repo_metadata,
         worker_metadata=worker_metadata,
     )
+
+
+def _validated_repo_description(value: str | None) -> str | None:
+    description = optional_str(value)
+    if description is not None and len(description) > REPO_DESCRIPTION_MAX_LEN:
+        raise ValueError(
+            f"repo_description must be at most {REPO_DESCRIPTION_MAX_LEN} characters."
+        )
+    return description
 
 
 def _metadata_flags(entries: list[str], label: str) -> dict[str, str]:

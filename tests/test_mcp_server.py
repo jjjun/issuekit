@@ -483,6 +483,35 @@ def test_list_negotiation_threads_reads_mock_store_without_api_client(
     assert seen == {"project": "demo", "use_mock": True}
 
 
+def test_list_negotiation_threads_closes_store(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'demo'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    class TrackingStore(MockNegotiationStore):
+        closed = False
+
+        def __exit__(self, *exc_info: object) -> None:
+            self.closed = True
+            super().__exit__(*exc_info)
+
+    store = TrackingStore(None)
+    monkeypatch.setattr(
+        mcp_server,
+        "get_negotiation_store",
+        lambda config, *, use_mock: store,
+    )
+    server = create_server(tmp_path)
+
+    assert _call(server, "list_negotiation_threads", {"mock": True}) == []
+    assert store.closed is True
+
+
 def test_list_workers_returns_catalog(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     client = FakeIssuekitClient()
     client.upsert_worker(
@@ -1450,6 +1479,23 @@ def test_list_queue_can_include_body(tmp_path: Path, monkeypatch) -> None:
     assert queue[0]["body"] == "Issue body."
 
 
+def test_list_queue_rejects_done_stage_with_show_guidance(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    client = FakeIssuekitClient()
+    _configure_api(tmp_path, monkeypatch, client)
+    server = create_server(tmp_path)
+
+    with pytest.raises(
+        Exception,
+        match="queue lists active issues; completed issues have stage done",
+    ):
+        _call(server, "list_queue", {"stage": "done"})
+
+    assert client.calls == []
+
+
 def test_request_changes_defaults_to_recorded_implementer(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -2046,8 +2092,13 @@ def test_mcp_propose_flags_same_origin_payload_mismatch(
     assert sent["title"] == "Old title"
     assert sent["idempotent_existing"] is True
     assert sent["payload_mismatch"] is True
+    assert sent["ok"] is False
     assert sent["payload_mismatch_fields"] == ["title", "body"]
     assert "from-issue" in sent["warning"]
+    descriptions = asyncio.run(server.list_tools())
+    propose_description = next(tool.description for tool in descriptions if tool.name == "propose")
+    assert "payload_mismatch" in propose_description
+    assert "ok=false" in propose_description
 
 
 def test_mcp_propose_rejects_unknown_target_when_profile_catalog_exists(
@@ -2189,9 +2240,10 @@ def test_cli_proposal_json_matches_mcp_output(tmp_path: Path, monkeypatch, capsy
     assert cli_sent["origin"] == mcp_sent["origin"]
     assert cli_sent["title"] == mcp_sent["title"]
     assert cli_sent["payload_mismatch"] == mcp_sent["payload_mismatch"]
-    assert cli_sent["stop"] == mcp_sent["stop"]
-    assert "STOP_NOW" not in cli_sent["stop"]
-    assert cli_sent["authorGuard"]["kind"] == mcp_sent["authorGuard"]["kind"] == "proposal"
+    assert "authorGuard" in mcp_sent
+    assert "authorGuard" not in cli_sent
+    assert "stop" not in cli_sent
+    assert mcp_sent["authorGuard"]["kind"] == "proposal"
 
     # list_incoming parity
     target_server = create_server(tmp_path)

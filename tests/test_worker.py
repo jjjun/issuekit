@@ -326,6 +326,30 @@ def test_add_cli_fails_in_non_git_directory(
     assert "git-managed checkout" in capsys.readouterr().err
 
 
+@pytest.mark.parametrize(
+    "extra_args",
+    [
+        ["--repo-metadata", "invalid-entry"],
+        ["--worker-metadata", "invalid-entry"],
+        ["--repo-description", "x" * 501],
+    ],
+)
+def test_add_validates_publish_metadata_before_local_registration(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    extra_args: list[str],
+) -> None:
+    _init_git(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("ISSUEKIT_WORKER_REGISTRY", str(tmp_path / "workers.toml"))
+
+    assert cli.main(["add", "--repo-id", "project", *extra_args]) == 1
+
+    assert capsys.readouterr().err
+    assert not (tmp_path / "issuekit.local.toml").exists()
+
+
 def test_add_cli_fails_in_git_checkout_without_origin_unless_repo_id_is_supplied(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

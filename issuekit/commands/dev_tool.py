@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import platform
+import shlex
 import subprocess
 import sys
 from collections.abc import Callable, Sequence
@@ -79,7 +80,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     install_editable_parser.add_argument(
         "--no-stop",
         action="store_true",
-        help="Do not stop running issuekit-mcp.exe processes before installing.",
+        help=f"Do not stop running {_mcp_process_name()} processes before installing.",
     )
     install_editable_parser.add_argument("--json", action="store_true", help="Print JSON output.")
     install_editable_parser.set_defaults(func=run)
@@ -95,7 +96,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     reinstall_parser.add_argument(
         "--no-stop",
         action="store_true",
-        help="Do not stop running issuekit-mcp.exe processes before reinstalling.",
+        help=f"Do not stop running {_mcp_process_name()} processes before reinstalling.",
     )
     reinstall_parser.add_argument("--json", action="store_true", help="Print JSON output.")
     reinstall_parser.set_defaults(func=run)
@@ -205,7 +206,14 @@ def _stop_issuekit_mcp_processes_posix(runner: Runner) -> dict[str, object]:
         "commands": [],
         "diagnostics": [],
     }
-    list_result = runner(_list_processes_command_posix())
+    try:
+        list_result = runner(_list_processes_command_posix())
+    except OSError as exc:
+        payload["ok"] = False
+        payload["diagnostics"].append(
+            _diagnostic("error", f"Failed to list processes with ps: {exc}")
+        )
+        return payload
     payload["commands"].append(_command_record(list_result))
     if list_result.returncode != 0:
         payload["ok"] = False
@@ -429,12 +437,31 @@ def _parse_ps_output(stdout: str) -> list[PosixProcess]:
 
 
 def _issuekit_mcp_token(args: str) -> str | None:
-    # The MCP server may run either as the issuekit-mcp entry-point directly or
-    # as `python .../issuekit-mcp`, so match the script token wherever it sits.
-    for token in args.split():
-        if PurePosixPath(token).name == MCP_PROCESS_NAME_POSIX:
-            return token
+    try:
+        argv = shlex.split(args)
+    except ValueError:
+        return None
+    if not argv:
+        return None
+    if PurePosixPath(argv[0]).name == MCP_PROCESS_NAME_POSIX:
+        return argv[0]
+    if (
+        len(argv) > 1
+        and _is_python_executable(argv[0])
+        and PurePosixPath(argv[1]).name == MCP_PROCESS_NAME_POSIX
+    ):
+        return argv[1]
     return None
+
+
+def _is_python_executable(value: str) -> bool:
+    name = PurePosixPath(value).name
+    if name == "python":
+        return True
+    if not name.startswith("python"):
+        return False
+    version = name[len("python") :]
+    return bool(version) and version.replace(".", "").isdigit()
 
 
 def _is_issuekit_mcp_process_posix(process: PosixProcess) -> bool:
@@ -557,12 +584,12 @@ def _print_human(payload: dict[str, object]) -> None:
     if isinstance(transport_check, dict):
         print(f"Client transport check: {transport_check['status']}")
     if payload["stopped_processes"]:
-        print("Stopped issuekit-mcp.exe processes:")
+        print(f"Stopped {_mcp_process_name()} processes:")
         for process in payload["stopped_processes"]:
             path = process.get("executable_path") or "-"
             print(f"  PID {process['pid']}: {path} [{process['status']}]")
     else:
-        print("Stopped issuekit-mcp.exe processes: none")
+        print(f"Stopped {_mcp_process_name()} processes: none")
     for diagnostic in payload["diagnostics"]:
         print(f"[{diagnostic['status'].upper()}] {diagnostic['message']}")
 
@@ -590,3 +617,7 @@ def _diagnostic(status: str, message: str) -> dict[str, str]:
 
 def _is_windows() -> bool:
     return platform.system() == "Windows"
+
+
+def _mcp_process_name() -> str:
+    return MCP_PROCESS_NAME if _is_windows() else MCP_PROCESS_NAME_POSIX

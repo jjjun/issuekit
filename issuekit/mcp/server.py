@@ -62,6 +62,7 @@ from issuekit.workflow import (
     claim_next,
     find_for,
     resolve_implementer,
+    validate_queue_stage,
 )
 from issuekit.workflow import (
     next_review as workflow_next_review,
@@ -287,7 +288,13 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
             )
         return issue_dict(issue, include_body=True)
 
-    @server.tool(description="List active queue entries, optionally filtered by assignee and stage.")
+    @server.tool(
+        description=(
+            "List active queue entries, optionally filtered by assignee and stage "
+            "(planned, todo, implementing, review, or changes_requested). "
+            "Completed issues have stage done; use get_issue for those."
+        )
+    )
     async def list_queue(
         assignee: str | None = None,
         stage: str | None = None,
@@ -295,6 +302,7 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
         ctx: Context | None = None,
     ) -> list[dict[str, Any]]:
         async with _api_store(root, ctx) as (config, _config_root, store):
+            validate_queue_stage(stage, config)
             return [
                 issue_dict(issue, include_body=with_body)
                 for issue in find_for(assignee, stage=stage, config=config, store=store)
@@ -453,7 +461,8 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
             "Send a cross-repository proposal from the origin project to the target "
             "project inbox; use this instead of authoring directly in the target repo. "
             "Pass depends_on as project#N, project#issue:N, or project#proposal:N "
-            "for upstream dependencies."
+            "for upstream dependencies. A payload_mismatch response has ok=false "
+            "and means the pending proposal does not match your requested text."
         )
     )
     async def propose(
@@ -481,6 +490,8 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
             )
             sent = send_proposal(config, proposal)
         if sent.get("payload_mismatch"):
+            return {**sent, "ok": False}
+        if sent.get("deduplicated") or sent.get("idempotent_existing"):
             return sent
         guard = create_author_guard(
             config_root,
@@ -534,14 +545,14 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
                 "status must be negotiating, agreed, blocked, or cancelled."
             )
         async with _api_config(root, ctx) as (config, _config_root):
-            store = get_negotiation_store(config, use_mock=mock)
-            if thread_id:
-                return inspect_thread(thread_id, store=store).to_dict()
-            thread_status = ThreadStatus(status) if status else None
-            return [
-                _negotiation_thread_summary_dict(summary)
-                for summary in store.list_threads(status=thread_status)
-            ]
+            with get_negotiation_store(config, use_mock=mock) as store:
+                if thread_id:
+                    return inspect_thread(thread_id, store=store).to_dict()
+                thread_status = ThreadStatus(status) if status else None
+                return [
+                    _negotiation_thread_summary_dict(summary)
+                    for summary in store.list_threads(status=thread_status)
+                ]
 
     @server.tool(description="Adopt an incoming proposal as a local active issue.")
     async def adopt_proposal(

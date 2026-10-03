@@ -74,6 +74,11 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         help="Print candidates without deleting them.",
     )
     prune_parser.add_argument(
+        "--yes",
+        action="store_true",
+        help="Confirm deletion without an interactive prompt.",
+    )
+    prune_parser.add_argument(
         "--json",
         action="store_true",
         default=argparse.SUPPRESS,
@@ -148,7 +153,7 @@ def run_prune(args) -> int:
                 return 0
             _print_prune_preview(preview)
             return 0
-        _confirm_prune_count(len(preview.candidates))
+        _confirm_prune_count(len(preview.candidates), yes=args.yes)
         result = prune_api_workers(
             config,
             stale_after_sec=args.stale_after_sec,
@@ -289,9 +294,17 @@ def _current_issue_text(worker: dict, result: WorkerRemovalResult) -> str:
     return str(current) if current else "-"
 
 
-def _confirm_prune_count(count: int) -> None:
-    if count == 0:
+def _confirm_prune_count(count: int, *, yes: bool) -> None:
+    if count == 0 or yes:
         return
-    response = input(f"Type {count} to delete {count} stale worker(s): ").strip()
+    if not sys.stdin.isatty():
+        raise WorkerRemovalError(
+            "Worker prune requires --yes when stdin is non-interactive."
+        )
+    print(f"Type {count} to delete {count} stale worker(s): ", end="", file=sys.stderr)
+    try:
+        response = input().strip()
+    except EOFError:
+        response = ""
     if response != str(count):
         raise WorkerRemovalError("Worker prune was not confirmed.")

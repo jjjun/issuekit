@@ -9,7 +9,7 @@ from issuekit.commands._common import print_json, run_command
 from issuekit.config import load_config
 from issuekit.core import issue_dict
 from issuekit.issues.display import dependency_marker
-from issuekit.workflow import WorkflowError, find_for
+from issuekit.workflow import WorkflowError, find_for, validate_queue_stage
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:
@@ -18,7 +18,13 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         help="List active issues, optionally filtered by assignee.",
     )
     queue_parser.add_argument("--assignee", help="Assignee to list.")
-    queue_parser.add_argument("--stage", help="Workflow stage filter.")
+    queue_parser.add_argument(
+        "--stage",
+        help=(
+            "Workflow stage filter (valid stages: planned, todo, implementing, "
+            "review, changes_requested, done)."
+        ),
+    )
     queue_parser.add_argument("--json", action="store_true", help="Print JSON output.")
     queue_parser.add_argument(
         "--with-body",
@@ -33,6 +39,7 @@ def run(args) -> int:
         if args.with_body and not args.json:
             raise ValueError("--with-body requires --json.")
         config = load_config(Path.cwd())
+        validate_queue_stage(args.stage, config)
         issues = find_for(
             args.assignee or None,
             stage=args.stage,

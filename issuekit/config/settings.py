@@ -14,6 +14,7 @@ from issuekit.agentrun.config import AgentRunConfig
 from issuekit.config.root import resolve_repository_root
 from issuekit.core import (
     VALID_ISSUE_PRIORITIES,
+    WORKFLOW_TOKEN_MAX_LEN,
     is_valid_workflow_token,
     optional_int,
     optional_str,
@@ -54,7 +55,7 @@ REPO_DESCRIPTION_MAX_LEN = 500
 # lives in a committed markdown file; summary/tags are short optional metadata.
 DEFAULT_PROFILE_FILE = "ISSUEKIT.md"
 PROFILE_SUMMARY_MAX_LEN = 500
-PROFILE_TAG_MAX_LEN = 40
+PROFILE_TAG_MAX_LEN = WORKFLOW_TOKEN_MAX_LEN
 PROFILE_TAGS_MAX = 20
 AGENT_ROLES = frozenset({"author", "implementer", "pm", "reviewer", "triage"})
 ROLE_OVERLAY_ROLES = frozenset({"implementer", "reviewer", "router", "triage"})

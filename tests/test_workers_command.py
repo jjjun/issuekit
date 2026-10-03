@@ -1,10 +1,12 @@
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from issuekit import cli
 from issuekit import store as store_module
+from issuekit.config import IssuekitConfig
 from issuekit.testing import FakeIssuekitClient
 from issuekit.workers import registry as worker_registry
 from tests.issue_helpers import api_issue
@@ -208,6 +210,26 @@ def test_workers_remove_deletes_by_dotted_key(
     ]
 
 
+def test_workers_remove_ambiguity_lists_machine_qualified_addresses(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workers = [
+        {"machine_id": "machine-a", "repo_id": "mine-py", "worker_name": "checkout"},
+        {"machine_id": "machine-b", "repo_id": "mine-py", "worker_name": "checkout"},
+    ]
+    monkeypatch.setattr(worker_registry, "list_api_workers", lambda config: workers)
+
+    with pytest.raises(worker_registry.WorkerRemovalError) as exc_info:
+        worker_registry.resolve_api_worker(
+            IssuekitConfig(project="mine-py"), "checkout.mine-py"
+        )
+
+    assert str(exc_info.value) == (
+        "Worker address is ambiguous: checkout.mine-py "
+        "(checkout.mine-py@machine-a, checkout.mine-py@machine-b)"
+    )
+
+
 def test_workers_remove_rejects_legacy_id(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -405,7 +427,7 @@ def test_workers_prune_aborts_when_candidate_ids_change_with_same_count(
     )
     monkeypatch.setattr("builtins.input", lambda prompt: "1")
 
-    assert cli.main(["workers", "prune"]) == 1
+    assert cli.main(["workers", "prune", "--yes"]) == 1
 
     assert (
         "candidate count changed or the candidate set changed"
@@ -550,13 +572,92 @@ def test_workers_prune_requires_count_confirmation_before_delete(
     )
     client._workers["stale.mine-py"]["last_seen"] = "2000-01-01T00:00:00Z"
     _configure_api(tmp_path, monkeypatch, client)
-    monkeypatch.setattr("builtins.input", lambda prompt: "1")
+    monkeypatch.setattr("sys.stdin", SimpleNamespace(isatty=lambda: True))
+    monkeypatch.setattr("builtins.input", lambda: "1")
 
     assert cli.main(["workers", "prune", "--json"]) == 0
 
-    payload = json.loads(capsys.readouterr().out)
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert captured.err.startswith("Type 1 to delete 1 stale worker(s): ")
     assert payload["deleted"] == [{"id": "stale.mine-py", "deleted": True}]
     assert client.calls[-1] == {
         "method": "delete_worker",
         "body": {"id": "stale.mine-py"},
     }
+
+
+def test_workers_prune_noninteractive_requires_yes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    client = FakeIssuekitClient()
+    client.upsert_worker(
+        machine_id="machine",
+        repo_id="mine-py",
+        worker_name="stale",
+        path="/stale",
+    )
+    client._workers["stale.mine-py"]["last_seen"] = "2000-01-01T00:00:00Z"
+    _configure_api(tmp_path, monkeypatch, client)
+
+    assert cli.main(["workers", "prune", "--json"]) == 1
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "requires --yes when stdin is non-interactive" in captured.err
+    assert all(call["method"] != "delete_worker" for call in client.calls)
+
+
+def test_workers_prune_eof_is_not_confirmation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    client = FakeIssuekitClient()
+    client.upsert_worker(
+        machine_id="machine",
+        repo_id="mine-py",
+        worker_name="stale",
+        path="/stale",
+    )
+    client._workers["stale.mine-py"]["last_seen"] = "2000-01-01T00:00:00Z"
+    _configure_api(tmp_path, monkeypatch, client)
+    monkeypatch.setattr("sys.stdin", SimpleNamespace(isatty=lambda: True))
+
+    def end_input() -> str:
+        raise EOFError
+
+    monkeypatch.setattr("builtins.input", end_input)
+
+    assert cli.main(["workers", "prune", "--json"]) == 1
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "Worker prune was not confirmed" in captured.err
+    assert all(call["method"] != "delete_worker" for call in client.calls)
+
+
+def test_workers_prune_yes_allows_noninteractive_deletion(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    client = FakeIssuekitClient()
+    client.upsert_worker(
+        machine_id="machine",
+        repo_id="mine-py",
+        worker_name="stale",
+        path="/stale",
+    )
+    client._workers["stale.mine-py"]["last_seen"] = "2000-01-01T00:00:00Z"
+    _configure_api(tmp_path, monkeypatch, client)
+
+    assert cli.main(["workers", "prune", "--json", "--yes"]) == 0
+
+    captured = capsys.readouterr()
+    assert json.loads(captured.out)["deleted"] == [
+        {"id": "stale.mine-py", "deleted": True}
+    ]
+    assert captured.err == ""

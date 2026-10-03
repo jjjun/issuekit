@@ -214,11 +214,16 @@ def run_propose(args) -> int:
         return 1
     for preflight_warning in created.get("warnings", []):
         print(preflight_warning, file=sys.stderr)
-    if created.get("deduplicated") and not args.json:
-        print(
-            f"{proposal.to} already has pending proposal #{created.get('id')} "
-            "with a matching title and body; no new proposal was created."
-        )
+    deduplicated = bool(created.get("deduplicated") or created.get("idempotent_existing"))
+    if deduplicated:
+        if args.json:
+            print_json(output)
+        else:
+            print(
+                f"{proposal.to} already has pending proposal #{created.get('id')} "
+                "with a matching title and body; no new proposal was created."
+            )
+        return 0
     try:
         guard = create_author_guard(
             Path.cwd(),

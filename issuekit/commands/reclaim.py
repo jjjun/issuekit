@@ -7,7 +7,7 @@ from pathlib import Path
 
 from issuekit.commands._common import print_json, run_command
 from issuekit.config import load_config
-from issuekit.core import issue_dict
+from issuekit.core import issue_dict, parse_issue_id_arg
 from issuekit.issues.orphans import DEFAULT_STALE_AFTER_SEC
 from issuekit.workers.registry import WorkerListingError
 from issuekit.workflow import ReclaimResult, WorkflowError, reclaim_issue
@@ -43,7 +43,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
 
 def run(args) -> int:
     def action() -> int:
-        issue_id = int(args.id)
+        issue_id = parse_issue_id_arg(args.id)
         config = load_config(Path.cwd())
         result = reclaim_issue(
             issue_id,

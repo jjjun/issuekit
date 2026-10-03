@@ -210,6 +210,21 @@ def test_edit_command_requires_force_after_todo(tmp_path: Path, monkeypatch, cap
     assert client.get_issue(1)["title"] == "Forced"
 
 
+def test_edit_command_allows_planned_issue_without_force(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient([api_issue(1, "Planned", stage="planned")])
+    _configure_api(tmp_path, monkeypatch, client)
+
+    assert cli.main(["edit", "1", "--title", "Updated plan"]) == 0
+
+    capsys.readouterr()
+    assert client.get_issue(1)["title"] == "Updated plan"
+    assert [call["method"] for call in client.calls] == ["update_issue"]
+
+
 def test_edit_command_refuses_completed_even_with_force(
     tmp_path: Path,
     monkeypatch,
