@@ -29,6 +29,13 @@ report:` in the submit summary after sanitizing it to ASCII and capping it at
 (`reason=missing_report`); pass `--allow-missing-report` to `issuekit implement`
 to submit anyway once the gap is understood.
 
+For code changes, the recommended flow is a single-checkout orchestration: run
+`issuekit implement`, review the unstaged changes in that checkout with
+`issuekit review`, then have the approving or orchestrating session commit the
+approved changes with the issue ref in the commit message. A separate
+`serve --review` checkout can review only committed and pushed changes it can
+see, or evidence-only host and verification submissions.
+
 The protocol text itself is generated from
 [`issuekit/prompts/protocol.py`](../../issuekit/prompts/protocol.py), which
 embeds the separation-of-duties table from

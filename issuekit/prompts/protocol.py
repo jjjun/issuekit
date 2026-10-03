@@ -101,8 +101,10 @@ has one default role; `--role` or `role=` always takes precedence over the
 agent default.
 
 When a reviewer daemon is needed, run it from a separate registered checkout:
-`issuekit serve --agent <reviewer> --review`. For a one-shot agent review of a
-specific review-stage issue, use `issuekit review <id> --agent <reviewer>`.
+`issuekit serve --agent <reviewer> --review`. It can review only committed and
+pushed changes it can see, or evidence-only host and verification submissions.
+For a one-shot review, use `issuekit review <id> --agent <reviewer>` in the
+checkout that holds the implementation diff.
 
 Upstream feedback loop: the issuekit tool itself accepts proposals. Whenever
 work in any project surfaces an issuekit bug, limitation, or improvement idea
@@ -544,8 +546,10 @@ after that upstream issue or proposal exists, and reference it with
    assigned at stage=review. If MCP is unavailable, use the read-only CLI
    fallback `issuekit next-review [--reviewer <name>] --json`, then use
    `issuekit show <id> --json` to reread a specific issue.
-2. Review the referenced branch and commit diff against the issue body. For an
-   automated one-shot review, run `issuekit review <id> --agent <reviewer>`.
+2. Review the implementation diff in the checkout that holds it (the
+   implementer leaves changes unstaged); never approve code changes from the
+   handoff text alone. For an automated one-shot review, run
+   `issuekit review <id> --agent <reviewer>`.
    Treat readability and maintainability as review criteria alongside
    correctness. Request changes for gratuitous obfuscation, string-concatenated
    identifiers or import paths, avoidable `importlib`/`getattr` indirection,
@@ -558,6 +562,8 @@ after that upstream issue or proposal exists, and reference it with
    is needed. Use `issuekit complete <id> --force --summary <text>
    --verification <text>` to close an active no-op, duplicate, obsolete, or
    anchor issue without creating a fake implementation and review cycle.
+   After `approve`, the approving or orchestrating session commits the approved
+   working-tree changes with the issue ref in the commit message.
 4. If changes are needed or the work is incomplete, call
    `request_changes(id, notes, reviewer=None, assignee=None)` with ASCII notes.
    Omit assignee to return the issue to its recorded implementer. From a POSIX
@@ -573,7 +579,8 @@ same-name review is allowed only when the issue was routed through the open
 review pool.
 
 To run continuously as a reviewer worker, use a separate registered checkout:
-`issuekit serve --agent <reviewer> --review`.
+`issuekit serve --agent <reviewer> --review`. It can review only committed and
+pushed changes it can see, or evidence-only host and verification submissions.
 
 When the proposal-system MCP tools hang or error, fall back to the equivalent
 CLI: `issuekit propose --to <project> --title <t> --body <b> --json`,

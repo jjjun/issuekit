@@ -8,6 +8,7 @@ from issuekit import cli
 from issuekit import store as store_module
 from issuekit.agentrun import AgentPrompt
 from issuekit.agents import review as review_agent
+from issuekit.agents.handoff import NO_IMPLEMENTATION_CHANGES_MARKER
 from issuekit.core import Issue
 from issuekit.testing import FakeIssuekitClient
 from tests.issue_helpers import api_issue
@@ -703,6 +704,94 @@ def test_review_command_rejects_empty_implementation_diff_before_agent(
     assert [call["method"] for call in client.calls] == []
 
 
+def test_review_command_rejects_agent_run_without_local_changes(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    raw_issue = api_issue(
+        1,
+        "Agent implementation",
+        status="in_progress",
+        assignee="",
+        stage="review",
+        implementer="codex",
+        worker="machine/demo/implementer",
+        author="claude",
+        body=(
+            "# Issue #1: Agent implementation\n\n"
+            "## Handoff\nImplemented by codex.\n"
+            "Run log: `.agent-runs/run.out.log`\n"
+        ),
+    )
+    raw_issue["summary"] = (
+        "Implemented by codex.\nRun log: `.agent-runs/run.out.log`"
+    )
+    client = FakeIssuekitClient([raw_issue])
+    ApprovingRunner.calls.clear()
+    _configure_registered_api(tmp_path, monkeypatch, client)
+    (tmp_path / ".gitignore").write_text(".agent-runs/\n", encoding="utf-8", newline="\n")
+    (tmp_path / "code.py").write_text("value = 1\n", encoding="utf-8", newline="\n")
+    _init_git_repo(tmp_path)
+    monkeypatch.setattr("issuekit.commands.review.AgentRunner", ApprovingRunner)
+
+    exit_code = cli.main(["review", "1", "--agent", "codex"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert not ApprovingRunner.calls
+    assert (
+        "Issue #1 was implemented by an agent run whose changes are not in this "
+        "checkout. Run the review in the implementing checkout, or commit and push "
+        "the changes first."
+    ) in captured.err
+    assert "review_decision=" not in captured.out
+    assert client.get_issue(1)["status"] == "in_progress"
+    assert client.calls == []
+
+
+def test_review_command_allows_no_changes_handoff_without_local_diff(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    summary = (
+        "Implemented by codex via issuekit implement.\n"
+        "Run log: `.agent-runs/run.out.log`\n"
+        f"{NO_IMPLEMENTATION_CHANGES_MARKER}"
+    )
+    raw_issue = api_issue(
+        1,
+        "Verification-only issue",
+        status="in_progress",
+        assignee="",
+        stage="review",
+        implementer="codex",
+        worker="machine/demo/implementer",
+        author="claude",
+        body=f"# Issue #1: Verification-only issue\n\n## Handoff\n{summary}\n",
+    )
+    raw_issue["summary"] = summary
+    client = FakeIssuekitClient([raw_issue])
+    ApprovingRunner.calls.clear()
+    _configure_registered_api(tmp_path, monkeypatch, client)
+    (tmp_path / ".gitignore").write_text(".agent-runs/\n", encoding="utf-8", newline="\n")
+    (tmp_path / "code.py").write_text("value = 1\n", encoding="utf-8", newline="\n")
+    _init_git_repo(tmp_path)
+    monkeypatch.setattr("issuekit.commands.review.AgentRunner", ApprovingRunner)
+
+    exit_code = cli.main(["review", "1", "--agent", "codex"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert len(ApprovingRunner.calls) == 1
+    assert "No implementation changes: submitted with --allow-no-changes." in (
+        ApprovingRunner.calls[0][0].body
+    )
+    assert "review_decision verdict=approve" in captured.out
+    assert client.get_issue(1)["status"] == "completed"
+
+
 def test_review_command_allows_handoff_evidence_without_local_diff(
     tmp_path: Path,
     monkeypatch,
@@ -743,6 +832,7 @@ def test_review_command_allows_handoff_evidence_without_local_diff(
     prompt_text = ApprovingRunner.calls[0][0].body
     assert "Review the submitted handoff evidence against the issue." in prompt_text
     assert "No local implementation diff is available in this checkout." in prompt_text
+    assert "Run log: " not in prompt_text
     assert "Handoff summary: Restarted the service on host a." in prompt_text
     assert "Branch: main" in prompt_text
     assert "Commit: abc1234" in prompt_text

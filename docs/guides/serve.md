@@ -53,6 +53,17 @@ $ issuekit serve --agent claude --proposal-checks # proposal-check worker
 $ issuekit serve --agent codex --triage           # implementer that also triages the inbox
 ```
 
+## Topologies
+
+The recommended flow for code changes is a single-checkout orchestration: run
+`issuekit implement <id> --agent <implementer>`, review in that checkout with
+`issuekit review <id> --agent <reviewer>`, then commit the approved changes
+with the issue ref in the commit message. A separate `serve --review` checkout
+can review only committed and pushed changes it can see, or evidence-only host
+and verification submissions. An implement-mode `serve` processes one issue at
+a time and waits at the claim-sync guard until the submitted changes are
+committed.
+
 ## What one cycle does
 
 1. **Startup recovery.** Before the first poll, the implement loop looks for
@@ -156,7 +167,7 @@ still alive, check the log for these events before re-registering.
 | `No implementer is configured.` | several enabled assignees, no default | pass `--agent` or set `default_implementer` |
 | `issuekit serve is already running for this checkout` | live PID holds the lock | stop the other process, or serve from a second checkout |
 | Repeated `claim_error` with growing backoff | API unreachable or auth expired | check `issuekit info --json`, re-authenticate |
-| `claim_error` with `Claim-sync guard blocks claim-next` | dirty working tree, or a failed `git status`, `git fetch`, or `git merge --ff-only` for `work_branch` | commit or stash, fix the Git failure, or pass `--no-sync` |
+| `claim_error` with `Claim-sync guard blocks claim-next` | dirty working tree, or a failed `git status`, `git fetch`, or `git merge --ff-only` for `work_branch` | commit or stash, fix the Git failure, or pass `--no-sync`; see [Topologies](#topologies) |
 | `claim_error` with `Author-session guard blocks claim-next` | this checkout recorded an issue author guard, which blocks every pool claim; serve has no `--allow-author-session` | hand off the authored issue, then run `issuekit author-guard clear` |
 | Repeated `run_failed` | the agent exits non-zero | read the run logs under `.agent-runs/` |
 | `review_decision_discarded` with growing backoff | the reviewer agent emitted an unparseable review block, so the verdict was dropped | read the reported parse error and stdout log, then rerun the review or use the printed manual `request-changes`/`approve` fallback |

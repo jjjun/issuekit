@@ -391,6 +391,23 @@ def test_submission_summary_includes_sanitized_implementer_report(tmp_path: Path
     assert summary.isascii()
 
 
+def test_submission_summary_marks_allowed_no_changes(tmp_path: Path) -> None:
+    result = FakeResult(stdout_path=tmp_path / ".agent-runs" / "run.out.log")
+
+    summary = run_claimed_agent._submission_summary(
+        "Implemented by codex via issuekit implement.",
+        result,
+        tmp_path,
+        no_implementation_changes=True,
+    )
+
+    assert summary.splitlines() == [
+        "Implemented by codex via issuekit implement.",
+        "Run log: `.agent-runs/run.out.log`",
+        run_claimed_agent.NO_IMPLEMENTATION_CHANGES_MARKER,
+    ]
+
+
 def test_submission_summary_sanitizes_non_ascii_run_log_path() -> None:
     result = FakeResult(
         stdout_path=Path("D:/\u65e5\u672c\u8a9e/runs/run.out.log"),
@@ -1234,6 +1251,9 @@ def test_implement_command_allows_no_change_submit_with_flag(
     assert exit_code == 0
     assert "No implementation changes detected" in captured.out
     assert [call["method"] for call in client.calls] == ["claim", "submit"]
+    summary_lines = client.get_issue(1)["summary"].splitlines()
+    assert summary_lines[1].startswith("Run log: ")
+    assert summary_lines[2:] == [run_claimed_agent.NO_IMPLEMENTATION_CHANGES_MARKER]
 
 
 def test_implement_command_blocks_submit_when_report_is_missing(

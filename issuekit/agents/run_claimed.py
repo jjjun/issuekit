@@ -14,6 +14,7 @@ from issuekit.agentrun import AgentPrompt, AgentResult, AgentRunner
 from issuekit.agentrun.runner import implementation_report_instruction
 from issuekit.agentrun.status import is_dead, list_statuses, read_status
 from issuekit.agents.app_server_runtime import AppServerAttemptRunner
+from issuekit.agents.handoff import NO_IMPLEMENTATION_CHANGES_MARKER
 from issuekit.agents.readonly import worktree_fingerprint
 from issuekit.agents.registry import resolve_adapter
 from issuekit.config import IssuekitConfig
@@ -344,6 +345,7 @@ def run_and_submit(
                 submit_summary or f"Implemented by {agent} via issuekit implement.",
                 result,
                 cwd,
+                no_implementation_changes=allow_no_changes and not implementation_entries,
             ),
             config=config,
             store=active_store,
@@ -363,9 +365,17 @@ def run_and_submit(
         )
 
 
-def _submission_summary(prefix: str, result: AgentResult, cwd: Path) -> str:
+def _submission_summary(
+    prefix: str,
+    result: AgentResult,
+    cwd: Path,
+    *,
+    no_implementation_changes: bool = False,
+) -> str:
     run_log = sanitize_to_ascii(_display_path(result.stdout_path, cwd))
     summary = f"{prefix}\nRun log: `{run_log}`"
+    if no_implementation_changes:
+        summary = f"{summary}\n{NO_IMPLEMENTATION_CHANGES_MARKER}"
     if result.report_path is None or not result.report_path.is_file():
         return summary
     try:

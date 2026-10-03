@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import TextIO
 
 from issuekit.agentrun import AgentResult, AgentRunner
+from issuekit.agents.handoff import NO_IMPLEMENTATION_CHANGES_MARKER
 from issuekit.agents.readonly import (
     prompt_from_spec,
     repository_mutation_message,
@@ -119,6 +120,12 @@ def run_review_and_decide(
         role="reviewer",
     )
     diff_context = _collect_git_diff_context(cwd, issue=issue)
+    if not diff_context.has_changed_files and _latest_handoff_has_run_log(issue):
+        raise WorkflowError(
+            f"Issue #{issue_id} was implemented by an agent run whose changes are not "
+            "in this checkout. Run the review in the implementing checkout, or commit "
+            "and push the changes first."
+        )
     if not diff_context.has_changed_files and not diff_context.has_handoff_evidence:
         raise WorkflowError(
             "No implementation diff is available for automated review; "
@@ -425,6 +432,44 @@ _BODY_EVIDENCE_PATTERN = re.compile(
     re.IGNORECASE,
 )
 _MARKDOWN_HEADING_PATTERN = re.compile(r"^\s*#{1,6}\s+")
+
+
+def _latest_handoff_has_run_log(issue: Issue) -> bool:
+    summary = None
+    for key in ("summary", "handoff_summary", "submit_summary", "review_summary"):
+        value = issue.metadata.get(key)
+        if isinstance(value, str) and value.strip():
+            summary = value.strip()
+            break
+
+    if summary is None:
+        lines = issue.body.splitlines()
+        handoff_index = next(
+            (
+                index
+                for index in range(len(lines) - 1, -1, -1)
+                if re.fullmatch(r"\s*## Handoff\s*", lines[index])
+            ),
+            None,
+        )
+        if handoff_index is None:
+            return False
+        end_index = next(
+            (
+                index
+                for index in range(handoff_index + 1, len(lines))
+                if re.match(r"^\s*##\s+", lines[index])
+            ),
+            len(lines),
+        )
+        summary = "\n".join(lines[handoff_index + 1 : end_index])
+    lines = summary.splitlines()
+    has_allow_no_changes_marker = any(
+        line.strip() == NO_IMPLEMENTATION_CHANGES_MARKER for line in lines
+    )
+    return not has_allow_no_changes_marker and any(
+        line.startswith("Run log: ") for line in lines
+    )
 
 
 def _handoff_evidence_text(issue: Issue | None) -> str:

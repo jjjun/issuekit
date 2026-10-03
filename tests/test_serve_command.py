@@ -389,6 +389,48 @@ def test_serve_review_once_reports_discarded_decision(
     assert "remedy=rerun_review" in captured.err
 
 
+def test_serve_review_reports_agent_run_without_local_changes_as_error(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    raw_issue = api_issue(
+        1,
+        "Agent implementation",
+        status="in_progress",
+        assignee="",
+        stage="review",
+        implementer="codex",
+        worker="machine/demo/implementer",
+        author="claude",
+        body=(
+            "# Issue #1: Agent implementation\n\n"
+            "## Handoff\nImplemented by codex.\n"
+            "Run log: `.agent-runs/run.out.log`\n"
+        ),
+    )
+    raw_issue["summary"] = (
+        "Implemented by codex.\nRun log: `.agent-runs/run.out.log`"
+    )
+    client = FakeIssuekitClient([raw_issue])
+    ReviewApprovingRunner.calls.clear()
+    _configure_registered_api(tmp_path, monkeypatch, client)
+    (tmp_path / ".gitignore").write_text(".agent-runs/\n", encoding="utf-8", newline="\n")
+    (tmp_path / "code.py").write_text("value = 1\n", encoding="utf-8", newline="\n")
+    _init_git_repo(tmp_path)
+    monkeypatch.setattr("issuekit.agents.review.AgentRunner", ReviewApprovingRunner)
+
+    exit_code = cli.main(["serve", "--agent", "codex", "--review", "--once"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert not ReviewApprovingRunner.calls
+    assert "event=review_error issue=1" in captured.err
+    assert "event=review_decision_discarded" not in captured.err
+    assert client.get_issue(1)["status"] == "in_progress"
+    assert not any(call["method"] in {"approve", "request_changes"} for call in client.calls)
+
+
 def test_serve_review_once_ignores_issue_assigned_to_other_reviewer(
     tmp_path: Path,
     monkeypatch,
