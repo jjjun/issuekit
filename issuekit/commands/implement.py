@@ -18,7 +18,7 @@ from issuekit.commands._common import run_agent_command
 from issuekit.config import load_config
 from issuekit.core import Issue, parse_issue_id_arg
 from issuekit.encoding import sanitize_to_ascii
-from issuekit.guards.author import AuthorOrchestrationContext, read_author_guard
+from issuekit.guards.author import AuthorOrchestrationContext, read_author_guards
 from issuekit.issues.session import new_session_token
 from issuekit.store import get_store
 from issuekit.workflow import WorkflowError, claim_issue, resolve_implementer
@@ -300,12 +300,15 @@ def _submit_summary(agent: str, cwd: Path, config, issue_id: int) -> str:
 
 
 def _orchestrator_identity(cwd: Path, config, issue_id: int) -> str:
-    guard = read_author_guard(cwd)
-    if (
-        guard is not None
-        and guard.project == config.project
-        and _guard_targets_issue(guard, config, issue_id)
-    ):
+    guard = next(
+        (
+            item
+            for item in read_author_guards(cwd)
+            if item.project == config.project and _guard_targets_issue(item, config, issue_id)
+        ),
+        None,
+    )
+    if guard is not None:
         return f"{guard.author_agent}@{guard.worker or 'unregistered-worker'}"
     worker = config.worker_key()
     return f"issuekit@{worker or 'unregistered-worker'}"

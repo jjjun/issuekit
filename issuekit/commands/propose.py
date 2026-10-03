@@ -15,7 +15,7 @@ from issuekit.config.refs import (
     list_effective_refs,
 )
 from issuekit.core import VALID_ISSUE_PRIORITIES
-from issuekit.guards.author import STOP_SENTINEL, create_author_guard, guard_dict, stop_message
+from issuekit.guards.author import create_author_guard, guard_dict, stop_message
 from issuekit.issues.session import resolved_or_new_session_token
 from issuekit.proposals import ProposalError
 from issuekit.proposals.api import (
@@ -235,7 +235,7 @@ def run_propose(args) -> int:
         return 1
     if args.json:
         output["authorGuard"] = guard_dict(guard)
-        output["stop"] = STOP_SENTINEL
+        output["stop"] = stop_message(guard)
         print_json(output)
     if not args.json:
         print(f"Sent proposal #{created.get('id')}: {created.get('title', proposal.title)}")

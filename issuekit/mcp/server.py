@@ -30,7 +30,11 @@ from issuekit.config import (
 from issuekit.config.local import LocalConfigError, load_toml, read_local_config
 from issuekit.core import issue_dict, worker_display_from_row
 from issuekit.gitutil import git_root
-from issuekit.guards.author import STOP_SENTINEL, create_author_guard, guard_dict
+from issuekit.guards.author import (
+    create_author_guard,
+    guard_dict,
+    stop_message,
+)
 from issuekit.issues.orphans import (
     DEFAULT_STALE_AFTER_SEC,
     list_stale_claims,
@@ -486,7 +490,7 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
         )
         sent = dict(sent)
         sent["authorGuard"] = guard_dict(guard)
-        sent["stop"] = STOP_SENTINEL
+        sent["stop"] = stop_message(guard)
         return sent
 
     @server.tool(description="List incoming cross-repository proposals.")
@@ -651,6 +655,7 @@ async def _health_status(root: Path, ctx: Context | None = None) -> dict[str, An
         "worker": None,
         "author_guard_active": False,
         "author_guard": None,
+        "author_guards": [],
         "errors": [],
     }
     try:
@@ -660,9 +665,10 @@ async def _health_status(root: Path, ctx: Context | None = None) -> dict[str, An
         payload["errors"].append(f"local_config: {exc}")
         local_config = None
     if local_config is not None:
-        if local_config.author_guard:
+        if local_config.author_guards:
             payload["author_guard_active"] = True
-            payload["author_guard"] = dict(local_config.author_guard)
+            payload["author_guard"] = dict(local_config.author_guards[0])
+            payload["author_guards"] = [dict(guard) for guard in local_config.author_guards]
 
     try:
         config = load_config(config_root)

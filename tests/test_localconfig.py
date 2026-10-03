@@ -117,8 +117,8 @@ def test_local_config_writes_explicit_empty_disabled_agents(tmp_path: Path) -> N
     )
 
 
-def test_local_config_round_trips_author_guard(tmp_path: Path) -> None:
-    guard = {
+def test_local_config_round_trips_author_guards(tmp_path: Path) -> None:
+    issue_guard = {
         "project": "demo",
         "kind": "issue",
         "id": "12",
@@ -128,12 +128,53 @@ def test_local_config_round_trips_author_guard(tmp_path: Path) -> None:
         "created": "2026-07-02T00:00:00+00:00",
         "required_next_action": "STOP",
     }
+    proposal_guard = {
+        "project": "demo",
+        "kind": "proposal",
+        "id": "4",
+        "ref": "other#4",
+        "target_project": "other",
+        "author_agent": "codex",
+        "created": "2026-07-02T00:00:00+00:00",
+        "required_next_action": "STOP",
+    }
 
-    write_local_config(tmp_path, worker=None, refs={}, author_guard=guard)
+    write_local_config(
+        tmp_path,
+        worker=None,
+        refs={},
+        author_guards=(issue_guard, proposal_guard),
+    )
 
     local_config = read_local_config(tmp_path)
-    assert local_config.author_guard == guard
-    assert "[author_guard]" in (tmp_path / LOCAL_CONFIG_NAME).read_text(encoding="utf-8")
+    assert local_config.author_guards == (issue_guard, proposal_guard)
+    assert (tmp_path / LOCAL_CONFIG_NAME).read_text(encoding="utf-8").count(
+        "[[author_guards]]"
+    ) == 2
+
+
+def test_local_config_reads_legacy_author_guard(tmp_path: Path) -> None:
+    (tmp_path / LOCAL_CONFIG_NAME).write_text(
+        (
+            "[author_guard]\n"
+            'project = "demo"\n'
+            'kind = "issue"\n'
+            'id = "12"\n'
+            'ref = "demo#12"\n'
+            'author_agent = "codex"\n'
+            'required_next_action = "STOP"\n'
+            "\n"
+            "[refs]\n"
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    guards = read_local_config(tmp_path).author_guards
+
+    assert len(guards) == 1
+    assert guards[0]["kind"] == "issue"
+    assert guards[0]["ref"] == "demo#12"
 
 
 def test_missing_gitignore_entries_accepts_agent_runs_without_slash() -> None:

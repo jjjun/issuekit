@@ -79,30 +79,45 @@ def create_author_guard(
         cwd,
         worker=local_config.worker,
         refs=local_config.refs,
-        author_guard=guard.to_dict(),
+        author_guards=_with_author_guard(local_config.author_guards, guard),
     )
     return guard
 
 
 def read_author_guard(cwd: Path | str = ".") -> AuthorGuard | None:
+    guards = read_author_guards(cwd)
+    return guards[0] if guards else None
+
+
+def read_author_guards(cwd: Path | str = ".") -> tuple[AuthorGuard, ...]:
     try:
-        raw = read_local_config(cwd).author_guard
+        raw_guards = read_local_config(cwd).author_guards
     except LocalConfigError as exc:
         from issuekit.workflow import WorkflowError
 
         raise WorkflowError(str(exc)) from exc
-    return _guard_from_mapping(raw)
+    return tuple(
+        guard
+        for raw in raw_guards
+        if (guard := _guard_from_mapping(raw)) is not None
+    )
 
 
-def clear_author_guard(cwd: Path | str = ".") -> bool:
+def clear_author_guard(cwd: Path | str = ".", *, ref: str | None = None) -> bool:
     local_config = read_local_config(cwd)
-    if local_config.author_guard is None:
+    guards = local_config.author_guards
+    remaining = (
+        ()
+        if ref is None
+        else tuple(guard for guard in guards if str(guard.get("ref", "")) != ref)
+    )
+    if len(remaining) == len(guards):
         return False
     write_local_config(
         cwd,
         worker=local_config.worker,
         refs=local_config.refs,
-        author_guard=None,
+        author_guards=remaining,
     )
     return True
 
@@ -111,7 +126,17 @@ def guard_dict(guard: AuthorGuard | None) -> dict[str, str] | None:
     return None if guard is None else guard.to_dict()
 
 
+def guards_dict(guards: tuple[AuthorGuard, ...]) -> list[dict[str, str]]:
+    return [guard.to_dict() for guard in guards]
+
+
 def stop_message(guard: AuthorGuard) -> str:
+    if guard.kind == "proposal":
+        return (
+            f"Proposal {guard.ref} sent to {guard.target_project}. If this session's "
+            "task was only to send the proposal, stop here; otherwise continue "
+            "your current task."
+        )
     return (
         f"{STOP_SENTINEL}: this checkout authored {guard.label}. "
         "Stop this session before implementing. Recovery: run "
@@ -133,14 +158,17 @@ def enforce_no_author_guard(
         return
     if not _enforce_author_handoff():
         return
-    guard = read_author_guard(cwd)
+    guard = next(
+        (
+            item
+            for item in read_author_guards(cwd)
+            if item.project == config.project
+            and _guard_blocks_issue_lifecycle(item, config=config, issue_id=issue_id)
+            and not _orchestration_allows_issue_lifecycle(item, orchestration)
+        ),
+        None,
+    )
     if guard is None:
-        return
-    if guard.project != config.project:
-        return
-    if not _guard_blocks_issue_lifecycle(guard, config=config, issue_id=issue_id):
-        return
-    if _orchestration_allows_issue_lifecycle(guard, orchestration):
         return
     from issuekit.workflow import WorkflowError
 
@@ -229,6 +257,26 @@ def _guard_from_mapping(raw: Mapping[str, object] | None) -> AuthorGuard | None:
         created=_string(raw.get("created")),
         required_next_action=_string(raw.get("required_next_action")) or REQUIRED_NEXT_ACTION,
     )
+
+
+def _with_author_guard(
+    raw_guards: tuple[dict[str, object], ...],
+    guard: AuthorGuard,
+) -> tuple[dict[str, object], ...]:
+    guard_mapping = guard.to_dict()
+    key = (guard.kind, guard.ref)
+    replaced = False
+    guards: list[dict[str, object]] = []
+    for existing in raw_guards:
+        if (str(existing.get("kind", "")), str(existing.get("ref", ""))) == key:
+            if not replaced:
+                guards.append(guard_mapping)
+            replaced = True
+        else:
+            guards.append(existing)
+    if not replaced:
+        guards.append(guard_mapping)
+    return tuple(guards)
 
 
 def _string(value: object) -> str:

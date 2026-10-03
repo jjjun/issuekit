@@ -140,7 +140,7 @@ def save_local_worker(identity: WorkerIdentity, cwd: Path | str = ".") -> bool:
         worker=desired_worker,
         refs=local_config.refs,
         disabled_agents=local_config.disabled_agents,
-        author_guard=local_config.author_guard,
+        author_guards=local_config.author_guards,
     )
     if path.exists():
         existing_content = path.read_text(encoding="utf-8-sig")

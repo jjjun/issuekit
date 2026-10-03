@@ -432,6 +432,31 @@ def test_author_guard_blocks_claim_in_same_checkout(tmp_path, monkeypatch) -> No
     assert issue.id == 1
 
 
+def test_legacy_author_guard_table_still_blocks_claim(tmp_path, monkeypatch) -> None:
+    client = FakeIssuekitClient([api_issue(1, "Ready", author="claude")])
+    config = _config(client, monkeypatch)
+    (tmp_path / "issuekit.local.toml").write_text(
+        (
+            "[author_guard]\n"
+            'project = "demo"\n'
+            'kind = "issue"\n'
+            'id = "1"\n'
+            'ref = "demo#1"\n'
+            'author_agent = "codex"\n'
+            'required_next_action = "STOP"\n'
+            "\n"
+            "[refs]\n"
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    with pytest.raises(WorkflowError, match="STOP_NOW"):
+        claim_issue(1, "codex", config=config, cwd=tmp_path)
+
+    assert client.calls == []
+
+
 def test_author_guard_allows_orchestrated_claim_for_distinct_agent(
     tmp_path, monkeypatch
 ) -> None:

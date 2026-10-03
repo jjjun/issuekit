@@ -2181,7 +2181,8 @@ def test_cli_proposal_json_matches_mcp_output(tmp_path: Path, monkeypatch, capsy
     assert cli_sent["origin"] == mcp_sent["origin"]
     assert cli_sent["title"] == mcp_sent["title"]
     assert cli_sent["payload_mismatch"] == mcp_sent["payload_mismatch"]
-    assert cli_sent["stop"] == mcp_sent["stop"] == "STOP_NOW"
+    assert cli_sent["stop"] == mcp_sent["stop"]
+    assert "STOP_NOW" not in cli_sent["stop"]
     assert cli_sent["authorGuard"]["kind"] == mcp_sent["authorGuard"]["kind"] == "proposal"
 
     # list_incoming parity

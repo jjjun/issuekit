@@ -1,4 +1,5 @@
 import argparse
+import json
 import os
 import signal
 
@@ -6,6 +7,8 @@ import pytest
 
 from issuekit import cli
 from issuekit.commands._common import run_agent_command
+from issuekit.config import IssuekitConfig
+from issuekit.guards.author import create_author_guard
 
 EXPECTED_COMMANDS = {
     "info",
@@ -152,6 +155,49 @@ def test_author_guard_bare_command_shows_guard(
     assert exit_code == 0
     assert "No author-session guard." in captured.out
     assert captured.err == ""
+
+
+def test_author_guard_show_check_and_clear_cover_all_guards(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    config = IssuekitConfig(project="demo")
+    create_author_guard(
+        tmp_path,
+        config=config,
+        kind="issue",
+        item_id=1,
+        ref="demo#1",
+        author_agent="codex",
+    )
+    create_author_guard(
+        tmp_path,
+        config=config,
+        kind="proposal",
+        item_id=2,
+        ref="other#2",
+        target_project="other",
+        author_agent="codex",
+    )
+
+    assert cli.main(["author-guard", "show", "--json"]) == 0
+    shown = json.loads(capsys.readouterr().out)
+    assert [guard["ref"] for guard in shown["authorGuards"]] == ["demo#1", "other#2"]
+
+    assert cli.main(["author-guard", "clear", "--ref", "demo#1"]) == 0
+    capsys.readouterr()
+    assert cli.main(["author-guard", "check", "--json"]) == 0
+    checked = json.loads(capsys.readouterr().out)
+    assert checked["ok"] is True
+    assert checked["blocking"] is False
+    assert [guard["kind"] for guard in checked["authorGuards"]] == ["proposal"]
+
+    assert cli.main(["author-guard", "clear"]) == 0
+    capsys.readouterr()
+    assert cli.main(["author-guard", "show", "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["authorGuards"] == []
 
 
 def test_author_guard_help_lists_separation_guards(capsys: pytest.CaptureFixture[str]) -> None:

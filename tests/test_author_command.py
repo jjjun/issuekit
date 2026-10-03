@@ -13,7 +13,7 @@ from issuekit.commands.author import (
 )
 from issuekit.config import IssuekitConfig
 from issuekit.config.refs import RefError
-from issuekit.guards.author import read_author_guard
+from issuekit.guards.author import read_author_guard, read_author_guards
 from issuekit.testing import FakeIssuekitClient
 from issuekit.workflow import WorkflowError
 
@@ -110,6 +110,33 @@ def test_author_command_creates_issue_via_api(tmp_path: Path, monkeypatch, capsy
         },
     }
     assert client.close_count == 1
+
+
+def test_author_commands_keep_each_issue_guard_and_block_both_claims(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient()
+    _configure_api(tmp_path, monkeypatch, client)
+
+    for title in ("First authored issue", "Second authored issue"):
+        assert cli.main(
+            ["author", "--title", title, "--body", "Implement the change.", "--agent", "codex"]
+        ) == 0
+        assert "STOP_NOW" in capsys.readouterr().out
+
+    guards = read_author_guards(tmp_path)
+    assert [guard.ref for guard in guards] == ["demo#1", "demo#2"]
+    assert (tmp_path / "issuekit.local.toml").read_text(encoding="utf-8").count(
+        "[[author_guards]]"
+    ) == 2
+
+    for issue_id in (1, 2):
+        assert cli.main(["claim", "--id", str(issue_id), "--assignee", "codex"]) == 1
+        assert "STOP_NOW" in capsys.readouterr().err
+
+    assert [call["method"] for call in client.calls] == ["create_issue", "create_issue"]
 
 
 def test_author_json_formats_directed_expired_heartbeat_warning(

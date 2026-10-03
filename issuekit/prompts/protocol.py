@@ -117,6 +117,9 @@ project triages its inbox continuously and adopts worthwhile reports as issues;
 check the outcome later with `issuekit outgoing --to issuekit`.
 Adoption notes are recorded only on the receiving project's issue and never
 reach the sender; anything the sender must act on requires a proposal.
+The proposal guard records the handoff but does not interrupt a current
+implementer or reviewer task; continue that task unless sending the proposal was
+your only task.
 Automated triage can use `adopt_and_reply` for a required follow-up; discard
 does not notify.
 
@@ -182,11 +185,13 @@ Separation-of-duties invariants:
 - The author role and implementer role must be different sessions. If the same
   agent name appears through the open implement pool, it represents a distinct
   operator/session; explicit author self-assignment is rejected.
-- After `issuekit author` or `issuekit propose` succeeds, issuekit writes a
-  machine-local author-session guard and emits `STOP_NOW`. Issue guards block
-  direct lifecycle work on the authored issue and all pool claims from that
-  checkout until `issuekit author-guard clear`; proposal guards do not block
-  local issue lifecycle work.
+- After `issuekit author` succeeds, issuekit writes a machine-local issue guard
+  and emits `STOP_NOW`. Issue guards block direct lifecycle work on the authored
+  issue and all pool claims from that checkout until `issuekit author-guard
+  clear`; proposal guards do not block local issue lifecycle work.
+- After `issuekit propose` succeeds, its proposal guard records the handoff
+  without interrupting a current implementer or reviewer task. Stop only when
+  sending the proposal was your only task.
 - The implementer and reviewer must be different sessions; explicit implementer
   self-review is rejected.
 - The author may also be the reviewer when a different implementer did the work.
@@ -510,12 +515,12 @@ When asked to write or plan an issue:
    possible; same-name delegation is accepted only when the recorded author
    session and launched run session are both present and differ.
 
-After `issuekit propose` succeeds, treat the `STOP_NOW` sentinel the same way:
-stop the author session and let the target project triage the proposal. Proposal
-guards are retained as handoff records but do not block unrelated local issue
-lifecycle commands. For recovery from an accidental guard after handoff, run
-`issuekit author-guard clear`. Human emergency lifecycle commands can pass
-`--allow-author-session`.
+After `issuekit propose` succeeds, let the target project triage the proposal.
+The proposal guard records the handoff but does not interrupt your current task;
+stop only if sending the proposal was your only task. Proposal guards do not
+block unrelated local issue lifecycle commands. For recovery from an accidental
+guard after handoff, run `issuekit author-guard clear`. Human emergency
+lifecycle commands can pass `--allow-author-session`.
 """
 
 
@@ -625,7 +630,8 @@ For commands with `--json`, stdout is one JSON document; trust the exit status, 
 
 If MCP returns `Transport closed`, use the read-only CLI: `issuekit protocol --role <role>` and `issuekit show <id> --json`.
 
-After `issuekit author` or `issuekit propose` succeeds and prints `STOP_NOW`, stop that session."""
+After `issuekit author` succeeds and prints `STOP_NOW`, stop that session. A
+proposal guard does not interrupt an active implementer or reviewer task."""
 
 
 def render_protocol(

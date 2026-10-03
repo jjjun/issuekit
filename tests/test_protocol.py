@@ -137,6 +137,11 @@ def test_protocol_model_and_issue_guard_guidance_is_current() -> None:
         )
         assert "proposal guards do not block local issue lifecycle work." in normalized
         assert (
+            "proposal guard records the handoff without interrupting a current"
+            in normalized.lower()
+        )
+        assert "continue that task unless sending the proposal was your only task." in normalized.lower()
+        assert (
             "While an issue guard is recorded, pool claims from that checkout "
             "(`claim` without `--id`, `serve`) are blocked for every issue"
             in normalized

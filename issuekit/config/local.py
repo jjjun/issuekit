@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import tomllib
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -21,7 +21,11 @@ class LocalConfig:
     worker: dict[str, object] | None
     disabled_agents: tuple[str, ...] | None
     refs: dict[str, str]
-    author_guard: dict[str, object] | None
+    author_guards: tuple[dict[str, object], ...]
+
+    @property
+    def author_guard(self) -> dict[str, object] | None:
+        return self.author_guards[0] if self.author_guards else None
 
 
 _PRESERVE = object()
@@ -41,7 +45,7 @@ def read_local_config(cwd: Path | str = ".") -> LocalConfig:
             worker=None,
             disabled_agents=None,
             refs={},
-            author_guard=None,
+            author_guards=(),
         )
     data = load_toml(path)
     refs = data.get("refs", {})
@@ -51,7 +55,7 @@ def read_local_config(cwd: Path | str = ".") -> LocalConfig:
         worker=_worker_table(data),
         disabled_agents=_disabled_agents(data),
         refs={str(name): str(value) for name, value in refs.items()},
-        author_guard=_author_guard_table(data),
+        author_guards=_author_guard_tables(data),
     )
 
 
@@ -61,20 +65,20 @@ def write_local_config(
     worker: Mapping[str, object] | None,
     refs: Mapping[str, str],
     disabled_agents: tuple[str, ...] | None | object = _PRESERVE,
-    author_guard: Mapping[str, object] | None | object = _PRESERVE,
+    author_guards: Sequence[Mapping[str, object]] | object = _PRESERVE,
 ) -> None:
     path = Path(cwd) / LOCAL_CONFIG_NAME
     existing = read_local_config(cwd) if path.exists() else None
     if disabled_agents is _PRESERVE:
         disabled_agents = existing.disabled_agents if existing is not None else None
-    if author_guard is _PRESERVE:
-        author_guard = existing.author_guard if existing is not None else None
+    if author_guards is _PRESERVE:
+        author_guards = existing.author_guards if existing is not None else ()
     path.write_text(
         local_config_text(
             worker=worker,
             refs=refs,
             disabled_agents=disabled_agents,
-            author_guard=author_guard,
+            author_guards=author_guards,
         ),
         encoding="utf-8",
         newline="\n",
@@ -86,13 +90,13 @@ def local_config_text(
     worker: Mapping[str, object] | None,
     refs: Mapping[str, str],
     disabled_agents: tuple[str, ...] | None = None,
-    author_guard: Mapping[str, object] | None = None,
+    author_guards: Sequence[Mapping[str, object]] = (),
 ) -> str:
     return _local_config_text(
         worker=worker,
         refs=refs,
         disabled_agents=disabled_agents,
-        author_guard=author_guard,
+        author_guards=author_guards,
     )
 
 
@@ -133,7 +137,7 @@ def _local_config_text(
     worker: Mapping[str, object] | None,
     refs: Mapping[str, str],
     disabled_agents: tuple[str, ...] | None,
-    author_guard: Mapping[str, object] | None,
+    author_guards: Sequence[Mapping[str, object]],
 ) -> str:
     lines: list[str] = []
     if disabled_agents is not None:
@@ -148,8 +152,8 @@ def _local_config_text(
             if value is not None:
                 lines.append(f"{key} = {json.dumps(str(value))}")
         lines.append("")
-    if author_guard:
-        lines.append("[author_guard]")
+    for author_guard in author_guards:
+        lines.append("[[author_guards]]")
         for key in (
             "project",
             "kind",
@@ -203,6 +207,12 @@ def _string_tuple(value: object) -> tuple[str, ...]:
     return tuple(str(value).split()) if isinstance(value, str) else ()
 
 
-def _author_guard_table(data: dict[str, object]) -> dict[str, object] | None:
-    guard = data.get("author_guard")
-    return guard if isinstance(guard, dict) else None
+def _author_guard_tables(data: dict[str, object]) -> tuple[dict[str, object], ...]:
+    guards: list[dict[str, object]] = []
+    legacy_guard = data.get("author_guard")
+    if isinstance(legacy_guard, dict):
+        guards.append(legacy_guard)
+    author_guards = data.get("author_guards", [])
+    if isinstance(author_guards, list):
+        guards.extend(guard for guard in author_guards if isinstance(guard, dict))
+    return tuple(guards)

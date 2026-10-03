@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 from issuekit.commands._common import print_json, run_command
-from issuekit.guards.author import clear_author_guard, guard_dict, read_author_guard, stop_message
+from issuekit.guards.author import clear_author_guard, guards_dict, read_author_guards, stop_message
 from issuekit.guards.separation import AUTHOR_GUARD_HELP
 from issuekit.workflow import WorkflowError
 
@@ -22,21 +22,22 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     )
     actions = parser.add_subparsers(dest="author_guard_action", metavar="<action>")
 
-    show_parser = actions.add_parser("show", help="Show the current local author guard.")
+    show_parser = actions.add_parser("show", help="Show the current local author guards.")
     show_parser.add_argument("--json", action="store_true", help="Print JSON output.")
     show_parser.set_defaults(func=run_show)
 
     check_parser = actions.add_parser(
         "check",
-        help="Fail when a local author guard is present.",
+        help="Fail when a local issue guard is present.",
     )
     check_parser.add_argument("--json", action="store_true", help="Print JSON output.")
     check_parser.set_defaults(func=run_check)
 
     clear_parser = actions.add_parser(
         "clear",
-        help="Clear the local author guard after handoff or human recovery.",
+        help="Clear local author guards after handoff or human recovery.",
     )
+    clear_parser.add_argument("--ref", help="Clear only the guard with this issue or proposal ref.")
     clear_parser.add_argument("--json", action="store_true", help="Print JSON output.")
     clear_parser.set_defaults(func=run_clear)
 
@@ -45,15 +46,21 @@ def register(subparsers: argparse._SubParsersAction) -> None:
 
 def run_show(args) -> int:
     def action() -> int:
-        guard = read_author_guard(Path.cwd())
+        guards = read_author_guards(Path.cwd())
         if getattr(args, "json", False):
-            print_json({"authorGuard": guard_dict(guard)})
+            print_json(
+                {
+                    "authorGuard": guards[0].to_dict() if guards else None,
+                    "authorGuards": guards_dict(guards),
+                }
+            )
             return 0
-        if guard is None:
+        if not guards:
             print("No author-session guard.")
             return 0
-        print(stop_message(guard))
-        print("Next: stop this session, or run `issuekit author-guard clear` after handoff.")
+        for guard in guards:
+            print(stop_message(guard))
+        print("Next: run `issuekit author-guard clear` after handoff to clear all guards.")
         return 0
 
     return run_command(action, errors=(OSError, ValueError, WorkflowError))
@@ -61,15 +68,27 @@ def run_show(args) -> int:
 
 def run_check(args) -> int:
     def action() -> int:
-        guard = read_author_guard(Path.cwd())
+        guards = read_author_guards(Path.cwd())
+        issue_guards = tuple(guard for guard in guards if guard.kind == "issue")
+        blocking = bool(issue_guards)
         if args.json:
-            print_json({"ok": guard is None, "authorGuard": guard_dict(guard)})
-        if guard is None:
+            print_json(
+                {
+                    "ok": not blocking,
+                    "blocking": blocking,
+                    "authorGuard": guards[0].to_dict() if guards else None,
+                    "authorGuards": guards_dict(guards),
+                }
+            )
+        if not blocking:
             if not args.json:
-                print("Author guard check passed: no local author-session guard.")
+                print("Author guard check passed: no local issue guard blocks lifecycle commands.")
+                for guard in guards:
+                    print(f"Proposal guard information: {stop_message(guard)}")
             return 0
         if not args.json:
-            print(stop_message(guard), file=sys.stderr)
+            for guard in issue_guards:
+                print(stop_message(guard), file=sys.stderr)
         return 1
 
     return run_command(action, errors=(OSError, ValueError, WorkflowError))
@@ -77,11 +96,16 @@ def run_check(args) -> int:
 
 def run_clear(args) -> int:
     def action() -> int:
-        cleared = clear_author_guard(Path.cwd())
+        cleared = clear_author_guard(Path.cwd(), ref=args.ref)
         if args.json:
-            print_json({"cleared": cleared})
+            print_json({"cleared": cleared, "ref": args.ref})
             return 0
-        print("Cleared author-session guard." if cleared else "No author-session guard to clear.")
+        if cleared:
+            suffix = f" for {args.ref}" if args.ref else "s"
+            print(f"Cleared author-session guard{suffix}.")
+        else:
+            suffix = f" for {args.ref}" if args.ref else ""
+            print(f"No author-session guard found{suffix}.")
         return 0
 
     return run_command(action, errors=(OSError, ValueError, WorkflowError))

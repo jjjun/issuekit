@@ -4,8 +4,9 @@ from pathlib import Path
 
 import issuekit.proposals.api as proposals_api
 from issuekit import cli
+from issuekit import store as store_module
 from issuekit.config import IssuekitConfig, TriagePolicy
-from issuekit.guards.author import read_author_guard
+from issuekit.guards.author import read_author_guard, read_author_guards
 from issuekit.proposals import ProposalError, origin_destination
 from issuekit.proposals.api import _git_commit
 from issuekit.testing import FakeIssuekitClient
@@ -66,7 +67,8 @@ def test_api_cli_propose_posts_expected_body_and_dedupes(
     assert second["dependency_ref"] == "target#proposal:1"
     assert first["payload_mismatch"] is False
     assert first["deduplicated"] is False
-    assert first["stop"] == "STOP_NOW"
+    assert "Proposal target#1 sent to target." in first["stop"]
+    assert "STOP_NOW" not in first["stop"]
     guard = read_author_guard(tmp_path)
     assert guard is not None
     assert guard.kind == "proposal"
@@ -77,6 +79,11 @@ def test_api_cli_propose_posts_expected_body_and_dedupes(
     assert second["payload_mismatch"] is False
     assert second["deduplicated"] is True
     assert second["idempotent_existing"] is True
+    assert cli.main(["author-guard", "check", "--json"]) == 0
+    guard_check = json.loads(capsys.readouterr().out)
+    assert guard_check["ok"] is True
+    assert guard_check["blocking"] is False
+    assert [guard["kind"] for guard in guard_check["authorGuards"]] == ["proposal"]
     assert client.calls[0] == {
         "method": "create_proposal",
         "body": {
@@ -87,6 +94,42 @@ def test_api_cli_propose_posts_expected_body_and_dedupes(
     }
     assert created_projects == ["source", "target", "source", "target"]
     assert not (tmp_path / "docs" / "issues" / "incoming").exists()
+
+
+def test_issue_guard_survives_proposal_and_blocks_claim_of_authored_issue(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient()
+    client.register_catalog_project("target")
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'source'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(
+        ["author", "--title", "Local issue", "--body", "Implement locally.", "--agent", "codex"]
+    ) == 0
+    author_output = capsys.readouterr().out
+    assert "STOP_NOW" in author_output
+
+    assert cli.main(
+        ["propose", "--to", "target", "--title", "Upstream idea", "--body", "A proposal."]
+    ) == 0
+    proposal_output = capsys.readouterr().out
+    assert "Proposal target#1 sent to target." in proposal_output
+    assert "STOP_NOW" not in proposal_output
+    guards = read_author_guards(tmp_path)
+    assert [guard.kind for guard in guards] == ["issue", "proposal"]
+
+    assert cli.main(["claim", "--id", "1", "--assignee", "codex"]) == 1
+    assert "STOP_NOW" in capsys.readouterr().err
+    assert [call["method"] for call in client.calls] == ["create_issue", "create_proposal"]
 
 
 def test_api_cli_propose_requires_local_project_context(

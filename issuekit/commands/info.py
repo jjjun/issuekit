@@ -8,7 +8,13 @@ from pathlib import Path
 from issuekit.commands._common import print_json
 from issuekit.config import api_url_origin, load_config
 from issuekit.core import issue_dict
-from issuekit.guards.author import guard_dict, read_author_guard
+from issuekit.guards.author import (
+    STOP_SENTINEL,
+    guard_dict,
+    guards_dict,
+    read_author_guards,
+    stop_message,
+)
 from issuekit.issues.display import dependency_detail_lines, dependency_marker
 from issuekit.prompts.protocol import effective_agent_roles
 from issuekit.proposals.api import api_client
@@ -34,7 +40,7 @@ def run(args) -> int:
         )
     incoming_proposals = _incoming_proposals(config)
     pending_proposal_checks = _pending_proposal_check_count(config)
-    author_guard = read_author_guard(Path.cwd())
+    author_guards = read_author_guards(Path.cwd())
     enabled_agents = [name for name, _run_config in config.agents]
     summary = {
         "counts": {
@@ -95,7 +101,8 @@ def run(args) -> int:
             }
             for proposal in incoming_proposals
         ],
-        "authorGuard": guard_dict(author_guard),
+        "authorGuard": guard_dict(author_guards[0] if author_guards else None),
+        "authorGuards": guards_dict(author_guards),
     }
 
     if args.json:
@@ -118,11 +125,11 @@ def run(args) -> int:
         "- Configured default implementer: "
         f"{summary['configuredDefaultImplementer'] or '-'}"
     )
-    if summary["authorGuard"]:
-        guard = summary["authorGuard"]
-        print(
-            f"- Author guard: STOP_NOW {guard['kind']} {guard.get('ref') or guard.get('id')}"
-        )
+    for guard in author_guards:
+        if guard.kind == "issue":
+            print(f"- Author guard: {STOP_SENTINEL} {guard.kind} {guard.ref or guard.id}")
+        else:
+            print(f"- Author guard: {stop_message(guard)}")
 
     print()
     print("Agent config")

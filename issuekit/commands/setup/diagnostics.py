@@ -12,7 +12,7 @@ from pathlib import Path
 
 from issuekit.commands.init import CODEX_MCP_HEADER, HANDOFF_HEADER
 from issuekit.config import load_config
-from issuekit.guards.author import read_author_guard
+from issuekit.guards.author import read_author_guards
 
 MCP_INSTALL_COMMAND = 'uv tool install "issuekit[mcp] @ <absolute-path-or-url>"'
 
@@ -152,9 +152,9 @@ def _agent_config_diagnostic(cwd: Path) -> Diagnostic:
 
 
 def _author_guard_diagnostic(cwd: Path) -> Diagnostic:
-    guard = read_author_guard(cwd)
+    guard = next((item for item in read_author_guards(cwd) if item.kind == "issue"), None)
     if guard is None:
-        return Diagnostic("OK", "No local author-session guard is active.")
+        return Diagnostic("OK", "No local blocking issue guard is active.")
     return Diagnostic(
         "WARN",
         "Local author-session guard is active.",

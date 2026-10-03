@@ -12,6 +12,7 @@ from .author import (
     enforce_no_author_guard,
     guard_dict,
     read_author_guard,
+    read_author_guards,
     stop_message,
 )
 from .branch import enforce_work_branch
@@ -33,7 +34,9 @@ __all__ = [
     "enforce_claim_sync",
     "enforce_no_author_guard",
     "enforce_work_branch",
+    "guards_dict",
     "guard_dict",
+    "read_author_guards",
     "read_author_guard",
     "separation_guard_note",
     "stop_message",
