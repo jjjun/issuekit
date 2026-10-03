@@ -25,10 +25,12 @@ Decide exactly one of:
   order when several pending proposals interact.
 - adopt_and_reply: adopt the proposal and send reply_markdown to the origin
   only when the origin must take a follow-up action. Do not choose this for a
-  proposal that already has a Reply-to value; replies never generate automatic
-  replies, which prevents reply loops.
+  proposal that already has a Reply-to value; automatic replies to replies
+  are suppressed to prevent reply loops.
 - reply: the request intent is unclear. Ask one concrete question that
-  the origin project must answer before this can be adopted.
+  the origin project must answer before this can be adopted. Do not choose
+  this for a proposal that already has a Reply-to value; automatic replies to
+  replies are suppressed and the proposal stays pending for a human.
 - discard: the request does not belong to this project. Explain why so
   the sender can re-route.
 

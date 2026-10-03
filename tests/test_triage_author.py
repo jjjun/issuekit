@@ -207,7 +207,7 @@ def test_triage_author_adopt_and_reply_sends_linked_follow_up(monkeypatch, tmp_p
     reply = client.get_proposal(6)
     assert reply["body"] == "Send the compatibility findings next."
     assert reply["reply_to"] == "mine-py#3@abc"
-    assert reply["origin"].startswith(f"issuekit#{decisions[0].issue_id}@")
+    assert reply["origin"].startswith("issuekit#triage-reply-5@")
     assert decisions[0].reply_ref == "mine-py#6"
     assert (
         "triage_author_decision",
@@ -249,7 +249,7 @@ def test_triage_author_adopt_and_reply_does_not_reply_to_a_reply(monkeypatch, tm
         client.get_proposal(6)
 
 
-def test_triage_author_adopt_and_reply_uses_each_adopted_issue_as_origin(
+def test_triage_author_adopt_and_reply_uses_each_proposal_as_origin(
     monkeypatch, tmp_path
 ) -> None:
     client, runner, config, _events, log = _setup(
@@ -279,11 +279,115 @@ def test_triage_author_adopt_and_reply_uses_each_adopted_issue_as_origin(
     )
 
     replies = [client.get_proposal(proposal_id) for proposal_id in (7, 8)]
-    assert [decision.reply_ref for decision in decisions] == ["mine-py#7", "mine-py#8"]
-    assert replies[0]["origin"] != replies[1]["origin"]
-    assert {reply["origin"].split("@", 1)[0] for reply in replies} == {
-        f"issuekit#{decision.issue_id}" for decision in decisions
-    }
+    assert [decision.reply_ref for decision in decisions] == [
+        "mine-py#7",
+        "mine-py#8",
+    ]
+    assert [reply["origin"].split("@", 1)[0] for reply in replies] == [
+        "issuekit#triage-reply-5",
+        "issuekit#triage-reply-6",
+    ]
+
+
+def test_triage_author_reply_uses_each_proposal_as_origin(monkeypatch, tmp_path) -> None:
+    client, runner, config, _events, log = _setup(
+        monkeypatch,
+        tmp_path,
+        proposals=[
+            {"id": 5, "origin": "mine-py#3@abc", "title": "First", "body": "Please."},
+            {"id": 6, "origin": "mine-py#4@abc", "title": "Second", "body": "Please."},
+        ],
+        outputs=[
+            _triage_block(decision="reply", question="Clarify the first request?"),
+            _triage_block(decision="reply", question="Clarify the second request?"),
+        ],
+        extra="max_adoptions_per_cycle = 2\n",
+    )
+
+    decisions = run_triage_author_cycle(
+        config, tmp_path, runner_factory=lambda: runner, log=log
+    )
+
+    assert [decision.detail for decision in decisions] == [
+        "mine-py#7",
+        "mine-py#8",
+    ]
+    replies = [client.get_proposal(proposal_id) for proposal_id in (7, 8)]
+    assert [reply["origin"].split("@", 1)[0] for reply in replies] == [
+        "issuekit#triage-reply-5",
+        "issuekit#triage-reply-6",
+    ]
+    assert [reply["reply_to"] for reply in replies] == [
+        "mine-py#3@abc",
+        "mine-py#4@abc",
+    ]
+
+
+def test_triage_author_reply_to_reply_is_suppressed(monkeypatch, tmp_path) -> None:
+    client, runner, config, events, log = _setup(
+        monkeypatch,
+        tmp_path,
+        proposals=[
+            {
+                "id": 8,
+                "origin": "mine-py#2@abc",
+                "reply_to": "issuekit#4@def",
+                "title": "Follow up",
+                "body": "Please clarify.",
+            }
+        ],
+        outputs=[_triage_block(decision="reply", question="Another question?")],
+    )
+
+    decisions = run_triage_author_cycle(
+        config, tmp_path, runner_factory=lambda: runner, log=log
+    )
+
+    assert [decision.decision for decision in decisions] == ["reply_suppressed"]
+    assert decisions[0].error is None
+    assert client.get_proposal(8)["status"] == "pending"
+    assert len(client._proposals) == 1
+    assert ("triage_author_reply_suppressed", {"proposal": 8}) in events
+
+
+def test_triage_author_skips_suppressed_reply_next_cycle(monkeypatch, tmp_path) -> None:
+    client, runner, config, events, log = _setup(
+        monkeypatch,
+        tmp_path,
+        proposals=[
+            {
+                "id": 8,
+                "origin": "mine-py#2@abc",
+                "reply_to": "issuekit#4@def",
+                "title": "Follow up",
+                "body": "Please clarify.",
+            }
+        ],
+        outputs=[_triage_block(decision="reply", question="Another question?")],
+    )
+
+    first = run_triage_author_cycle(
+        config, tmp_path, runner_factory=lambda: runner, log=log
+    )
+    second = run_triage_author_cycle(
+        config, tmp_path, runner_factory=lambda: runner, log=log
+    )
+
+    assert [decision.decision for decision in first] == ["reply_suppressed"]
+    assert second == []
+    assert client.get_proposal(8)["status"] == "pending"
+    assert len(runner.calls) == 1
+    state = json.loads(
+        (tmp_path / ".agent-runs" / "triage-author-state.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert state["8"]["fingerprint"]
+    assert state["8"]["suppressed_at"]
+    assert (
+        "triage_author_skip",
+        {"proposal": 8, "reason": "reply_suppressed"},
+    ) in events
 
 
 def test_triage_author_adopt_and_reply_reports_idempotent_reply_as_error(
@@ -867,6 +971,30 @@ def test_cli_triage_once_prints_json_decisions(monkeypatch, tmp_path, capsys) ->
     assert decisions[0]["decision"] == "adopt"
     assert decisions[0]["proposal_id"] == 6
     assert client.get_proposal(6)["status"] == "adopted"
+
+
+def test_cli_triage_once_returns_failure_for_failed_decision(
+    monkeypatch, tmp_path, capsys
+) -> None:
+    from issuekit import cli
+    from issuekit.commands import triage as triage_cmd
+
+    _client, runner, _config, _events, _log = _setup(
+        monkeypatch,
+        tmp_path,
+        proposals=[
+            {"id": 6, "origin": "mine-py#4@abc", "title": "Ask", "body": "Please."}
+        ],
+        outputs=["invalid agent output"],
+    )
+    monkeypatch.setattr(triage_cmd, "AgentRunner", lambda: runner)
+
+    assert cli.main(["triage", "--once", "--json"]) == 1
+    captured = capsys.readouterr()
+    decisions = json.loads(captured.out)
+    assert decisions[0]["proposal_id"] == 6
+    assert decisions[0]["error"]
+    assert captured.err.strip() == "Triage failed for proposal ids: 6"
 
 
 @pytest.mark.parametrize("filename", ["code.py", "変更.py"])

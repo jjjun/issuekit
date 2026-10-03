@@ -72,6 +72,17 @@ def run(args) -> int:
             print_json([decision.to_dict() for decision in decisions])
         else:
             _print_decisions(decisions)
+        failed_ids = [
+            str(decision.proposal_id)
+            for decision in decisions
+            if decision.error is not None
+        ]
+        if failed_ids:
+            print(
+                "Triage failed for proposal ids: " + ", ".join(failed_ids),
+                file=sys.stderr,
+            )
+            return 1
         return 0
 
     return run_agent_command(

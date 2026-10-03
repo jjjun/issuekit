@@ -37,6 +37,8 @@ def load_state(cwd: Path) -> dict[str, dict[str, str]]:
         if not isinstance(fingerprint, str) and not isinstance(body_sha, str):
             continue
         entry = {"replied_at": str(value.get("replied_at", ""))}
+        if isinstance(value.get("suppressed_at"), str):
+            entry["suppressed_at"] = value["suppressed_at"]
         if isinstance(fingerprint, str):
             entry["fingerprint"] = fingerprint
         if isinstance(body_sha, str):

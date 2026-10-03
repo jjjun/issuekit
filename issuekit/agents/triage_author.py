@@ -185,7 +185,12 @@ def run_triage_author_cycle(
         fingerprint = _proposal_fingerprint(proposal)
         body_sha = _body_sha(proposal.get("body", ""))
         if _skip_replied(state, proposal_id, fingerprint, body_sha):
-            emit("triage_author_skip", proposal=proposal_id, reason="replied")
+            reason = (
+                "reply_suppressed"
+                if "suppressed_at" in state.get(str(proposal_id), {})
+                else "replied"
+            )
+            emit("triage_author_skip", proposal=proposal_id, reason=reason)
             continue
 
         evaluated += 1
@@ -342,6 +347,19 @@ def _apply_decision(
                 reply_ref=reply_ref,
             )
         if decision == "reply":
+            if proposal.get("reply_to"):
+                emit("triage_author_reply_suppressed", proposal=proposal_id)
+                state[str(proposal_id)] = {
+                    "fingerprint": fingerprint,
+                    "suppressed_at": now(),
+                }
+                save_state(cwd, state)
+                return TriageDecision(
+                    proposal_id=proposal_id,
+                    origin=origin,
+                    decision="reply_suppressed",
+                    detail="Automatic replies to replies are suppressed.",
+                )
             question = parsed["question"]
             issue_ref = _send_reply(proposal, question, config=config, cwd=cwd)
             state[str(proposal_id)] = {
@@ -476,9 +494,14 @@ def _send_reply(
         from_issue=from_issue,
         reply=None,
     )
+    commit = reply.origin.rsplit("@", maxsplit=1)[1]
     sent = send_proposal(
         config,
-        replace(reply, reply_to=str(proposal.get("origin", ""))),
+        replace(
+            reply,
+            origin=f"{config.project}#triage-reply-{proposal['id']}@{commit}",
+            reply_to=str(proposal.get("origin", "")),
+        ),
     )
     if sent.get("idempotent_existing") or sent.get("payload_mismatch"):
         raise ProposalError(str(sent.get("warning") or "Reply proposal was not sent."))
