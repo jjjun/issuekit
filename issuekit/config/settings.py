@@ -168,6 +168,7 @@ class IssuekitConfig:
             "codex",
             AgentRunConfig(
                 binary="codex",
+                adapter="codex",
                 known_paths=(
                     "~/.codex/.sandbox-bin/codex",
                     "~/.codex/.sandbox-bin/codex.exe",
@@ -176,7 +177,7 @@ class IssuekitConfig:
                 approval_flag="--dangerously-bypass-approvals-and-sandbox",
                 model_flag="--model",
                 effort_argv=("-c", "model_reasoning_effort={value}"),
-                speed_argv=("-c", "service_tier=priority"),
+                speed_argv=("-c", "service_tier=fast"),
                 prompt_suffix=_IMPLEMENTER_PROMPT_SUFFIX,
             ),
         ),

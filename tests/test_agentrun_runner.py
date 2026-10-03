@@ -16,6 +16,7 @@ from issuekit.agentrun import (
     AgentRunner,
     ConfigAgentAdapter,
     RunStatus,
+    build_adapter,
 )
 from issuekit.agentrun.runner import _RunWatcher
 from issuekit.agentrun.status import read_status, status_path, write_status
@@ -90,6 +91,61 @@ def test_runner_captures_stdout_stderr_and_returns_result(tmp_path: Path) -> Non
     assert status["elapsed_sec"] >= 0
     assert status["stdout_log"].endswith(".out.log")
     assert status["agent_log"].endswith(".agent.log")
+
+
+def test_runner_records_codex_jsonl_result_and_preserves_raw_log(tmp_path: Path) -> None:
+    fixture = Path(__file__).parent / "fixtures" / "codex_exec_success.jsonl"
+    script = (
+        "import pathlib, sys; "
+        "sys.stdout.write(pathlib.Path(sys.argv[1]).read_text(encoding='utf-8'))"
+    )
+    adapter = build_adapter(
+        "codex",
+        AgentRunConfig(
+            binary=sys.executable,
+            adapter="codex",
+            headless_argv=("-c", script, str(fixture)),
+        ),
+    )
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / ".git").mkdir()
+
+    result = AgentRunner().run(
+        adapter,
+        agent_prompt(tmp_path / "plan.md"),
+        repo,
+        timeout=10.0,
+    )
+
+    raw_stdout = fixture.read_text(encoding="utf-8")
+    final_message = (
+        "```review\n"
+        '{"verdict":"approve","verification":"uv run pytest","notes":"Looks good."}\n'
+        "```"
+    )
+    assert result.parsed is not None
+    assert result.parsed["stdout"] == final_message
+    assert result.parsed["session_id"] == "thread-390"
+    assert result.parsed["usage_input_tokens"] == "120"
+    assert result.parsed["usage_output_tokens"] == "20"
+    assert result.stdout_path.read_text(encoding="utf-8") == raw_stdout
+    assert result.status_path is not None
+    status = json.loads(result.status_path.read_text(encoding="utf-8"))
+    assert status["status"] == "completed"
+    assert status["session_id"] == "thread-390"
+    assert status["usage"] == {
+        "input_tokens": 120,
+        "cached_input_tokens": 40,
+        "output_tokens": 20,
+        "reasoning_output_tokens": 4,
+    }
+    assert status["final_message"] == final_message
+    assert status["is_error"] is False
+    restored_status = read_status(result.status_path)
+    assert restored_status.session_id == "thread-390"
+    assert restored_status.usage["input_tokens"] == 120
+    assert restored_status.final_message == final_message
 
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX mode bits are not used on Windows")
@@ -731,6 +787,39 @@ def test_runner_status_gains_last_log_fields_during_run(tmp_path: Path) -> None:
     assert final_status["last_log_line"] == "log-two"
     assert final_status["last_log_at"] is not None
     assert final_status["heartbeat_at"] is not None
+
+
+def test_runner_status_uses_latest_codex_stdout_event(tmp_path: Path) -> None:
+    script = tmp_path / "script.py"
+    script.write_text(
+        "import json, sys, time\n"
+        "print(json.dumps({'type': 'item.completed', 'item': {'type': 'agent_message'}}), flush=True)\n"
+        "print('Reading additional input from stdin...', file=sys.stderr, flush=True)\n"
+        "time.sleep(1.2)\n"
+        "print(json.dumps({'type': 'item.completed', 'item': {'type': 'command_execution', 'command': 'echo ' + 'x' * 300}}), flush=True)\n"
+        "time.sleep(1.2)\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    plan = tmp_path / "plan.md"
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / ".git").mkdir()
+
+    result = AgentRunner().run(
+        FakeAdapter([sys.executable, str(script)]),
+        agent_prompt(plan),
+        repo,
+        timeout=10.0,
+    )
+
+    assert result.status_path is not None
+    final_status = json.loads(result.status_path.read_text(encoding="utf-8"))
+    assert final_status["last_log_line"].startswith(
+        "item.completed command_execution: echo "
+    )
+    assert len(final_status["last_log_line"]) <= 200
+    assert final_status["last_log_line"] != "Reading additional input from stdin..."
 
 
 def test_runner_writer_survives_a_failing_tick(tmp_path: Path, monkeypatch) -> None:

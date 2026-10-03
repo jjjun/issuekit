@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import signal
 import subprocess
@@ -83,6 +84,7 @@ class _RunWatcher:
         run_status: RunStatus,
         repo: Path,
         agent_log_path: Path,
+        stdout_log_path: Path | None = None,
         enable_heartbeat: bool,
         start_time: float,
     ) -> None:
@@ -90,6 +92,7 @@ class _RunWatcher:
         self.run_status = run_status
         self.repo = repo
         self.agent_log_path = agent_log_path
+        self.stdout_log_path = stdout_log_path
         self.enable_heartbeat = enable_heartbeat
         self.start_time = start_time
         self._stop_event = threading.Event()
@@ -112,7 +115,7 @@ class _RunWatcher:
             self._stop_event.wait(timeout=HEARTBEAT_INTERVAL_SEC)
 
     def _tick(self) -> None:
-        last_line = self._read_last_log_line(self.agent_log_path)
+        last_line = self._read_latest_log_line()
         now = datetime.now().replace(microsecond=0).isoformat()
 
         self.run_status = replace(
@@ -142,13 +145,61 @@ class _RunWatcher:
 
     @staticmethod
     def _read_last_log_line(path: Path) -> str | None:
-        try:
-            data = path.read_bytes()
-        except OSError:
-            return None
-        if not data:
-            return None
-        return last_nonempty_line(data.decode("utf-8", errors="replace"))
+        entry = _read_log_entry(path)
+        return entry[0] if entry is not None else None
+
+    def _read_latest_log_line(self) -> str | None:
+        stderr_entry = _read_log_entry(self.agent_log_path)
+        if self.stdout_log_path is None:
+            return stderr_entry[0] if stderr_entry is not None else None
+
+        stdout_entry = _read_log_entry(self.stdout_log_path)
+        if stdout_entry is None:
+            return stderr_entry[0] if stderr_entry is not None else None
+
+        summary = _summarize_json_event(stdout_entry[0])
+        if summary is None:
+            return stderr_entry[0] if stderr_entry is not None else None
+        if stderr_entry is None or stdout_entry[1] >= stderr_entry[1]:
+            return summary
+        return stderr_entry[0]
+
+
+def _read_log_entry(path: Path) -> tuple[str, int] | None:
+    try:
+        data = path.read_bytes()
+        modified_at = path.stat().st_mtime_ns
+    except OSError:
+        return None
+    if not data:
+        return None
+    line = last_nonempty_line(data.decode("utf-8", errors="replace"))
+    return (line, modified_at) if line is not None else None
+
+
+def _summarize_json_event(line: str) -> str | None:
+    try:
+        event = json.loads(line)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(event, dict) or not isinstance(event.get("type"), str):
+        return None
+
+    event_type = event["type"]
+    summary = event_type
+    if event_type == "item.completed":
+        item = event.get("item")
+        if isinstance(item, dict) and isinstance(item.get("type"), str):
+            item_type = item["type"]
+            summary = f"{event_type} {item_type}"
+            command = item.get("command")
+            if item_type == "command_execution" and isinstance(command, str):
+                summary += f": {' '.join(command.split())}"
+
+    summary = summary.encode("ascii", errors="replace").decode("ascii")
+    if len(summary) > 200:
+        summary = summary[:197] + "..."
+    return summary
 
 
 class AgentRunner:
@@ -280,6 +331,7 @@ class AgentRunner:
                 run_status=run_status,
                 repo=repo,
                 agent_log_path=agent_log_path,
+                stdout_log_path=stdout_path,
                 enable_heartbeat=enable_heartbeat,
                 start_time=start,
             )
@@ -306,6 +358,7 @@ class AgentRunner:
         elapsed = time.monotonic() - start
         terminal_status = self._terminal_status(exit_code, timed_out)
 
+        stdout_text = ""
         try:
             stdout_text = stdout_path.read_text(encoding="utf-8", errors="replace")
             agent_log_text = agent_log_path.read_text(encoding="utf-8", errors="replace")
@@ -329,6 +382,10 @@ class AgentRunner:
                 exit_code=exit_code,
                 failure_reason=(parsed or {}).get("failure_reason"),
                 terminal_reason=(parsed or {}).get("terminal_reason"),
+                session_id=(parsed or {}).get("session_id"),
+                usage=_parsed_usage_counts(parsed),
+                final_message=_parsed_final_message(parsed, stdout_text),
+                is_error=_parsed_error_flag(parsed),
             ),
         )
 
@@ -458,3 +515,40 @@ class AgentRunner:
             except ProcessLookupError:
                 pass
             proc.wait()
+
+
+def _parsed_usage_counts(parsed: dict[str, str] | None) -> dict[str, int]:
+    usage: dict[str, int] = {}
+    for key, value in (parsed or {}).items():
+        if not key.startswith("usage_"):
+            continue
+        try:
+            usage[key.removeprefix("usage_")] = int(value)
+        except ValueError:
+            continue
+    return usage
+
+
+def _parsed_error_flag(parsed: dict[str, str] | None) -> bool | None:
+    value = (parsed or {}).get("is_error")
+    if value == "true":
+        return True
+    if value == "false":
+        return False
+    return None
+
+
+def _parsed_final_message(
+    parsed: dict[str, str] | None,
+    raw_stdout: str,
+) -> str | None:
+    if parsed is None:
+        return None
+    message = parsed.get("stdout")
+    if not message:
+        return None
+    has_result_metadata = any(
+        key in parsed
+        for key in ("session_id", "is_error", "terminal_reason", "cost_usd", "num_turns")
+    ) or any(key.startswith("usage_") for key in parsed)
+    return message if has_result_metadata or message != raw_stdout else None

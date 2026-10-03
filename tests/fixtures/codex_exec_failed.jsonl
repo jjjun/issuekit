@@ -1,0 +1,3 @@
+{"type":"error","message":"A transient request error."}
+{"type":"turn.failed","error":{"message":"Codex turn failed."}}
+{"type":"error","message":"The last error event."}

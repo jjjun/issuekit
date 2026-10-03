@@ -60,6 +60,14 @@ class ApprovingRunner:
         )
 
 
+class CodexJsonlReviewRunner(ApprovingRunner):
+    def run(self, adapter, *args, **kwargs) -> FakeResult:
+        stdout = (
+            Path(__file__).parent / "fixtures" / "codex_exec_success.jsonl"
+        ).read_text(encoding="utf-8")
+        return FakeResult(parsed=adapter.parse_output(stdout, ""))
+
+
 class RequestChangesRunner(ApprovingRunner):
     def run(self, *args, **kwargs) -> FakeResult:
         return FakeResult(
@@ -276,6 +284,39 @@ def test_review_command_approves_with_distinct_worker_identity(
                 "worker": "reviewer.demo",
         },
     }
+
+
+def test_review_command_parses_codex_jsonl_review_block(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                1,
+                "Review me",
+                status="in_progress",
+                assignee="",
+                stage="review",
+                implementer="codex",
+                worker="machine/demo/implementer",
+                author="claude",
+            )
+        ]
+    )
+    _configure_registered_api(tmp_path, monkeypatch, client)
+    _create_reviewable_diff(tmp_path)
+    monkeypatch.setattr("issuekit.commands.review.AgentRunner", CodexJsonlReviewRunner)
+
+    exit_code = cli.main(["review", "1", "--agent", "codex"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "review_decision verdict=approve" in captured.out
+    assert client.get_issue(1)["status"] == "completed"
+    assert client.calls[-1]["method"] == "approve"
+    assert client.calls[-1]["body"]["verification"] == "uv run pytest"
 
 
 def test_review_command_approves_with_sanitized_non_ascii_verification(

@@ -231,7 +231,7 @@ Agent tables accept these keys:
 | `speed`, `speed_argv` | Boolean switch and the literal arguments it emits. |
 | `resumable`, `session_flag`, `resume_flag` | Session support; see below. |
 | `prompt_suffix`, `model_prompts` | Text appended to implementer prompts, and per-model text appended to every matching prompt. |
-| `adapter` | Marker for a custom adapter class; only `kimi` is built in, and an unknown marker fails with `Unknown adapter`. |
+| `adapter` | Marker for a custom adapter class; `codex` and `kimi` are built in, and an unknown marker fails with `Unknown adapter`. |
 | `runtime`, `app_server_argv`, `lease_ttl_seconds` | Runtime selection; see the App Server paragraphs below. |
 | `mojibake_gate`, `diff_shape_warn_deletions` | Submit-time policy; see [Encoding checks](#encoding-checks). |
 | `roles` | Per-role `model` and `reasoning_effort` overlays; see below. |
@@ -336,6 +336,13 @@ envelope, and an agent that dies before emitting one keeps its raw stdout, so
 crash diagnostics are unchanged. Set `output_format = "text"` to opt out; the
 recorded metrics are then unavailable.
 
+The built-in Codex adapter invokes `codex exec --json` and parses its JSONL
+events. `stdout` contains the last completed agent message, while the run result
+includes `session_id`, `usage_*`, and error fields when the events provide them.
+The run status record keeps the session id, token counts, final message, and
+error flag. Raw JSONL remains in the `.out.log` file, and output without
+parseable events is preserved as raw stdout.
+
 Agent-launching commands accept pass-through `--model <model-id>` and
 `--reasoning-effort <value>` overrides, including `implement`, `review`,
 `negotiate`, `request`, `serve`, `triage`, and `proposal-checks`. Issuekit does not
@@ -398,10 +405,12 @@ built-in Codex adapter uses `("-c", "model_reasoning_effort={value}")` and the
 built-in Claude adapter uses `("--effort", "{value}")`. The `speed` setting is
 a boolean switch; `true` emits the agent's `speed_argv` entries verbatim, while
 `false` or an absent setting emits nothing. The built-in templates carry each
-CLI's wire value: Codex uses `("-c", "service_tier=priority")`, and Claude uses
-`("--settings", '{"fastMode": true}')`. To select a different Codex service
-tier such as `flex`, override `speed_argv` with
-`["-c", "service_tier=flex"]`. Current issuekit rejects the old string form:
+CLI's wire value: Codex uses `("-c", "service_tier=fast")`, and Claude uses
+`("--settings", '{"fastMode": true}')`. For Codex, Fast mode requires
+`features.fast_mode`, which is enabled by default, and ChatGPT sign-in. Fast
+mode is available only for models that support it. See the current
+[Codex speed configuration](https://developers.openai.com/codex/agent-configuration/speed)
+for details. Current issuekit rejects the old string form:
 `speed = "priority"` fails config loading with
 `Invalid boolean config value: priority`, so replace it with `speed = true`.
 An older pinned issuekit that reads `speed = true` may stringify it and emit

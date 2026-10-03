@@ -56,11 +56,12 @@ change is required. `speed` is a boolean switch, and `speed_argv` contains the
 literal per-CLI arguments emitted when it is true.
 
 Create a custom adapter only when its CLI needs behavior declarative
-configuration cannot express. For example,
-`issuekit/agentrun/adapters/kimi.py` overrides `parse_output` to recover a
-resumable session id from stderr. Subclass `ConfigAgentAdapter`, register the
-class in `issuekit/agentrun/adapters/registry.py`, and set
-`adapter = "<marker>"` in the agent configuration.
+configuration cannot express. `issuekit/agentrun/adapters/kimi.py` overrides
+`parse_output` to recover a resumable session id from stderr, while
+`issuekit/agentrun/adapters/codex.py` parses Codex exec JSONL events. Subclass
+`ConfigAgentAdapter`, register the class in
+`issuekit/agentrun/adapters/registry.py`, and set `adapter = "<marker>"` in the
+agent configuration.
 
 See [`docs/guides/configuration.md`](../../docs/guides/configuration.md) for
 the user-facing TOML reference.

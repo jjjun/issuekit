@@ -1,8 +1,10 @@
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
 from issuekit.agentrun import ConfigAgentAdapter
+from issuekit.agentrun.adapters.codex import CodexAdapter
 from issuekit.agentrun.adapters.kimi import KimiAdapter
 from issuekit.agents.registry import resolve_adapter
 from issuekit.config import AgentRunConfig, IssuekitConfig, RoleOverlay, load_config
@@ -16,9 +18,9 @@ def test_default_config_includes_kimi_and_codex() -> None:
     assert agents_dict["kimi"].binary == "kimi"
     assert agents_dict["kimi"].adapter == "kimi"
     assert agents_dict["codex"].binary == "codex"
-    assert agents_dict["codex"].adapter is None
+    assert agents_dict["codex"].adapter == "codex"
     assert agents_dict["codex"].speed is False
-    assert agents_dict["codex"].speed_argv == ("-c", "service_tier=priority")
+    assert agents_dict["codex"].speed_argv == ("-c", "service_tier=fast")
 
 
 def test_default_config_includes_claude() -> None:
@@ -41,7 +43,7 @@ def test_resolve_adapter_returns_kimi() -> None:
 
 def test_resolve_adapter_returns_codex() -> None:
     adapter = resolve_adapter("codex")
-    assert isinstance(adapter, ConfigAgentAdapter)
+    assert isinstance(adapter, CodexAdapter)
     assert adapter.agent_name == "codex"
 
 
@@ -311,6 +313,7 @@ def test_codex_adapter_argv_contains_exec() -> None:
     assert "exec" in argv
     assert argv[1].startswith("prompt")
     assert "--dangerously-bypass-approvals-and-sandbox" in argv
+    assert argv[-1] == "--json"
 
 
 def test_codex_adapter_argv_includes_model() -> None:
@@ -325,6 +328,16 @@ def test_codex_adapter_parse_output_returns_streams() -> None:
     parsed = adapter.parse_output("stdout text", "stderr text")
     assert parsed["stdout"] == "stdout text"
     assert parsed["stderr"] == "stderr text"
+
+
+def test_codex_adapter_speed_uses_fast_service_tier() -> None:
+    config = IssuekitConfig()
+    codex = replace(dict(config.agents)["codex"], speed=True)
+    config = IssuekitConfig(agents=(("codex", codex),))
+
+    argv = resolve_adapter("codex", config=config).build_argv("prompt", Path("/plan.md"))
+
+    assert argv[-3:] == ["-c", "service_tier=fast", "--json"]
 
 
 def test_codex_adapter_argv_value_less_approval_flag() -> None:

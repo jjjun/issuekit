@@ -314,6 +314,59 @@ def test_config_adapter_keeps_raw_stdout_when_envelope_is_unparsable() -> None:
     assert parsed == {"stdout": "crashed before any JSON", "stderr": "boom"}
 
 
+def test_codex_adapter_parses_jsonl_events() -> None:
+    adapter = resolve_adapter("codex")
+    stdout = (
+        Path(__file__).parent / "fixtures" / "codex_exec_success.jsonl"
+    ).read_text(encoding="utf-8")
+
+    parsed = adapter.parse_output(stdout, "stderr text")
+
+    assert parsed["stdout"] == (
+        "```review\n"
+        '{"verdict":"approve","verification":"uv run pytest","notes":"Looks good."}\n'
+        "```"
+    )
+    assert parsed["stderr"] == "stderr text"
+    assert parsed["session_id"] == "thread-390"
+    assert parsed["usage_input_tokens"] == "120"
+    assert parsed["usage_cached_input_tokens"] == "40"
+    assert parsed["usage_output_tokens"] == "20"
+    assert parsed["usage_reasoning_output_tokens"] == "4"
+    assert parsed["is_error"] == "false"
+
+
+def test_codex_adapter_parses_turn_failure_and_last_error_event() -> None:
+    adapter = resolve_adapter("codex")
+    stdout = (
+        Path(__file__).parent / "fixtures" / "codex_exec_failed.jsonl"
+    ).read_text(encoding="utf-8")
+
+    parsed = adapter.parse_output(stdout, "")
+
+    assert parsed["is_error"] == "true"
+    assert parsed["failure_reason"] == "The last error event."
+
+    turn_failed = json.dumps(
+        {"type": "turn.failed", "error": {"message": "The turn failed."}}
+    )
+    parsed_turn_failed = adapter.parse_output(turn_failed, "")
+
+    assert parsed_turn_failed["is_error"] == "true"
+    assert parsed_turn_failed["failure_reason"] == "The turn failed."
+
+
+def test_codex_adapter_keeps_raw_stdout_when_no_jsonl_event_parses() -> None:
+    adapter = resolve_adapter("codex")
+    stdout = (
+        Path(__file__).parent / "fixtures" / "codex_exec_crash.txt"
+    ).read_text(encoding="utf-8")
+
+    parsed = adapter.parse_output(stdout, "stderr text")
+
+    assert parsed == {"stdout": stdout, "stderr": "stderr text"}
+
+
 def test_config_adapter_does_not_unwrap_text_output_format() -> None:
     adapter = ConfigAgentAdapter(
         "kimi",

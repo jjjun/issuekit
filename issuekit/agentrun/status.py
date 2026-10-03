@@ -6,7 +6,7 @@ import json
 import os
 import sys
 import time
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
@@ -46,6 +46,10 @@ class RunStatus:
     heartbeat_at: str | None = None
     failure_reason: str | None = None
     terminal_reason: str | None = None
+    session_id: str | None = None
+    usage: dict[str, int] = field(default_factory=dict)
+    final_message: str | None = None
+    is_error: bool | None = None
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> RunStatus:
@@ -68,6 +72,14 @@ class RunStatus:
                 heartbeat_at=optional_str(data.get("heartbeat_at")),
                 failure_reason=optional_str(data.get("failure_reason")),
                 terminal_reason=optional_str(data.get("terminal_reason")),
+                session_id=optional_str(data.get("session_id")),
+                usage=_usage_counts(data.get("usage")),
+                final_message=optional_str(data.get("final_message")),
+                is_error=(
+                    data.get("is_error")
+                    if isinstance(data.get("is_error"), bool)
+                    else None
+                ),
             )
         except KeyError as exc:
             raise ValueError(
@@ -95,6 +107,10 @@ class RunStatus:
             "heartbeat_at": self.heartbeat_at,
             "failure_reason": self.failure_reason,
             "terminal_reason": self.terminal_reason,
+            "session_id": self.session_id,
+            "usage": self.usage,
+            "final_message": self.final_message,
+            "is_error": self.is_error,
         }
 
     @property
@@ -104,6 +120,16 @@ class RunStatus:
 
 def status_path(run_dir: Path, run_id: str) -> Path:
     return run_dir / f"{run_id}.status.json"
+
+
+def _usage_counts(value: object) -> dict[str, int]:
+    if not isinstance(value, dict):
+        return {}
+    return {
+        name: count
+        for name, count in value.items()
+        if isinstance(name, str) and isinstance(count, int) and not isinstance(count, bool)
+    }
 
 
 def write_status(path: Path, status: RunStatus) -> None:

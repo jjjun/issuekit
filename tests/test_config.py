@@ -1194,6 +1194,7 @@ def test_load_config_reads_agent_guardrail_fields(tmp_path: Path) -> None:
 
     assert codex == AgentRunConfig(
         binary="codex",
+        adapter="codex",
         known_paths=(
             "~/.codex/.sandbox-bin/codex",
             "~/.codex/.sandbox-bin/codex.exe",
@@ -1264,6 +1265,7 @@ def test_load_config_merges_builtin_agent_overrides(tmp_path: Path) -> None:
     assert tuple(agents) == ("kimi", "codex", "claude")
     assert agents["codex"] == AgentRunConfig(
         binary=codex_default.binary,
+        adapter=codex_default.adapter,
         known_paths=codex_default.known_paths,
         headless_argv=codex_default.headless_argv,
         approval_flag="--sandbox",
