@@ -41,6 +41,10 @@ def _call(server, name: str, arguments: dict[str, Any]) -> Any:
     return asyncio.run(run())
 
 
+def _proposal_call(client: FakeIssuekitClient) -> dict[str, object]:
+    return next(call for call in client.calls if call["method"] == "create_proposal")
+
+
 def _tool_names(server) -> set[str]:
     async def run() -> set[str]:
         return {tool.name for tool in await server.list_tools()}
@@ -2001,7 +2005,7 @@ def test_mcp_propose_accepts_worker_repo_target(
     )
 
     assert sent["target_worker"] == "checkout"
-    assert client.calls[0]["body"]["target_worker"] == "checkout"
+    assert _proposal_call(client)["body"]["target_worker"] == "checkout"
 
 
 def test_mcp_propose_flags_same_origin_payload_mismatch(
@@ -2087,7 +2091,7 @@ def test_mcp_propose_attaches_dependency_refs(tmp_path: Path, monkeypatch) -> No
 
     assert sent["depends_on"] == ["mine-py#42"]
     assert sent["dependency_ref"] == "other_project#proposal:1"
-    assert client.calls[0]["body"]["depends_on"] == ["mine-py#42"]
+    assert _proposal_call(client)["body"]["depends_on"] == ["mine-py#42"]
 
 
 def test_mcp_propose_rejects_non_ascii_body(tmp_path: Path, monkeypatch) -> None:

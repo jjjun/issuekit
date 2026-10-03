@@ -12,7 +12,13 @@ from pathlib import Path
 from issuekit.api import IssuekitClient, JsonDict
 from issuekit.config import IssuekitConfig
 from issuekit.config.project_profile import load_project_profile
-from issuekit.core import Issue, worker_display_from_row, worker_keys_from_row, worker_keys_match
+from issuekit.core import (
+    Issue,
+    worker_display_from_row,
+    worker_key_matches_row,
+    worker_keys_from_row,
+    worker_keys_match,
+)
 from issuekit.store import get_store
 from issuekit.timestamps import parse_timestamp
 from issuekit.worker_constants import WORKER_HEARTBEAT_INTERVAL_SEC
@@ -356,7 +362,11 @@ def resolve_api_worker(config: IssuekitConfig, address: str) -> JsonDict:
     if not target:
         raise WorkerRemovalError("Worker address is required.")
     workers = list_api_workers(config)
-    matches = [worker for worker in workers if target in worker_keys_from_row(worker)]
+    matches = [
+        worker
+        for worker in workers
+        if worker_key_matches_row(target, worker, directed_target=True)
+    ]
     if not matches:
         raise WorkerRemovalError(f"Worker was not found: {address}")
     if len(matches) > 1:
@@ -515,12 +525,11 @@ def _worker_implementing_issues(
     config: IssuekitConfig,
     worker: Mapping[str, object],
 ) -> list[Issue]:
-    keys = worker_keys_from_row(worker)
     project_config = replace(config, project=_worker_project(config, worker))
     return [
         claim.issue
         for claim in list_worker_claims(project_config, stage="implementing")
-        if any(worker_keys_match(claim.worker, key) for key in keys)
+        if worker_key_matches_row(claim.worker, worker)
     ]
 
 
@@ -564,10 +573,14 @@ def _prune_candidate(
         return None
     for issue in issues:
         if issue.stage == "implementing" and issue.worker:
-            if any(worker_keys_match(issue.worker, key) for key in keys):
+            if worker_key_matches_row(issue.worker, worker):
                 return None
         if issue.target_worker:
-            if any(worker_keys_match(issue.target_worker, key) for key in keys):
+            if worker_key_matches_row(
+                issue.target_worker,
+                worker,
+                directed_target=True,
+            ):
                 return None
     return WorkerPruneCandidate(worker=dict(worker), stale_seconds=age)
 

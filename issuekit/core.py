@@ -167,11 +167,17 @@ def worker_keys_from_row(row: Mapping[str, object]) -> set[str]:
     return keys
 
 
-def worker_keys_match(left: str, right: str) -> bool:
+def worker_keys_match(
+    left: str,
+    right: str,
+    *,
+    require_target_machine: bool = False,
+) -> bool:
     """Return True when two worker keys refer to the same worker identity.
 
     Machine ids discriminate only when both keys carry the machine-qualified
-    ``@machine`` suffix. Bare ``worker.repo`` keys stay machine-agnostic.
+    ``@machine`` suffix. Bare ``worker.repo`` keys stay machine-agnostic unless
+    ``require_target_machine`` is set for a directed target.
     """
     if left == right:
         return True
@@ -179,7 +185,33 @@ def worker_keys_match(left: str, right: str) -> bool:
     right_parts = _worker_key_parts(right)
     if left_parts is None or right_parts is None:
         return False
-    return _worker_key_parts_match(left_parts, right_parts, require_target_machine=False)
+    return _worker_key_parts_match(
+        left_parts,
+        right_parts,
+        require_target_machine=require_target_machine,
+    )
+
+
+def worker_key_matches_row(
+    key: str,
+    row: Mapping[str, object],
+    *,
+    directed_target: bool = False,
+) -> bool:
+    """Return whether a worker key matches a registered worker row.
+
+    Qualified keys compare against the row's qualified key when it has a
+    machine id, so the row's bare compatibility key cannot mask a mismatch.
+    """
+    row_keys = worker_keys_from_row(row)
+    if "@" in key:
+        qualified_keys = {candidate for candidate in row_keys if "@" in candidate}
+        if qualified_keys:
+            row_keys = qualified_keys
+    return any(
+        worker_keys_match(key, candidate, require_target_machine=directed_target)
+        for candidate in row_keys
+    )
 
 
 def directed_target_matches(target_worker: str, claiming_key: str) -> bool:
@@ -189,13 +221,11 @@ def directed_target_matches(target_worker: str, claiming_key: str) -> bool:
     a claiming key that carries the same machine id, while a bare target stays
     machine-agnostic.
     """
-    if target_worker == claiming_key:
-        return True
-    target_parts = _worker_key_parts(target_worker)
-    claiming_parts = _worker_key_parts(claiming_key)
-    if target_parts is None or claiming_parts is None:
-        return False
-    return _worker_key_parts_match(target_parts, claiming_parts, require_target_machine=True)
+    return worker_keys_match(
+        target_worker,
+        claiming_key,
+        require_target_machine=True,
+    )
 
 
 @dataclass(frozen=True)

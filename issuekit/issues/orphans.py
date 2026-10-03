@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from issuekit.config import IssuekitConfig
-from issuekit.core import Issue, worker_keys_from_row, worker_keys_match
+from issuekit.core import Issue, worker_key_matches_row
 from issuekit.timestamps import parse_timestamp
 
 # The worker heartbeat posts at the configured worker_heartbeat_interval_sec,
@@ -71,10 +71,7 @@ def detect_stale_claims(
     codes when their target worker is missing or stale, because no other worker
     can claim them until they are readdressed to the repo pool.
     """
-    last_seen_by_worker: dict[str, object] = {}
-    for row in workers:
-        for key in worker_keys_from_row(row):
-            last_seen_by_worker[key] = row.get("last_seen")
+    worker_rows = list(workers)
     stale: list[StaleClaim] = []
     for issue in issues:
         if issue.stage != IMPLEMENTING_STAGE:
@@ -83,7 +80,7 @@ def detect_stale_claims(
                     stale,
                     issue,
                     worker=issue.target_worker,
-                    last_seen_by_worker=last_seen_by_worker,
+                    worker_rows=worker_rows,
                     now=now,
                     stale_after_sec=stale_after_sec,
                     no_worker_reason=DIRECTED_NO_WORKER,
@@ -96,7 +93,7 @@ def detect_stale_claims(
                 stale,
                 issue,
                 worker=issue.worker,
-                last_seen_by_worker=last_seen_by_worker,
+                worker_rows=worker_rows,
                 now=now,
                 stale_after_sec=stale_after_sec,
                 no_worker_reason=NO_WORKER,
@@ -156,29 +153,36 @@ def _append_stale_worker(
     issue: Issue,
     *,
     worker: str,
-    last_seen_by_worker: Mapping[str, object],
+    worker_rows: list[Mapping[str, object]],
     now: datetime,
     stale_after_sec: float,
     no_worker_reason: str,
     expired_reason: str,
     target_worker: str = "",
 ) -> None:
-    matched_key = worker if worker in last_seen_by_worker else None
-    if matched_key is None:
-        matched_key = next(
-            (key for key in last_seen_by_worker if worker_keys_match(worker, key)),
-            None,
-        )
-    if matched_key is None:
+    matches = [
+        row
+        for row in worker_rows
+        if worker_key_matches_row(worker, row, directed_target=bool(target_worker))
+    ]
+    if not matches:
         stale.append(StaleClaim(issue, no_worker_reason, worker, None, None, target_worker))
         return
-    raw_last_seen = last_seen_by_worker[matched_key]
-    seen = parse_timestamp(raw_last_seen)
-    if seen is None:
+
+    stale_matches: list[tuple[object, float]] = []
+    for row in matches:
+        raw_last_seen = row.get("last_seen")
+        seen = parse_timestamp(raw_last_seen)
+        if seen is None:
+            return
+        age = (now - seen).total_seconds()
+        if age <= stale_after_sec:
+            return
+        stale_matches.append((raw_last_seen, age))
+    if not stale_matches:
         return
-    age = (now - seen).total_seconds()
-    if age <= stale_after_sec:
-        return
+
+    raw_last_seen, age = min(stale_matches, key=lambda match: match[1])
     last_seen_str = raw_last_seen if isinstance(raw_last_seen, str) else None
     stale.append(
         StaleClaim(issue, expired_reason, worker, last_seen_str, age, target_worker)

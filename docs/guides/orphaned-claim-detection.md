@@ -15,6 +15,10 @@ command cross-references the two and flags an implementing issue when either:
 - `expired_heartbeat`: a matching worker exists but its last heartbeat is
   more than `--stale-after-sec` seconds old (default 300).
 
+Machine-qualified worker keys (`worker.repo@machine`) match only a registry row
+for that machine. Older claims that record only `worker.repo` remain
+machine-agnostic and match registered checkouts with that worker and repo.
+
 Directed but unclaimed work is also reported when its `target_worker` is gone
 or stale, using `directed_no_worker` or `directed_expired_heartbeat`. These
 issues are not implementing claims, but they will not return to the repo pool

@@ -37,6 +37,8 @@ issuekit complete <direct-issue-id> --force --summary "Superseded by proposal <p
 `--to` takes a registered target API project key, not an arbitrary alias. A
 project becomes visible to other repos after that project runs `issuekit add` or
 `issuekit register` against the API, or otherwise pushes a project profile.
+Issuekit combines registered worker projects and project profiles when the API
+exposes both catalogs, so either registration path makes the project visible.
 If the API exposes its project catalog, issuekit rejects unknown targets before
 creating a proposal. If the connected API predates project catalog support,
 proposal writes continue and issuekit reports that the target could not be

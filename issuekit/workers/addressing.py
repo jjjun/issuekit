@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 
 from issuekit.config import IssuekitConfig
-from issuekit.core import worker_keys_from_row, worker_keys_match
+from issuekit.core import worker_key_matches_row, worker_keys_from_row
 from issuekit.workflow import WorkflowError
 
 
@@ -111,11 +111,7 @@ def registered_worker_row(
 
 
 def _worker_row_matches(worker: Mapping[str, object], target: str) -> bool:
-    return any(
-        worker_keys_match(target, key)
-        for key in worker_keys_from_row(worker)
-        if "@" not in target or "@" in key
-    )
+    return worker_key_matches_row(target, worker, directed_target=True)
 
 
 def _preferred_worker_address(worker: Mapping[str, object]) -> str | None:

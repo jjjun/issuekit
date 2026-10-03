@@ -20,6 +20,10 @@ def _write_workspace_refs(path: Path, *names: str) -> None:
     path.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
 
 
+def _proposal_call(client: FakeIssuekitClient) -> dict[str, object]:
+    return next(call for call in client.calls if call["method"] == "create_proposal")
+
+
 def test_origin_destination_uses_project_segment() -> None:
     assert origin_destination("source#42@abc123") == "source"
 
@@ -84,7 +88,7 @@ def test_api_cli_propose_posts_expected_body_and_dedupes(
     assert guard_check["ok"] is True
     assert guard_check["blocking"] is False
     assert [guard["kind"] for guard in guard_check["authorGuards"]] == ["proposal"]
-    assert client.calls[0] == {
+    assert _proposal_call(client) == {
         "method": "create_proposal",
         "body": {
             "origin": "source#0@unknown",
@@ -129,7 +133,11 @@ def test_issue_guard_survives_proposal_and_blocks_claim_of_authored_issue(
 
     assert cli.main(["claim", "--id", "1", "--assignee", "codex"]) == 1
     assert "STOP_NOW" in capsys.readouterr().err
-    assert [call["method"] for call in client.calls] == ["create_issue", "create_proposal"]
+    assert [call["method"] for call in client.calls] == [
+        "create_issue",
+        "list_workers",
+        "create_proposal",
+    ]
 
 
 def test_api_cli_propose_requires_local_project_context(
@@ -199,7 +207,7 @@ def test_api_cli_propose_project_override_allows_scratch_cwd(
 
     sent = json.loads(capsys.readouterr().out)
     assert sent["origin"] == "source#0@unknown"
-    assert client.calls[0]["body"]["origin"] == "source#0@unknown"
+    assert _proposal_call(client)["body"]["origin"] == "source#0@unknown"
     assert created_projects == ["source", "target"]
 
 
@@ -242,7 +250,7 @@ def test_api_cli_propose_accepts_worker_repo_target(
 
     sent = json.loads(capsys.readouterr().out)
     assert sent["target_worker"] == "checkout"
-    assert client.calls[0] == {
+    assert _proposal_call(client) == {
         "method": "create_proposal",
         "body": {
             "origin": "source#0@unknown",
@@ -288,7 +296,7 @@ def test_api_cli_propose_sends_machine_qualified_target_worker(
 
     sent = json.loads(capsys.readouterr().out)
     assert sent["target_worker"] == "checkout@pike3"
-    assert client.calls[0]["body"]["target_worker"] == "checkout@pike3"
+    assert _proposal_call(client)["body"]["target_worker"] == "checkout@pike3"
 
 
 def test_api_cli_propose_rejects_machine_qualifier_without_worker(
@@ -484,6 +492,48 @@ def test_api_cli_propose_accepts_worker_project_catalog(
     assert json.loads(capsys.readouterr().out)["title"] == "Worker catalog target"
 
 
+def test_api_cli_propose_accepts_worker_project_when_profiles_exist(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient()
+    client.register_catalog_project("profile-project")
+    client.upsert_worker(
+        machine_id="machine",
+        repo_id="physical-repo",
+        worker_name="checkout",
+        path="/repo",
+        project="worker-project",
+    )
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'source'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.chdir(tmp_path)
+
+    assert (
+        cli.main(
+            [
+                "propose",
+                "--to",
+                "worker-project",
+                "--title",
+                "Registered worker target",
+                "--body",
+                "Body.",
+                "--json",
+            ]
+        )
+        == 0
+    )
+
+    assert json.loads(capsys.readouterr().out)["title"] == "Registered worker target"
+    assert any(call["method"] == "create_proposal" for call in client.calls)
+
+
 def test_api_cli_propose_rejects_target_for_empty_supported_profile_catalog(
     tmp_path: Path,
     monkeypatch,
@@ -602,7 +652,7 @@ def test_api_cli_propose_can_mark_blocking(
     sent = json.loads(capsys.readouterr().out)
 
     assert sent["blocking"] is True
-    assert client.calls[0] == {
+    assert _proposal_call(client) == {
         "method": "create_proposal",
         "body": {
             "origin": "source#0@unknown",
@@ -650,7 +700,7 @@ def test_api_cli_propose_attaches_dependency_refs(
     assert sent["depends_on"] == ["mine-py#42"]
     assert sent["dependency_ref"] == "mine-js-monorepo#proposal:1"
     assert "warnings" not in sent
-    assert client.calls[0] == {
+    assert _proposal_call(client) == {
         "method": "create_proposal",
         "body": {
             "origin": "source#0@unknown",
@@ -694,7 +744,7 @@ def test_api_cli_propose_reads_structured_dependency_body_refs(
     sent = json.loads(capsys.readouterr().out)
 
     assert sent["depends_on"] == ["mine-py#42"]
-    assert client.calls[0]["body"]["depends_on"] == ["mine-py#42"]
+    assert _proposal_call(client)["body"]["depends_on"] == ["mine-py#42"]
 
 
 def test_api_cli_propose_accepts_explicit_dependency_refs(
@@ -736,7 +786,7 @@ def test_api_cli_propose_accepts_explicit_dependency_refs(
         "mine-py#issue:43",
         "mine-py#proposal:44",
     ]
-    assert client.calls[0]["body"]["depends_on"] == sent["depends_on"]
+    assert _proposal_call(client)["body"]["depends_on"] == sent["depends_on"]
 
 
 def test_api_cli_propose_warns_for_unreferenced_upstream_dependency(
@@ -783,7 +833,7 @@ def test_api_cli_propose_warns_for_unreferenced_upstream_dependency(
         "`Depends-On: <project#proposal:N>` body line. Use explicit "
         "project#issue:N or project#proposal:N refs when both could exist."
     ]
-    assert "depends_on" not in client.calls[0]["body"]
+    assert "depends_on" not in _proposal_call(client)["body"]
 
 
 def test_api_cli_propose_warns_instead_of_rejecting_freeform_dependency_line(
@@ -818,7 +868,7 @@ def test_api_cli_propose_warns_instead_of_rejecting_freeform_dependency_line(
     )
 
     assert "Dependency preflight" in capsys.readouterr().err
-    assert "depends_on" not in client.calls[0]["body"]
+    assert "depends_on" not in _proposal_call(client)["body"]
 
 
 def test_api_cli_propose_does_not_warn_for_target_owned_query_param_contract(
@@ -855,7 +905,7 @@ def test_api_cli_propose_does_not_warn_for_target_owned_query_param_contract(
     sent = json.loads(capsys.readouterr().out)
 
     assert "warnings" not in sent
-    assert "depends_on" not in client.calls[0]["body"]
+    assert "depends_on" not in _proposal_call(client)["body"]
 
 
 def test_api_cli_propose_warns_for_self_target_without_reply(

@@ -3,6 +3,7 @@
 from issuekit.core import (
     directed_target_matches,
     qualified_worker_key,
+    worker_key_matches_row,
     worker_keys_from_row,
     worker_keys_match,
 )
@@ -72,3 +73,21 @@ def test_worker_keys_from_row_includes_qualified_key() -> None:
 def test_worker_keys_from_row_without_machine_id_has_no_qualified_key() -> None:
     keys = worker_keys_from_row({"repo_id": "mine-py", "worker_name": "alpha"})
     assert keys == {"alpha.mine-py"}
+
+
+def test_worker_key_matches_qualified_row_without_bare_alias_fallback() -> None:
+    main1 = {
+        "machine_id": "main1",
+        "repo_id": "mine-py",
+        "worker_name": "alpha",
+    }
+    pike3 = {
+        "machine_id": "pike3",
+        "repo_id": "mine-py",
+        "worker_name": "alpha",
+    }
+
+    assert worker_key_matches_row("alpha.mine-py@main1", main1)
+    assert not worker_key_matches_row("alpha.mine-py@main1", pike3)
+    assert worker_key_matches_row("alpha.mine-py", main1)
+    assert worker_key_matches_row("alpha.mine-py", pike3)

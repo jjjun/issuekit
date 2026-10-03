@@ -456,6 +456,55 @@ def test_workers_prune_dry_run_filters_to_stale_issueless_untargeted_workers(
     assert "delete_worker" not in [call["method"] for call in client.calls]
 
 
+def test_workers_prune_does_not_match_qualified_claim_from_another_machine(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                10,
+                "Held on main1",
+                status="in_progress",
+                stage="implementing",
+                worker="checkout.mine-py@main1",
+            )
+        ]
+    )
+    _configure_api(tmp_path, monkeypatch, client)
+    worker_rows = [
+        {
+            "id": "checkout.mine-py",
+            "machine_id": "main1",
+            "repo_id": "mine-py",
+            "worker_name": "checkout",
+            "project": "demo",
+            "last_seen": "2999-01-01T00:00:00Z",
+        },
+        {
+            "id": "checkout.mine-py",
+            "machine_id": "pike3",
+            "repo_id": "mine-py",
+            "worker_name": "checkout",
+            "project": "demo",
+            "last_seen": "2000-01-01T00:00:00Z",
+        },
+    ]
+    monkeypatch.setattr(
+        worker_registry,
+        "list_api_workers",
+        lambda config: worker_rows,
+    )
+
+    assert cli.main(["workers", "prune", "--dry-run", "--json"]) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert [
+        item["worker"]["machine_id"] for item in payload["candidates"]
+    ] == ["pike3"]
+
+
 def test_workers_prune_json_option_before_subcommand_prints_json(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

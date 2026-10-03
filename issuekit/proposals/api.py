@@ -512,20 +512,16 @@ def fetch_project_catalog(config: IssuekitConfig) -> ProjectCatalog:
             "Proposal commands require api_url in issuekit.toml/[tool.issuekit] or ISSUEKIT_API_URL."
         )
     with api_client(config) as client:
-        # A supported-but-empty profile catalog must still fail closed, so track
-        # whether any catalog endpoint responded rather than treating an empty
-        # profile list as compatibility success. Fall through to the worker
-        # registry before deciding when project profiles are empty.
-        profile_source: str | None = None
+        projects: set[str] = set()
+        sources: list[str] = []
         try:
             profile_projects = _project_names_from_rows(client.list_project_profiles())
         except WorkflowError as exc:
             if exc.code not in PROJECT_CATALOG_UNSUPPORTED_CODES:
                 raise
         else:
-            profile_source = "project profiles"
-            if profile_projects:
-                return ProjectCatalog(profile_projects, profile_source, True)
+            sources.append("project profiles")
+            projects.update(profile_projects)
 
         try:
             worker_projects = _project_names_from_rows(client.list_workers())
@@ -533,17 +529,12 @@ def fetch_project_catalog(config: IssuekitConfig) -> ProjectCatalog:
             if exc.code not in PROJECT_CATALOG_UNSUPPORTED_CODES:
                 raise
         else:
-            if worker_projects:
-                return ProjectCatalog(worker_projects, "worker registry", True)
-            # Worker registry responded but is empty; the API is catalog-aware,
-            # so report a supported empty catalog and fail closed.
-            return ProjectCatalog((), profile_source or "worker registry", True)
+            sources.append("worker registry")
+            projects.update(worker_projects)
 
-    if profile_source is not None:
-        # Project profiles responded (empty) but the worker registry endpoint is
-        # unsupported. The API still exposes a catalog, so fail closed.
-        return ProjectCatalog((), profile_source, True)
-    return ProjectCatalog((), None, False)
+    if not sources:
+        return ProjectCatalog((), None, False)
+    return ProjectCatalog(tuple(sorted(projects)), " and ".join(sources), True)
 
 
 def _project_names_from_rows(rows: Sequence[Mapping[str, Any]]) -> tuple[str, ...]:

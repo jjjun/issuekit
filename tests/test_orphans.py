@@ -91,6 +91,25 @@ def test_expired_heartbeat_is_stale() -> None:
     assert claims[0].stale_seconds > DEFAULT_STALE_AFTER_SEC
 
 
+def test_qualified_claim_does_not_match_live_worker_on_another_machine() -> None:
+    stale_seen = _iso(NOW - timedelta(seconds=DEFAULT_STALE_AFTER_SEC + 60))
+    live_seen = _iso(NOW - timedelta(seconds=30))
+    workers = [
+        _worker("checkout.issuekit@main1", stale_seen),
+        _worker("checkout.issuekit@pike3", live_seen),
+    ]
+
+    claims = detect_stale_claims(
+        [_issue(1, worker="checkout.issuekit@main1")],
+        workers,
+        now=NOW,
+    )
+
+    assert len(claims) == 1
+    assert claims[0].reason == EXPIRED_HEARTBEAT
+    assert claims[0].last_seen == stale_seen
+
+
 def test_age_exactly_at_threshold_is_not_stale() -> None:
     worker = "edge.issuekit@machine"
     workers = [_worker(worker, _iso(NOW - timedelta(seconds=DEFAULT_STALE_AFTER_SEC)))]
