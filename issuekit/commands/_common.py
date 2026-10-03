@@ -46,12 +46,12 @@ def run_command(
     try:
         return action()
     except errors as exc:
-        print(str(exc), file=sys.stderr)
+        print(f"error: {exc}", file=sys.stderr)
         return 1
     except LookupError as exc:
         if lookup_error is None:
             raise
-        print(_error_message(lookup_error, exc), file=sys.stderr)
+        print(f"error: {_error_message(lookup_error, exc)}", file=sys.stderr)
         return 1
 
 

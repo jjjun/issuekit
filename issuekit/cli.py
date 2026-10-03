@@ -44,6 +44,9 @@ from issuekit.commands import (
     validate,
     workers,
 )
+from issuekit.config.local import LocalConfigError
+from issuekit.proposals.model import ProposalError
+from issuekit.workflow import WorkflowError
 
 COMMAND_MODULES = (
     info,
@@ -108,7 +111,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         args = parser.parse_args(argv)
     except SystemExit as exc:
         return int(exc.code)
-    return args.func(args)
+    try:
+        return args.func(args)
+    except (OSError, ValueError, WorkflowError, ProposalError, LocalConfigError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
 
 
 def _configure_standard_streams() -> None:

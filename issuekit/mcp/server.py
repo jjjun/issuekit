@@ -24,8 +24,10 @@ from issuekit.commands.reclaim import reclaim_result_dict
 from issuekit.config import (
     IssuekitConfig,
     api_url_origin,
+    has_config_candidate,
     load_config,
     resolve_machine_config_path,
+    resolve_repository_root,
 )
 from issuekit.config.local import LocalConfigError, load_toml, read_local_config
 from issuekit.core import issue_dict, worker_display_from_row
@@ -737,32 +739,19 @@ async def _resolve_config_root(root: Path, ctx: Context | None = None) -> Path:
 
 def _configured_root(root: Path) -> Path | None:
     root = root.resolve()
-    if _has_config_candidate(root):
-        return root
+    config_root = resolve_repository_root(root)
+    if has_config_candidate(config_root):
+        return config_root
     repository_root = git_root(root)
     # A machine API config is sufficient for an existing repository root, but
     # does not make an arbitrary MCP process directory a project context.
     if repository_root is not None and (
-        _has_config_candidate(repository_root)
+        has_config_candidate(repository_root)
         or bool(os.getenv("ISSUEKIT_API_URL", "").strip())
         or _machine_config_has_api_url()
     ):
         return repository_root
     return None
-
-
-def _has_config_candidate(root: Path) -> bool:
-    if (root / "issuekit.toml").exists():
-        return True
-    pyproject_path = root / "pyproject.toml"
-    if not pyproject_path.exists():
-        return False
-    try:
-        data = load_toml(pyproject_path)
-    except LocalConfigError:
-        return True
-    tool_config = data.get("tool")
-    return isinstance(tool_config, dict) and "issuekit" in tool_config
 
 
 def _machine_config_has_api_url() -> bool:

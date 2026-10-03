@@ -286,6 +286,34 @@ def test_add_cli_writes_worker_and_gitignore(
     )
 
 
+def test_add_from_subdirectory_reloads_root_config(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _init_git(tmp_path)
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'demo'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    nested = tmp_path / "docs"
+    nested.mkdir()
+    seen_configs = []
+    monkeypatch.chdir(nested)
+    monkeypatch.setenv("ISSUEKIT_WORKER_REGISTRY", str(tmp_path / "workers.toml"))
+    monkeypatch.setattr("issuekit.workers.identity.platform.node", lambda: "machine")
+    monkeypatch.setattr(
+        "issuekit.commands.add.try_post_worker_registration",
+        lambda config, cwd, **kwargs: seen_configs.append((config, cwd)) or True,
+    )
+
+    assert cli.main(["add", "--repo-id", "demo"]) == 0
+
+    assert seen_configs[0][0].api_url == "https://mine.example"
+    assert seen_configs[0][0].worker == load_config(tmp_path).worker
+    assert seen_configs[0][1] == tmp_path
+
+
 def test_add_cli_fails_in_non_git_directory(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

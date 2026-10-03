@@ -9,7 +9,7 @@ from bisect import bisect_right
 from pathlib import Path
 
 from issuekit.commands._common import print_json
-from issuekit.config import load_config
+from issuekit.config import load_config, resolve_repository_root
 from issuekit.encoding import (
     SOURCE_EXTENSIONS,
     MojibakeScanOptions,
@@ -19,7 +19,7 @@ from issuekit.encoding import (
     print_mojibake_hit,
     scan_mojibake,
 )
-from issuekit.gitutil import git_root, git_status_entries, run_git
+from issuekit.gitutil import git_status_entries, run_git
 
 BOM = b"\xef\xbb\xbf"
 
@@ -104,8 +104,8 @@ def register(subparsers: argparse._SubParsersAction) -> None:
 
 
 def run(args) -> int:
-    cwd = Path.cwd()
-    config = load_config(cwd)
+    repo_root = resolve_repository_root(Path.cwd())
+    config = load_config(repo_root)
     gate = getattr(args, "gate", False)
     if gate and _gate_incompatible_options(args):
         print(
@@ -119,24 +119,20 @@ def run(args) -> int:
     changed_lines_by_path: dict[Path, set[int]] | None = None
     whole_file_paths: set[Path] = set()
     if gate:
-        entries = (
-            git_status_entries(cwd)
-            if git_root(cwd) == cwd.resolve()
-            else None
-        ) or ()
+        entries = git_status_entries(repo_root) or ()
         scan_paths = changed_readable_paths(
-            cwd,
+            repo_root,
             entries,
-            excluded_root=config.issues_path(cwd),
+            excluded_root=config.issues_path(repo_root),
         )
-        changed_lines_by_path = changed_line_numbers(cwd, scan_paths)
+        changed_lines_by_path = changed_line_numbers(repo_root, scan_paths)
         whole_file_paths = {
             entry.path for entry in entries if entry.status == "??"
         }
         source_files: list[str] = []
         crlf_paths: list[str] | None = []
     elif changed:
-        changed_files = list_changed_files(cwd, getattr(args, "base", None))
+        changed_files = list_changed_files(repo_root, getattr(args, "base", None))
         scan_paths = tuple(Path(file) for file in changed_files)
         source_files = [
             file
@@ -150,7 +146,7 @@ def run(args) -> int:
             if not is_encoding_excluded_path(file, exclude_patterns)
         ]
     else:
-        tracked_files = list_tracked_files(cwd)
+        tracked_files = list_tracked_files(repo_root)
         scan_paths = tuple(Path(file) for file in tracked_files)
         source_files = [
             file
@@ -169,7 +165,7 @@ def run(args) -> int:
     mojibake_failed = False
     crlf_files = [] if args.no_crlf else [
         file
-        for file in list_crlf_files(cwd, paths=crlf_paths)
+        for file in list_crlf_files(repo_root, paths=crlf_paths)
         if not is_encoding_excluded_path(file, exclude_patterns)
     ]
 
@@ -196,7 +192,7 @@ def run(args) -> int:
         if gate or args.fail_on_unconfirmed:
             failure_classes.add("unconfirmed")
         scan_result = scan_mojibake(
-            cwd,
+            repo_root,
             scan_paths,
             options=MojibakeScanOptions(
                 failure_classes=frozenset(failure_classes),

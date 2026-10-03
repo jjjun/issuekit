@@ -627,6 +627,28 @@ def test_check_encoding_gate_scans_changed_files_without_source_extension(
     assert cli.main(["check-encoding", "--gate"]) == 1
 
 
+def test_check_encoding_gate_from_subdirectory_scans_repo_changes(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    init_git_repo(tmp_path)
+    add_tracked(tmp_path, "clean.py", b"value = 'clean'\n")
+    commit_all(tmp_path)
+    (tmp_path / "bad.py").write_text(
+        f"value = '{MOJIBAKE}'\n", encoding="utf-8", newline="\n"
+    )
+    subprocess.run(["git", "add", "bad.py"], cwd=tmp_path, check=True)
+    nested = tmp_path / "docs"
+    nested.mkdir()
+    monkeypatch.chdir(nested)
+
+    exit_code = cli.main(["check-encoding", "--gate"])
+
+    assert exit_code == 1
+    assert "bad.py" in capsys.readouterr().err
+
+
 def test_check_encoding_exclusion_does_not_suppress_confirmed_hit(
     tmp_path: Path,
     monkeypatch,

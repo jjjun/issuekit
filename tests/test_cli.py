@@ -9,6 +9,8 @@ from issuekit import cli
 from issuekit.commands._common import run_agent_command
 from issuekit.config import IssuekitConfig
 from issuekit.guards.author import create_author_guard
+from issuekit.proposals.model import ProposalError
+from issuekit.workflow import WorkflowError
 
 EXPECTED_COMMANDS = {
     "info",
@@ -155,6 +157,81 @@ def test_author_guard_bare_command_shows_guard(
     assert exit_code == 0
     assert "No author-session guard." in captured.out
     assert captured.err == ""
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        ValueError("invalid configuration"),
+        WorkflowError("API is unavailable"),
+        ProposalError("proposal API failed"),
+    ],
+)
+def test_cli_formats_expected_uncaught_errors(
+    error: Exception,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def fail(_args) -> int:
+        raise error
+
+    monkeypatch.setattr(cli.info, "run", fail)
+
+    assert cli.main(["info"]) == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == f"error: {error}\n"
+
+
+def test_cli_formats_invalid_config_without_traceback(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "worker_heartbeat_interval_sec = 0\n", encoding="utf-8", newline="\n"
+    )
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["protocol"]) == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == (
+        "error: worker_heartbeat_interval_sec must be greater than zero.\n"
+    )
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["info"],
+        ["check-encoding"],
+        ["triage", "--once"],
+        ["profile"],
+        ["validate"],
+        ["init"],
+        ["protocol"],
+        ["incoming"],
+        ["outgoing", "--to", "target"],
+        ["adopt", "1"],
+        ["discard", "1"],
+    ],
+)
+def test_diagnostic_commands_format_invalid_config_without_tracebacks(
+    argv: list[str],
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "worker_heartbeat_interval_sec = 0\n", encoding="utf-8", newline="\n"
+    )
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(argv) == 1
+    captured = capsys.readouterr()
+    assert "Traceback" not in captured.out + captured.err
+    assert captured.err.startswith("error: worker_heartbeat_interval_sec")
 
 
 def test_author_guard_show_check_and_clear_cover_all_guards(

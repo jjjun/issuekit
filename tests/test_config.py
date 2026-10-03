@@ -1,4 +1,6 @@
 import os
+import subprocess
+import sys
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -30,14 +32,20 @@ _ENV_KEYS = (
 @pytest.fixture(autouse=True)
 def restore_config_env() -> Iterator[None]:
     original = {key: os.environ.get(key) for key in _ENV_KEYS}
+    original_config = os.environ.get("ISSUEKIT_CONFIG")
     for key in _ENV_KEYS:
         os.environ.pop(key, None)
+    os.environ["ISSUEKIT_CONFIG"] = ""
     yield
     for key, value in original.items():
         if value is None:
             os.environ.pop(key, None)
         else:
             os.environ[key] = value
+    if original_config is None:
+        os.environ.pop("ISSUEKIT_CONFIG", None)
+    else:
+        os.environ["ISSUEKIT_CONFIG"] = original_config
 
 
 def test_load_config_reads_standalone_issuekit_toml(tmp_path: Path) -> None:
@@ -50,6 +58,116 @@ def test_load_config_reads_standalone_issuekit_toml(tmp_path: Path) -> None:
     config = load_config(tmp_path)
 
     assert config.issues_dir == "docs/issues"
+
+
+def test_load_config_from_subdirectory_uses_repository_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
+    (tmp_path / "issuekit.toml").write_text(
+        "project = 'repo-project'\n", encoding="utf-8", newline="\n"
+    )
+    (tmp_path / ".env").write_text(
+        "ISSUEKIT_API_URL=https://mine.example\n", encoding="utf-8", newline="\n"
+    )
+    nested = tmp_path / "docs"
+    nested.mkdir()
+    monkeypatch.delenv("ISSUEKIT_API_URL", raising=False)
+
+    config = load_config(nested)
+
+    assert config.project == "repo-project"
+    assert config.api_url == "https://mine.example"
+    assert config.repo_config_source == "issuekit.toml"
+
+
+def test_load_config_uses_nested_package_config_from_package_and_source(
+    tmp_path: Path,
+) -> None:
+    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
+    package_root = tmp_path / "pkg"
+    source_root = package_root / "src"
+    source_root.mkdir(parents=True)
+    (package_root / "issuekit.toml").write_text(
+        "project = 'pkg'\n", encoding="utf-8", newline="\n"
+    )
+
+    assert load_config(package_root).project == "pkg"
+    assert load_config(source_root).project == "pkg"
+
+
+def test_resolve_repository_root_returns_cwd_when_git_root_is_unrelated(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    working_repo = tmp_path / "a"
+    nested = working_repo / "sub"
+    other_repo = tmp_path / "c"
+    nested.mkdir(parents=True)
+    other_repo.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=working_repo, check=True)
+    subprocess.run(["git", "init", "-q"], cwd=other_repo, check=True)
+    monkeypatch.setenv("GIT_DIR", str(other_repo / ".git"))
+    monkeypatch.setenv("GIT_WORK_TREE", str(other_repo))
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "from issuekit.config import resolve_repository_root; "
+            "import sys; print(resolve_repository_root(sys.argv[1]))",
+            str(nested),
+        ],
+        cwd=Path(__file__).resolve().parents[1],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=5,
+    )
+
+    assert Path(result.stdout.strip()) == nested.resolve()
+
+
+def test_empty_environment_values_fall_back_to_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'repo-project'\napi_timeout = 12.5\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setenv("ISSUEKIT_API_URL", "")
+    monkeypatch.setenv("ISSUEKIT_PROJECT", "")
+    monkeypatch.setenv("ISSUEKIT_API_TIMEOUT", "")
+
+    config = load_config(tmp_path)
+
+    assert config.api_url == "https://mine.example"
+    assert config.project == "repo-project"
+    assert config.api_timeout == 12.5
+
+
+def test_empty_xdg_config_home_uses_home_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("ISSUEKIT_CONFIG", raising=False)
+    monkeypatch.setenv("XDG_CONFIG_HOME", "")
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
+    from issuekit.config import resolve_machine_config_path
+
+    assert resolve_machine_config_path() == tmp_path / ".config" / "issuekit" / "config.toml"
+
+
+def test_missing_explicit_machine_config_warns(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    missing_path = tmp_path / "missing-machine.toml"
+    monkeypatch.setenv("ISSUEKIT_CONFIG", str(missing_path))
+
+    assert load_config(tmp_path).machine_config_path is None
+    assert str(missing_path) in capsys.readouterr().err
 
 
 def test_load_config_reads_gate_halfwidth_kana(tmp_path: Path) -> None:
@@ -290,6 +408,15 @@ def test_default_machine_config_path_defaults_to_home_config_dir(
     from issuekit.config import resolve_machine_config_path
 
     assert resolve_machine_config_path() == tmp_path / ".config" / "issuekit" / "config.toml"
+
+
+def test_load_config_names_invalid_float_setting(tmp_path: Path) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "api_timeout = 'abc'\n", encoding="utf-8", newline="\n"
+    )
+
+    with pytest.raises(ValueError, match="api_timeout: could not convert string to float"):
+        load_config(tmp_path)
 
 
 def test_load_config_prefers_pyproject_tool_issuekit(tmp_path: Path) -> None:

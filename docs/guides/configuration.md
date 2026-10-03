@@ -114,8 +114,9 @@ is therefore unaffected by `[agent_roles]`.
 
 ## Environment and precedence
 
-At startup, issuekit also reads a repo-local `.env` file from the current repo
-root and loads values such as `ISSUEKIT_API_URL`, `ISSUEKIT_API_USER`,
+At startup, issuekit also reads a repo-local `.env` file from the git repository
+root, regardless of the current directory, and loads values such as
+`ISSUEKIT_API_URL`, `ISSUEKIT_API_USER`,
 `ISSUEKIT_API_PASSWORD`, `ISSUEKIT_API_TOKEN`, `ISSUEKIT_TOKEN_CACHE`, and
 `ISSUEKIT_PROJECT`. Only keys that start with `ISSUEKIT_` are loaded; other
 entries are ignored. Existing process environment variables are not

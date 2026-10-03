@@ -1,4 +1,5 @@
 import json
+import subprocess
 from pathlib import Path
 
 from issuekit import cli
@@ -7,6 +8,7 @@ from issuekit.commands import info as info_command
 from issuekit.config import load_config
 from issuekit.guards.author import create_author_guard
 from issuekit.testing import FakeIssuekitClient
+from issuekit.workflow import WorkflowError
 from tests.issue_helpers import api_issue
 
 
@@ -42,6 +44,96 @@ def test_info_json_shape(tmp_path: Path, monkeypatch) -> None:
     exit_code = cli.main(["info", "--json"])
 
     assert exit_code == 0
+
+
+def test_info_from_subdirectory_uses_root_config_and_worker(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
+    _configure_api(tmp_path, monkeypatch, _issue_client())
+    (tmp_path / "issuekit.local.toml").write_text(
+        "[worker]\nmachine_id = 'machine'\nrepo_id = 'demo'\nworker_name = 'checkout'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    root_payload = _info_json_payload(monkeypatch, tmp_path, capsys)
+    nested = tmp_path / "docs"
+    nested.mkdir()
+    monkeypatch.chdir(nested)
+
+    nested_payload = _info_json_payload(monkeypatch, nested, capsys)
+
+    assert nested_payload["worker"] == root_payload["worker"] == "checkout.demo"
+    assert nested_payload["repoConfigSource"] == root_payload["repoConfigSource"]
+
+
+def test_info_without_api_url_prints_local_config_and_api_error(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "project = 'local-project'\n", encoding="utf-8", newline="\n"
+    )
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = cli.main(["info", "--json"])
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+
+    assert exit_code == 1
+    assert payload["repoConfigSource"] == "issuekit.toml"
+    assert payload["apiError"] == (
+        "API store requires api_url. Set api_url in issuekit.toml/[tool.issuekit] "
+        "or ISSUEKIT_API_URL."
+    )
+    assert "Traceback" not in captured.out + captured.err
+
+
+def test_info_uses_home_machine_config_when_xdg_config_home_is_empty(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    machine_path = tmp_path / ".config" / "issuekit" / "config.toml"
+    machine_path.parent.mkdir(parents=True)
+    machine_path.write_text("project = 'machine-project'\n", encoding="utf-8")
+    monkeypatch.delenv("ISSUEKIT_CONFIG", raising=False)
+    monkeypatch.setenv("XDG_CONFIG_HOME", "")
+    monkeypatch.setenv("ISSUEKIT_API_URL", "")
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["info", "--json"]) == 1
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["machineConfigPath"] == str(machine_path)
+    assert payload["apiError"] is not None
+
+
+def test_info_unreachable_api_prints_local_config_and_error(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'local-project'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    def unavailable(_config):
+        raise WorkflowError("API request failed: connection refused")
+
+    monkeypatch.setattr(info_command, "get_store", unavailable)
+    exit_code = cli.main(["info"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 1
+    assert "Repository config: issuekit.toml" in captured.out
+    assert "API error: API request failed: connection refused" in captured.out
+    assert "Traceback" not in captured.out + captured.err
+
+
+def _info_json_payload(monkeypatch, cwd: Path, capsys) -> dict:
+    monkeypatch.chdir(cwd)
+    assert cli.main(["info", "--json"]) == 0
+    return json.loads(capsys.readouterr().out)
 
 
 def test_info_json_output(tmp_path: Path, monkeypatch, capsys) -> None:

@@ -1,5 +1,6 @@
 """Configuration loading for issuekit."""
 
+from .root import has_config_candidate, resolve_repository_root
 from .settings import (
     DEFAULT_PROFILE_FILE,
     PROFILE_SUMMARY_MAX_LEN,
@@ -39,7 +40,9 @@ __all__ = [
     "WorkerIdentity",
     "api_url_origin",
     "has_local_project_context",
+    "has_config_candidate",
     "load_config",
     "parse_bool_value",
     "resolve_machine_config_path",
+    "resolve_repository_root",
 ]

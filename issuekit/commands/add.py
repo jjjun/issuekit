@@ -7,7 +7,7 @@ import sys
 from dataclasses import replace
 from pathlib import Path
 
-from issuekit.config import load_config
+from issuekit.config import load_config, resolve_repository_root
 from issuekit.core import is_valid_workflow_token
 from issuekit.workers.identity import WorkerRegistrationError, register_worker
 from issuekit.workers.registry import try_post_worker_registration
@@ -47,6 +47,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
 
 def run(args) -> int:
     cwd = Path.cwd()
+    repo_root = resolve_repository_root(cwd)
     try:
         result = register_worker(
             cwd,
@@ -68,7 +69,7 @@ def run(args) -> int:
     if result.canonical_url:
         print(f"canonical_url = {result.canonical_url}")
     try:
-        config = load_config(cwd)
+        config = load_config(repo_root)
     except ValueError as exc:
         print(f"Warning: worker registry update skipped: {exc}", file=sys.stderr)
         return 0
@@ -80,7 +81,7 @@ def run(args) -> int:
 
     try_post_worker_registration(
         config,
-        cwd,
+        repo_root,
         canonical_url=result.canonical_url,
         on_error=lambda exc: print(
             f"Warning: worker registry update failed: {exc}",

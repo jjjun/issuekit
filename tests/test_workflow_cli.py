@@ -92,6 +92,25 @@ def test_queue_command_uses_api_store_when_configured(
     assert "id=2" not in captured.out
 
 
+def test_queue_treats_empty_project_environment_as_unset(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient([api_issue(1, "Work", assignee="codex")])
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'demo'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setenv("ISSUEKIT_PROJECT", "")
+    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["queue", "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)[0]["ref"] == "demo#1"
+
+
 def test_queue_command_marks_waiting_dependencies(
     tmp_path: Path,
     monkeypatch,

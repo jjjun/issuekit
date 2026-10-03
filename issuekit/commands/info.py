@@ -6,7 +6,7 @@ import argparse
 from pathlib import Path
 
 from issuekit.commands._common import print_json
-from issuekit.config import api_url_origin, load_config
+from issuekit.config import api_url_origin, load_config, resolve_repository_root
 from issuekit.core import issue_dict
 from issuekit.guards.author import (
     STOP_SENTINEL,
@@ -18,8 +18,9 @@ from issuekit.guards.author import (
 from issuekit.issues.display import dependency_detail_lines, dependency_marker
 from issuekit.prompts.protocol import effective_agent_roles
 from issuekit.proposals.api import api_client
+from issuekit.proposals.model import ProposalError
 from issuekit.store import get_store
-from issuekit.workflow import resolve_implementer
+from issuekit.workflow import WorkflowError, resolve_implementer
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:
@@ -29,18 +30,30 @@ def register(subparsers: argparse._SubParsersAction) -> None:
 
 
 def run(args) -> int:
-    config = load_config(Path.cwd())
-    with get_store(config) as store:
-        active_issues = store.find_for()
-        completed_count = store.count_issues(status="completed", include_completed=True)
-        latest_completed_id = store.latest_issue_id(
-            status="completed",
-            include_completed=True,
-            total=completed_count,
-        )
-    incoming_proposals = _incoming_proposals(config)
-    pending_proposal_checks = _pending_proposal_check_count(config)
-    author_guards = read_author_guards(Path.cwd())
+    repo_root = resolve_repository_root(Path.cwd())
+    config = load_config(repo_root)
+    active_issues = []
+    completed_count = 0
+    latest_completed_id = None
+    incoming_proposals = []
+    pending_proposal_checks = 0
+    api_error = None
+    try:
+        with get_store(config) as store:
+            active_issues = store.find_for()
+            completed_count = store.count_issues(
+                status="completed", include_completed=True
+            )
+            latest_completed_id = store.latest_issue_id(
+                status="completed",
+                include_completed=True,
+                total=completed_count,
+            )
+        incoming_proposals = _incoming_proposals(config)
+        pending_proposal_checks = _pending_proposal_check_count(config)
+    except (ProposalError, ValueError, WorkflowError) as exc:
+        api_error = str(exc)
+    author_guards = read_author_guards(repo_root)
     enabled_agents = [name for name, _run_config in config.agents]
     summary = {
         "counts": {
@@ -64,6 +77,7 @@ def run(args) -> int:
         "repoConfigSource": config.repo_config_source,
         "apiUrlSource": config.api_url_source,
         "apiUrlOrigin": api_url_origin(config.api_url),
+        "apiError": api_error,
         "agentConfigs": {
             name: {
                 "binary": run_config.binary,
@@ -107,7 +121,7 @@ def run(args) -> int:
 
     if args.json:
         print_json(summary)
-        return 0
+        return 1 if api_error else 0
 
     print("Issue tracker status")
     print(f"- Active issues: {summary['counts']['active']}")
@@ -119,6 +133,8 @@ def run(args) -> int:
     print(f"- Worker: {summary['worker'] or '-'}")
     print(f"- Machine config: {summary['machineConfigPath'] or '-'}")
     print(f"- Repository config: {summary['repoConfigSource']}")
+    if api_error:
+        print(f"- API error: {api_error}")
     print(f"- Default reviewer: {summary['defaultReviewer'] or '-'}")
     print(f"- Default implementer: {summary['defaultImplementer'] or '-'}")
     print(
@@ -181,7 +197,7 @@ def run(args) -> int:
         for proposal in summary["incomingProposals"]:
             print(f"- #{proposal['id']} {proposal['origin']}: {proposal['title']}")
 
-    return 0
+    return 1 if api_error else 0
 
 
 def _incoming_proposals(config) -> list[dict]:

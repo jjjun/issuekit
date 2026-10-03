@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import sys
 import warnings
 from dataclasses import dataclass, field, fields, replace
 from pathlib import Path
@@ -10,6 +11,7 @@ from string import Formatter
 from urllib.parse import urlparse
 
 from issuekit.agentrun.config import AgentRunConfig
+from issuekit.config.root import resolve_repository_root
 from issuekit.core import (
     VALID_ISSUE_PRIORITIES,
     is_valid_workflow_token,
@@ -249,35 +251,35 @@ class IssuekitConfig:
 
 
 def load_config(cwd: Path | str = ".") -> IssuekitConfig:
-    config_cwd = Path(cwd)
+    config_cwd = resolve_repository_root(cwd)
     load_dotenv(config_cwd)
     machine_path = resolve_machine_config_path()
     raw_config, repo_config_source, config_api_url_source = _load_raw_config(
         config_cwd, machine_path
     )
-    if "ISSUEKIT_API_URL" in os.environ:
+    api_url_env = _environment_value("ISSUEKIT_API_URL")
+    if api_url_env is not None:
         api_url_source = (
             "dotenv" if is_loaded_from_dotenv("ISSUEKIT_API_URL") else "env"
         )
     else:
         api_url_source = config_api_url_source
     api_url = str(
-        os.getenv("ISSUEKIT_API_URL", raw_config.get("api_url", IssuekitConfig.api_url))
+        api_url_env
+        if api_url_env is not None
+        else raw_config.get("api_url", IssuekitConfig.api_url)
     ).strip()
     worker = _load_worker(raw_config.get("worker"))
     configured_project = raw_config.get("project", _SENTINEL)
-    project = str(
-        os.getenv(
-            "ISSUEKIT_PROJECT",
-            (
-                configured_project
-                if configured_project is not _SENTINEL
-                else worker.repo_id
-                if worker is not None
-                else IssuekitConfig.project
-            ),
-        )
-    ).strip()
+    project_env = _environment_value("ISSUEKIT_PROJECT")
+    default_project = (
+        configured_project
+        if configured_project is not _SENTINEL
+        else worker.repo_id
+        if worker is not None
+        else IssuekitConfig.project
+    )
+    project = str(project_env if project_env is not None else default_project).strip()
     _validate_project(project)
     disabled_agents = _load_disabled_agents(
         raw_config.get("disabled_agents", IssuekitConfig.disabled_agents)
@@ -303,18 +305,19 @@ def load_config(cwd: Path | str = ".") -> IssuekitConfig:
     _validate_default_implementer(default_implementer, assignees)
     work_branch = str(raw_config.get("work_branch", IssuekitConfig.work_branch)).strip()
     _validate_work_branch(work_branch)
-    claim_sync_interval_sec = float(
+    claim_sync_interval_sec = _float_config_value(
+        "claim_sync_interval_sec",
         raw_config.get(
-            "claim_sync_interval_sec",
-            IssuekitConfig.claim_sync_interval_sec,
-        )
+            "claim_sync_interval_sec", IssuekitConfig.claim_sync_interval_sec
+        ),
     )
     _validate_claim_sync_interval(claim_sync_interval_sec)
-    worker_heartbeat_interval_sec = float(
+    worker_heartbeat_interval_sec = _float_config_value(
+        "worker_heartbeat_interval_sec",
         raw_config.get(
             "worker_heartbeat_interval_sec",
             IssuekitConfig.worker_heartbeat_interval_sec,
-        )
+        ),
     )
     _validate_worker_heartbeat_interval(worker_heartbeat_interval_sec)
     triage = _load_triage_policy(raw_config.get("triage", {}))
@@ -351,8 +354,10 @@ def load_config(cwd: Path | str = ".") -> IssuekitConfig:
     return IssuekitConfig(
         api_url=api_url,
         project=project,
-        api_timeout=float(
-            os.getenv("ISSUEKIT_API_TIMEOUT", raw_config.get("api_timeout", IssuekitConfig.api_timeout))
+        api_timeout=_float_config_value(
+            "api_timeout",
+            _environment_value("ISSUEKIT_API_TIMEOUT")
+            or raw_config.get("api_timeout", IssuekitConfig.api_timeout),
         ),
         issues_dir=str(raw_config.get("issues_dir", IssuekitConfig.issues_dir)),
         assignees=assignees,
@@ -413,7 +418,7 @@ def load_config(cwd: Path | str = ".") -> IssuekitConfig:
 def has_local_project_context(cwd: Path | str = ".") -> bool:
     """Return true when cwd looks like an issuekit project root."""
 
-    config_cwd = Path(cwd)
+    config_cwd = resolve_repository_root(cwd)
     if (config_cwd / DEFAULT_PROFILE_FILE).is_file():
         return True
 
@@ -431,7 +436,12 @@ def resolve_machine_config_path() -> Path | None:
     configured = os.getenv("ISSUEKIT_CONFIG")
     if configured is not None:
         return Path(configured).expanduser() if configured else None
-    config_home = Path(os.getenv("XDG_CONFIG_HOME", Path.home() / ".config"))
+    xdg_config_home = _environment_value("XDG_CONFIG_HOME")
+    config_home = (
+        Path(xdg_config_home).expanduser()
+        if xdg_config_home is not None
+        else Path.home() / ".config"
+    )
     return config_home / "issuekit" / "config.toml"
 
 
@@ -469,6 +479,12 @@ def _load_machine_config(path: Path | None) -> dict[str, object]:
         return {}
     try:
         if not path.is_file():
+            if os.getenv("ISSUEKIT_CONFIG"):
+                print(
+                    f"Warning: machine config file {path} was not found; "
+                    "machine config is disabled.",
+                    file=sys.stderr,
+                )
             return {}
         config = _load_config_toml(path)
     except OSError as exc:
@@ -482,6 +498,25 @@ def _load_machine_config(path: Path | None) -> dict[str, object]:
             f"Machine config {path} cannot define worker; use issuekit.local.toml"
         )
     return _discard_unsupported_machine_config(config, path)
+
+
+def _environment_value(name: str) -> str | None:
+    value = os.getenv(name)
+    return value if value else None
+
+
+def _float_config_value(name: str, value: object) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{name}: {exc}") from exc
+
+
+def _int_config_value(name: str, value: object) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{name}: {exc}") from exc
 
 
 def api_url_origin(api_url: str) -> str | None:
@@ -955,7 +990,8 @@ def _load_triage_policy(raw: object) -> TriagePolicy:
     ]
     if invalid_origins:
         raise ValueError(f"Invalid triage.trusted_origins token: {invalid_origins[0]}")
-    max_adoptions = int(
+    max_adoptions = _int_config_value(
+        "triage.max_adoptions_per_cycle",
         raw.get(
             "max_adoptions_per_cycle",
             TriagePolicy.max_adoptions_per_cycle,
@@ -986,11 +1022,14 @@ def _load_router_policy(raw: object) -> RouterPolicy:
     agent = str(raw.get("agent", RouterPolicy.agent)).strip()
     if agent and not is_valid_workflow_token(agent):
         raise ValueError(f"Invalid router.agent token: {agent}")
-    max_targets = int(raw.get("max_targets", RouterPolicy.max_targets))
+    max_targets = _int_config_value(
+        "router.max_targets", raw.get("max_targets", RouterPolicy.max_targets)
+    )
     if max_targets < 1:
         raise ValueError("router.max_targets must be greater than zero.")
-    max_clarify_rounds = int(
-        raw.get("max_clarify_rounds", RouterPolicy.max_clarify_rounds)
+    max_clarify_rounds = _int_config_value(
+        "router.max_clarify_rounds",
+        raw.get("max_clarify_rounds", RouterPolicy.max_clarify_rounds),
     )
     if max_clarify_rounds < 0:
         raise ValueError("router.max_clarify_rounds must be zero or greater.")

@@ -31,7 +31,7 @@ def load_dotenv(cwd: Path | str = ".") -> None:
         key, value = parsed
         if not key.startswith(_ISSUEKIT_PREFIX):
             continue
-        if key in os.environ:
+        if os.environ.get(key, ""):
             continue
         os.environ[key] = value
         _LOADED_DOTENV_VALUES[key] = value
