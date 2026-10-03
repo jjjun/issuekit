@@ -143,8 +143,10 @@ and remains associated with its request id.
 Each routed proposal carries an origin unique to its request and target,
 `<pm-project>#request-<id>-target-<index>-<project>@<commit>`, so separate
 requests can route to the same project while earlier proposals are still
-pending there. Rerunning the same request text reuses its unfinished saved
-request id, and targets that already have a recorded proposal ref are skipped.
+pending there. The target index is fixed when the project is first routed.
+Rerunning the same request text reuses its unfinished saved request id, matches
+targets by project, and skips projects that already have a recorded proposal
+ref.
 If a proposal reached the target but its ref was not recorded, the rerun sends
 the same origin and the target inbox returns the existing proposal instead of
 creating a duplicate, as long as the PM checkout's HEAD has not moved. If the

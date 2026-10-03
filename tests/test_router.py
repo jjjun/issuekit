@@ -436,6 +436,193 @@ def test_request_stops_on_send_failure_and_resume_skips_sent_target(
     assert clients["ui"].calls[0]["body"]["depends_on"] == ["api#proposal:1"]
 
 
+def test_request_resume_matches_saved_targets_by_project_after_reordering(
+    monkeypatch,
+    tmp_path,
+    capsys,
+) -> None:
+    clients, _runner = _setup(
+        monkeypatch,
+        tmp_path,
+        [
+            _route_block(
+                {
+                    "decision": "route",
+                    "targets": [
+                        {"project": "api", "title": "Add endpoint", "body": "Add API."},
+                        {
+                            "project": "ui",
+                            "title": "Use endpoint",
+                            "body": "Call API.",
+                            "depends_on": ["target:0"],
+                        },
+                    ],
+                }
+            ),
+            _route_block(
+                {
+                    "decision": "route",
+                    "targets": [
+                        {
+                            "project": "ui",
+                            "title": "Changed title",
+                            "body": "Changed body.",
+                        },
+                        {"project": "api", "title": "Changed API", "body": "Changed."},
+                    ],
+                }
+            ),
+        ],
+    )
+    original_send = proposals_api.send_proposal
+    failures_left = {"count": 1}
+
+    def flaky_send(config, proposal):
+        if proposal.to == "ui" and failures_left["count"]:
+            failures_left["count"] -= 1
+            raise ProposalError("ui unavailable")
+        return original_send(config, proposal)
+
+    monkeypatch.setattr(proposals_api, "send_proposal", flaky_send)
+
+    assert cli.main(["request", "Add export UI", "--json"]) == 1
+    assert "ui unavailable" in capsys.readouterr().err
+    assert cli.main(["request", "Add export UI", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert [target["proposal_ref"] for target in payload["targets"]] == [
+        "api#1",
+        "ui#1",
+    ]
+    saved_state = json.loads(
+        (tmp_path / ".agent-runs" / "pm-requests.json").read_text(encoding="utf-8")
+    )
+    assert saved_state["1"]["decision"] == "route"
+    assert all(target.get("proposal_ref") for target in saved_state["1"]["targets"])
+    assert len(clients["api"].calls) == 1
+    assert len(clients["ui"].calls) == 1
+    assert clients["ui"].calls[0]["body"]["title"] == "Use endpoint"
+    assert clients["ui"].calls[0]["body"]["body"] == "Call API."
+    assert clients["ui"].calls[0]["body"]["depends_on"] == ["api#proposal:1"]
+    assert _create_origins(clients["api"])[0].startswith(
+        "pm#request-1-target-0-api@"
+    )
+    assert _create_origins(clients["ui"])[0].startswith(
+        "pm#request-1-target-1-ui@"
+    )
+
+
+def test_request_resume_sends_only_new_projects_and_resolves_saved_indexes(
+    monkeypatch,
+    tmp_path,
+    capsys,
+) -> None:
+    clients, _runner = _setup(
+        monkeypatch,
+        tmp_path,
+        [
+            _route_block(
+                {
+                    "decision": "route",
+                    "targets": [
+                        {"project": "ui", "title": "UI update", "body": "Update UI."},
+                        {"project": "api", "title": "API update", "body": "Update API."},
+                        {
+                            "project": "worker",
+                            "title": "Worker update",
+                            "body": "Update worker.",
+                            "depends_on": ["target:0"],
+                        },
+                    ],
+                }
+            )
+        ],
+        profiles=[
+            {
+                "project": "api",
+                "summary": "API service",
+                "profile_md": "Owns HTTP APIs.",
+            },
+            {"project": "ui", "summary": "UI app", "profile_md": "Owns the UI."},
+            {
+                "project": "worker",
+                "summary": "Worker service",
+                "profile_md": "Owns background jobs.",
+            },
+        ],
+    )
+    _write_request_state(
+        tmp_path,
+        {
+            "1": {
+                "id": 1,
+                "original_text": "Add export UI",
+                "decision": "clarify",
+                "targets": [
+                    {
+                        "project": "api",
+                        "title": "API update",
+                        "body": "Update API.",
+                        "proposal_ref": "api#7",
+                        "dependency_ref": "api#proposal:7",
+                    },
+                    {
+                        "project": "ui",
+                        "title": "UI update",
+                        "body": "Update UI.",
+                        "proposal_ref": "ui#8",
+                        "dependency_ref": "ui#proposal:8",
+                    },
+                ],
+            }
+        },
+    )
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["request", "Add export UI", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["request_id"] == 1
+    assert [target["proposal_ref"] for target in payload["targets"]] == [
+        "api#7",
+        "ui#8",
+        "worker#1",
+    ]
+    assert "api" not in clients
+    assert "ui" not in clients
+    assert clients["worker"].calls[0]["body"]["depends_on"] == ["ui#proposal:8"]
+    assert _create_origins(clients["worker"])[0].startswith(
+        "pm#request-1-target-2-worker@"
+    )
+
+
+def test_request_rejects_duplicate_route_projects_before_sending(
+    monkeypatch,
+    tmp_path,
+    capsys,
+) -> None:
+    clients, _runner = _setup(
+        monkeypatch,
+        tmp_path,
+        [
+            _route_block(
+                {
+                    "decision": "route",
+                    "targets": [
+                        {"project": "api", "title": "First", "body": "First API."},
+                        {"project": "api", "title": "Second", "body": "Second API."},
+                    ],
+                }
+            )
+        ],
+    )
+
+    assert cli.main(["request", "Add export", "--json"]) == 1
+
+    assert "duplicate project target: api" in capsys.readouterr().err
+    assert "api" not in clients
+
+
 def _single_api_route(title: str, body: str) -> str:
     return _route_block(
         {
@@ -509,7 +696,7 @@ def test_request_rerun_payload_mismatch_suggests_link_or_discard(
     tmp_path,
     capsys,
 ) -> None:
-    _clients, _runner = _setup(
+    clients, _runner = _setup(
         monkeypatch,
         tmp_path,
         [
@@ -521,6 +708,7 @@ def test_request_rerun_payload_mismatch_suggests_link_or_discard(
     assert cli.main(["request", "Add CSV export", "--json"]) == 0
     capsys.readouterr()
     _forget_sent_target(tmp_path, "1")
+    clients["api"]._proposals[1]["body"] = "An unrelated pending proposal body."
 
     assert cli.main(["request", "Add CSV export", "--json"]) == 1
     err = capsys.readouterr().err
