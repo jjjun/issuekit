@@ -42,32 +42,42 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         "check",
         help="Check setup state without writing files.",
     )
-    _add_setup_check_options(setup_check_parser)
+    _add_setup_check_options(setup_check_parser, suppress_default=True)
     setup_check_parser.set_defaults(func=run)
     setup_apply_parser = setup_subparsers.add_parser(
         "apply",
         help="Initialize repo MCP handoff scaffolding and print setup diagnostics.",
     )
-    _add_setup_apply_options(setup_apply_parser)
+    _add_setup_apply_options(setup_apply_parser, suppress_default=True)
     setup_apply_parser.set_defaults(func=run)
     setup_parser.set_defaults(func=run)
 
 
-def _add_setup_check_options(parser: argparse.ArgumentParser) -> None:
+def _add_setup_check_options(
+    parser: argparse.ArgumentParser,
+    *,
+    suppress_default: bool = False,
+) -> None:
     parser.add_argument(
         "--json",
         action="store_true",
+        default=argparse.SUPPRESS if suppress_default else False,
         help="Print JSON output.",
     )
 
 
-def _add_setup_apply_options(parser: argparse.ArgumentParser) -> None:
+def _add_setup_apply_options(
+    parser: argparse.ArgumentParser,
+    *,
+    suppress_default: bool = False,
+) -> None:
     parser.add_argument(
         "--force",
         action="store_true",
+        default=argparse.SUPPRESS if suppress_default else False,
         help="Refresh issuekit entries and issuekit-owned template files.",
     )
-    _add_setup_check_options(parser)
+    _add_setup_check_options(parser, suppress_default=suppress_default)
 
 
 def run(args) -> int:

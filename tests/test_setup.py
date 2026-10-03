@@ -32,6 +32,29 @@ def _file_snapshot(root: Path) -> dict[str, bytes]:
     }
 
 
+def test_setup_parser_preserves_flags_before_subcommands() -> None:
+    parser = cli.build_parser()
+
+    check_args = parser.parse_args(["setup", "--json", "check"])
+    apply_args = parser.parse_args(["setup", "--force", "apply"])
+
+    assert check_args.json is True
+    assert apply_args.force is True
+
+
+def test_setup_check_accepts_json_before_subcommand(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["setup", "--json", "check"]) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["state"] == "missing"
+
+
 def test_setup_empty_repo_scaffolds_mcp_and_prints_checklist(
     tmp_path: Path,
     monkeypatch,

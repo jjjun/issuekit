@@ -53,6 +53,34 @@ def _configure_project_api(
     monkeypatch.chdir(tmp_path)
 
 
+def test_workers_parser_preserves_json_before_subcommand() -> None:
+    parser = cli.build_parser()
+
+    prune_args = parser.parse_args(["workers", "--json", "prune", "--dry-run"])
+    remove_args = parser.parse_args(["workers", "--json", "remove", "checkout.mine-py"])
+
+    assert prune_args.json is True
+    assert prune_args.dry_run is True
+    assert remove_args.json is True
+
+
+@pytest.mark.parametrize(
+    ("argv", "action"),
+    [
+        (["workers", "--repo-id", "mine-py", "prune"], "prune"),
+        (["workers", "--repo-id", "mine-py", "remove", "checkout.mine-py"], "remove"),
+    ],
+)
+def test_workers_rejects_repo_filter_for_unsupported_actions(
+    argv: list[str],
+    action: str,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert cli.main(argv) == 2
+
+    assert f"--repo-id is not supported by workers {action}" in capsys.readouterr().err
+
+
 def test_workers_command_lists_registered_workers(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -426,6 +454,20 @@ def test_workers_prune_dry_run_filters_to_stale_issueless_untargeted_workers(
     payload = json.loads(capsys.readouterr().out)
     assert [item["display"] for item in payload["candidates"]] == ["stale.mine-py"]
     assert "delete_worker" not in [call["method"] for call in client.calls]
+
+
+def test_workers_prune_json_option_before_subcommand_prints_json(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _configure_api(tmp_path, monkeypatch, FakeIssuekitClient())
+
+    assert cli.main(["workers", "--json", "prune", "--dry-run"]) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["dry_run"] is True
+    assert payload["candidates"] == []
 
 
 def test_workers_prune_warns_when_staleness_is_not_wider_than_heartbeat(

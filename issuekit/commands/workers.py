@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 
 from issuekit.commands._common import print_json, run_command
@@ -49,7 +50,12 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         action="store_true",
         help="Remove even if the worker currently holds an implementing issue.",
     )
-    remove_parser.add_argument("--json", action="store_true", help="Print JSON output.")
+    remove_parser.add_argument(
+        "--json",
+        action="store_true",
+        default=argparse.SUPPRESS,
+        help="Print JSON output.",
+    )
     remove_parser.set_defaults(func=run_remove)
 
     prune_parser = subcommands.add_parser(
@@ -67,7 +73,12 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         action="store_true",
         help="Print candidates without deleting them.",
     )
-    prune_parser.add_argument("--json", action="store_true", help="Print JSON output.")
+    prune_parser.add_argument(
+        "--json",
+        action="store_true",
+        default=argparse.SUPPRESS,
+        help="Print JSON output.",
+    )
     prune_parser.set_defaults(func=run_prune)
 
 
@@ -96,6 +107,10 @@ def run_list(args) -> int:
 
 
 def run_remove(args) -> int:
+    if args.repo_id is not None:
+        print("error: --repo-id is not supported by workers remove", file=sys.stderr)
+        return 2
+
     def action() -> int:
         config = load_config(Path.cwd())
         result = remove_api_worker(config, args.address, force=args.force)
@@ -112,6 +127,10 @@ def run_remove(args) -> int:
 
 
 def run_prune(args) -> int:
+    if args.repo_id is not None:
+        print("error: --repo-id is not supported by workers prune", file=sys.stderr)
+        return 2
+
     def action() -> int:
         config = load_config(Path.cwd())
         warn_if_staleness_not_wider(
