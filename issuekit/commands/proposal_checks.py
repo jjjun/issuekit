@@ -95,7 +95,11 @@ def run(args) -> int:
             file=sys.stderr,
         )
         return 1
-    agent = resolve_implementer(args.agent, config)
+    try:
+        agent = resolve_implementer(args.agent, config)
+    except WorkflowError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
     if agent is None:
         print(
             "No implementer is configured. Pass --agent, set default_implementer, "

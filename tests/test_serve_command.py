@@ -1,3 +1,4 @@
+import io
 import os
 import signal
 import subprocess
@@ -356,6 +357,75 @@ def test_serve_review_once_reviews_open_pool_issue(
     captured = capsys.readouterr()
     assert "event=reviewing issue=1" in captured.err
     assert "event=reviewed issue=1" in captured.err
+
+
+def test_serve_review_skips_failed_issue_and_reviews_next_issue(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    class FailFirstThenApproveRunner:
+        calls: list[int | None] = []
+
+        def run(
+            self,
+            adapter,
+            prompt: AgentPrompt,
+            repo: Path,
+            timeout: float,
+            agent_name: str | None = None,
+            issue_id: int | None = None,
+            follow: bool = False,
+            **kwargs,
+        ) -> FakeResult:
+            self.calls.append(issue_id)
+            if issue_id == 1:
+                stdout = "not a review block"
+            else:
+                stdout = (
+                    "```review\n"
+                    '{"verdict":"approve","verification":"uv run pytest","notes":""}\n'
+                    "```"
+                )
+            return FakeResult(parsed={"stdout": stdout}, status_short="")
+
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                1,
+                "First review",
+                status="in_progress",
+                stage="review",
+                implementer="claude",
+                author="codex",
+            ),
+            api_issue(
+                2,
+                "Second review",
+                status="in_progress",
+                stage="review",
+                implementer="claude",
+                author="codex",
+            ),
+        ]
+    )
+    _configure_registered_api(tmp_path, monkeypatch, client)
+    _create_reviewable_diff(tmp_path)
+    monkeypatch.setattr(serve_loop, "BACKOFF_INITIAL_SEC", 0.0)
+    monkeypatch.setattr(
+        "issuekit.agents.review.AgentRunner",
+        FailFirstThenApproveRunner,
+    )
+
+    exit_code = cli.main(
+        ["serve", "--agent", "codex", "--review", "--max-issues", "1", "--interval", "0"]
+    )
+
+    assert exit_code == 0
+    assert FailFirstThenApproveRunner.calls == [1, 2]
+    captured = capsys.readouterr()
+    assert "event=review_skipped issue=1 reason=previous_failure" in captured.err
+    assert "event=reviewed issue=2" in captured.err
 
 
 def test_serve_review_once_reports_discarded_decision(
@@ -736,6 +806,72 @@ def test_serve_triage_auto_adopts_before_claiming(
     assert "event=submitted issue=1" in captured.err
 
 
+def test_serve_triage_adoption_error_logs_and_still_claims(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient(
+        proposals=[
+            {
+                "id": 1,
+                "origin": "source#7@abc123",
+                "title": "Adopt me",
+                "body": "# Issue #1: Adopt me\n",
+            },
+            {
+                "id": 2,
+                "origin": "source#8@abc123",
+                "title": "Cannot adopt",
+                "body": "This adoption will fail.",
+            },
+        ]
+    )
+    attempts: list[int] = []
+    original_adopt = client.adopt_proposal
+
+    def fail_second_adoption(proposal_id: int, *, priority: str | None = None):
+        attempts.append(proposal_id)
+        if proposal_id == 2:
+            raise WorkflowError("temporary adoption failure")
+        return original_adopt(proposal_id, priority=priority)
+
+    monkeypatch.setattr(client, "adopt_proposal", fail_second_adoption)
+    FakeRunner.calls.clear()
+    _configure_registered_api(
+        tmp_path,
+        monkeypatch,
+        client,
+        triage=(
+            "[triage]\n"
+            "trusted_origins = ['source']\n"
+            "default_priority = 'high'\n"
+            "max_adoptions_per_cycle = 3\n"
+        ),
+    )
+    monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", FakeRunner)
+
+    exit_code = cli.main(["serve", "--agent", "codex", "--once", "--triage"])
+
+    assert exit_code == 0
+    assert attempts == [1, 2]
+    assert [call["method"] for call in client.calls] == [
+        "upsert_repo",
+        "upsert_worker",
+        "adopt_proposal",
+        "claim_next",
+        "submit",
+    ]
+    assert [call[4] for call in FakeRunner.calls] == [1]
+    captured = capsys.readouterr()
+    assert "event=auto_adopted proposal=1 issue=1 priority=high" in captured.err
+    assert (
+        'event=triage_adoption_error proposal=2 error="temporary adoption failure"'
+        in captured.err
+    )
+    assert "event=submitted issue=1" in captured.err
+
+
 def test_serve_triage_uses_author_agent_when_configured(
     tmp_path: Path,
     monkeypatch,
@@ -987,6 +1123,38 @@ def test_serve_recovery_error_continues_to_poll(
     assert "event=run_error issue=1" in capsys.readouterr().err
 
 
+def test_serve_once_returns_recovery_failure_without_claiming(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                1,
+                "Orphan",
+                status="in_progress",
+                assignee="codex",
+                stage="implementing",
+                implementer="codex",
+                author="claude",
+                worker="checkout.demo@machine",
+            ),
+            api_issue(2, "Ready", author="claude"),
+        ]
+    )
+    RecoveryErrorThenRunner.calls.clear()
+    _configure_registered_api(tmp_path, monkeypatch, client)
+    monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", RecoveryErrorThenRunner)
+
+    exit_code = cli.main(["serve", "--agent", "codex", "--once"])
+
+    assert exit_code == 1
+    assert RecoveryErrorThenRunner.calls == [1]
+    assert [call["method"] for call in client.calls] == ["upsert_repo", "upsert_worker"]
+    assert "event=run_error issue=1" in capsys.readouterr().err
+
+
 def test_serve_recovered_issue_counts_toward_max_issues(
     tmp_path: Path,
     monkeypatch,
@@ -1062,6 +1230,49 @@ def test_serve_requires_registered_worker(
 
     assert exit_code == 1
     assert "Run `issuekit add` first" in capsys.readouterr().err
+
+
+def test_serve_rejects_unknown_agent_without_traceback(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    _configure_registered_api(tmp_path, monkeypatch, FakeIssuekitClient())
+
+    exit_code = cli.main(["serve", "--agent", "nosuch", "--once"])
+
+    assert exit_code == 1
+    captured = capsys.readouterr().err
+    assert "Unknown assignee: nosuch" in captured
+    assert "Traceback" not in captured
+
+
+def test_serve_requires_api_url_for_registered_worker(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "project = 'demo'\nassignees = ['codex']\ndefault_reviewer = 'codex'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    (tmp_path / "issuekit.local.toml").write_text(
+        (
+            "[worker]\n"
+            "machine_id = 'machine'\n"
+            "repo_id = 'demo'\n"
+            "worker_id = 'checkout'\n"
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = cli.main(["serve", "--agent", "codex", "--once"])
+
+    assert exit_code == 1
+    assert "api_url is not configured" in capsys.readouterr().err
 
 
 def test_serve_uses_single_configured_assignee_when_agent_omitted(
@@ -1246,7 +1457,7 @@ def test_worker_heartbeat_initial_unexpected_exception_uses_failure_path(
 
     assert (
         "event=worker_registry_error consecutive=1 last_success=none "
-        "error=programming error"
+        'error="programming error"'
     ) in capsys.readouterr().err
 
 
@@ -1322,7 +1533,8 @@ def test_serve_refuses_live_lock(
     _configure_registered_api(tmp_path, monkeypatch, FakeIssuekitClient())
     run_dir = tmp_path / ".agent-runs"
     run_dir.mkdir()
-    (run_dir / "serve.lock").write_text(f"{os.getpid()}\n", encoding="utf-8", newline="\n")
+    monkeypatch.setattr(serve, "_pid_is_live", lambda pid: pid == 12345)
+    (run_dir / "serve.lock").write_text("12345\n", encoding="utf-8", newline="\n")
 
     exit_code = cli.main(["serve", "--agent", "codex", "--once"])
 
@@ -1343,6 +1555,61 @@ def test_serve_reclaims_stale_lock(
 
     assert cli.main(["serve", "--agent", "codex", "--once"]) == 0
     assert not (run_dir / "serve.lock").exists()
+
+
+def test_serve_reclaims_lock_with_current_pid(
+    tmp_path: Path,
+) -> None:
+    lock_path = tmp_path / ".agent-runs" / "serve.lock"
+    lock_path.parent.mkdir()
+    lock_path.write_text(f"{os.getpid()}\n", encoding="utf-8", newline="\n")
+
+    with serve._serve_lock(lock_path):
+        assert serve._read_lock_pid(lock_path) == os.getpid()
+
+    assert not lock_path.exists()
+
+
+def test_serve_rejects_lock_already_owned_by_this_process(
+    tmp_path: Path,
+) -> None:
+    lock_path = tmp_path / ".agent-runs" / "serve.lock"
+
+    with serve._serve_lock(lock_path):
+        with pytest.raises(serve.ServeLockError, match="already running"):
+            with serve._serve_lock(lock_path):
+                pass
+
+
+def test_serve_treats_recent_empty_lock_as_held(
+    tmp_path: Path,
+) -> None:
+    lock_path = tmp_path / ".agent-runs" / "serve.lock"
+    lock_path.parent.mkdir()
+    lock_path.touch()
+
+    with pytest.raises(serve.ServeLockError, match="starting"):
+        with serve._serve_lock(lock_path):
+            pass
+
+
+def test_log_event_quotes_multiline_values_on_one_line(
+    tmp_path: Path,
+) -> None:
+    stream = io.StringIO()
+    log_path = tmp_path / "serve.log"
+
+    serve_loop.log_event(
+        stream,
+        log_path,
+        "claim_sync_error",
+        error="git failed\nline=2",
+    )
+
+    output = stream.getvalue()
+    assert output.count("\n") == 1
+    assert 'event=claim_sync_error error="git failed\\nline=2"' in output
+    assert log_path.read_text(encoding="utf-8") == output
 
 
 def test_serve_backs_off_after_claim_error(monkeypatch, tmp_path: Path, capsys) -> None:

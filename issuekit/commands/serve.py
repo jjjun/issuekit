@@ -181,6 +181,7 @@ _MODE_REJECTED_OPTIONS = {
         "priority": "--priority",
     },
 }
+_ACTIVE_SERVE_LOCKS: set[Path] = set()
 
 
 def run(args) -> int:
@@ -191,7 +192,11 @@ def run(args) -> int:
         print(str(exc), file=sys.stderr)
         return 1
 
-    agent = resolve_implementer(args.agent, config)
+    try:
+        agent = resolve_implementer(args.agent, config)
+    except WorkflowError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
     if agent is None:
         print(
             "No implementer is configured. Pass --agent, set default_implementer, "
@@ -203,6 +208,12 @@ def run(args) -> int:
         print(
             "This checkout is not registered as an issuekit worker. "
             "Run `issuekit add` first.",
+            file=sys.stderr,
+        )
+        return 1
+    if not config.api_url:
+        print(
+            "This checkout is registered as an issuekit worker, but api_url is not configured.",
             file=sys.stderr,
         )
         return 1
@@ -371,7 +382,23 @@ def _serve_loop(
                             controller=controller,
                         )
                     else:
-                        for outcome in auto_adopt_incoming_proposals(config):
+                        def log_adoption_error(
+                            proposal_id: object,
+                            error: Exception,
+                        ) -> None:
+                            _log(
+                                sys.stderr,
+                                log_path,
+                                "triage_adoption_error",
+                                proposal=proposal_id,
+                                error=str(error),
+                                backoff=backoff_seconds,
+                            )
+
+                        for outcome in auto_adopt_incoming_proposals(
+                            config,
+                            on_adoption_error=log_adoption_error,
+                        ):
                             _log(
                                 sys.stderr,
                                 log_path,
@@ -587,14 +614,30 @@ def _serve_review_loop(
     store,
 ) -> int:
     backoff = Backoff()
+    failed_review_ids: set[int] = set()
     try:
         def poll(attempt: int, backoff_seconds: float):
             try:
-                issue = next_review(agent, config=config, store=store, include_open=True)
+                issue = next_review(
+                    agent,
+                    config=config,
+                    store=store,
+                    include_open=True,
+                    exclude_ids=failed_review_ids,
+                )
             except (TimeoutError, WorkflowError, ValueError) as exc:
                 _log(sys.stderr, log_path, "review_poll_error", error=str(exc), backoff=backoff_seconds)
                 return PollResult(
                     "error", 1, recreate_store=_should_recreate_store(exc)
+                )
+
+            for issue_id in sorted(failed_review_ids):
+                _log(
+                    sys.stderr,
+                    log_path,
+                    "review_skipped",
+                    issue=issue_id,
+                    reason="previous_failure",
                 )
 
             if issue is None:
@@ -613,8 +656,12 @@ def _serve_review_loop(
                 store=store,
             )
             if result.status == "error":
+                if issue.id is not None:
+                    failed_review_ids.add(issue.id)
                 return PollResult("error", 1, result.recreate_store)
             if result.status == "failed":
+                if issue.id is not None:
+                    failed_review_ids.add(issue.id)
                 return PollResult("failed", result.exit_code, result.recreate_store)
             return PollResult("success", value=result.reviewed_issue)
 
@@ -777,14 +824,22 @@ def _worker_heartbeat(
 def _serve_lock(lock_path: Path) -> Iterator[None]:
     lock_path.parent.mkdir(exist_ok=True)
     pid = os.getpid()
+    active_lock_path = lock_path.resolve()
     while True:
         try:
             fd = os.open(str(lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
         except FileExistsError:
             existing_pid = _read_lock_pid(lock_path)
-            if existing_pid is not None and _pid_is_live(existing_pid):
+            if existing_pid is not None and (
+                _pid_is_live(existing_pid)
+                or (existing_pid == pid and active_lock_path in _ACTIVE_SERVE_LOCKS)
+            ):
                 raise ServeLockError(
                     f"issuekit serve is already running for this checkout (pid {existing_pid})."
+                ) from None
+            if existing_pid is None and _is_recent_empty_lock(lock_path):
+                raise ServeLockError(
+                    "issuekit serve is starting for this checkout; try again shortly."
                 ) from None
             try:
                 lock_path.unlink()
@@ -792,8 +847,19 @@ def _serve_lock(lock_path: Path) -> Iterator[None]:
                 pass
             continue
         else:
-            with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as fh:
-                fh.write(f"{pid}\n")
+            _ACTIVE_SERVE_LOCKS.add(active_lock_path)
+            try:
+                os.write(fd, f"{pid}\n".encode("ascii"))
+            except BaseException:
+                os.close(fd)
+                _ACTIVE_SERVE_LOCKS.discard(active_lock_path)
+                try:
+                    lock_path.unlink()
+                except FileNotFoundError:
+                    pass
+                raise
+            else:
+                os.close(fd)
             break
 
     try:
@@ -804,6 +870,8 @@ def _serve_lock(lock_path: Path) -> Iterator[None]:
                 lock_path.unlink()
         except FileNotFoundError:
             pass
+        finally:
+            _ACTIVE_SERVE_LOCKS.discard(active_lock_path)
 
 
 def _read_lock_pid(lock_path: Path) -> int | None:
@@ -817,11 +885,19 @@ def _read_lock_pid(lock_path: Path) -> int | None:
         return None
 
 
+def _is_recent_empty_lock(lock_path: Path) -> bool:
+    try:
+        stat = lock_path.stat()
+    except OSError:
+        return False
+    return stat.st_size == 0 and datetime.now().timestamp() - stat.st_mtime < 5
+
+
 def _pid_is_live(pid: int) -> bool:
     if pid <= 0:
         return False
     if pid == os.getpid():
-        return True
+        return False
     if os.name != "nt":
         try:
             os.kill(pid, 0)

@@ -13,10 +13,11 @@ implements and reviews runs two serve processes from two registered checkouts.
 ## Prerequisites
 
 - The checkout is registered: `issuekit add` wrote the worker identity to
-  `issuekit.local.toml`. Serve checks only that local file and refuses to start
-  without it; it does not check the API catalog. Its first heartbeat, sent at
-  startup, publishes the worker, so a catalog update that failed during
-  `issuekit add` is repaired once serve reaches the API.
+  `issuekit.local.toml`, and `api_url` is configured. Serve checks only that
+  local file and refuses to start without it; it does not check the API catalog.
+  Its first heartbeat, sent at startup, publishes the worker, so a catalog
+  update that failed during `issuekit add` is repaired once serve reaches the
+  API.
 - An agent resolves: `--agent`, then `default_implementer`, then exactly one
   enabled assignee. Every mode uses this order, including `--review` and
   `--proposal-checks`; `default_reviewer` is never consulted, so a reviewer
@@ -90,8 +91,9 @@ committed.
 Errors use exponential backoff starting at 1s and capped at 60s; any success
 resets it. Idle polls always wait `--interval`, not the backoff.
 
-- `--once` attempts a single poll and exits. Useful for cron-style operation and
-  for testing.
+- `--once` runs at most one agent and exits. Startup recovery takes precedence;
+  otherwise the loop attempts one poll. Useful for cron-style operation and for
+  testing.
 - `--max-issues <n>` exits after `n` successful submissions, including issues
   finished by startup recovery. With `--review` it counts review decisions;
   `--proposal-checks` ignores it.
@@ -110,8 +112,9 @@ A lock left behind by a dead process is detected and reclaimed, so a crashed
 serve does not need manual cleanup.
 
 Every event is written both to stderr and to `.agent-runs/serve.log` as a single
-line of `key=value` pairs. The one exception is `signal`, which goes to stderr
-only.
+line of `key=value` pairs. Values containing whitespace or `=` are JSON-quoted
+strings, so embedded newlines are escaped. The one exception is `signal`, which
+goes to stderr only.
 
 ```
 ts=2026-07-28T09:14:02 event=claimed issue=318 agent=codex
@@ -124,8 +127,8 @@ Event names by loop:
 |------|--------|
 | any mode | `stopped`, `signal`, `worker_registry_error`, `worker_registry_escalated` |
 | implement | `recovered`, `recovery_error`, `idle`, `claimed`, `claim_error`, `submitted`, `run_error`, `run_failed` |
-| `--triage` | `auto_adopted`, `triage_error`, and `triage_author_*` when `[triage] author_agent` is set |
-| `--review` | `review_idle`, `reviewing`, `review_poll_error`, `reviewed`, `review_error`, `review_failed`, `review_decision_discarded` |
+| `--triage` | `auto_adopted`, `triage_adoption_error`, `triage_error`, and `triage_author_*` when `[triage] author_agent` is set |
+| `--review` | `review_idle`, `reviewing`, `review_skipped`, `review_poll_error`, `reviewed`, `review_error`, `review_failed`, `review_decision_discarded` |
 | `--proposal-checks` | `proposal_checks_idle`, `proposal_checks_cycle_start`, `proposal_checks_cycle_complete`, `proposal_checks_cycle_error`, `proposal_check_decision`, `proposal_check_already_decided`, `proposal_check_error` |
 
 Shutdown is two-stage. The first `SIGINT`/`SIGTERM` requests a graceful stop:

@@ -360,23 +360,27 @@ def next_review(
     config: IssuekitConfig | None = None,
     store=None,
     include_open: bool = False,
+    exclude_ids: set[int] | None = None,
 ) -> Issue | None:
     """Return the next issue waiting for a reviewer."""
     config = config or IssuekitConfig()
     with _managed_store(config, store) as active_store:
         if reviewer is None and config.default_reviewer == AUTO_REVIEWER:
             issues = active_store.find_for(None, "review")  # type: ignore[attr-defined]
-            return issues[0] if issues else None
-
-        resolved = resolve_reviewer(reviewer, config)
-        issues = active_store.find_for(resolved, "review")  # type: ignore[attr-defined]
-        if include_open:
-            open_issues = active_store.find_for(None, "review")  # type: ignore[attr-defined]
-            issues.extend(issue for issue in open_issues if not issue.assignee)
-            issues = sorted(
-                {issue.id or 0: issue for issue in issues}.values(),
-                key=lambda issue: (issue.id or 0, issue.ref),
-            )
+        else:
+            resolved = resolve_reviewer(reviewer, config)
+            issues = active_store.find_for(resolved, "review")  # type: ignore[attr-defined]
+            if include_open:
+                open_issues = active_store.find_for(None, "review")  # type: ignore[attr-defined]
+                issues.extend(issue for issue in open_issues if not issue.assignee)
+                issues = sorted(
+                    {issue.id or 0: issue for issue in issues}.values(),
+                    key=lambda issue: (issue.id or 0, issue.ref),
+                )
+        if exclude_ids is not None:
+            current_ids = {issue.id for issue in issues if issue.id is not None}
+            exclude_ids.intersection_update(current_ids)
+            issues = [issue for issue in issues if issue.id not in exclude_ids]
         return issues[0] if issues else None
 
 

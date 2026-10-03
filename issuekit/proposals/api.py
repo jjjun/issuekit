@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 import time
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -318,7 +318,11 @@ def _proposal_origin_issue_id(origin: str) -> int | None:
     return int(match.group("issue_id")) if match is not None else None
 
 
-def auto_adopt_incoming_proposals(config: IssuekitConfig) -> list[dict]:
+def auto_adopt_incoming_proposals(
+    config: IssuekitConfig,
+    *,
+    on_adoption_error: Callable[[object, Exception], None] | None = None,
+) -> list[dict]:
     """Adopt pending inbox proposals that match this target project's policy."""
     policy = config.triage
     if not policy.trusted_origins:
@@ -330,10 +334,17 @@ def auto_adopt_incoming_proposals(config: IssuekitConfig) -> list[dict]:
                 break
             if not matches_triage_policy(proposal, config):
                 continue
-            issue = client.adopt_proposal(
-                int(proposal["id"]),
-                priority=policy.default_priority,
-            )
+            proposal_id = proposal.get("id")
+            try:
+                issue = client.adopt_proposal(
+                    int(proposal_id),
+                    priority=policy.default_priority,
+                )
+            except Exception as exc:
+                if on_adoption_error is None:
+                    raise
+                on_adoption_error(proposal_id, exc)
+                continue
             outcome = adopt_outcome(proposal["id"], config.project, issue)
             outcome["auto_adopted"] = True
             outcome["blocking"] = bool(proposal.get("blocking", False))

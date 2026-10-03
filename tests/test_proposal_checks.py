@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 import issuekit.proposals.api as proposals_api
+from issuekit import cli
 from issuekit.agentrun import AgentPrompt, AgentResult
 from issuekit.agents import proposal_check
 from issuekit.agents.proposal_check import (
@@ -107,6 +108,24 @@ def _setup(monkeypatch, tmp_path: Path, *, output: str):
     monkeypatch.setattr(proposal_check, "resolve_adapter", lambda *a, **k: object())
     monkeypatch.chdir(tmp_path)
     return client, runner, load_config(tmp_path)
+
+
+def test_proposal_checks_rejects_unknown_agent_without_traceback(
+    monkeypatch,
+    tmp_path: Path,
+    capsys,
+) -> None:
+    _write_config(tmp_path)
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = cli.main(
+        ["proposal-checks", "--once", "--agent", "nosuch"]
+    )
+
+    assert exit_code == 1
+    captured = capsys.readouterr().err
+    assert "Unknown assignee: nosuch" in captured
+    assert "Traceback" not in captured
 
 
 def test_proposal_check_forwards_model_to_adapter(monkeypatch, tmp_path) -> None:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sys
 import threading
 from collections.abc import Callable
@@ -340,13 +341,14 @@ def recover_orphaned_issues(
                 return submitted_count, 0, store
             continue
 
+        if args.once:
+            return submitted_count, result.exit_code, store
         if result.status == "failed" and controller.abort_event.is_set():
             return submitted_count, 0, store
         if result.recreate_store:
             store = recreate_store(store, config)
-        if not args.once:
-            controller.sleep(backoff.current)
-            backoff.step()
+        controller.sleep(backoff.current)
+        backoff.step()
 
     return submitted_count, None, store
 
@@ -354,7 +356,11 @@ def recover_orphaned_issues(
 def log_event(stream, log_path: Path | None, event: str, **fields: object) -> None:
     timestamp = datetime.now().replace(microsecond=0).isoformat()
     parts = [f"ts={timestamp}", f"event={event}"]
-    parts.extend(f"{key}={value}" for key, value in fields.items())
+    for key, value in fields.items():
+        text = str(value)
+        if any(character.isspace() for character in text) or "=" in text:
+            text = json.dumps(text)
+        parts.append(f"{key}={text}")
     line = " ".join(parts)
     print(line, file=stream)
     if log_path is not None:
