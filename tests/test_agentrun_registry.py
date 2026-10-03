@@ -335,7 +335,7 @@ def test_codex_adapter_argv_value_less_approval_flag() -> None:
                 AgentRunConfig(
                     binary="codex",
                     headless_argv=("exec",),
-                    approval_flag="--full-auto",
+                    approval_flag="--approve-for-me",
                     model_flag="--model",
                 ),
             ),
@@ -343,7 +343,7 @@ def test_codex_adapter_argv_value_less_approval_flag() -> None:
     )
     adapter = ConfigAgentAdapter("codex", dict(config.agents)["codex"])
     argv = adapter.build_argv("prompt", Path("/plan.md"))
-    assert argv == ["exec", "prompt", "--full-auto"]
+    assert argv == ["exec", "prompt", "--approve-for-me"]
 
 
 def test_config_agent_adapter_resolve_binary_uses_path(monkeypatch, tmp_path: Path) -> None:

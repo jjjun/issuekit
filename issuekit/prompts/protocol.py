@@ -69,13 +69,11 @@ edits are not attributed to the implementer run.
 Its `--follow` heartbeat polls `git status` read-only without an index lock, so
 it is safe for issues that rewrite the checkout.
 
-By default, the built-in Codex config runs without a sandbox and relies on the
-repository worktree plus the review gate. Projects that require the strict
-sandbox can set `[agents.codex] approval_flag = "--full-auto"`, or set
-`approval_flag = "--sandbox"` with `approval_value = "workspace-write"`.
-The built-in Claude config uses `--permission-mode bypassPermissions` for
-unattended headless runs; stricter projects can set
-`[agents.claude] approval_value = "acceptEdits"`.
+By default, Codex runs without a sandbox. For strict mode, set
+`approval_flag = "--sandbox"` and `approval_value = "workspace-write"` (no
+network; `.git` is read-only), or set `approval_flag = "--approve-for-me"`.
+For Claude, set `approval_value = "auto"`, or use `"acceptEdits"` with
+`permissions.allow` rules for test commands. See `docs/guides/configuration.md`.
 
 Agent-launching commands accept pass-through `--model <model-id>` and
 `--reasoning-effort <value>` overrides.

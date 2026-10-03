@@ -201,17 +201,18 @@ update those settings when you disable the agent they name.
 
 Built-in agent configs can be patched by name. A table such as
 `[tool.issuekit.agents.codex]` overlays only the keys it specifies and leaves
-other built-in agents unchanged. For standalone `issuekit.toml`, use the same
-table without the `tool.issuekit` prefix:
+other built-in agents unchanged. For `pyproject.toml`, use:
 
 ```toml
 [tool.issuekit.agents.codex]
-approval_flag = "--full-auto"
 model = "gpt-6-sol"
 
 [tool.issuekit.agents.codex.model_prompts]
 "gpt-6-sol" = "Follow the gpt-6-sol project guidance."
 ```
+
+For standalone `issuekit.toml`, use `[agents.codex]` and
+`[agents.codex.model_prompts]` without the `tool.issuekit` prefix.
 
 A table with a new name, such as `[tool.issuekit.agents.gemini]`, defines a
 custom agent that starts with no flags and `binary` set to the table name.
@@ -244,11 +245,33 @@ session per side across the rounds of a run, so an agent configured with only
 `session_flag` gets a fresh session per round as before. The built-in Claude
 config sets `session_flag = "--session-id"` and `resume_flag = "--resume"`.
 
-By default, issuekit runs Codex without a sandbox and relies on the repository
-worktree plus the review gate. Projects that require the strict sandbox can use
-the override above, or set `approval_flag = "--sandbox"` and
-`approval_value = "workspace-write"`. These overrides apply only to the default
-exec runtime; the App Server runtime below ignores them.
+### Strict permission modes
+
+Codex runs without a sandbox by default. For the `exec` runtime, configure
+`approval_flag = "--sandbox"` and `approval_value = "workspace-write"` to
+restrict filesystem access. This mode has no network access by default and
+keeps `.git` read-only. Enable network access with
+`headless_argv = ["exec", "-c", "sandbox_workspace_write.network_access=true"]`.
+Codex CLI 0.147.0 added `--approve-for-me`, which uses `workspace-write` and
+automatically reviews sandbox escalations. The old `codex exec --full-auto` flag
+was removed in Codex CLI 0.147.0; use `--sandbox workspace-write` instead.
+These overrides apply only to the default exec runtime; the App Server runtime
+below ignores them.
+
+Claude's `acceptEdits` mode allows file edits and common filesystem commands,
+but other shell commands such as tests need an `--allowedTools` entry or a
+`permissions.allow` rule. In a headless `-p` run without a permission host,
+commands that need permission are denied. Use `approval_value = "auto"` for
+classifier review, or keep `acceptEdits` and add required commands to
+`permissions.allow` in the project's `.claude/settings.json`.
+
+`headless_argv` entries go before the prompt. Do not put a variadic Claude option
+such as `--allowedTools <tools...>` last, because it can consume the prompt;
+configure allow rules in `.claude/settings.json` instead. To tell Claude that
+no one can answer permission prompts during an unattended run, include
+`headless_argv = ["-p", "--permission-prompts", "none"]` (`--permission-prompts`
+requires Claude Code 2.1.259 or later). In a `-p` run without a permission host,
+the flag also tells Claude not to retry denied requests.
 
 Codex implementation runs use `codex exec` by default. API-backed projects can
 opt into issue-owned App Server attempts for Codex implement and serve runs:
@@ -296,9 +319,10 @@ is repeated in the final `runtime_stopped` event, in the run's
 Server and exec runs can be compared without reading the raw agent log.
 
 The built-in Claude config bypasses permissions so headless implementer runs
-can execute shell commands unattended. Stricter projects can restore the old
-behavior with `[agents.claude] approval_value = "acceptEdits"` in repo or
-machine config.
+can execute shell commands unattended. Stricter projects can use
+`[agents.claude] approval_value = "acceptEdits"`; see
+[Strict permission modes](#strict-permission-modes) for its `-p` limitations
+and command allow rules.
 
 That config also sets `output_format = "json"`, so Claude returns a result
 envelope instead of bare text. An agent configured with `output_format = "json"`

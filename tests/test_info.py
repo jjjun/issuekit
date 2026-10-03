@@ -131,7 +131,7 @@ def test_info_surfaces_effective_agent_config_and_sources(
     )
     with (tmp_path / "issuekit.toml").open("a", encoding="utf-8", newline="\n") as handle:
         handle.write(
-            "disabled_agents = ['kimi']\n[agents.codex]\napproval_flag = '--full-auto'\n"
+            "disabled_agents = ['kimi']\n[agents.codex]\napproval_flag = '--approve-for-me'\n"
         )
     monkeypatch.setenv("ISSUEKIT_CONFIG", str(machine_path))
 
@@ -144,7 +144,7 @@ def test_info_surfaces_effective_agent_config_and_sources(
             "binary": "codex",
             "model": "machine-model",
             "reasoningEffort": None,
-            "approvalFlag": "--full-auto",
+            "approvalFlag": "--approve-for-me",
             "approvalValue": None,
             "headlessArgv": ["exec"],
             "modelPromptKeys": [],
@@ -194,7 +194,7 @@ def test_info_text_surfaces_effective_agent_config_and_sources(
     )
     with (tmp_path / "issuekit.toml").open("a", encoding="utf-8", newline="\n") as handle:
         handle.write(
-            "disabled_agents = ['kimi']\n[agents.codex]\napproval_flag = '--full-auto'\n"
+            "disabled_agents = ['kimi']\n[agents.codex]\napproval_flag = '--approve-for-me'\n"
         )
     monkeypatch.setenv("ISSUEKIT_CONFIG", str(machine_path))
 
@@ -205,7 +205,7 @@ def test_info_text_surfaces_effective_agent_config_and_sources(
     assert "Agent config\n" in text
     assert (
         "codex: binary=codex model=machine-model reasoning_effort=- "
-        "approval_flag=--full-auto" in text
+        "approval_flag=--approve-for-me" in text
     )
     assert "Disabled agents\n- kimi" in text
 

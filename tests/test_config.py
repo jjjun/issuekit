@@ -148,7 +148,7 @@ def test_repo_config_overrides_machine_and_merges_agent_keys(
         encoding="utf-8",
     )
     (tmp_path / "issuekit.toml").write_text(
-        "issues_dir = 'repo/issues'\n[agents.codex]\napproval_flag = '--full-auto'\n",
+        "issues_dir = 'repo/issues'\n[agents.codex]\napproval_flag = '--approve-for-me'\n",
         encoding="utf-8",
     )
     monkeypatch.setenv("ISSUEKIT_CONFIG", str(machine_path))
@@ -161,7 +161,7 @@ def test_repo_config_overrides_machine_and_merges_agent_keys(
     assert codex.reasoning_effort == "medium"
     assert codex.speed is True
     assert codex.speed_argv == ("--speed", "priority")
-    assert codex.approval_flag == "--full-auto"
+    assert codex.approval_flag == "--approve-for-me"
 
 
 def test_default_implementer_uses_machine_config_unless_repo_overrides(

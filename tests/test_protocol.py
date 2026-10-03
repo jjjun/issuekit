@@ -108,6 +108,18 @@ def test_render_protocol_returns_each_agent_and_both() -> None:
     both.encode("ascii")
 
 
+def test_rendered_protocol_does_not_recommend_removed_codex_flag() -> None:
+    rendered_protocols = (
+        render_protocol("codex"),
+        render_protocol("claude"),
+        render_protocol(None),
+        render_server_instructions(),
+    )
+
+    for rendered in rendered_protocols:
+        assert "full-auto" not in rendered
+
+
 def test_protocol_model_and_issue_guard_guidance_is_current() -> None:
     for role in ("author", "implementer"):
         rendered = render_protocol(role=role)
