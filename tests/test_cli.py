@@ -159,6 +159,41 @@ def test_author_guard_bare_command_shows_guard(
     assert captured.err == ""
 
 
+def test_author_guard_bare_command_accepts_json(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = cli.main(["author-guard", "--json"])
+
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert json.loads(captured.out) == {"authorGuard": None, "authorGuards": []}
+    assert captured.err == ""
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["author-guard", "--json"],
+        ["author-guard", "--json", "show"],
+        ["author-guard", "--json", "check"],
+        ["author-guard", "show", "--json"],
+        ["author-guard", "--json", "clear"],
+        ["author-guard", "clear", "--json"],
+    ],
+)
+def test_author_guard_json_flag_survives_parent_and_subparser_parsing(
+    argv: list[str],
+) -> None:
+    args = cli.build_parser().parse_args(argv)
+
+    assert args.json is True
+
+
 @pytest.mark.parametrize(
     "error",
     [

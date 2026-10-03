@@ -28,7 +28,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     dispatch_parser.add_argument(
         "--stage",
         choices=("todo", "planned"),
-        help="Optional ready stage for the directed issue.",
+        help="Optional destination stage for the directed issue.",
     )
     dispatch_parser.add_argument(
         "--allow-unregistered-worker",

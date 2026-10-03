@@ -6,9 +6,11 @@ this checkout's configured agent, and records the result through the normal
 lifecycle commands.
 
 Nothing is pushed to the worker. The API server never dispatches work; each
-serve process decides for itself when to ask for the next item. One serve
-process serves exactly one checkout, one agent, and one role, so a machine that
-implements and reviews runs two serve processes from two registered checkouts.
+serve process decides for itself when to ask for the next item. A serve process
+normally runs one agent in one role, so a machine that implements and reviews
+runs two serve processes from two registered checkouts. With `--triage` and
+`[triage] author_agent` configured, the implement loop also launches a second
+agent for proposal triage.
 
 ## Prerequisites
 
@@ -26,7 +28,9 @@ implements and reviews runs two serve processes from two registered checkouts.
   `--allow-any-branch`), and the tree is clean enough to pass the claim-time
   sync guard (or the run passes `--no-sync`).
 - No issue author guard is recorded for this checkout. Serve has no
-  `--allow-author-session` override; see Troubleshooting.
+  `--allow-author-session` override; see Troubleshooting. Setting
+  `ISSUEKIT_ENFORCE_AUTHOR_HANDOFF=0` also bypasses this guard for serve and
+  relaxes the server-side author-implementer guard.
 
 ## Modes
 
@@ -42,10 +46,11 @@ not a separate mode but an add-on to the implement mode, and `--review` and
 | `--proposal-checks` | proposal checks addressed to this worker | verify the claim against the code | post the check result |
 | `--triage` (implement add-on) | the incoming proposal inbox | adopt matching proposals (or run the triage author agent) | issue creation |
 
-`--triage` layers onto the implement loop: each poll first drains the inbox,
-then attempts a claim. `[triage] auto_adopt = true` enables the same behavior
-without the flag. When `[triage] author_agent` is set, the triage step runs that
-agent instead of the mechanical auto-adopt.
+`--triage` layers onto the implement loop: each poll adopts up to
+`max_adoptions_per_cycle` matching proposals (default 5), then attempts a claim.
+`[triage] auto_adopt = true` enables the same behavior without the flag. When
+`[triage] author_agent` is set, the triage step runs that agent instead of the
+mechanical auto-adopt.
 
 ```console
 $ issuekit serve --agent codex                    # implementer worker
@@ -68,9 +73,10 @@ committed.
 ## What one cycle does
 
 1. **Startup recovery.** Before the first poll, the implement loop looks for
-   issues still at `stage=implementing` that are held by this worker's keys and
-   finishes them. A serve process killed mid-run resumes its own work instead of
-   leaving an orphaned claim behind; see
+   every issue still at `stage=implementing` held by this checkout's worker
+   keys, including manual claims, and runs them with serve's `--agent` value,
+   regardless of each issue's assignee. A serve process killed mid-run resumes
+   its own work instead of leaving an orphaned claim behind; see
    [Orphaned claim detection](orphaned-claim-detection.md).
 2. **Poll.** One call to the pool. No work means an `idle` log line
    (`review_idle` or `proposal_checks_idle` in the other modes) and a sleep of
@@ -98,7 +104,8 @@ resets it. Idle polls always wait `--interval`, not the backoff.
   finished by startup recovery. With `--review` it counts review decisions;
   `--proposal-checks` ignores it.
 - `--proposal-check-limit <n>` caps how many pending proposal checks one
-  `--proposal-checks` cycle evaluates (default 50).
+  `--proposal-checks` cycle evaluates (default 50, maximum 500). The option is
+  ignored unless `--proposal-checks` is selected.
 - `--priority high|medium|low` narrows the implement pool.
 - `--model` and `--reasoning-effort` apply to every agent this loop launches.
   For mixed-agent setups prefer per-agent config or `[agents.<name>.roles.<role>]`
@@ -150,9 +157,11 @@ one period.
 
 The heartbeat is best-effort. If publishing fails, serve logs
 `worker_registry_error` with the consecutive failure count and the last
-successful beat, and keeps polling; it does not retry faster. Once failures
-have lasted longer than 300s (counted from the last successful beat, or from
-the first failure if none succeeded), serve also logs
+successful beat, and keeps polling; it does not retry faster. A
+`worker_registry_error` with `consecutive=0` can also follow a successful beat
+when a non-fatal operation fails, such as a missing repo endpoint or failed
+profile push. Once failures have lasted longer than 300s (counted from the last
+successful beat, or from the first failure if none succeeded), serve also logs
 `worker_registry_escalated`, once per failure streak: from then on `orphans`
 and `workers prune` may treat this worker as stale.
 
@@ -167,13 +176,13 @@ still alive, check the log for these events before re-registering.
 | Symptom | Cause | Fix |
 |---------|-------|-----|
 | `This checkout is not registered as an issuekit worker.` | no `issuekit.local.toml` | run `issuekit add` |
-| `No implementer is configured.` | several enabled assignees, no default | pass `--agent` or set `default_implementer` |
+| `No implementer is configured.` | no enabled assignee, or several enabled assignees with no default | pass `--agent` or set `default_implementer` |
 | `Agent preflight failed` | the selected agent has invalid runtime settings or its executable is unavailable | fix the agent configuration or install the executable before starting serve |
 | `issuekit serve is already running for this checkout` | live PID holds the lock | stop the other process, or serve from a second checkout |
 | Repeated `claim_error` with growing backoff | API unreachable or auth expired | check `issuekit info --json`, re-authenticate |
 | `claim_error` with `Claim-sync guard blocks claim-next` | dirty working tree, or a failed `git status`, `git fetch`, or `git merge --ff-only` for `work_branch` | commit or stash, fix the Git failure, or pass `--no-sync`; see [Topologies](#topologies) |
 | `claim_error` with `Author-session guard blocks claim-next` | this checkout recorded an issue author guard, which blocks every pool claim; serve has no `--allow-author-session` | hand off the authored issue, then run `issuekit author-guard clear` |
-| Repeated `run_failed` | the agent exits non-zero | read the run logs under `.agent-runs/` |
+| Repeated `run_failed` | the agent exits non-zero; the claim stays at `implementing` under this worker, and serve does not retry it in the same process | read the run logs under `.agent-runs/`, then use `issuekit reclaim <id>` after the worker heartbeat is stale or `issuekit implement <id>` to recover it. `orphans` does not flag the claim while this worker keeps heartbeating |
 | `review_decision_discarded` with growing backoff | the reviewer agent emitted an unparseable review block, so the verdict was dropped | read the reported parse error and stdout log, then rerun the review or use the printed manual `request-changes`/`approve` fallback |
 | Work-branch guard blocks every claim | checkout is off `work_branch` | switch branches, or `--allow-any-branch` for human recovery |
 

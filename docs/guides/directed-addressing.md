@@ -67,10 +67,9 @@ checkout that has not registered yet. Assignment selects the implementing
 agent; direction selects the checkout where that agent must run.
 
 `dispatch` also accepts `--assignee <agent>` to set the implementer in the same
-call (omitted, the assignee is left unchanged) and `--stage todo|planned` for
-the ready stage the directed issue lands in. Without `--stage` the API moves the
-issue to `todo`. Only issues at `planned`, `todo`, or `changes_requested` can
-be dispatched.
+call (omitted, the assignee is left unchanged) and `--stage todo|planned` to set
+the destination stage. Without `--stage` the API moves the issue to `todo`. Only
+issues at `planned`, `todo`, or `changes_requested` can be dispatched.
 
 To clear a directed target and return an issue to the repo pool, use
 `issuekit readdress <id>`. `--reason <text>` records an optional ASCII audit

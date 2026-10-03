@@ -20,17 +20,28 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         epilog=AUTHOR_GUARD_HELP,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
+    parser.add_argument("--json", action="store_true", help="Print JSON output.")
     actions = parser.add_subparsers(dest="author_guard_action", metavar="<action>")
 
     show_parser = actions.add_parser("show", help="Show the current local author guards.")
-    show_parser.add_argument("--json", action="store_true", help="Print JSON output.")
+    show_parser.add_argument(
+        "--json",
+        action="store_true",
+        default=argparse.SUPPRESS,
+        help="Print JSON output.",
+    )
     show_parser.set_defaults(func=run_show)
 
     check_parser = actions.add_parser(
         "check",
         help="Fail when a local issue guard is present.",
     )
-    check_parser.add_argument("--json", action="store_true", help="Print JSON output.")
+    check_parser.add_argument(
+        "--json",
+        action="store_true",
+        default=argparse.SUPPRESS,
+        help="Print JSON output.",
+    )
     check_parser.set_defaults(func=run_check)
 
     clear_parser = actions.add_parser(
@@ -38,7 +49,12 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         help="Clear local author guards after handoff or human recovery.",
     )
     clear_parser.add_argument("--ref", help="Clear only the guard with this issue or proposal ref.")
-    clear_parser.add_argument("--json", action="store_true", help="Print JSON output.")
+    clear_parser.add_argument(
+        "--json",
+        action="store_true",
+        default=argparse.SUPPRESS,
+        help="Print JSON output.",
+    )
     clear_parser.set_defaults(func=run_clear)
 
     parser.set_defaults(func=run_show)

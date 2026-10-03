@@ -44,8 +44,9 @@ worker names.
 Assignment chooses the implementing agent. Direction chooses the checkout that
 must run host-specific or checkout-specific work. Use `issuekit author
 --target-worker <worker.repo[@machine]>` when creating that work, or `issuekit
-dispatch <id> --target-worker <worker.repo[@machine]>` for an existing ready
-issue. Use `issuekit readdress <id>` to return directed work to the open pool.
+dispatch <id> --target-worker <worker.repo[@machine]>` for an existing issue at
+`planned`, `todo`, or `changes_requested`. Use `issuekit readdress <id>` to
+return directed work to the open pool.
 
 Issue lifecycle and cross-project proposal state are stored in the configured
 mine-py API project.
