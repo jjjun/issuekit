@@ -325,13 +325,23 @@ can execute shell commands unattended. Stricter projects can use
 [Strict permission modes](#strict-permission-modes) for its `-p` limitations
 and command allow rules.
 
+#### Claude `-p` assumptions
+
+Issuekit relies on non-bare Claude `-p` behavior for instruction-file discovery,
+`.mcp.json` servers, and OAuth sign-in. See the [Claude Code headless
+documentation](https://code.claude.com/docs/en/headless). If a future Claude
+Code release makes `--bare` the default for `-p`, add its documented opt-out
+flag through `[agents.claude] headless_argv`.
+
 That config also sets `output_format = "json"`, so Claude returns a result
 envelope instead of bare text. An agent configured with `output_format = "json"`
 has its envelope unwrapped by the adapter: `stdout` becomes the agent's own
 reply, exactly as under `"text"`, and the run result gains `session_id`,
-`cost_usd`, `usage_*`, `is_error`, `terminal_reason`, and `num_turns` entries
-when the envelope carries them, plus `failure_reason` (the envelope's result
-text) when `is_error` is true. The unwrapped run log keeps the full
+`cost_usd`, `usage_*`, `is_error`, `terminal_reason`, `num_turns`,
+`permission_denials`, `permission_denied_tools`, `api_error_status`,
+`fast_mode_state`, and `fast_mode_disabled_reason` entries when the envelope
+carries them, plus `failure_reason` (the envelope's result text) when
+`is_error` is true. The unwrapped run log keeps the full
 envelope, and an agent that dies before emitting one keeps its raw stdout, so
 crash diagnostics are unchanged. Set `output_format = "text"` to opt out; the
 recorded metrics are then unavailable.

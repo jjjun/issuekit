@@ -1630,6 +1630,37 @@ def test_implement_command_prints_not_submitted_reason_for_failed_run(
     )
 
 
+def test_implement_command_rejects_zero_exit_error_envelope_and_reports_denied_tools(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
+    _configure_api(tmp_path, monkeypatch, client)
+
+    class ErrorEnvelopeRunner(FakeRunner):
+        def run(self, adapter, prompt: AgentPrompt, repo, timeout, **kwargs) -> FakeResult:
+            return FakeResult(
+                parsed={
+                    "is_error": "true",
+                    "failure_reason": "Failed to authenticate",
+                    "permission_denials": "2",
+                    "permission_denied_tools": "Bash, Read",
+                }
+            )
+
+    monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", ErrorEnvelopeRunner)
+
+    exit_code = cli.main(["implement", "1", "--agent", "codex"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "permission_denied_tools=Bash, Read" in captured.out
+    assert "not_submitted id=1 stage=implementing reason=agent_failed" in captured.out
+    assert "post_run id=1 stage=implementing submitted=false agent_exit=0 cli_exit=1" in captured.out
+    assert [call["method"] for call in client.calls] == ["claim"]
+
+
 @pytest.mark.skipif(os.name == "nt", reason="SIGINT behavior is POSIX-specific")
 def test_implement_command_reports_sigint_as_interrupted(
     tmp_path: Path,

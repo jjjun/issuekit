@@ -272,7 +272,8 @@ def run_and_submit(
 
     if result.timed_out:
         return RunOutcome(issue=issue, result=result, exit_code=124, reason="timed_out")
-    if result.exit_code != 0:
+    agent_reported_error = (result.parsed or {}).get("is_error") == "true"
+    if result.exit_code != 0 or agent_reported_error:
         if _is_startup_failure(result):
             print(
                 "HINT: the agent parsed a failure with no turns or token usage, "
@@ -285,7 +286,7 @@ def run_and_submit(
         return RunOutcome(
             issue=issue,
             result=result,
-            exit_code=result.exit_code if result.exit_code >= 0 else 1,
+            exit_code=result.exit_code if result.exit_code > 0 else 1,
             reason="agent_failed",
         )
     if result.status_short:

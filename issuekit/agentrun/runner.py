@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from issuekit.agentrun._coerce import last_nonempty_line
-from issuekit.agentrun.adapter import AgentAdapter
+from issuekit.agentrun.adapter import AgentAdapter, ConfigAgentAdapter
 from issuekit.agentrun.git import changed_file_count, git_status_short
 from issuekit.agentrun.status import (
     HEARTBEAT_INTERVAL_SEC,
@@ -365,6 +365,7 @@ class AgentRunner:
             parsed = adapter.parse_output(stdout_text, agent_log_text)
         except Exception:  # noqa: BLE001 - parsing must never block the terminal status write
             parsed = None
+        _warn_if_fast_mode_disabled(adapter, parsed)
 
         # Preserve fields the watcher may have written.
         try:
@@ -386,6 +387,13 @@ class AgentRunner:
                 usage=_parsed_usage_counts(parsed),
                 final_message=_parsed_final_message(parsed, stdout_text),
                 is_error=_parsed_error_flag(parsed),
+                permission_denials=_parsed_optional_int(parsed, "permission_denials"),
+                permission_denied_tools=(parsed or {}).get("permission_denied_tools"),
+                api_error_status=(parsed or {}).get("api_error_status"),
+                fast_mode_state=(parsed or {}).get("fast_mode_state"),
+                fast_mode_disabled_reason=(parsed or {}).get(
+                    "fast_mode_disabled_reason"
+                ),
             ),
         )
 
@@ -538,6 +546,39 @@ def _parsed_error_flag(parsed: dict[str, str] | None) -> bool | None:
     return None
 
 
+def _parsed_optional_int(parsed: dict[str, str] | None, key: str) -> int | None:
+    value = (parsed or {}).get(key)
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except ValueError:
+        return None
+
+
+def _warn_if_fast_mode_disabled(
+    adapter: AgentAdapter,
+    parsed: dict[str, str] | None,
+) -> None:
+    if (
+        not isinstance(adapter, ConfigAgentAdapter)
+        or adapter.run_config.speed is not True
+    ):
+        return
+    fields = parsed or {}
+    state = fields.get("fast_mode_state")
+    disabled_reason = fields.get("fast_mode_disabled_reason")
+    if state and state.casefold() == "on":
+        return
+    if not state and not disabled_reason:
+        return
+    reason = disabled_reason or state
+    print(
+        f"WARNING: fast mode was requested but is not active: {reason}",
+        file=sys.stderr,
+    )
+
+
 def _parsed_final_message(
     parsed: dict[str, str] | None,
     raw_stdout: str,
@@ -549,6 +590,17 @@ def _parsed_final_message(
         return None
     has_result_metadata = any(
         key in parsed
-        for key in ("session_id", "is_error", "terminal_reason", "cost_usd", "num_turns")
+        for key in (
+            "session_id",
+            "is_error",
+            "terminal_reason",
+            "cost_usd",
+            "num_turns",
+            "permission_denials",
+            "permission_denied_tools",
+            "api_error_status",
+            "fast_mode_state",
+            "fast_mode_disabled_reason",
+        )
     ) or any(key.startswith("usage_") for key in parsed)
     return message if has_result_metadata or message != raw_stdout else None

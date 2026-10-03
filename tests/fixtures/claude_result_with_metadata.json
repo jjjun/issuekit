@@ -1,0 +1,13 @@
+{
+  "type": "result",
+  "subtype": "error_during_execution",
+  "is_error": true,
+  "result": "Failed to authenticate: OAuth session expired",
+  "api_error_status": 401,
+  "permission_denials": [
+    {"tool_name": "Bash", "tool_use_id": "tool-1"},
+    {"tool_name": "Read", "tool_use_id": "tool-2"}
+  ],
+  "fast_mode_state": "off",
+  "fast_mode_disabled_reason": "sdk_opt_in_required"
+}

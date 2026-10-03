@@ -139,6 +139,46 @@ def test_runs_detail_prints_record_and_log_tails(tmp_path: Path, monkeypatch, ca
     assert "err-two" in output
 
 
+def test_runs_detail_prints_claude_envelope_metadata(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    run_dir = tmp_path / ".agent-runs"
+    write_status(
+        status_path(run_dir, "metadata"),
+        RunStatus(
+            run_id="metadata",
+            agent="claude",
+            issue=391,
+            status="completed",
+            pid=None,
+            started_at="2026-10-04T00:00:00",
+            ended_at="2026-10-04T00:00:01",
+            elapsed_sec=1.0,
+            exit_code=0,
+            plan=".agent-runs/issue-391.md",
+            stdout_log=".agent-runs/metadata.out.log",
+            agent_log=".agent-runs/metadata.agent.log",
+            permission_denials=2,
+            permission_denied_tools="Bash, Read",
+            api_error_status="401",
+            fast_mode_state="off",
+            fast_mode_disabled_reason="sdk_opt_in_required",
+        ),
+    )
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["runs", "metadata"]) == 0
+
+    output = capsys.readouterr().out
+    assert '"permission_denials": 2' in output
+    assert '"permission_denied_tools": "Bash, Read"' in output
+    assert '"api_error_status": "401"' in output
+    assert '"fast_mode_state": "off"' in output
+    assert '"fast_mode_disabled_reason": "sdk_opt_in_required"' in output
+
+
 def test_runs_detail_missing_returns_error(tmp_path: Path, monkeypatch, capsys) -> None:
     monkeypatch.chdir(tmp_path)
 

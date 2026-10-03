@@ -167,12 +167,12 @@ def run_review_and_decide(
             print(f"ERROR: {run.repository_error}", file=err)
     if result.timed_out:
         return ReviewOutcome(issue=issue, result=result, verdict=_empty_verdict(), exit_code=124)
-    if result.exit_code != 0:
+    if result.exit_code != 0 or (result.parsed or {}).get("is_error") == "true":
         return ReviewOutcome(
             issue=issue,
             result=result,
             verdict=_empty_verdict(),
-            exit_code=result.exit_code if result.exit_code >= 0 else 1,
+            exit_code=result.exit_code if result.exit_code > 0 else 1,
         )
 
     if run.repository_modified:

@@ -248,6 +248,32 @@ def _result_envelope_fields(stdout: str) -> dict[str, str]:
         for name, count in usage.items():
             if isinstance(count, int) and not isinstance(count, bool):
                 fields[f"usage_{name}"] = str(count)
+    permission_denials = envelope.get("permission_denials")
+    if isinstance(permission_denials, list):
+        fields["permission_denials"] = str(len(permission_denials))
+        denied_tools = []
+        for denial in permission_denials:
+            if not isinstance(denial, dict):
+                continue
+            tool_name = denial.get("tool_name")
+            if isinstance(tool_name, str) and tool_name.strip():
+                denied_tools.append(tool_name.strip())
+        if denied_tools:
+            tools = ", ".join(denied_tools)
+            fields["permission_denied_tools"] = (
+                tools if len(tools) <= 200 else tools[:197] + "..."
+            )
+    api_error_status = envelope.get("api_error_status")
+    if isinstance(api_error_status, (int, str)) and not isinstance(
+        api_error_status, bool
+    ):
+        fields["api_error_status"] = str(api_error_status)
+    fast_mode_state = envelope.get("fast_mode_state")
+    if isinstance(fast_mode_state, str):
+        fields["fast_mode_state"] = fast_mode_state
+    fast_mode_disabled_reason = envelope.get("fast_mode_disabled_reason")
+    if isinstance(fast_mode_disabled_reason, str):
+        fields["fast_mode_disabled_reason"] = fast_mode_disabled_reason
     return fields
 
 

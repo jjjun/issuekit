@@ -50,7 +50,8 @@ class CodexAdapter(ConfigAgentAdapter):
         usage: dict[str, int] = {}
         saw_event = False
         turn_completed = False
-        is_error = False
+        turn_failed = False
+        error_event_pending = False
         failure_reason: str | None = None
 
         for line in stdout.splitlines():
@@ -77,14 +78,17 @@ class CodexAdapter(ConfigAgentAdapter):
                     final_message = item["text"]
             elif event_type == "turn.completed":
                 turn_completed = True
+                error_event_pending = False
+                if not turn_failed:
+                    failure_reason = None
                 usage = _usage_counts(event.get("usage"))
             elif event_type == "turn.failed":
-                is_error = True
+                turn_failed = True
                 error = event.get("error")
                 if isinstance(error, dict) and isinstance(error.get("message"), str):
                     failure_reason = error["message"]
             elif event_type == "error":
-                is_error = True
+                error_event_pending = True
                 message = event.get("message")
                 if isinstance(message, str):
                     failure_reason = message
@@ -96,7 +100,7 @@ class CodexAdapter(ConfigAgentAdapter):
         if session_id is not None:
             parsed["session_id"] = session_id
         parsed.update({f"usage_{name}": str(count) for name, count in usage.items()})
-        if is_error:
+        if turn_failed or error_event_pending:
             parsed["is_error"] = "true"
             if failure_reason is not None:
                 parsed["failure_reason"] = failure_reason

@@ -50,6 +50,11 @@ class RunStatus:
     usage: dict[str, int] = field(default_factory=dict)
     final_message: str | None = None
     is_error: bool | None = None
+    permission_denials: int | None = None
+    permission_denied_tools: str | None = None
+    api_error_status: str | None = None
+    fast_mode_state: str | None = None
+    fast_mode_disabled_reason: str | None = None
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> RunStatus:
@@ -79,6 +84,20 @@ class RunStatus:
                     data.get("is_error")
                     if isinstance(data.get("is_error"), bool)
                     else None
+                ),
+                permission_denials=(
+                    data.get("permission_denials")
+                    if isinstance(data.get("permission_denials"), int)
+                    and not isinstance(data.get("permission_denials"), bool)
+                    else None
+                ),
+                permission_denied_tools=optional_str(
+                    data.get("permission_denied_tools")
+                ),
+                api_error_status=optional_str(data.get("api_error_status")),
+                fast_mode_state=optional_str(data.get("fast_mode_state")),
+                fast_mode_disabled_reason=optional_str(
+                    data.get("fast_mode_disabled_reason")
                 ),
             )
         except KeyError as exc:
@@ -111,6 +130,11 @@ class RunStatus:
             "usage": self.usage,
             "final_message": self.final_message,
             "is_error": self.is_error,
+            "permission_denials": self.permission_denials,
+            "permission_denied_tools": self.permission_denied_tools,
+            "api_error_status": self.api_error_status,
+            "fast_mode_state": self.fast_mode_state,
+            "fast_mode_disabled_reason": self.fast_mode_disabled_reason,
         }
 
     @property

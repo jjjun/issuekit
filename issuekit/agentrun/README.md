@@ -66,6 +66,14 @@ agent configuration.
 See [`docs/guides/configuration.md`](../../docs/guides/configuration.md) for
 the user-facing TOML reference.
 
+### Claude `-p` assumptions
+
+Issuekit relies on non-bare Claude `-p` behavior for instruction-file
+discovery, `.mcp.json` servers, and OAuth sign-in. See the [Claude Code headless
+documentation](https://code.claude.com/docs/en/headless). If a future Claude
+Code release makes `--bare` the default for `-p`, add its documented opt-out
+flag through `[agents.claude] headless_argv`.
+
 ## Run artifacts
 
 Each exec runtime invocation reserves a run id with a `<run_id>.lock` file and

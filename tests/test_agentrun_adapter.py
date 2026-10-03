@@ -266,6 +266,37 @@ def test_config_adapter_unwraps_json_result_envelope() -> None:
     assert "usage_service_tier" not in parsed
 
 
+def test_config_adapter_extracts_claude_run_metadata() -> None:
+    fixture = (
+        Path(__file__).parent / "fixtures" / "claude_result_with_metadata.json"
+    )
+
+    parsed = _json_adapter().parse_output(
+        fixture.read_text(encoding="utf-8"), ""
+    )
+
+    assert parsed["permission_denials"] == "2"
+    assert parsed["permission_denied_tools"] == "Bash, Read"
+    assert parsed["api_error_status"] == "401"
+    assert parsed["fast_mode_state"] == "off"
+    assert parsed["fast_mode_disabled_reason"] == "sdk_opt_in_required"
+
+
+def test_config_adapter_bounds_denied_tool_names() -> None:
+    envelope = json.dumps(
+        {
+            "permission_denials": [
+                {"tool_name": f"tool-{index}-{'x' * 30}"} for index in range(10)
+            ]
+        }
+    )
+
+    parsed = _json_adapter().parse_output(envelope, "")
+
+    assert parsed["permission_denials"] == "10"
+    assert len(parsed["permission_denied_tools"]) <= 200
+
+
 def test_config_adapter_unwraps_json_result_envelope_success_has_no_failure_reason() -> None:
     envelope = json.dumps(
         {
@@ -334,6 +365,49 @@ def test_codex_adapter_parses_jsonl_events() -> None:
     assert parsed["usage_output_tokens"] == "20"
     assert parsed["usage_reasoning_output_tokens"] == "4"
     assert parsed["is_error"] == "false"
+
+
+def test_codex_adapter_clears_error_when_turn_completes() -> None:
+    adapter = resolve_adapter("codex")
+    stdout = "\n".join(
+        json.dumps(event)
+        for event in (
+            {"type": "error", "message": "A transient request error."},
+            {
+                "type": "item.completed",
+                "item": {"type": "agent_message", "text": "Completed."},
+            },
+            {"type": "turn.completed"},
+        )
+    )
+
+    parsed = adapter.parse_output(stdout, "")
+
+    assert parsed["stdout"] == "Completed."
+    assert parsed["is_error"] == "false"
+    assert "failure_reason" not in parsed
+
+
+def test_codex_adapter_reports_error_without_completed_turn() -> None:
+    adapter = resolve_adapter("codex")
+    stdout = json.dumps({"type": "error", "message": "The request failed."})
+
+    parsed = adapter.parse_output(stdout, "")
+
+    assert parsed["is_error"] == "true"
+    assert parsed["failure_reason"] == "The request failed."
+
+
+def test_codex_adapter_reports_failed_turn() -> None:
+    adapter = resolve_adapter("codex")
+    stdout = json.dumps(
+        {"type": "turn.failed", "error": {"message": "The turn failed."}}
+    )
+
+    parsed = adapter.parse_output(stdout, "")
+
+    assert parsed["is_error"] == "true"
+    assert parsed["failure_reason"] == "The turn failed."
 
 
 def test_codex_adapter_parses_turn_failure_and_last_error_event() -> None:

@@ -148,6 +148,48 @@ def test_runner_records_codex_jsonl_result_and_preserves_raw_log(tmp_path: Path)
     assert restored_status.final_message == final_message
 
 
+def test_runner_records_claude_envelope_metadata_and_warns_on_disabled_fast_mode(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    fixture = Path(__file__).parent / "fixtures" / "claude_result_with_metadata.json"
+    adapter = ConfigAgentAdapter(
+        "claude",
+        AgentRunConfig(
+            binary=sys.executable,
+            headless_argv=(
+                "-c",
+                "import pathlib, sys; print(pathlib.Path(sys.argv[1]).read_text())",
+                str(fixture),
+            ),
+            output_format="json",
+            speed=True,
+            speed_argv=("--settings", '{"fastMode": true}'),
+        ),
+    )
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / ".git").mkdir()
+
+    result = AgentRunner().run(
+        adapter,
+        agent_prompt(tmp_path / "plan.md"),
+        repo,
+        timeout=10.0,
+    )
+
+    assert result.status_path is not None
+    status = json.loads(result.status_path.read_text(encoding="utf-8"))
+    assert status["permission_denials"] == 2
+    assert status["permission_denied_tools"] == "Bash, Read"
+    assert status["api_error_status"] == "401"
+    assert status["fast_mode_state"] == "off"
+    assert status["fast_mode_disabled_reason"] == "sdk_opt_in_required"
+    assert read_status(result.status_path).permission_denials == 2
+    warning = "WARNING: fast mode was requested but is not active: sdk_opt_in_required"
+    assert capsys.readouterr().err.count(warning) == 1
+
+
 @pytest.mark.skipif(os.name == "nt", reason="POSIX mode bits are not used on Windows")
 def test_runner_creates_owner_only_artifacts(tmp_path: Path, monkeypatch) -> None:
     script = tmp_path / "script.py"
