@@ -610,16 +610,15 @@ def effective_agent_roles(
     )
 
 
-SERVER_INSTRUCTIONS = """# Role-specific instructions
+SERVER_INSTRUCTIONS = """Before acting, call `get_protocol(role="<role>")` for one role: author, implementer, reviewer, triage, pm.
 
-To see the full protocol steps for your role, call:
+The pull-based cycle is author, implement, then review: authors publish work, implementers claim and implement it, and reviewers decide it.
 
-- `get_protocol(role="author")` for the author protocol
-- `get_protocol(role="implementer")` for the implementer protocol
-- `get_protocol(role="pm")` for the PM router protocol
-- `get_protocol(role="reviewer")` for the reviewer protocol
-- `get_protocol(role="triage")` for the proposal-inbox triage protocol
-"""
+For commands with `--json`, stdout is one JSON document; trust the exit status, and treat non-zero as failure even if JSON was printed.
+
+If MCP returns `Transport closed`, use the read-only CLI: `issuekit protocol --role <role>` and `issuekit show <id> --json`.
+
+After `issuekit author` or `issuekit propose` succeeds and prints `STOP_NOW`, stop that session."""
 
 
 def render_protocol(
@@ -650,5 +649,5 @@ def render_protocol(
 
 
 def render_server_instructions() -> str:
-    """Render lean server instructions: cycle overview plus a get_protocol pointer."""
-    return f"{CYCLE_PROTOCOL.rstrip()}\n\n{SERVER_INSTRUCTIONS}"
+    """Render a short pointer to the complete role-specific protocol."""
+    return SERVER_INSTRUCTIONS

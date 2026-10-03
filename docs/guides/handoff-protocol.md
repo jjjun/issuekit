@@ -15,10 +15,10 @@ issuekit protocol --role triage
 issuekit protocol --role pm
 ```
 
-The MCP server serves the full text through the `get_protocol` tool. Its server
-instructions carry only the delegation cycle overview and a pointer to
-`get_protocol`. Consuming repos should reference this command instead of
-copying the steps.
+The MCP server instructions are a short pointer to the full protocol. Read the
+steps for one role with MCP `get_protocol(role=...)` or `issuekit protocol
+--role <role>`; use `issuekit protocol` to read every role. Consuming repos
+should reference these sources instead of copying the steps.
 
 Implementation runs provide a report file for facts known only to the
 implementer, such as which permitted approach it chose or which environment it

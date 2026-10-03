@@ -99,7 +99,12 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
     async def health(ctx: Context) -> dict[str, Any]:
         return await _health_status(root, ctx)
 
-    @server.tool(description="Read the current issuekit handoff protocol.")
+    @server.tool(
+        description=(
+            "Pass role= (author, implementer, reviewer, triage, pm) to get one role's "
+            "steps; with no arguments it returns every role."
+        )
+    )
     async def get_protocol(
         agent: str | None = None,
         role: str | None = None,

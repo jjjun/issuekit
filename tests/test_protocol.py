@@ -221,9 +221,6 @@ def test_proposal_origin_deduplication_guidance_is_shared_across_roles() -> None
         for phrase in expected_phrases:
             assert phrase in rendered
 
-    server = " ".join(render_server_instructions().split())
-    for phrase in expected_phrases:
-        assert phrase in server
 
 
 def test_render_protocol_returns_pm_role() -> None:
@@ -325,24 +322,24 @@ def test_protocol_command_prints_both_agents(capsys: pytest.CaptureFixture[str])
     assert "Handoff protocol (reviewer)" in captured.out
 
 
-def test_render_server_instructions_includes_cycle_and_pointer() -> None:
+def test_render_server_instructions_include_short_handoff_guidance() -> None:
     lean = render_server_instructions()
-    assert "Delegation cycle overview" in lean
-    assert 'get_protocol(role="author")' in lean
-    assert 'get_protocol(role="implementer")' in lean
-    assert 'get_protocol(role="pm")' in lean
-    assert 'get_protocol(role="reviewer")' in lean
-    assert 'get_protocol(role="triage")' in lean
-    assert "author" in lean
-    assert "implementer" in lean
-    assert "reviewer" in lean
+    assert 'get_protocol(role="<role>")' in lean
+    assert "author, implementer, reviewer, triage, pm" in lean
+    assert "pull-based cycle" in lean
+    assert "one JSON document" in lean
+    assert "trust the exit status" in lean
+    assert "Transport closed" in lean
+    assert "issuekit protocol --role <role>" in lean
+    assert "issuekit show <id> --json" in lean
+    assert "STOP_NOW" in lean
     lean.encode("ascii")
 
 
-def test_render_server_instructions_is_substantially_smaller_than_full() -> None:
+def test_render_server_instructions_are_within_size_limit() -> None:
     lean = render_server_instructions()
-    full = render_protocol(None)
-    assert len(lean) < len(full) // 2
+    assert len(lean) <= 2000
+    assert "get_protocol(role=" in lean[:400]
 
 
 def test_machine_readable_output_guidance_is_shared() -> None:
@@ -356,10 +353,12 @@ def test_machine_readable_output_guidance_is_shared() -> None:
         "do not retry until `issuekit queue` or",
         "`issuekit outgoing --to <project>`",
     )
-    for rendered in (render_protocol(role="author"), render_server_instructions()):
-        normalized = " ".join(rendered.split())
-        for phrase in expected:
-            assert phrase in normalized
+    author = " ".join(render_protocol(role="author").split())
+    for phrase in expected:
+        assert phrase in author
+    server = " ".join(render_server_instructions().split())
+    assert "one JSON document" in server
+    assert "trust the exit status" in server
 
 
 def test_render_protocol_roles_remain_self_contained() -> None:
@@ -371,16 +370,13 @@ def test_render_protocol_roles_remain_self_contained() -> None:
 
 
 def test_authoring_constraints_block_present_for_each_role() -> None:
-    # The block lives in the shared cycle overview, so every role and the
-    # server instructions surface it without per-role duplication.
+    # The block lives in the shared cycle overview, so every role sees it
+    # without per-role duplication.
     for role in ("author", "implementer", "pm", "reviewer", "triage"):
         rendered = render_protocol(role=role)
         assert "Authoring constraints:" in rendered
         assert "must be ASCII-only" in rendered
         assert "--direct-local-author" in rendered
-    server = render_server_instructions()
-    assert "Authoring constraints:" in server
-    assert "--direct-local-author" in server
 
 
 def test_authoring_constraints_block_appears_once() -> None:

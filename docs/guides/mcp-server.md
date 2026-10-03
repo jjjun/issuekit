@@ -69,6 +69,10 @@ That global command is unnecessary when codex reads the repo's
 the global codex store. `issuekit setup` only edits files inside the current
 repo. It never kills processes and never edits global codex config.
 
+The MCP server instructions are a short pointer to the handoff protocol. Use
+`get_protocol(role=...)` or `issuekit protocol --role <role>` for the full
+steps for one role; omit the role with `issuekit protocol` to read every role.
+
 Automation should use the stable JSON contract:
 
 ```powershell

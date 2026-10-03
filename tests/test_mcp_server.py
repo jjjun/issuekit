@@ -58,6 +58,16 @@ def _tool_schema(server, name: str) -> dict[str, Any]:
     return asyncio.run(run())
 
 
+def _tool_description(server, name: str) -> str | None:
+    async def run() -> str | None:
+        for tool in await server.list_tools():
+            if tool.name == name:
+                return tool.description
+        raise AssertionError(f"tool not found: {name}")
+
+    return asyncio.run(run())
+
+
 def _tool_schema_digest(server) -> str:
     async def run() -> str:
         schemas = {tool.name: tool.inputSchema for tool in await server.list_tools()}
@@ -783,6 +793,15 @@ def test_get_protocol_matches_canonical_text(tmp_path: Path) -> None:
         "kimi", role="reviewer"
     )
     assert _call(server, "get_protocol", {}) == render_protocol(None)
+
+
+def test_get_protocol_description_documents_role_argument(tmp_path: Path) -> None:
+    description = _tool_description(create_server(tmp_path), "get_protocol")
+
+    assert description == (
+        "Pass role= (author, implementer, reviewer, triage, pm) to get one role's "
+        "steps; with no arguments it returns every role."
+    )
 
 
 def test_get_protocol_uses_configured_agent_role(tmp_path: Path) -> None:
