@@ -159,6 +159,19 @@ origin, or adopt or discard the stale pending proposal. Because the origin
 includes the commit, re-sending the same source issue after a new commit
 creates a new proposal.
 
+## Proposal-system CLI fallback
+
+The proposal MCP tools and CLI share one implementation. When proposal MCP
+calls hang or error, use these CLI equivalents; add `--json` to get the same
+structured output as the MCP tools:
+
+- `propose(to, title, body)` -> `issuekit propose --to <project> --title <t> --body <b> --json`
+- `propose(to, title, body, blocking=True)` -> `issuekit propose --to <project> --title <t> --body <b> --blocking --json`
+- `propose(to, title, body, depends_on="upstream#proposal:123")` -> `issuekit propose --to <project> --title <t> --body <b> --depends-on upstream#proposal:123 --json`
+- `list_incoming()` -> `issuekit incoming --json`
+- `adopt_proposal(proposal_id)` -> `issuekit adopt <id> --json`
+- `adopt_proposal(proposal_id, priority)` -> `issuekit adopt <id> --priority <p> --json`
+
 ## Triage and reply
 
 ```powershell

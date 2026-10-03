@@ -24,14 +24,14 @@ def test_render_protocol_returns_each_agent_and_both() -> None:
     ):
         assert "Delegation cycle overview" in normalized
         assert "author -> implement -> review cycle" in normalized
-        assert "open implement pool" in normalized
+        assert "Open implement pool" in normalized
         assert "open review pool" in normalized
         assert "Assignment chooses the implementing agent" in normalized
         assert "issuekit dispatch <id> --target-worker" in normalized
         assert "issuekit readdress <id>" in normalized
-        assert "author role and implementer role must be different sessions" in normalized
-        assert "implementer and reviewer must be different sessions" in normalized
-        assert "author may also be the reviewer" in normalized
+        assert "Authors and implementers must use different sessions" in normalized
+        assert "Implementers and reviewers must use different sessions" in normalized
+        assert "An author may review work done by another implementer" in normalized
         assert "Separation-of-duties guard reference" in normalized
         assert "docs/guides/separation-of-duties.md" in rendered
         assert "Server author-implementer guard" in normalized
@@ -54,33 +54,21 @@ def test_render_protocol_returns_each_agent_and_both() -> None:
         assert "Prefer a clean worktree before orchestrating" in normalized
         assert "Transport closed" in normalized
         assert "issuekit info --json" in rendered
-        assert "Copyable CLI examples" in normalized
-        assert 'issuekit author --title "Short title"' in rendered
-        assert "Author with upstream dependency" in normalized
+        assert "docs/guides/commands.md" in rendered
+        assert "Proposal-system CLI fallback:" in rendered
         assert (
-            'issuekit author --title "Short title" --body-file issue.md '
-            "--priority medium --agent <agent> --depends-on upstream#proposal:123"
-        ) in rendered
-        assert "issuekit claim --assignee <agent>" in rendered
-        assert "issuekit claim --id 123 --assignee <agent>" in rendered
-        assert 'issuekit submit-review 123 --summary "Implemented."' in rendered
-        assert 'issuekit request-changes 123 --notes "Add focused tests."' in rendered
-        assert 'issuekit approve 123 --verification "uv run pytest"' in rendered
-        assert 'issuekit complete 123 --summary "Done."' in rendered
-        assert "issuekit incoming --json" in rendered
-        assert "issuekit propose --to <project> --title <t> --body <b> --blocking --json" in rendered
-        assert "issuekit propose --to <project> --title <t> --body <b> --depends-on upstream#proposal:123 --json" in rendered
-        assert "issuekit adopt 42 --priority medium --json" in rendered
-        assert "issuekit outgoing --to <project> --json" in rendered
-        assert "issuekit serve --agent <agent> --triage" in rendered
+            "For proposal-system CLI equivalents, see the Proposal-system CLI fallback list"
+            in rendered
+        )
         assert "Upstream feedback loop" in normalized
         assert "issuekit propose --to issuekit" in rendered
         assert "issuekit outgoing --to issuekit" in rendered
         assert "Adoption notes are recorded only on the receiving project's issue" in normalized
         assert "default_implementer" in rendered
-        assert "[agent_roles]" in rendered
-        assert "one default role" in normalized
-        assert "always takes precedence over the agent default" in normalized
+        assert (
+            "Operators: agent flags, models and roles are configured as described"
+            in normalized
+        )
     assert "claim_next_task" in codex
     assert "resolves the" in normalized_codex
     assert "implementer from `default_implementer`" in normalized_codex
@@ -117,9 +105,33 @@ def test_render_protocol_returns_each_agent_and_both() -> None:
     assert "Handoff protocol (triage)" in both
     assert "The implementer handles issuekit tasks" in both
     assert "The reviewer handles issuekit tasks" in both
-    assert "Cross-project negotiation is a bounded, agent-driven design conversation" in both
-    assert "Negotiation is CLI-only because it launches multiple long-running agent turns" in normalized_both
+    assert "Use `propose` for specified changes owned elsewhere" in both
+    assert "Negotiation is CLI-only; MCP only inspects threads" in normalized_both
+    assert "docs/guides/negotiation.md" in both
     both.encode("ascii")
+
+
+def test_proposal_cli_fallback_examples_parse() -> None:
+    rendered = render_protocol(None)
+    protocol_fallback = rendered.split("Proposal-system CLI fallback:", 1)[1].split(
+        "\n\nWhen an orchestrator", 1
+    )[0]
+    protocol_commands = re.findall(r"`(issuekit [^`]+)`", protocol_fallback)
+
+    guide_path = Path(__file__).parents[1] / "docs/guides/cross-project-proposals.md"
+    guide = guide_path.read_text(encoding="utf-8")
+    guide_fallback = guide.split("## Proposal-system CLI fallback\n", 1)[1].split(
+        "\n## ", 1
+    )[0]
+    guide_commands = re.findall(r"`(issuekit [^`]+)`", guide_fallback)
+
+    assert len(protocol_commands) == 6
+    assert guide_commands
+    parser = cli.build_parser()
+    for command in protocol_commands + guide_commands:
+        command = command.replace("<p>", "medium")
+        command = re.sub(r"<[^>]+>", "sample", command)
+        parser.parse_args(shlex.split(command)[1:])
 
 
 def test_copyable_protocol_commands_parse() -> None:
@@ -134,6 +146,32 @@ def test_copyable_protocol_commands_parse() -> None:
     for command in commands:
         command = re.sub(r"<[^>]+>", "sample", command)
         parser.parse_args(shlex.split(command)[1:])
+
+
+def test_shared_protocol_rules_have_one_full_definition() -> None:
+    guide_path = Path(__file__).parents[1] / "docs/guides/cross-project-proposals.md"
+    guide = guide_path.read_text(encoding="utf-8")
+    assert guide.count("`propose(to, title, body)` ->") == 1
+
+    fallback_reference = (
+        "For proposal-system CLI equivalents, see the Proposal-system CLI fallback list"
+    )
+    for role in ("author", "implementer", "reviewer", "triage", "pm"):
+        rendered = render_protocol(role=role)
+        assert rendered.count("Proposal-system CLI fallback:") == 1
+        assert rendered.count(fallback_reference) == 1
+        assert rendered.count("**Dependency-first multi-project work:**") == 1
+        assert rendered.count("Bare `project#N` refs can be shadowed") == 1
+        assert rendered.count(
+            "Same-name review is allowed there only with distinct implementer and reviewer sessions"
+        ) == 1
+        assert rendered.count("This is a sanctioned orchestration path:") == 1
+        assert (
+            rendered.count(
+                "`issuekit propose --to <project> --title <t> --body <b> --json`"
+            )
+            == 1
+        )
 
 
 def test_separation_of_duties_guide_matches_protocol_table() -> None:
@@ -162,19 +200,19 @@ def test_rendered_protocol_does_not_recommend_removed_codex_flag() -> None:
         assert "full-auto" not in rendered
 
 
-def test_protocol_model_and_issue_guard_guidance_is_current() -> None:
+def test_protocol_configuration_pointer_and_issue_guard_guidance_are_current() -> None:
     for role in ("author", "implementer"):
         rendered = render_protocol(role=role)
         normalized = " ".join(rendered.split())
 
-        assert '[agents.codex] model = "gpt-6-sol"' in rendered
-        assert 'gpt-5.6"' not in rendered
+        assert "issuekit repository's `docs/guides/configuration.md`" in rendered
         assert "README.md#separation-of-duties-guards" not in rendered
-        assert "docs/guides/separation-of-duties.md" in rendered
+        assert "issuekit repository's `docs/guides/separation-of-duties.md`" in normalized
         assert "or run `issuekit author-guard --help`" in normalized
         assert (
-            "Issue guards block direct lifecycle work on the authored issue and "
-            "all pool claims from that checkout until `issuekit author-guard clear`"
+            "`issuekit author` writes an issue guard and emits `STOP_NOW`. It "
+            "blocks direct lifecycle work on that issue and pool claims from the "
+            "checkout until `issuekit author-guard clear`"
             in normalized
         )
         assert "proposal guards do not block local issue lifecycle work." in normalized
@@ -224,9 +262,9 @@ def test_render_protocol_returns_author_role() -> None:
         in normalized_author
     )
     assert "Do not call `claim_next_task`" in author
-    assert "the author may run" in author
-    assert "that same token" in author
-    assert "for the claim and submit mutations" in author
+    assert "author needs to drive a configured external" in normalized_author
+    assert "`ISSUEKIT_SESSION` is passed to the child" in normalized_author
+    assert "for both claim and submit mutations" in normalized_author
     assert "implementation-ready issues" in author
     assert "proposal-check-request --to <project> --proposal <id>" in author
     assert "`create_proposal_check` tool" in author
@@ -261,11 +299,10 @@ def test_render_protocol_returns_triage_role() -> None:
 
 def test_proposal_origin_deduplication_guidance_is_shared_across_roles() -> None:
     expected_phrases = (
-        "A target inbox keeps one pending proposal per origin `<project>#<id>@<commit>`",
-        "`--from-issue` and `--reply` make the origin distinct per source issue, not per proposal",
-        "a second, different proposal with that origin is not sent",
-        "`propose` exits 1 with `payload_mismatch: true`",
-        "without `--from-issue` (implicit `#0` origin; dropping `--reply` also drops the reply link), or resolve the pending proposal first",
+        "A target inbox allows one pending proposal per origin `<project>#<id>@<commit>`",
+        "`--from-issue` and `--reply` distinguish source issues, not proposals",
+        "A different second payload exits 1 with `payload_mismatch: true`",
+        "To send separately, omit `--from-issue` (implicit `#0`; omit `--reply` too to drop its link) or resolve the pending proposal",
     )
     for role in ("author", "implementer", "pm", "reviewer", "triage"):
         rendered = " ".join(render_protocol(role=role).split())

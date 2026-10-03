@@ -51,11 +51,20 @@ return directed work to the open pool.
 Issue lifecycle and cross-project proposal state are stored in the configured
 mine-py API project.
 
-If MCP tools return `Transport closed`, the client stdio transport is dead even
-if tool metadata is still visible. Fall back to read-only or proposal/inbox CLI
-commands such as `issuekit protocol --role author`, `issuekit incoming --json`,
-`issuekit info --json`, `issuekit show <id> --json`, and
-`issuekit next-review --json` until the user reloads or restarts the MCP client session.
+After `Transport closed`, MCP stdio is dead even if metadata remains. Until
+restart, use `issuekit protocol --role <role>`,
+`issuekit incoming --json`, `issuekit info --json`, `issuekit show <id> --json`,
+or `issuekit next-review --json`.
+
+Proposal-system CLI fallback: For MCP errors or hangs, use these commands with
+`--json`:
+
+- `issuekit propose --to <project> --title <t> --body <b> --json`
+- `issuekit propose --to <project> --title <t> --body <b> --blocking --json`
+- `issuekit propose --to <project> --title <t> --body <b> --depends-on upstream#proposal:123 --json`
+- `issuekit incoming --json`
+- `issuekit adopt <id> --json`
+- `issuekit adopt <id> --priority <p> --json`
 
 When an orchestrator or author needs to drive a configured external
 implementer instead of waiting for the pull model, use
@@ -63,173 +72,124 @@ implementer instead of waiting for the pull model, use
 claims or operates on the assigned issue, launches the configured agent, and
 submits the completed work for review. This is a sanctioned orchestration path:
 the parent session launches a distinct implementer run session and records the
-orchestrator in the submit summary. It is different from
+orchestrator in the submit summary. `ISSUEKIT_SESSION` is passed to the child
+for both claim and submit mutations. It is different from
 `--allow-author-session`, which is only a human emergency bypass for a local
 STOP guard. Prefer a clean worktree before orchestrating so existing author
 edits are not attributed to the implementer run.
 Its `--follow` heartbeat polls `git status` read-only without an index lock, so
 it is safe for issues that rewrite the checkout.
 
-By default, Codex runs without a sandbox. For strict mode, set
-`approval_flag = "--sandbox"` and `approval_value = "workspace-write"` (no
-network; `.git` is read-only), or set `approval_flag = "--approve-for-me"`.
-For Claude, set `approval_value = "auto"`, or use `"acceptEdits"` with
-`permissions.allow` rules for test commands. See `docs/guides/configuration.md`.
-
-Agent-launching commands accept pass-through `--model <model-id>` and
-`--reasoning-effort <value>` overrides.
-This includes `implement`, `review`, `negotiate`, `request`, `serve`, `triage`, and
-`proposal-checks`; issuekit does not maintain a model allowlist. Set an agent's
-defaults with `[agents.codex] model = "gpt-6-sol"` and
-`[agents.codex] reasoning_effort = "medium"`. The optional
-`[agents.codex.model_prompts]` entries append model-specific guidance. A key
-matches the resolved model id exactly, or, if it ends in `*`, as a prefix (the
-longest matching prefix wins when several match); exact match always beats a
-prefix match. Per-run values override configured defaults. A reasoning effort
-setting requires an `effort_argv` template; the
-built-in Codex adapter uses `("-c", "model_reasoning_effort={{value}}")` and the
-built-in Claude adapter uses `("--effort", "{{value}}")`.
-Serve-level overrides apply to every agent launched; use per-agent overlays
-for mixed-agent setups, or `[agents.<name>.roles.<role>]` model and
-reasoning-effort overlays when one agent serves multiple roles.
+Operators: agent flags, models and roles are configured as described in
+the issuekit repository's `docs/guides/configuration.md`.
 
 Commands and MCP tools that omit an implementer resolve it as an explicit value,
 then `default_implementer`, then the single enabled assignee. They fail with a
 clear message when more than one enabled assignee exists and no default is set.
-Use `[agent_roles]` to select the protocol text an agent receives from
-`issuekit protocol --agent <agent>` and `get_protocol(agent=...)`; each agent
-has one default role; `--role` or `role=` always takes precedence over the
-agent default.
-
 When a reviewer daemon is needed, run it from a separate registered checkout:
 `issuekit serve --agent <reviewer> --review`. It can review only committed and
 pushed changes it can see, or evidence-only host and verification submissions.
 For a one-shot review, use `issuekit review <id> --agent <reviewer>` in the
 checkout that holds the implementation diff.
 
-Upstream feedback loop: the issuekit tool itself accepts proposals. Whenever
-work in any project surfaces an issuekit bug, limitation, or improvement idea
-(CLI, MCP tools, protocol text, agent adapters), report it before finishing
-the task with `issuekit propose --to issuekit --title <t> --body <b>` (or the
-MCP `propose` tool). Include reproduction steps or the concrete gap, and pass
-`--from-issue <id>` when the report stems from a specific local issue; proposals
-to the same target from that issue and commit share one origin. The issuekit
-project triages its inbox continuously and adopts worthwhile reports as issues;
-check the outcome later with `issuekit outgoing --to issuekit`.
-Adoption notes are recorded only on the receiving project's issue and never
-reach the sender; anything the sender must act on requires a proposal.
-The proposal guard records the handoff but does not interrupt a current
-implementer or reviewer task; continue that task unless sending the proposal was
-your only task.
-Automated triage can use `adopt_and_reply` for a required follow-up; discard
-does not notify.
+Upstream feedback loop: report issuekit bugs, limitations, or improvements from
+any project before finishing with `issuekit propose --to issuekit` (or MCP
+`propose`). Include a reproduction or concrete gap; pass `--from-issue <id>` for
+issue-specific reports and check status with `issuekit outgoing --to issuekit`.
+The issuekit project triages reports and adopts worthwhile ones. Adoption notes
+are recorded only on the receiving project's issue and never reach the sender,
+so send a proposal for follow-up. The proposal guard records the handoff without
+interrupting a current implementation or review task; continue that task unless
+sending the proposal was your only task. Automated triage may use
+`adopt_and_reply`; discard does not notify.
 
-Cross-project negotiation is a bounded, agent-driven design conversation
-between two sides that converges on a contract. Use `propose` when the change
-belongs to the other project and you can already specify it; use `negotiate`
-when the interface between two projects is undecided and must be settled before
-either side can be specified. After agreement, use
-`issuekit negotiate --finalize <thread_id>` to create cross-linked
-implementation issues on both sides. Negotiation is
-CLI-only because it launches multiple long-running agent turns and holding an
-MCP stdio transport open for that orchestration is fragile. MCP provides only
-read-only negotiation thread inspection. Both sides receive read-only
-instructions; issuekit rejects worktree changes left by a turn and HEAD or
-branch changes, including commits. With `--counterpart-ref <ref>`, the
-counterpart side runs in that ref's checkout so it can inspect the real code.
-A pending outbound proposal can seed this workflow with `issuekit negotiate
---from-proposal <project>#proposal:<id> --initiator-side consumer`; the target
-proposal is locked until atomic finalization or explicit `--cancel`. This path
-requires an API project exposing the proposal-negotiation endpoints; use
-`--from-issue` when those endpoints are unavailable.
+Use `propose` for specified changes owned elsewhere; use `negotiate` for
+undecided interfaces. Negotiation is CLI-only; MCP only inspects threads. Both
+sides run read-only, and issuekit rejects worktree, HEAD, or branch changes.
+`--counterpart-ref` selects the real counterpart checkout. Finalize agreed
+threads with `issuekit negotiate --finalize <thread_id>` to create linked issues.
+`--from-proposal` seeds consumer-side work and locks the proposal until atomic
+finalization or `--cancel`; it requires proposal-negotiation API support.
+Otherwise use `--from-issue`.
+See the issuekit repository's `docs/guides/negotiation.md`.
 
 Local issues vs. cross-project proposals:
 
-- Use `issuekit author` only for work that originates in and belongs to the
-  current project.
-- If you are acting from project A and the change belongs to project B, stay in
-  project A and run `issuekit propose --to B --title <t> --body <b>` instead of
-  changing directories into B and running `issuekit author`.
-- When a requested change spans multiple projects, identify the project that
-  owns the first required contract or API change. Create or propose that
-  upstream owner work first, then send downstream consumer proposals only after
-  the upstream proposal or issue exists. Reference it with
-  `--depends-on <project#N|project#issue:N|project#proposal:N>` on local issues
-  or proposals, or a `Depends-On:` body line. Bare `project#N` refs can be
-  shadowed when an issue and proposal share a number; prefer
-  `project#proposal:N` for not-yet-adopted proposals.
+- Use `issuekit author` only for local work. If project B owns a change found
+  from project A, stay in A and propose it to B; do not `cd` to B and use
+  `author`, which bypasses proposal triage.
+- **Dependency-first multi-project work:** Identify the project that owns the
+  first required contract or API change. Create or propose it before downstream
+  consumer work; reference later issues or proposals with
+  `--depends-on <project#N|project#issue:N|project#proposal:N>` or
+  `Depends-On:`. Bare `project#N` refs can be shadowed when issue and proposal
+  numbers overlap; use `project#proposal:N` for pending proposals. Missing refs
+  produce a warning but do not block sending.
 - If a direct issue was created in B by mistake, recover by sending the proposal
-  from A, then close the mistaken B issue as superseded with
+  from A, then close the mistaken B issue with
   `issuekit complete <id> --force --summary "Superseded by proposal <ref>"`
   and an audit-style verification note.
 
 Authoring constraints:
 
-- All author-supplied workflow text must be ASCII-only: issue and proposal
-  title and body, review summary/verification/notes, and edit/append text.
-  Write bodies in English and check before submitting; non-ASCII input
-  (em dashes, curly quotes, non-English characters) is rejected at author,
-  propose, edit, submit-review, request-changes, approve, and complete.
-- A target inbox keeps one pending proposal per origin `<project>#<id>@<commit>`.
-  `--from-issue` and `--reply` make the origin distinct per source issue, not per
-  proposal; a second, different proposal with that origin is not sent and
-  `propose` exits 1 with `payload_mismatch: true`. Send a separate proposal
-  without `--from-issue` (implicit `#0` origin; dropping `--reply` also drops the
-  reply link), or resolve the pending proposal first.
-- Mentioning another configured project ref in a local issue body triggers the
-  cross-project preflight and blocks direct creation with `issuekit author`.
-  Decision rule: if the change belongs to the other project, send
-  `issuekit propose --to <project>`; if the issue is genuinely local and only
-  references the other project, rerun with `--direct-local-author`.
+- Workflow text supplied to issuekit must be ASCII-only and English: issue or
+  proposal titles and bodies, review summary/verification/notes, and edit or
+  append text. Non-ASCII is rejected by author, propose, edit, submit-review,
+  request-changes, approve, and complete.
+- A target inbox allows one pending proposal per origin
+  `<project>#<id>@<commit>`. `--from-issue` and `--reply` distinguish source
+  issues, not proposals. A different second payload exits 1 with
+  `payload_mismatch: true`. To send separately, omit `--from-issue` (implicit
+  `#0`; omit `--reply` too to drop its link) or resolve the pending proposal.
+- Naming another configured project ref in a local issue body triggers
+  preflight and blocks `issuekit author`. Propose to the owner, or use
+  `--direct-local-author` when the work is local and only references that
+  project.
 
 Separation-of-duties invariants:
 
-- The author role and implementer role must be different sessions. If the same
-  agent name appears through the open implement pool, it represents a distinct
-  operator/session; explicit author self-assignment is rejected.
-- After `issuekit author` succeeds, issuekit writes a machine-local issue guard
-  and emits `STOP_NOW`. Issue guards block direct lifecycle work on the authored
-  issue and all pool claims from that checkout until `issuekit author-guard
-  clear`; proposal guards do not block local issue lifecycle work.
-- After `issuekit propose` succeeds, its proposal guard records the handoff
-  without interrupting a current implementer or reviewer task. Stop only when
-  sending the proposal was your only task.
-- The implementer and reviewer must be different sessions; explicit implementer
-  self-review is rejected.
-- The author may also be the reviewer when a different implementer did the work.
+- Authors and implementers must use different sessions; an open-pool same-name
+  implementer is a distinct operator/session, and explicit author self-assignment
+  is rejected.
+- `issuekit author` writes an issue guard and emits `STOP_NOW`. It blocks direct
+  lifecycle work on that issue and pool claims from the checkout until
+  `issuekit author-guard clear`; proposal guards do not block local issue
+  lifecycle work.
+- A proposal guard records the handoff without interrupting current
+  implementation or review; stop only when sending the proposal was your only
+  task. Implementers and reviewers must use different sessions, and explicit
+  self-review is rejected. An author may review work done by another
+  implementer.
 
 Canonical guard diagnostics: see the issuekit repository's
-docs/guides/separation-of-duties.md or run `issuekit author-guard --help` to
+`docs/guides/separation-of-duties.md` or run `issuekit author-guard --help` to
 diagnose which guard blocked a command.
 
 {SEPARATION_GUARD_REFERENCE}
 
+For command syntax and copyable CLI examples, see the issuekit repository's
+`docs/guides/commands.md`.
+
 Copyable CLI examples:
 
-- Register worker: `issuekit add`
 - Author: `issuekit author --title "Short title" --body-file issue.md --priority medium --agent <agent>`
-- Author host-specific work: `issuekit author --title "Short title" --body-file issue.md --agent <agent> --target-worker <worker.repo@machine>`
-- Dispatch existing work: `issuekit dispatch 123 --target-worker <worker.repo@machine> --json`
-- Return directed work to the pool: `issuekit readdress 123 --json`
-- Author with upstream dependency: `issuekit author --title "Short title" --body-file issue.md --priority medium --agent <agent> --depends-on upstream#proposal:123`
-- Author a local issue that references another project: `issuekit author --title "Short title" --body-file issue.md --agent <agent> --direct-local-author`
+- Author for a worker: `issuekit author --title "Short title" --body-file issue.md --agent <agent> --target-worker <worker.repo@machine>`
+- Dispatch: `issuekit dispatch 123 --target-worker <worker.repo@machine> --json`
+- Readdress: `issuekit readdress 123 --json`
+- Author with dependency: `issuekit author --title "Short title" --body-file issue.md --priority medium --agent <agent> --depends-on upstream#proposal:123`
+- Author local cross-ref: `issuekit author --title "Short title" --body-file issue.md --agent <agent> --direct-local-author`
 - Claim next: `issuekit claim --assignee <agent>`
-- Claim specific issue: `issuekit claim --id 123 --assignee <agent>`
+- Claim by id: `issuekit claim --id 123 --assignee <agent>`
 - Submit review: `issuekit submit-review 123 --summary "Implemented." --branch main --commit abc123`
-- Agent review: `issuekit review 123 --agent <agent>`
+- Review: `issuekit review 123 --agent <agent>`
 - Request changes: `issuekit request-changes 123 --notes "Add focused tests." --reviewer <agent>`
-- Request changes with Markdown or backticked identifiers: `issuekit request-changes 123 --notes-file <notes.md> --reviewer <agent>`
+- Request changes from file: `issuekit request-changes 123 --notes-file <notes.md> --reviewer <agent>`
 - Approve: `issuekit approve 123 --verification "uv run pytest" --reviewer <agent>`
 - Complete: `issuekit complete 123 --summary "Done." --verification "uv run pytest"`
-- Close no-op issue: `issuekit complete 123 --force --summary "Obsolete." --verification "no local code scope"`
-- Blocking proposal: `issuekit propose --to <project> --title <t> --body <b> --blocking --json`
-- Proposal with upstream dependency: `issuekit propose --to <project> --title <t> --body <b> --depends-on upstream#proposal:123 --json`
-- Incoming proposals: `issuekit incoming --json`
-- Adopt proposal: `issuekit adopt 42 --priority medium --json`
-- Outgoing proposal status: `issuekit outgoing --to <project> --json`
-- Finalize negotiated thread: `issuekit negotiate --finalize <thread_id>`
-- Serve with target-owned inbox triage: `issuekit serve --agent <agent> --triage`
-- Serve as a reviewer worker: `issuekit serve --agent <agent> --review`
+- Complete no-op: `issuekit complete 123 --force --summary "Obsolete." --verification "no local code scope"`
+- Outgoing status: `issuekit outgoing --to <project> --json`
+- Serve triage: `issuekit serve --agent <agent> --triage`
+- Serve reviewer: `issuekit serve --agent <agent> --review`
 """
 
 
@@ -282,6 +242,9 @@ Projects may automate trusted target-owned triage by configuring
 poll first auto-adopts matching pending proposals, then claims and implements
 through the normal review-gated cycle. Use `issuekit propose --blocking` for
 hard cross-project dependencies when the target requires blocking proposals.
+
+For proposal-system CLI equivalents, see the Proposal-system CLI fallback list
+in the delegation cycle overview.
 """
 
 
@@ -329,9 +292,11 @@ PM invariants:
   `issuekit request-changes`, `issuekit approve`, or `issuekit complete`.
 - Do not mutate target project issue lifecycle state directly. Target projects
   own inbox triage and turn thin proposals into implementation-ready issues.
-- Work dependency-first: upstream API or contract owners receive proposals
-  before downstream consumers, and downstream proposals reference the upstream
-  proposal or issue with `--depends-on` semantics.
+- For multi-project work, follow the dependency-first rule in the delegation
+  cycle overview above.
+
+For proposal-system CLI equivalents, see the Proposal-system CLI fallback list
+in the delegation cycle overview.
 """
 
 
@@ -344,8 +309,6 @@ call `claim_next_task` or `submit_for_review`.
 The implementer handles issuekit tasks from the API-backed project queue. Any
 configured agent can be the implementer or the reviewer. The reviewer is the
 agent assigned at stage=review and defaults to `auto` in API mode.
-Same-name review is allowed through the open review pool by omitting `reviewer`;
-an implementer may not explicitly assign itself as reviewer at submit time.
 
 Cross-project proposals are API inbox entries.
 Before claiming normal work, inspect `issuekit incoming` when cross-repo
@@ -370,30 +333,16 @@ otherwise obfuscate string literals, import paths, or identifiers to avoid plain
 source text. Passing tests is not enough if the implementation is needlessly
 hard to read or maintain.
 
-For multi-project changes, work dependency-first. Identify the project that
-owns the first required contract or API change, create or propose that upstream
-work before downstream consumer work, and include
-`--depends-on <project#N|project#issue:N|project#proposal:N>` (or `Depends-On:`
-in the body) on later downstream local issues or proposals. Bare `project#N`
-refs can be shadowed when an issue and proposal share a number; prefer
-`project#proposal:N` for not-yet-adopted proposals. If the body says it depends
-on another project and no upstream reference is supplied, proposal preflight
-warns but does not block the send.
+For multi-project work, follow the dependency-first rule in the delegation
+cycle overview above.
 
 The API skips `dependency_state=waiting` and `dependency_state=attention`
 issues when claiming the next task. Do not manually pick waiting issues from
 queue output. If an explicit claim returns a dependency warning, read the
 upstream ref first and only proceed when the warning is understood.
 
-Proposal-system MCP and CLI share one implementation, so the CLI is a drop-in
-fallback when the MCP tools hang or error. Equivalents (add `--json` for the
-same structured output the MCP tools return):
-
-- `propose(to, title, body)` -> `issuekit propose --to <project> --title <t> --body <b> --json`
-- `propose(to, title, body, blocking=True)` -> `issuekit propose --to <project> --title <t> --body <b> --blocking --json`
-- `propose(to, title, body, depends_on="upstream#proposal:123")` -> `issuekit propose --to <project> --title <t> --body <b> --depends-on upstream#proposal:123 --json`
-- `list_incoming()` -> `issuekit incoming --json`
-- `adopt_proposal(proposal_id, priority)` -> `issuekit adopt <id> --priority <p> --json`
+For proposal-system CLI equivalents, see the Proposal-system CLI fallback list
+in the delegation cycle overview.
 
 When the user asks an implementer to work on an issue in open-ended terms, such
 as "handle the next issue" or "take the queue", do not wait for explicit
@@ -432,9 +381,7 @@ commands. Run this protocol end to end:
    ASCII summary and optional branch/commit metadata. Omit reviewer to use
    `default_reviewer`, or pass another configured assignee. If
    `default_reviewer` is `auto`, the issue enters the open review pool so any
-   agent (including another session of the same name) may review it. An
-   implementer may not name itself as the explicit reviewer; use the open pool
-   for same-name review.
+   eligible reviewer may review it.
 6. If a reviewer returns the issue with stage=changes_requested, call
    `claim_next_task()` again, or use `claim_next_task(assignee="<agent>")` for
    an explicit implementer, read the Review Feedback note, re-plan for just
@@ -473,23 +420,11 @@ its state directly. Add `--blocking` when the proposal is a hard dependency.
 Do not `cd` into the target project and run `issuekit author`; that makes the
 target queue look like the work originated locally and bypasses proposal triage.
 
-For multi-project changes, work dependency-first. Identify the project that
-owns the first required contract or API change, create or propose that upstream
-work before downstream consumer local issues or proposals, then reference the
-upstream item with
-`--depends-on <project#N|project#issue:N|project#proposal:N>` or a
-`Depends-On:` body line. Bare `project#N` refs can be shadowed when an issue and
-proposal share a number; prefer `project#proposal:N` for not-yet-adopted
-proposals. If a downstream proposal body says it depends on another project but
-lacks that reference, issuekit warns so the author can create the upstream
-proposal first.
+For multi-project work, follow the dependency-first rule in the delegation
+cycle overview above.
 
-When the proposal-system MCP tools hang or error, fall back to the equivalent
-CLI: `issuekit propose --to <project> --title <t> --body <b> --json`,
-`issuekit propose --to <project> --title <t> --body <b> --blocking --json`,
-`issuekit propose --to <project> --title <t> --body <b> --depends-on upstream#proposal:123 --json`,
-`issuekit incoming --json`, and `issuekit adopt <id> --json`. They share the
-same implementation and emit the same structured output.
+For proposal-system CLI equivalents, see the Proposal-system CLI fallback list
+in the delegation cycle overview.
 Request target-side evaluation before adoption with `issuekit
 proposal-check-request --to <project> --proposal <id>` or the MCP
 `create_proposal_check` tool.
@@ -515,13 +450,8 @@ When asked to write or plan an issue:
    Do not call `claim_next_task`, `issuekit claim`, or `submit_for_review` for
    the authored issue in the same session. An implementer claims it later via
    `claim_next_task`.
-5. If the author is coordinating the handoff, the author may run
-   `issuekit implement <id> --agent <agent>` for the authored issue. This does
-   not make the author the implementer: issuekit creates a separate run session,
-   exports it to the child agent as `ISSUEKIT_SESSION`, and uses that same token
-   for the claim and submit mutations. Use a different configured agent when
-   possible; same-name delegation is accepted only when the recorded author
-   session and launched run session are both present and differ.
+5. For author-coordinated implementation, use the sanctioned orchestration path
+   in the delegation cycle overview above.
 
 After `issuekit propose` succeeds, let the target project triage the proposal.
 The proposal guard records the handoff but does not interrupt your current task;
@@ -536,9 +466,7 @@ REVIEWER_PROTOCOL = """# Handoff protocol (reviewer)
 
 The reviewer handles issuekit tasks after an implementer submits them for
 review. Any configured reviewer can use this flow. The reviewer is the agent
-assigned at stage=review and defaults to `auto` in API mode. Same-name review
-is allowed through the open review pool; an implementer may not explicitly
-assign itself as reviewer at submit time.
+assigned at stage=review and defaults to `auto` in API mode.
 
 When review reveals that a needed change belongs to another project, originate
 a proposal instead of only reporting it. Use `issuekit propose --to <project>
@@ -547,11 +475,8 @@ non-destructive suggestions in the target project's API inbox; the target
 project owns triage, so do not mutate its state directly. Add `--blocking`
 when the proposal is a hard dependency.
 
-If review uncovers a multi-project chain, work dependency-first: record the
-upstream contract or API owner first. Send downstream consumer proposals only
-after that upstream issue or proposal exists, and reference it with
-`--depends-on <project#N|project#issue:N|project#proposal:N>` or a
-`Depends-On:` body line. Use `project#proposal:N` for not-yet-adopted proposals.
+For multi-project dependencies found during review, follow the dependency-first
+rule in the delegation cycle overview above.
 
 1. Call the issuekit MCP tool `next_review(reviewer=None)`. Omit reviewer to
    use `default_reviewer`, or pass the reviewer assignee to inspect. With
@@ -589,19 +514,13 @@ after that upstream issue or proposal exists, and reference it with
 Authors own proposals and implementation-ready issues unless assigned as
 implementer. The assigned reviewer owns the review decision. The approving
 session or agent must not be the same session that implemented the issue;
-same-name review is allowed only when the issue was routed through the open
-review pool.
 
 To run continuously as a reviewer worker, use a separate registered checkout:
 `issuekit serve --agent <reviewer> --review`. It can review only committed and
 pushed changes it can see, or evidence-only host and verification submissions.
 
-When the proposal-system MCP tools hang or error, fall back to the equivalent
-CLI: `issuekit propose --to <project> --title <t> --body <b> --json`,
-`issuekit propose --to <project> --title <t> --body <b> --blocking --json`,
-`issuekit propose --to <project> --title <t> --body <b> --depends-on upstream#proposal:123 --json`,
-`issuekit incoming --json`, and `issuekit adopt <id> --json`. They share the
-same implementation and emit the same structured output.
+For proposal-system CLI equivalents, see the Proposal-system CLI fallback list
+in the delegation cycle overview.
 """
 
 
