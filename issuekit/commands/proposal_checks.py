@@ -13,7 +13,7 @@ from issuekit.agents.proposal_check import (
     list_worker_proposal_checks,
     run_proposal_check_cycle,
 )
-from issuekit.commands._common import print_json, run_command
+from issuekit.commands._common import print_json, run_agent_command, run_command
 from issuekit.config import IssuekitConfig, load_config
 from issuekit.proposals import ProposalError
 from issuekit.workflow import WorkflowError, resolve_implementer
@@ -123,7 +123,7 @@ def run(args) -> int:
             _print_decisions(decisions)
         return 1 if any(decision.error for decision in decisions) else 0
 
-    return run_command(
+    return run_agent_command(
         action,
         errors=(
             FileNotFoundError,

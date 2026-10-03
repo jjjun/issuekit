@@ -338,6 +338,151 @@ def test_runner_kills_on_timeout(tmp_path: Path) -> None:
     assert status["exit_code"] != 0
 
 
+@pytest.mark.skipif(os.name == "nt", reason="process groups are POSIX-only")
+def test_runner_timeout_kills_sigterm_ignoring_grandchild(tmp_path: Path) -> None:
+    ready_path = tmp_path / "grandchild.pid"
+    child_script = (
+        "import os, pathlib, signal, sys, time; "
+        "signal.signal(signal.SIGTERM, signal.SIG_IGN); "
+        "pathlib.Path(sys.argv[1]).write_text(str(os.getpid())); "
+        "time.sleep(60)"
+    )
+    script = tmp_path / "script.py"
+    script.write_text(
+        "import pathlib, subprocess, sys, time\n"
+        f"ready_path = {str(ready_path)!r}\n"
+        "subprocess.Popen([sys.executable, '-c', "
+        f"{child_script!r}, ready_path])\n"
+        "deadline = time.monotonic() + 5\n"
+        "while not pathlib.Path(ready_path).exists() and time.monotonic() < deadline:\n"
+        "    time.sleep(0.01)\n"
+        "if not pathlib.Path(ready_path).exists():\n"
+        "    raise SystemExit(2)\n"
+        "time.sleep(60)\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / ".git").mkdir()
+
+    result = AgentRunner().run(
+        FakeAdapter([sys.executable, str(script)]),
+        agent_prompt(tmp_path / "plan.md"),
+        repo,
+        timeout=0.5,
+    )
+
+    grandchild_pid = int(ready_path.read_text(encoding="utf-8"))
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        process = subprocess.run(
+            ["ps", "-o", "stat=", "-p", str(grandchild_pid)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        process_state = process.stdout.strip()
+        if not process_state or process_state.startswith("Z"):
+            break
+        time.sleep(0.05)
+    else:
+        pytest.fail(f"grandchild process {grandchild_pid} survived process-group kill")
+
+    assert result.timed_out is True
+
+
+@pytest.mark.skipif(os.name == "nt", reason="process groups are POSIX-only")
+def test_runner_keyboard_interrupt_writes_terminal_status_and_kills_group(
+    tmp_path: Path, monkeypatch
+) -> None:
+    grandchild_path = tmp_path / "grandchild.pid"
+    child_script = (
+        "import os, pathlib, signal, sys, time; "
+        "signal.signal(signal.SIGTERM, signal.SIG_IGN); "
+        "pathlib.Path(sys.argv[1]).write_text(str(os.getpid())); "
+        "time.sleep(60)"
+    )
+    script = tmp_path / "script.py"
+    script.write_text(
+        "import pathlib, subprocess, sys, time\n"
+        f"grandchild_path = {str(grandchild_path)!r}\n"
+        "subprocess.Popen([sys.executable, '-c', "
+        f"{child_script!r}, grandchild_path])\n"
+        "deadline = time.monotonic() + 5\n"
+        "while not pathlib.Path(grandchild_path).exists() and time.monotonic() < deadline:\n"
+        "    time.sleep(0.01)\n"
+        "if not pathlib.Path(grandchild_path).exists():\n"
+        "    raise SystemExit(2)\n"
+        "time.sleep(60)\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / ".git").mkdir()
+    real_popen = subprocess.Popen
+    agent_pids: list[int] = []
+
+    def patched_popen(*args, **kwargs):
+        proc = real_popen(*args, **kwargs)
+        command = args[0]
+        if command[0] == sys.executable and str(script) in command:
+            agent_pids.append(proc.pid)
+            original_wait = proc.wait
+            interrupt_next_wait = True
+
+            def interrupt_wait(timeout=None):
+                nonlocal interrupt_next_wait
+                if interrupt_next_wait:
+                    interrupt_next_wait = False
+                    deadline = time.monotonic() + 5
+                    while not grandchild_path.exists() and time.monotonic() < deadline:
+                        time.sleep(0.01)
+                    assert grandchild_path.exists()
+                    raise KeyboardInterrupt
+                return original_wait(timeout=timeout)
+
+            proc.wait = interrupt_wait
+        return proc
+
+    monkeypatch.setattr(subprocess, "Popen", patched_popen)
+
+    with pytest.raises(KeyboardInterrupt):
+        AgentRunner().run(
+            FakeAdapter([sys.executable, str(script)]),
+            agent_prompt(tmp_path / "plan.md"),
+            repo,
+            timeout=10.0,
+        )
+
+    status_paths = list((repo / ".agent-runs").glob("*.status.json"))
+    assert len(status_paths) == 1
+    status = json.loads(status_paths[0].read_text(encoding="utf-8"))
+    assert status["status"] == "failed"
+    assert status["exit_code"] == 130
+    assert status["ended_at"] is not None
+    assert len(agent_pids) == 1
+    with pytest.raises(ProcessLookupError):
+        os.kill(agent_pids[0], 0)
+
+    grandchild_pid = int(grandchild_path.read_text(encoding="utf-8"))
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        process = subprocess.run(
+            ["ps", "-o", "stat=", "-p", str(grandchild_pid)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        process_state = process.stdout.strip()
+        if not process_state or process_state.startswith("Z"):
+            break
+        time.sleep(0.05)
+    else:
+        pytest.fail(f"grandchild process {grandchild_pid} survived process-group kill")
+
+
 def test_runner_kills_when_abort_event_is_set(tmp_path: Path) -> None:
     script = tmp_path / "script.py"
     script.write_text("import time; time.sleep(60)")

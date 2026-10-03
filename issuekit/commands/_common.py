@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import json
+import os
+import signal
 import sys
 from collections.abc import Callable
+from contextlib import contextmanager
 from dataclasses import replace
 from pathlib import Path
+from types import FrameType
 from typing import TypeVar
 
 from issuekit.config import IssuekitConfig, has_local_project_context, load_config
@@ -49,6 +53,41 @@ def run_command(
             raise
         print(_error_message(lookup_error, exc), file=sys.stderr)
         return 1
+
+
+def run_agent_command(
+    action: Callable[[], T],
+    *,
+    errors: tuple[CommandError, ...] = STANDARD_COMMAND_ERRORS,
+    lookup_error: ErrorMessage | None = None,
+) -> T | int:
+    """Run a one-shot agent command with SIGTERM translated into interruption."""
+
+    with _interrupt_on_sigterm():
+        return run_command(action, errors=errors, lookup_error=lookup_error)
+
+
+@contextmanager
+def _interrupt_on_sigterm():
+    if os.name == "nt":
+        yield
+        return
+
+    try:
+        previous_handler = signal.getsignal(signal.SIGTERM)
+        signal.signal(signal.SIGTERM, _handle_sigterm)
+    except (ValueError, OSError, AttributeError):
+        yield
+        return
+
+    try:
+        yield
+    finally:
+        signal.signal(signal.SIGTERM, previous_handler)
+
+
+def _handle_sigterm(_signum: int, _frame: FrameType | None) -> None:
+    raise KeyboardInterrupt
 
 
 def active_issue_not_found(issue_id: int) -> str:

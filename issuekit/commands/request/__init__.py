@@ -6,7 +6,7 @@ import argparse
 from pathlib import Path
 
 from issuekit.agents.router import RouterParseError
-from issuekit.commands._common import run_command
+from issuekit.commands._common import run_agent_command
 from issuekit.commands.request.answers import run_answer
 from issuekit.commands.request.inbox import run_inbox, run_status
 from issuekit.commands.request.routing import run_link, run_new_request
@@ -142,7 +142,7 @@ def run(args) -> int:
             reasoning_effort=args.reasoning_effort,
         )
 
-    return run_command(
+    return run_agent_command(
         action,
         errors=(
             FileNotFoundError,

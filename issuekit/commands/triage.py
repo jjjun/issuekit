@@ -12,7 +12,7 @@ from issuekit.agents.triage_author import (
     TriageDecision,
     run_triage_author_cycle,
 )
-from issuekit.commands._common import print_json, run_command
+from issuekit.commands._common import print_json, run_agent_command
 from issuekit.config import load_config
 from issuekit.proposals import ProposalError
 from issuekit.workflow import WorkflowError
@@ -74,7 +74,7 @@ def run(args) -> int:
             _print_decisions(decisions)
         return 0
 
-    return run_command(
+    return run_agent_command(
         action,
         errors=(
             FileNotFoundError,

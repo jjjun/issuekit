@@ -262,12 +262,18 @@ class AgentRunner:
             )
             watcher.start()
 
+            run_error: BaseException | None = None
             try:
                 exit_code, timed_out = self._wait_for_process(
                     proc,
                     timeout=timeout,
                     abort_event=abort_event,
                 )
+            except BaseException as exc:
+                self._kill_process_group(proc)
+                exit_code = 130
+                timed_out = False
+                run_error = exc
             finally:
                 watcher.stop()
                 if enable_heartbeat:
@@ -304,6 +310,9 @@ class AgentRunner:
         )
 
         status_short = git_status_short(repo)
+
+        if run_error is not None:
+            raise run_error
 
         return AgentResult(
             exit_code=exit_code,
@@ -396,18 +405,33 @@ class AgentRunner:
             try:
                 proc.wait(timeout=5)
             except subprocess.TimeoutExpired:
-                proc.kill()
-                proc.wait()
-        else:
+                pass
             try:
-                pgid = os.getpgid(proc.pid)
-                os.killpg(pgid, signal.SIGTERM)
-                proc.wait(timeout=5)
-            except (ProcessLookupError, subprocess.TimeoutExpired):
-                try:
-                    pgid = os.getpgid(proc.pid)
-                    os.killpg(pgid, signal.SIGKILL)
-                    proc.wait()
-                except ProcessLookupError:
+                result = subprocess.run(
+                    ["taskkill", "/T", "/F", "/PID", str(proc.pid)],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    check=False,
+                    timeout=5,
+                )
+                if result.returncode != 0 and proc.poll() is None:
                     proc.kill()
-                    proc.wait()
+            except (OSError, subprocess.SubprocessError):
+                if proc.poll() is None:
+                    proc.kill()
+            proc.wait()
+        else:
+            pgid = proc.pid
+            try:
+                os.killpg(pgid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                pass
+            try:
+                os.killpg(pgid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            proc.wait()

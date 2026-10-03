@@ -10,7 +10,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from issuekit.agentrun import AgentRunner
-from issuekit.commands._common import print_json, run_command
+from issuekit.commands._common import print_json, run_agent_command, run_command
 from issuekit.config import IssuekitConfig, load_config
 from issuekit.config.refs import RefError, list_effective_refs
 from issuekit.core import Issue, parse_issue_id_arg
@@ -246,7 +246,7 @@ def run(args) -> int:
             _print_human_result(result)
         return 0
 
-    return run_command(
+    return run_agent_command(
         action,
         errors=(
             FileNotFoundError,

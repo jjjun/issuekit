@@ -13,7 +13,7 @@ from issuekit.agents.review import (
     ReviewRunParseError,
     run_review_and_decide,
 )
-from issuekit.commands._common import run_command
+from issuekit.commands._common import run_agent_command
 from issuekit.config import load_config
 from issuekit.core import Issue, parse_issue_id_arg
 from issuekit.store import get_store
@@ -100,7 +100,7 @@ def run(args) -> int:
             _print_decision_report(outcome)
         return outcome.exit_code
 
-    return run_command(
+    return run_agent_command(
         action,
         errors=(
             FileNotFoundError,

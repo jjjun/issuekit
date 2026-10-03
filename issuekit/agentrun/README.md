@@ -13,6 +13,11 @@ supervises the process, enforces timeouts, kills the process group, and writes
 run logs and status JSON. `app_server.py` holds the stdio JSON-RPC transport
 and command journal for `codex app-server`.
 
+If an agent run is interrupted while waiting for the process, the runtime kills
+its process group, writes a terminal `failed` status with exit code `130`, then
+re-raises the interruption. One-shot agent commands translate SIGTERM into this
+same interruption path.
+
 `issuekit/agents/` contains the issuekit workflows that use an agent:
 `run_claimed`, `app_server_runtime`, `review`, `proposal_check`,
 `proposal_eval`, `triage_author`, `triage_state`, and `router`, plus the shared

@@ -1,8 +1,11 @@
 import argparse
+import os
+import signal
 
 import pytest
 
 from issuekit import cli
+from issuekit.commands._common import run_agent_command
 
 EXPECTED_COMMANDS = {
     "info",
@@ -91,6 +94,16 @@ def test_subcommand_help_exits_zero(capsys: pytest.CaptureFixture[str]) -> None:
     assert "--verification" in captured.out
     assert "--force" in captured.out
     assert "Directly complete an active issue" in captured.out
+
+
+@pytest.mark.skipif(os.name == "nt", reason="SIGTERM interruption is POSIX-only")
+def test_agent_command_translates_sigterm_and_restores_handler() -> None:
+    previous_handler = signal.getsignal(signal.SIGTERM)
+
+    with pytest.raises(KeyboardInterrupt):
+        run_agent_command(lambda: signal.raise_signal(signal.SIGTERM))
+
+    assert signal.getsignal(signal.SIGTERM) is previous_handler
 
 
 def test_all_registered_subcommand_help_exits_zero(capsys: pytest.CaptureFixture[str]) -> None:

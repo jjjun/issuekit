@@ -1,7 +1,11 @@
+import os
+import signal
 import subprocess
 from dataclasses import dataclass, replace
 from pathlib import Path
 from types import SimpleNamespace
+
+import pytest
 
 from issuekit import cli
 from issuekit import store as store_module
@@ -1562,6 +1566,31 @@ def test_implement_command_prints_not_submitted_reason_for_failed_run(
     )
     assert (
         "post_run id=1 stage=implementing submitted=false agent_exit=2 cli_exit=2"
+        in captured.out
+    )
+
+
+@pytest.mark.skipif(os.name == "nt", reason="SIGINT behavior is POSIX-specific")
+def test_implement_command_reports_sigint_as_interrupted(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
+    _configure_api(tmp_path, monkeypatch, client)
+
+    def interrupt_run(*args, **kwargs):
+        signal.raise_signal(signal.SIGINT)
+
+    monkeypatch.setattr("issuekit.commands.implement.run_and_submit", interrupt_run)
+
+    exit_code = cli.main(["implement", "1", "--agent", "codex"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 130
+    assert "not_submitted id=1 stage=implementing reason=interrupted" in captured.out
+    assert (
+        "post_run id=1 stage=implementing submitted=false agent_exit=unknown cli_exit=130"
         in captured.out
     )
 

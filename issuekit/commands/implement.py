@@ -14,7 +14,7 @@ from issuekit.agents.run_claimed import (
     review_feedback_prompt,
     run_and_submit,
 )
-from issuekit.commands._common import run_command
+from issuekit.commands._common import run_agent_command
 from issuekit.config import load_config
 from issuekit.core import Issue, parse_issue_id_arg
 from issuekit.encoding import sanitize_to_ascii
@@ -165,6 +165,15 @@ def run(args) -> int:
                 submit_summary=_submit_summary(agent, cwd, config, resolved_issue_id),
                 reporter=reporter,
             )
+        except KeyboardInterrupt:
+            _print_terminal_lines_for_error(
+                resolved_issue_id,
+                agent_result,
+                "interrupted",
+                config,
+                cli_exit=130,
+            )
+            return 130
         except _MAPPED_ERRORS as exc:
             reason_prefix = "submit_error" if agent_result is not None else "run_error"
             reason = f"{reason_prefix}:{str(exc).replace(chr(10), ' ')}"
@@ -176,7 +185,7 @@ def run(args) -> int:
         _print_terminal_lines(resolved_issue_id, outcome, config)
         return outcome.exit_code
 
-    return run_command(action, errors=_MAPPED_ERRORS)
+    return run_agent_command(action, errors=_MAPPED_ERRORS)
 
 
 def _print_run_report(issue: Issue, result: AgentResult, agent: str) -> None:
@@ -247,12 +256,20 @@ def _print_terminal_lines(issue_id: int, outcome: RunOutcome, config) -> None:
 
 
 def _print_terminal_lines_for_error(
-    issue_id: int, agent_result: AgentResult | None, reason: str, config
+    issue_id: int,
+    agent_result: AgentResult | None,
+    reason: str,
+    config,
+    *,
+    cli_exit: int = 1,
 ) -> None:
     stage = _current_stage(config, issue_id)
     agent_exit = str(agent_result.exit_code) if agent_result is not None else "unknown"
     print(f"not_submitted id={issue_id} stage={stage} reason={reason}")
-    print(f"post_run id={issue_id} stage={stage} submitted=false agent_exit={agent_exit} cli_exit=1")
+    print(
+        f"post_run id={issue_id} stage={stage} submitted=false agent_exit={agent_exit} "
+        f"cli_exit={cli_exit}"
+    )
 
 
 def _final_message_tail(result: AgentResult) -> str | None:
