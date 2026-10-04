@@ -42,3 +42,6 @@ one. See [README.md](README.md) for the rules.
 - [Read-only agent sandbox policies](read-only-agent-sandbox.md) - verified
   Codex and Claude CLI launch flags, MCP disabling, and the Claude sandbox
   dependency limitation in this environment.
+- [Run issuekit implement in its own shell command](implement-own-shell.md) -
+  do not chain it after `git commit`; the implementer can see and kill its
+  parent shell. Resume an interrupted run with `--no-sync`.
