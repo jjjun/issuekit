@@ -429,21 +429,8 @@ def _collect_git_diff_context(cwd: Path, *, issue: Issue | None = None) -> Revie
 
 
 _HANDOFF_METADATA_LABELS = {
-    "summary": "Handoff summary",
-    "handoff_summary": "Handoff summary",
-    "submit_summary": "Handoff summary",
-    "review_summary": "Handoff summary",
     "branch": "Branch",
-    "handoff_branch": "Branch",
-    "submit_branch": "Branch",
-    "review_branch": "Branch",
     "commit": "Commit",
-    "handoff_commit": "Commit",
-    "submit_commit": "Commit",
-    "review_commit": "Commit",
-    "verification": "Verification evidence",
-    "handoff_verification": "Verification evidence",
-    "review_verification": "Verification evidence",
 }
 
 _BODY_EVIDENCE_PATTERN = re.compile(
@@ -456,34 +443,26 @@ _MARKDOWN_HEADING_PATTERN = re.compile(r"^\s*#{1,6}\s+")
 
 
 def _latest_handoff_has_run_log(issue: Issue) -> bool:
-    summary = None
-    for key in ("summary", "handoff_summary", "submit_summary", "review_summary"):
-        value = issue.metadata.get(key)
-        if isinstance(value, str) and value.strip():
-            summary = value.strip()
-            break
-
-    if summary is None:
-        lines = issue.body.splitlines()
-        handoff_index = next(
-            (
-                index
-                for index in range(len(lines) - 1, -1, -1)
-                if re.fullmatch(r"\s*## Handoff\s*", lines[index])
-            ),
-            None,
-        )
-        if handoff_index is None:
-            return False
-        end_index = next(
-            (
-                index
-                for index in range(handoff_index + 1, len(lines))
-                if re.match(r"^\s*##\s+", lines[index])
-            ),
-            len(lines),
-        )
-        summary = "\n".join(lines[handoff_index + 1 : end_index])
+    lines = issue.body.splitlines()
+    handoff_index = next(
+        (
+            index
+            for index in range(len(lines) - 1, -1, -1)
+            if re.fullmatch(r"\s*## Handoff\s*", lines[index])
+        ),
+        None,
+    )
+    if handoff_index is None:
+        return False
+    end_index = next(
+        (
+            index
+            for index in range(handoff_index + 1, len(lines))
+            if re.match(r"^\s*##\s+", lines[index])
+        ),
+        len(lines),
+    )
+    summary = "\n".join(lines[handoff_index + 1 : end_index])
     lines = summary.splitlines()
     has_allow_no_changes_marker = any(
         line.strip() == NO_IMPLEMENTATION_CHANGES_MARKER for line in lines

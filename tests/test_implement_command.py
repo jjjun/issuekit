@@ -1256,7 +1256,7 @@ def test_implement_command_allows_no_change_submit_with_flag(
     assert exit_code == 0
     assert "No implementation changes detected" in captured.out
     assert [call["method"] for call in client.calls] == ["claim", "submit"]
-    summary_lines = client.get_issue(1)["summary"].splitlines()
+    summary_lines = client.calls[-1]["body"]["summary"].splitlines()
     assert summary_lines[1].startswith("Run log: ")
     assert summary_lines[2:] == [run_claimed_agent.NO_IMPLEMENTATION_CHANGES_MARKER]
 

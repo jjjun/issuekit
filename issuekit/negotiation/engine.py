@@ -476,12 +476,7 @@ def run_negotiation(
 def inspect_thread(thread_id: str, *, store: NegotiationStore) -> NegotiationThreadInspection:
     thread = store.get_thread(thread_id)
     status = store.get_status(thread_id)
-    try:
-        issue_refs = store.get_issue_refs(thread_id)
-    except WorkflowError as exc:
-        if exc.code != "server_schema_drift":
-            raise
-        issue_refs = None
+    issue_refs = store.get_issue_refs(thread_id)
     return NegotiationThreadInspection(
         thread_id=thread_id,
         status=status,

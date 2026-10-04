@@ -215,7 +215,7 @@ def test_api_store_worker_field_is_optional() -> None:
     assert issue.worker == ""
 
 
-def test_api_store_preserves_review_handoff_metadata() -> None:
+def test_api_store_preserves_supported_optional_metadata() -> None:
     raw_issue = api_issue(7, "Review Path", status="in_progress", stage="review")
     raw_issue.update(
         {
@@ -224,6 +224,7 @@ def test_api_store_preserves_review_handoff_metadata() -> None:
             "branch": "main",
             "commit": "abc1234",
             "verification": "systemctl status demo.service",
+            "updated_at": "2026-07-07T02:03:04Z",
         }
     )
     client = FakeIssuekitClient([raw_issue])
@@ -233,10 +234,11 @@ def test_api_store_preserves_review_handoff_metadata() -> None:
 
     assert issue is not None
     assert issue.metadata["implementation_worker"] == "worker.demo@main1"
-    assert issue.metadata["summary"] == "Updated the host service."
+    assert issue.metadata["updated_at"] == "2026-07-07T02:03:04Z"
     assert issue.metadata["branch"] == "main"
     assert issue.metadata["commit"] == "abc1234"
-    assert issue.metadata["verification"] == "systemctl status demo.service"
+    assert "summary" not in issue.metadata
+    assert "verification" not in issue.metadata
 
 
 def test_api_store_maps_issue_dependencies_and_warning() -> None:
@@ -259,7 +261,7 @@ def test_api_store_maps_issue_dependencies_and_warning() -> None:
 
     issue = store._issue_from_response(
         {
-            "issue": client.get_issue(7),
+            **client.get_issue(7),
             "warning": "Issue #7 has dependency_state=waiting.",
         }
     )
@@ -292,14 +294,14 @@ def test_api_store_maps_issue_dependencies_and_warning() -> None:
     }
 
 
-def test_api_store_maps_wrapped_issue_warnings_list() -> None:
+def test_api_store_maps_issue_warnings_list() -> None:
     raw_issue = api_issue(7, "Dependent", dependency_state="waiting")
     client = FakeIssuekitClient([raw_issue])
     store = ApiStore(IssuekitConfig(api_url="https://mine.example", project="demo"), client=client)
 
     issue = store._issue_from_response(
         {
-            "issue": client.get_issue(7),
+            **client.get_issue(7),
             "warnings": [
                 "Issue #7 has dependency_state=waiting.",
                 "Check upstream dependencies before implementing.",

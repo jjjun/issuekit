@@ -33,7 +33,7 @@ def test_claims_command_lists_active_claims_json(
         assignee="codex",
         worker="codex.demo",
     )
-    implementing["claimed_at"] = "2026-07-07T01:02:03Z"
+    implementing["updated_at"] = "2026-07-07T01:02:03Z"
     review = api_issue(
         2,
         "Review",
@@ -73,7 +73,7 @@ def test_claims_command_lists_active_claims_json(
             "assignee": "codex",
             "worker": "codex.demo",
             "target_worker": "",
-            "claimed": "2026-07-07T01:02:03Z",
+            "last_transition": "2026-07-07T01:02:03Z",
         },
         {
             "id": 2,
@@ -86,6 +86,12 @@ def test_claims_command_lists_active_claims_json(
             "last_transition": "2026-07-07T02:03:04Z",
         },
     ]
+
+    assert cli.main(["claims"]) == 0
+
+    text_output = capsys.readouterr().out
+    assert "claimed=" not in text_output
+    assert "last_transition=2026-07-07T01:02:03Z" in text_output
 
 
 def test_claims_command_filters_worker_with_qualified_match(

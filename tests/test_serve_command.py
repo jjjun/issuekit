@@ -606,9 +606,6 @@ def test_serve_review_reports_agent_run_without_local_changes_as_error(
             "Run log: `.agent-runs/run.out.log`\n"
         ),
     )
-    raw_issue["summary"] = (
-        "Implemented by codex.\nRun log: `.agent-runs/run.out.log`"
-    )
     client = FakeIssuekitClient([raw_issue])
     ReviewApprovingRunner.calls.clear()
     _configure_registered_api(tmp_path, monkeypatch, client)

@@ -561,42 +561,22 @@ def test_api_store_errors_include_negotiation_context() -> None:
     assert "target project target" in message
 
 
-def test_api_store_issue_refs_fail_clearly_when_thread_fields_are_missing() -> None:
-    class OldThreadClient(FakeIssuekitClient):
-        def get_thread(self, thread_id: int):
-            payload = super().get_thread(thread_id)
-            payload.pop("backend_issue_ref", None)
-            payload.pop("frontend_issue_ref", None)
-            return payload
-
-    client = OldThreadClient()
-    store = ApiNegotiationStore(
-        IssuekitConfig(api_url="https://mine.example", project="target"),
-        client=client,
-    )
-    first = store.create_thread(
-        side="consumer",
-        verdict=Verdict.propose,
-        title="Initial",
-        body="Use the public endpoint.",
-        origin="source#1",
-        contract="GET /items",
-    )
-
-    with pytest.raises(WorkflowError) as excinfo:
-        store.get_issue_refs(first.thread_id)
-
-    assert excinfo.value.code == "server_schema_drift"
-    assert "issue-ref fields" in str(excinfo.value)
-
-
-def test_api_store_accepts_empty_nested_issue_refs_as_supported() -> None:
+def test_api_store_reads_only_flat_issue_refs() -> None:
     class NestedIssueRefsClient(FakeIssuekitClient):
         def get_thread(self, thread_id: int):
             payload = super().get_thread(thread_id)
             payload.pop("backend_issue_ref", None)
             payload.pop("frontend_issue_ref", None)
-            payload["issue_refs"] = {}
+            payload["issue_refs"] = {
+                "backend_issue_ref": "target#4",
+                "frontend_issue_ref": "source#8",
+            }
+            payload["adopted_issue_refs"] = {
+                "backend_issue_ref": "target#5",
+                "frontend_issue_ref": "source#9",
+            }
+            payload["backend"] = "target#6"
+            payload["frontend"] = "source#10"
             return payload
 
     client = NestedIssueRefsClient()

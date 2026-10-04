@@ -30,28 +30,9 @@ REQUIRED_API_FIELDS = {
 
 OPTIONAL_API_METADATA_FIELDS = (
     "implementation_worker",
-    "claimed",
-    "claimed_at",
-    "last_transition",
-    "last_transition_at",
-    "last_transitioned_at",
-    "updated",
     "updated_at",
-    "summary",
     "branch",
     "commit",
-    "verification",
-    "handoff_summary",
-    "handoff_branch",
-    "handoff_commit",
-    "handoff_verification",
-    "submit_summary",
-    "submit_branch",
-    "submit_commit",
-    "review_summary",
-    "review_branch",
-    "review_commit",
-    "review_verification",
 )
 
 
@@ -503,7 +484,6 @@ class ApiStore:
         return sorted(issues, key=lambda issue: (issue.id or 0, issue.ref))
 
     def _issue_from_response(self, raw: dict[str, Any]) -> Issue:
-        raw = _unwrap_issue_response(raw)
         missing = sorted(field for field in REQUIRED_API_FIELDS if field not in raw)
         if missing:
             ref = raw.get("id", "<unknown>")
@@ -606,20 +586,6 @@ def get_store(config: IssuekitConfig) -> IssueStore:
 
 def _string(value: object) -> str:
     return "" if value is None else str(value).strip()
-
-
-def _unwrap_issue_response(raw: dict[str, Any]) -> dict[str, Any]:
-    issue = raw.get("issue")
-    if not isinstance(issue, dict):
-        return raw
-    merged = dict(issue)
-    warnings = raw.get("warnings")
-    if warnings is not None and "warnings" not in merged:
-        merged["warnings"] = warnings
-    warning = raw.get("warning")
-    if warning is not None and "warning" not in merged:
-        merged["warning"] = warning
-    return merged
 
 
 def _issue_warning(raw: dict[str, Any]) -> str:

@@ -51,7 +51,6 @@ class WorkerRemovalResult:
 class WorkerClaim:
     issue: Issue
     worker: str
-    claimed: str = ""
     last_transition: str = ""
 
 
@@ -327,8 +326,6 @@ def worker_claim_dict(claim: WorkerClaim) -> dict[str, object]:
         "worker": claim.worker,
         "target_worker": issue.target_worker,
     }
-    if claim.claimed:
-        data["claimed"] = claim.claimed
     if claim.last_transition:
         data["last_transition"] = claim.last_transition
     return data
@@ -605,15 +602,7 @@ def _worker_claim(issue: Issue) -> WorkerClaim:
     return WorkerClaim(
         issue=issue,
         worker=_claim_worker(issue),
-        claimed=_first_metadata_value(issue, "claimed", "claimed_at"),
-        last_transition=_first_metadata_value(
-            issue,
-            "last_transition",
-            "last_transition_at",
-            "last_transitioned_at",
-            "updated_at",
-            "updated",
-        ),
+        last_transition=_first_metadata_value(issue, "updated_at"),
     )
 
 

@@ -812,9 +812,6 @@ def test_review_command_rejects_agent_run_without_local_changes(
             "Run log: `.agent-runs/run.out.log`\n"
         ),
     )
-    raw_issue["summary"] = (
-        "Implemented by codex.\nRun log: `.agent-runs/run.out.log`"
-    )
     client = FakeIssuekitClient([raw_issue])
     ApprovingRunner.calls.clear()
     _configure_registered_api(tmp_path, monkeypatch, client)
@@ -844,7 +841,7 @@ def test_review_command_allows_no_changes_handoff_without_local_diff(
     capsys,
 ) -> None:
     summary = (
-        "Implemented by codex via issuekit implement.\n"
+        "Handoff summary: Implemented by codex via issuekit implement.\n"
         "Run log: `.agent-runs/run.out.log`\n"
         f"{NO_IMPLEMENTATION_CHANGES_MARKER}"
     )
@@ -859,7 +856,6 @@ def test_review_command_allows_no_changes_handoff_without_local_diff(
         author="claude",
         body=f"# Issue #1: Verification-only issue\n\n## Handoff\n{summary}\n",
     )
-    raw_issue["summary"] = summary
     client = FakeIssuekitClient([raw_issue])
     ApprovingRunner.calls.clear()
     _configure_registered_api(tmp_path, monkeypatch, client)
@@ -894,14 +890,17 @@ def test_review_command_allows_handoff_evidence_without_local_diff(
         implementer="codex",
         worker="machine/demo/implementer",
         author="claude",
-        body="# Issue #1: Host operation\n\nReview the live host state.\n",
+        body=(
+            "# Issue #1: Host operation\n\n"
+            "Review the live host state.\n\n"
+            "Handoff summary: Restarted the service on host a.\n"
+            "Verification evidence: systemctl status demo.service\n"
+        ),
     )
     raw_issue.update(
         {
-            "summary": "Restarted the service on host a.",
             "branch": "main",
             "commit": "abc1234",
-            "verification": "systemctl status demo.service",
         }
     )
     client = FakeIssuekitClient([raw_issue])

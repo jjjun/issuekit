@@ -350,6 +350,14 @@ def test_claim_issue_surfaces_api_transition_error(monkeypatch) -> None:
     assert "issuekit#162 and issuekit#163" not in message
 
 
+def test_forbidden_self_implement_code_adds_server_guard_note() -> None:
+    error = WorkflowError(
+        "The server rejected this request.", code="forbidden_self_implement"
+    )
+
+    assert "server author-implementer guard (mine-py)" in str(error)
+
+
 def test_fake_claim_allows_same_name_changes_continuation() -> None:
     client = FakeIssuekitClient(
         [

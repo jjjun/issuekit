@@ -66,8 +66,6 @@ def _print_claim(claim: WorkerClaim) -> None:
     ]
     if issue.target_worker:
         parts.append(f"target_worker={issue.target_worker}")
-    if claim.claimed:
-        parts.append(f"claimed={claim.claimed}")
     if claim.last_transition:
         parts.append(f"last_transition={claim.last_transition}")
     print(f"- #{issue.id}: {issue.title} [{' '.join(parts)}] ({issue.ref})")

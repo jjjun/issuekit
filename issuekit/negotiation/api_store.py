@@ -206,7 +206,7 @@ class ApiNegotiationStore:
 
     def get_issue_refs(self, thread_id: str) -> NegotiationIssueRefs | None:
         payload = self.client.get_thread(_api_thread_id(thread_id))
-        return issue_refs_from_api(payload, require_supported=True)
+        return issue_refs_from_api(payload)
 
     def set_issue_refs(self, thread_id: str, refs: NegotiationIssueRefs) -> None:
         payload = self.client.patch_thread(
@@ -214,7 +214,7 @@ class ApiNegotiationStore:
             backend_issue_ref=refs.backend_issue_ref,
             frontend_issue_ref=refs.frontend_issue_ref,
         )
-        stored_refs = issue_refs_from_api(payload, require_supported=True)
+        stored_refs = issue_refs_from_api(payload)
         if stored_refs != refs:
             raise WorkflowError(
                 "Proposal thread response did not confirm the requested issue refs.",
@@ -371,33 +371,11 @@ def entry_from_api(raw: Any) -> NegotiationEntry:
         raise WorkflowError(str(exc), code="invalid_response") from exc
 
 
-def issue_refs_from_api(
-    raw: Any,
-    *,
-    require_supported: bool = False,
-) -> NegotiationIssueRefs | None:
+def issue_refs_from_api(raw: Any) -> NegotiationIssueRefs | None:
     if not isinstance(raw, dict):
         raise WorkflowError("Proposal thread response was not a JSON object.", code="invalid_response")
-    if isinstance(raw.get("issue_refs"), dict):
-        nested = raw["issue_refs"]
-    elif isinstance(raw.get("adopted_issue_refs"), dict):
-        nested = raw["adopted_issue_refs"]
-    else:
-        nested = None
-    if isinstance(nested, dict):
-        backend_ref = nested.get("backend_issue_ref") or nested.get("backend")
-        frontend_ref = nested.get("frontend_issue_ref") or nested.get("frontend")
-        supported = True
-    else:
-        backend_ref = raw.get("backend_issue_ref")
-        frontend_ref = raw.get("frontend_issue_ref")
-        supported = "backend_issue_ref" in raw and "frontend_issue_ref" in raw
-    if require_supported and not supported:
-        raise WorkflowError(
-            "Proposal thread response did not include issue-ref fields; upgrade the "
-            "mine-py API server before finalizing negotiation threads.",
-            code="server_schema_drift",
-        )
+    backend_ref = raw.get("backend_issue_ref")
+    frontend_ref = raw.get("frontend_issue_ref")
     if backend_ref is None and frontend_ref is None:
         return None
     if not isinstance(backend_ref, str) or not isinstance(frontend_ref, str):
