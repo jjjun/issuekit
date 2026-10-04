@@ -22,12 +22,30 @@ _SENSITIVE_DOTENV_KEYS = {
     "ISSUEKIT_API_TOKEN",
 }
 _LOADED_DOTENV_VALUES: dict[str, str] = {}
+_LOADED_DOTENV_PATHS: dict[str, Path] = {}
+_DOTENV_FILE_SIGNATURES: dict[Path, tuple[int, int] | None] = {}
 _IGNORED_DOTENV_NOTICES: set[tuple[Path, str]] = set()
 
 
 def load_dotenv(cwd: Path | str = ".") -> None:
     """Load environment variables from ``<cwd>/.env`` without overriding env."""
     dotenv_path = Path(cwd) / ".env"
+    resolved_path = dotenv_path.resolve()
+    try:
+        stat = dotenv_path.stat()
+        signature = (stat.st_mtime_ns, stat.st_size)
+    except OSError:
+        signature = None
+    previous_signature = _DOTENV_FILE_SIGNATURES.get(resolved_path)
+    if resolved_path in _DOTENV_FILE_SIGNATURES and previous_signature != signature:
+        for key, source_path in tuple(_LOADED_DOTENV_PATHS.items()):
+            if source_path != resolved_path:
+                continue
+            if os.environ.get(key) == _LOADED_DOTENV_VALUES.get(key):
+                os.environ.pop(key, None)
+            _LOADED_DOTENV_PATHS.pop(key, None)
+            _LOADED_DOTENV_VALUES.pop(key, None)
+    _DOTENV_FILE_SIGNATURES[resolved_path] = signature
     try:
         lines = dotenv_path.read_text(encoding="utf-8").splitlines()
     except FileNotFoundError:
@@ -54,6 +72,7 @@ def load_dotenv(cwd: Path | str = ".") -> None:
             continue
         os.environ[key] = value
         _LOADED_DOTENV_VALUES[key] = value
+        _LOADED_DOTENV_PATHS[key] = resolved_path
         if key in _SENSITIVE_DOTENV_KEYS:
             print(
                 f"Notice: loaded {key} from repo-local dotenv file {dotenv_path}.",

@@ -23,8 +23,12 @@ def register(server: FastMCP, rt: McpRuntime) -> None:
         project: str | None = None,
         ctx: Context | None = None,
     ) -> list[dict[str, Any]]:
-        async with rt.api_config(ctx) as (config, _config_root):
-            return list_api_workers(config, repo_id=repo_id, project=project)
+        return await rt.run_api_config(
+            ctx,
+            lambda config, _config_root: list_api_workers(
+                config, repo_id=repo_id, project=project
+            ),
+        )
 
     if rt.allow_overrides:
         @server.tool(
@@ -38,9 +42,11 @@ def register(server: FastMCP, rt: McpRuntime) -> None:
             force: bool = False,
             ctx: Context | None = None,
         ) -> dict[str, Any]:
-            async with rt.api_config(ctx) as (config, _config_root):
+            def remove(config, _config_root):
                 result = remove_api_worker(config, address, force=force)
-            return result.to_dict()
+                return result.to_dict()
+
+            return await rt.run_api_config(ctx, remove, mutating=True)
 
         @server.tool(
             description=(
@@ -52,9 +58,11 @@ def register(server: FastMCP, rt: McpRuntime) -> None:
             repo: str,
             ctx: Context | None = None,
         ) -> dict[str, Any]:
-            async with rt.api_config(ctx) as (config, _config_root):
+            def remove(config, _config_root):
                 result = remove_api_repo(config, repo)
-            return result.to_dict()
+                return result.to_dict()
+
+            return await rt.run_api_config(ctx, remove, mutating=True)
 
     @server.tool(
         description=(
@@ -63,6 +71,8 @@ def register(server: FastMCP, rt: McpRuntime) -> None:
         )
     )
     async def list_project_profiles(ctx: Context | None = None) -> list[dict[str, Any]]:
-        async with rt.api_config(ctx) as (config, _config_root):
+        def list_profiles(config, _config_root):
             with api_client(config) as client:
                 return client.list_project_profiles()
+
+        return await rt.run_api_config(ctx, list_profiles)

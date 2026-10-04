@@ -6,7 +6,6 @@ from typing import Any
 
 from mcp.server.fastmcp import Context, FastMCP
 
-from issuekit.config import load_config
 from issuekit.mcp.runtime import McpRuntime, _health_status
 from issuekit.prompts.protocol import render_protocol
 
@@ -32,6 +31,9 @@ def register(server: FastMCP, rt: McpRuntime) -> None:
         role: str | None = None,
         ctx: Context | None = None,
     ) -> str:
-        config_root = await rt.config_root(ctx)
-        config = load_config(config_root)
-        return render_protocol(agent, role=role, agent_roles=config.agent_roles)
+        return await rt.run_config(
+            ctx,
+            lambda config, _config_root: render_protocol(
+                agent, role=role, agent_roles=config.agent_roles
+            ),
+        )

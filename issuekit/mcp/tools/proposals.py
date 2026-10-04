@@ -38,7 +38,7 @@ def register(server: FastMCP, rt: McpRuntime) -> None:
         agent: str | None = None,
         ctx: Context | None = None,
     ) -> dict[str, Any]:
-        async with rt.api_config(ctx) as (config, config_root):
+        def send(config, config_root):
             outcome = propose_with_guard(
                 config_root,
                 config,
@@ -53,21 +53,24 @@ def register(server: FastMCP, rt: McpRuntime) -> None:
                 author_agent=agent,
                 session=MCP_SESSION,
             )
-        sent = outcome.sent
-        if outcome.mismatched:
-            return {**sent, "ok": False}
-        if outcome.deduplicated:
+            sent = outcome.sent
+            if outcome.mismatched:
+                return {**sent, "ok": False}
+            if outcome.deduplicated:
+                return sent
+            guard = outcome.guard
+            sent = dict(sent)
+            sent["authorGuard"] = guard_dict(guard)
+            sent["stop"] = stop_message(guard)
             return sent
-        guard = outcome.guard
-        sent = dict(sent)
-        sent["authorGuard"] = guard_dict(guard)
-        sent["stop"] = stop_message(guard)
-        return sent
+
+        return await rt.run_api_config(ctx, send, mutating=True)
 
     @server.tool(description="List incoming cross-repository proposals.")
     async def list_incoming(ctx: Context | None = None) -> list[dict[str, Any]]:
-        async with rt.api_config(ctx) as (config, _config_root):
-            return list_incoming_proposals(config)
+        return await rt.run_api_config(
+            ctx, lambda config, _config_root: list_incoming_proposals(config)
+        )
 
     @server.tool(
         description=(
@@ -80,8 +83,12 @@ def register(server: FastMCP, rt: McpRuntime) -> None:
         status: str | None = None,
         ctx: Context | None = None,
     ) -> list[dict[str, Any]]:
-        async with rt.api_config(ctx) as (config, _config_root):
-            return list_outgoing_proposals(config, to=to, status=status)
+        return await rt.run_api_config(
+            ctx,
+            lambda config, _config_root: list_outgoing_proposals(
+                config, to=to, status=status
+            ),
+        )
 
     @server.tool(description="Adopt an incoming proposal as a local active issue.")
     async def adopt_proposal(
@@ -90,13 +97,15 @@ def register(server: FastMCP, rt: McpRuntime) -> None:
         append: str | None = None,
         ctx: Context | None = None,
     ) -> dict[str, Any]:
-        async with rt.api_config(ctx) as (config, _config_root):
+        def adopt(config, _config_root):
             return adopt_proposal_with_append(
                 config,
                 proposal_id,
                 priority=priority,
                 append_text=append,
             )
+
+        return await rt.run_api_config(ctx, adopt, mutating=True)
 
     @server.tool(
         description=(
@@ -110,8 +119,13 @@ def register(server: FastMCP, rt: McpRuntime) -> None:
         to: str | None = None,
         ctx: Context | None = None,
     ) -> dict[str, Any]:
-        async with rt.api_config(ctx) as (config, _config_root):
-            return discard_proposal_service(config, proposal_id, to=to)
+        return await rt.run_api_config(
+            ctx,
+            lambda config, _config_root: discard_proposal_service(
+                config, proposal_id, to=to
+            ),
+            mutating=True,
+        )
 
     @server.tool(
         description=(
@@ -125,13 +139,15 @@ def register(server: FastMCP, rt: McpRuntime) -> None:
         worker: str | None = None,
         ctx: Context | None = None,
     ) -> dict[str, Any]:
-        async with rt.api_config(ctx) as (config, _config_root):
+        def create_check(config, _config_root):
             return request_proposal_check(
                 config,
                 to=to,
                 proposal_id=proposal_id,
                 worker=worker,
             )
+
+        return await rt.run_api_config(ctx, create_check, mutating=True)
 
     @server.tool(
         description=(
@@ -147,10 +163,12 @@ def register(server: FastMCP, rt: McpRuntime) -> None:
     ) -> list[dict[str, Any]]:
         if status not in (None, "pending", "answered"):
             raise ValueError("status must be pending or answered.")
-        async with rt.api_config(ctx) as (config, _config_root):
-            return list_worker_proposal_checks(
+        return await rt.run_api_config(
+            ctx,
+            lambda config, _config_root: list_worker_proposal_checks(
                 config,
                 status=status,
                 limit=limit,
                 offset=offset,
-            )
+            ),
+        )

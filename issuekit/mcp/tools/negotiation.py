@@ -28,7 +28,7 @@ def register(server: FastMCP, rt: McpRuntime) -> None:
             raise ValueError(
                 "status must be negotiating, agreed, blocked, or cancelled."
             )
-        async with rt.api_config(ctx) as (config, _config_root):
+        def list_threads(config, _config_root):
             with get_negotiation_store(config, use_mock=mock) as store:
                 if thread_id:
                     return load_thread_inspection(store, thread_id).to_dict()
@@ -37,3 +37,5 @@ def register(server: FastMCP, rt: McpRuntime) -> None:
                     summary.to_dict()
                     for summary in store.list_threads(status=thread_status)
                 ]
+
+        return await rt.run_api_config(ctx, list_threads)

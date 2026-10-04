@@ -23,11 +23,13 @@ from issuekit.workflow import reclaim_issue as workflow_reclaim_issue
 def register(server: FastMCP, rt: McpRuntime) -> None:
     @server.tool(description="Read one active or completed issue by id.")
     async def get_issue(id: int, ctx: Context | None = None) -> dict[str, Any]:
-        async with rt.api_store(ctx) as (config, _config_root, store):
+        def get(config, _config_root, store):
             issue = store.get_issue(id)
-        if issue is None:
-            return {"status": "none", "id": id}
-        return issue_dict(issue, include_body=True)
+            if issue is None:
+                return {"status": "none", "id": id}
+            return issue_dict(issue, include_body=True)
+
+        return await rt.run_api_store(ctx, get)
 
     async def update_issue_impl(
         id: int,
@@ -41,7 +43,7 @@ def register(server: FastMCP, rt: McpRuntime) -> None:
     ) -> dict[str, Any]:
         if body is not None and append is not None:
             raise ValueError("body and append are mutually exclusive.")
-        async with rt.api_store(ctx) as (config, _config_root, store):
+        def update(config, _config_root, store):
             issue = edit_issue(
                 id,
                 title=title,
@@ -53,7 +55,9 @@ def register(server: FastMCP, rt: McpRuntime) -> None:
                 config=config,
                 store=store,
             )
-        return issue_dict(issue, include_body=True)
+            return issue_dict(issue, include_body=True)
+
+        return await rt.run_api_store(ctx, update, mutating=True)
 
     update_description = "Edit an API-backed issue title, body, appended text, or priority."
 
@@ -113,12 +117,14 @@ def register(server: FastMCP, rt: McpRuntime) -> None:
         with_body: bool = False,
         ctx: Context | None = None,
     ) -> list[dict[str, Any]]:
-        async with rt.api_store(ctx) as (config, _config_root, store):
+        def list_issues(config, _config_root, store):
             validate_queue_stage(stage, config)
             return [
                 issue_dict(issue, include_body=with_body)
                 for issue in find_for(assignee, stage=stage, config=config, store=store)
             ]
+
+        return await rt.run_api_store(ctx, list_issues)
 
     @server.tool(
         description=(
@@ -131,9 +137,11 @@ def register(server: FastMCP, rt: McpRuntime) -> None:
         stale_after_sec: float = DEFAULT_STALE_AFTER_SEC,
         ctx: Context | None = None,
     ) -> list[dict[str, Any]]:
-        async with rt.api_config(ctx) as (config, _config_root):
+        def list_claims(config, _config_root):
             claims = list_stale_claims(config, stale_after_sec=stale_after_sec)
-        return [stale_claim_dict(claim) for claim in claims]
+            return [stale_claim_dict(claim) for claim in claims]
+
+        return await rt.run_api_config(ctx, list_claims)
 
     async def reclaim_issue_impl(
         id: int,
@@ -142,7 +150,7 @@ def register(server: FastMCP, rt: McpRuntime) -> None:
         reason: str | None = None,
         ctx: Context | None = None,
     ) -> dict[str, Any]:
-        async with rt.api_config(ctx) as (config, _config_root):
+        def reclaim(config, _config_root):
             result = workflow_reclaim_issue(
                 id,
                 force=force,
@@ -150,7 +158,9 @@ def register(server: FastMCP, rt: McpRuntime) -> None:
                 reason=reason,
                 config=config,
             )
-        return result.to_dict()
+            return result.to_dict()
+
+        return await rt.run_api_config(ctx, reclaim, mutating=True)
 
     reclaim_description = (
         "Return an orphaned or stale implementing claim to the implement pool. "
@@ -200,13 +210,15 @@ def register(server: FastMCP, rt: McpRuntime) -> None:
         reason: str | None = None,
         ctx: Context | None = None,
     ) -> dict[str, Any]:
-        async with rt.api_config(ctx) as (config, _config_root):
+        def readdress(config, _config_root):
             result = workflow_readdress_issue(
                 id,
                 reason=reason,
                 config=config,
             )
-        return result.to_dict()
+            return result.to_dict()
+
+        return await rt.run_api_config(ctx, readdress, mutating=True)
 
     async def dispatch_issue_impl(
         id: int,
@@ -216,7 +228,7 @@ def register(server: FastMCP, rt: McpRuntime) -> None:
         allow_unregistered_worker: bool = False,
         ctx: Context | None = None,
     ) -> dict[str, Any]:
-        async with rt.api_store(ctx) as (config, _config_root, store):
+        def dispatch(config, _config_root, store):
             issue = issue_dispatch(
                 id,
                 target_worker=target_worker,
@@ -226,9 +238,11 @@ def register(server: FastMCP, rt: McpRuntime) -> None:
                 config=config,
                 store=store,
             )
-        output = issue_dict(issue)
-        output["target_worker"] = issue.target_worker
-        return output
+            output = issue_dict(issue)
+            output["target_worker"] = issue.target_worker
+            return output
+
+        return await rt.run_api_store(ctx, dispatch, mutating=True)
 
     dispatch_description = (
         "Direct an issue to a registered worker; use readdress_issue to return "

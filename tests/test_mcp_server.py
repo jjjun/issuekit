@@ -2,6 +2,8 @@ import asyncio
 import hashlib
 import json
 import os
+import subprocess
+import threading
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -2508,3 +2510,246 @@ def test_cli_proposal_json_matches_mcp_output(fake_api, tmp_path: Path, monkeypa
     cli.main(["adopt", str(cli_incoming[0]["id"]), "--json"])
     cli_adopted = json.loads(capsys.readouterr().out)
     assert cli_adopted["title"] == "Parity"
+
+
+def test_mcp_reuses_root_and_config_without_git_or_toml_work(
+    fake_api, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from issuekit.config import local as config_local
+    from issuekit.config import refs as config_refs
+    from issuekit.config import root as config_root
+    from issuekit.config import sources as config_sources
+
+    client = FakeIssuekitClient([api_issue(1, "Cached")])
+    (tmp_path / ".git").mkdir()
+    configure_api(tmp_path, monkeypatch, fake_api, client, chdir=False)
+    server = create_server(tmp_path)
+    subprocess_calls: list[object] = []
+    toml_calls: list[Path] = []
+    real_subprocess_run = subprocess.run
+
+    def count_subprocess_run(*args, **kwargs):
+        subprocess_calls.append(args[0])
+        return real_subprocess_run(*args, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", count_subprocess_run)
+    for module in (
+        config_local,
+        config_refs,
+        config_root,
+        config_sources,
+        mcp_runtime,
+    ):
+        load_toml = module.load_toml
+
+        def count_load_toml(path: Path, load_toml=load_toml):
+            toml_calls.append(path)
+            return load_toml(path)
+
+        monkeypatch.setattr(module, "load_toml", count_load_toml)
+
+    assert _call(server, "get_issue", {"id": 1})["title"] == "Cached"
+    first_subprocess_count = len(subprocess_calls)
+    first_toml_count = len(toml_calls)
+    assert first_subprocess_count > 0
+    assert first_toml_count > 0
+
+    assert _call(server, "get_issue", {"id": 1})["title"] == "Cached"
+    assert len(subprocess_calls) == first_subprocess_count
+    assert len(toml_calls) == first_toml_count
+
+
+@pytest.mark.parametrize(
+    "config_input",
+    (
+        "issuekit.local.toml",
+        "pyproject.toml",
+        "issuekit.toml",
+        ".env",
+        "machine.toml",
+    ),
+)
+def test_mcp_config_cache_reloads_after_each_input_changes(
+    config_input: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    issuekit_path = tmp_path / "issuekit.toml"
+    issuekit_path.write_text("project = 'demo'\n", encoding="utf-8", newline="\n")
+    monkeypatch.setenv("ISSUEKIT_API_URL", "https://mine.example")
+    monkeypatch.delenv("ISSUEKIT_PROJECT", raising=False)
+    machine_path = tmp_path / "machine.toml"
+    machine_path.write_text("trusted_api_origins = []\n", encoding="utf-8", newline="\n")
+    monkeypatch.setenv("ISSUEKIT_CONFIG", str(machine_path))
+
+    if config_input == "issuekit.local.toml":
+        path = tmp_path / config_input
+        path.write_text("[refs]\n", encoding="utf-8", newline="\n")
+        updated = "[refs]\n"
+    elif config_input == "pyproject.toml":
+        path = tmp_path / config_input
+        path.write_text(
+            "[tool.issuekit]\nproject = 'first'\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        updated = "[tool.issuekit]\nproject = 'second'\n"
+    elif config_input == "issuekit.toml":
+        path = issuekit_path
+        path.write_text("project = 'first'\n", encoding="utf-8", newline="\n")
+        updated = "project = 'second'\n"
+    elif config_input == ".env":
+        path = tmp_path / config_input
+        path.write_text("ISSUEKIT_PROJECT=first\n", encoding="utf-8", newline="\n")
+        updated = "ISSUEKIT_PROJECT=second\n"
+    else:
+        path = machine_path
+        updated = "trusted_api_origins = ['https://mine.example']\n"
+
+    real_load_config = mcp_runtime.load_config
+    load_config_calls = 0
+
+    def count_load_config(root: Path):
+        nonlocal load_config_calls
+        load_config_calls += 1
+        return real_load_config(root)
+
+    monkeypatch.setattr(mcp_runtime, "load_config", count_load_config)
+    first_config, _ = asyncio.run(mcp_runtime._load_api_config(tmp_path))
+    assert load_config_calls == 1
+
+    previous_stat = path.stat()
+    path.write_text(updated, encoding="utf-8", newline="\n")
+    os.utime(path, ns=(previous_stat.st_atime_ns, previous_stat.st_mtime_ns + 1_000_000_000))
+    second_config, _ = asyncio.run(mcp_runtime._load_api_config(tmp_path))
+
+    assert load_config_calls == 2
+    if config_input in {".env", "issuekit.toml", "pyproject.toml"}:
+        assert second_config.project == "second"
+    elif config_input == "machine.toml":
+        assert second_config.trusted_api_origins == ("https://mine.example",)
+    else:
+        assert first_config == second_config
+
+
+def test_mcp_root_cache_tracks_config_candidate_appearance_and_removal(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from issuekit.config import root as config_root
+
+    repo_root = tmp_path / "repo"
+    nested_root = repo_root / "nested"
+    (repo_root / ".git").mkdir(parents=True)
+    nested_root.mkdir()
+    monkeypatch.delenv("ISSUEKIT_API_URL", raising=False)
+    monkeypatch.setenv("ISSUEKIT_CONFIG", "")
+    git_calls = 0
+
+    def git_root(_path: Path) -> Path:
+        nonlocal git_calls
+        git_calls += 1
+        return repo_root
+
+    monkeypatch.setattr(config_root, "git_root", git_root)
+    monkeypatch.setattr(mcp_runtime, "git_root", git_root)
+
+    assert asyncio.run(mcp_runtime._resolve_config_root(nested_root)) == nested_root
+    first_git_count = git_calls
+    assert asyncio.run(mcp_runtime._resolve_config_root(nested_root)) == nested_root
+    assert git_calls == first_git_count
+
+    config_path = repo_root / "issuekit.toml"
+    config_path.write_text("project = 'demo'\n", encoding="utf-8", newline="\n")
+    assert asyncio.run(mcp_runtime._resolve_config_root(nested_root)) == repo_root
+
+    config_path.unlink()
+    assert asyncio.run(mcp_runtime._resolve_config_root(nested_root)) == nested_root
+
+
+def test_blocked_mcp_tool_does_not_block_a_read_only_tool(
+    fake_api, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client = FakeIssuekitClient([api_issue(1, "Blocked"), api_issue(2, "Available")])
+    configure_api(tmp_path, monkeypatch, fake_api, client, chdir=False)
+    server = create_server(tmp_path)
+    entered = threading.Event()
+    release = threading.Event()
+    get_issue = client.get_issue
+
+    def blocked_get_issue(issue_id: int):
+        if issue_id == 1:
+            entered.set()
+            release.wait(2)
+        return get_issue(issue_id)
+
+    monkeypatch.setattr(client, "get_issue", blocked_get_issue)
+
+    async def run() -> object:
+        blocked = asyncio.create_task(server.call_tool("get_issue", {"id": 1}))
+        try:
+            assert await asyncio.to_thread(entered.wait, 1)
+            return await asyncio.wait_for(server.call_tool("list_queue", {}), 1)
+        finally:
+            release.set()
+            await blocked
+
+    assert asyncio.run(run()) is not None
+
+
+def test_mcp_mutating_calls_are_serialized_per_config_root(
+    fake_api, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from issuekit.mcp.tools import issues as mcp_issues
+
+    client = FakeIssuekitClient([api_issue(1, "First"), api_issue(2, "Second")])
+    configure_api(tmp_path, monkeypatch, fake_api, client, chdir=False)
+    server = create_server(tmp_path)
+    first_entered = threading.Event()
+    second_entered = threading.Event()
+    release_first = threading.Event()
+    state_lock = threading.Lock()
+    active_calls = 0
+    max_active_calls = 0
+    call_count = 0
+    edit_issue = mcp_issues.edit_issue
+
+    def track_edit(*args, **kwargs):
+        nonlocal active_calls, max_active_calls, call_count
+        with state_lock:
+            call_count += 1
+            call_number = call_count
+            active_calls += 1
+            max_active_calls = max(max_active_calls, active_calls)
+        if call_number == 1:
+            first_entered.set()
+            release_first.wait(2)
+        else:
+            second_entered.set()
+        try:
+            return edit_issue(*args, **kwargs)
+        finally:
+            with state_lock:
+                active_calls -= 1
+
+    monkeypatch.setattr(mcp_issues, "edit_issue", track_edit)
+
+    async def run() -> bool:
+        first = asyncio.create_task(
+            server.call_tool("update_issue", {"id": 1, "title": "First updated"})
+        )
+        try:
+            assert await asyncio.to_thread(first_entered.wait, 1)
+            second = asyncio.create_task(
+                server.call_tool("update_issue", {"id": 2, "title": "Second updated"})
+            )
+            overlapped = await asyncio.to_thread(second_entered.wait, 0.1)
+            release_first.set()
+            await asyncio.gather(first, second)
+            return overlapped
+        finally:
+            release_first.set()
+
+    assert asyncio.run(run()) is False
+    assert second_entered.is_set()
+    assert max_active_calls == 1

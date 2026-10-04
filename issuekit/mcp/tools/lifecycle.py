@@ -24,7 +24,7 @@ def register(server: FastMCP, rt: McpRuntime) -> None:
         no_sync: bool = False,
         ctx: Context | None = None,
     ) -> dict[str, Any]:
-        async with rt.api_store(ctx) as (config, config_root, store):
+        def claim(config, config_root, store):
             resolved_assignee = require_implementer(
                 assignee,
                 config,
@@ -41,9 +41,11 @@ def register(server: FastMCP, rt: McpRuntime) -> None:
                 no_sync=no_sync,
                 session=MCP_SESSION,
             )
-        if issue is None:
-            return {"status": "none", "assignee": resolved_assignee}
-        return issue_dict(issue, include_body=True)
+            if issue is None:
+                return {"status": "none", "assignee": resolved_assignee}
+            return issue_dict(issue, include_body=True)
+
+        return await rt.run_api_store(ctx, claim, mutating=True)
 
     claim_description = (
         "Implementer protocol step 1: claim the next task, then implement and call "
@@ -91,7 +93,7 @@ def register(server: FastMCP, rt: McpRuntime) -> None:
         allow_any_branch: bool = False,
         ctx: Context | None = None,
     ) -> dict[str, Any]:
-        async with rt.api_store(ctx) as (config, config_root, store):
+        def submit(config, config_root, store):
             issue = workflow_submit_for_review(
                 id,
                 summary=summary,
@@ -105,7 +107,9 @@ def register(server: FastMCP, rt: McpRuntime) -> None:
                 allow_any_branch=allow_any_branch,
                 session=MCP_SESSION,
             )
-        return issue_dict(issue)
+            return issue_dict(issue)
+
+        return await rt.run_api_store(ctx, submit, mutating=True)
 
     submit_description = (
         "Implementation protocol step 2: submit an implemented task for reviewer "
@@ -163,15 +167,17 @@ def register(server: FastMCP, rt: McpRuntime) -> None:
         reviewer: str | None = None,
         ctx: Context | None = None,
     ) -> dict[str, Any]:
-        async with rt.api_store(ctx) as (config, _config_root, store):
+        def get_review(config, _config_root, store):
             issue = workflow_next_review(reviewer, config=config, store=store)
-        if issue is None:
-            return {
-                "status": "none",
-                "assignee": reviewer or None,
-                "stage": "review",
-            }
-        return issue_dict(issue, include_body=True)
+            if issue is None:
+                return {
+                    "status": "none",
+                    "assignee": reviewer or None,
+                    "stage": "review",
+                }
+            return issue_dict(issue, include_body=True)
+
+        return await rt.run_api_store(ctx, get_review)
 
     @server.tool(
         description="Reviewer protocol decision: return a review issue to its implementer with notes."
@@ -183,7 +189,7 @@ def register(server: FastMCP, rt: McpRuntime) -> None:
         assignee: str | None = None,
         ctx: Context | None = None,
     ) -> dict[str, Any]:
-        async with rt.api_store(ctx) as (config, _config_root, store):
+        def request(config, _config_root, store):
             issue = workflow_request_changes(
                 id,
                 notes=notes,
@@ -193,7 +199,9 @@ def register(server: FastMCP, rt: McpRuntime) -> None:
                 store=store,
                 session=MCP_SESSION,
             )
-        return issue_dict(issue)
+            return issue_dict(issue)
+
+        return await rt.run_api_store(ctx, request, mutating=True)
 
     @server.tool(
         description="Reviewer protocol decision: approve a reviewed issue and move it to completed."
@@ -204,7 +212,7 @@ def register(server: FastMCP, rt: McpRuntime) -> None:
         reviewer: str | None = None,
         ctx: Context | None = None,
     ) -> dict[str, Any]:
-        async with rt.api_store(ctx) as (config, _config_root, store):
+        def approve_task(config, _config_root, store):
             issue = approve_issue(
                 id,
                 verification=verification,
@@ -213,4 +221,6 @@ def register(server: FastMCP, rt: McpRuntime) -> None:
                 store=store,
                 session=MCP_SESSION,
             )
-        return issue_dict(issue)
+            return issue_dict(issue)
+
+        return await rt.run_api_store(ctx, approve_task, mutating=True)
