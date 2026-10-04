@@ -6,7 +6,6 @@ import re
 from pathlib import Path
 from typing import Any
 
-import issuekit.proposals.api as proposals_api
 from issuekit.commands._common import print_json
 from issuekit.commands.request.output import print_status_record
 from issuekit.commands.request.state import (
@@ -16,6 +15,7 @@ from issuekit.commands.request.state import (
     status_record,
 )
 from issuekit.config import IssuekitConfig
+from issuekit.proposals.service import list_incoming_proposals
 
 REPLY_TITLE_PATTERN = re.compile(
     r"^Re:\s*(?P<project>[A-Za-z0-9_.-]+)#(?P<id>[1-9][0-9]*):\s*(?P<title>.*)$"
@@ -94,8 +94,7 @@ def inbox_questions(
     matched: list[dict[str, Any]] = []
     unmatched: list[dict[str, Any]] = []
     by_ref = targets_by_proposal_ref(state)
-    with proposals_api.api_client(config) as client:
-        proposals = client.list_proposals(status="pending")
+    proposals = list_incoming_proposals(config)
     for proposal in proposals:
         title = str(proposal.get("title") or "")
         match = REPLY_TITLE_PATTERN.match(title)

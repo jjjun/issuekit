@@ -9,7 +9,7 @@ from pathlib import Path
 from issuekit.commands._common import print_json, run_command
 from issuekit.commands._heartbeat import warn_if_staleness_not_wider
 from issuekit.config import load_config
-from issuekit.core import issue_dict, worker_display_from_row
+from issuekit.core import worker_display_from_row
 from issuekit.errors import WorkflowError
 from issuekit.workers.registry import (
     WorkerListingError,
@@ -120,7 +120,7 @@ def run_remove(args) -> int:
         config = load_config(Path.cwd())
         result = remove_api_worker(config, args.address, force=args.force)
         if args.json:
-            print_json(worker_removal_result_dict(result))
+            print_json(result.to_dict())
             return 0
         _print_removal_result(result)
         return 0
@@ -170,18 +170,6 @@ def run_prune(args) -> int:
         action,
         errors=(WorkerListingError, WorkerRemovalError, WorkflowError, ValueError),
     )
-
-
-def worker_removal_result_dict(result: WorkerRemovalResult) -> dict[str, object]:
-    return {
-        "worker": result.worker,
-        "display": worker_display_from_row(result.worker),
-        "deleted": result.deleted,
-        "implementing_issues": [
-            issue_dict(issue) | {"worker": issue.worker}
-            for issue in result.implementing_issues
-        ],
-    }
 
 
 def worker_prune_result_dict(result: WorkerPruneResult) -> dict[str, object]:

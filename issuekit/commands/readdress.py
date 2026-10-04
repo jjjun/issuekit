@@ -7,7 +7,7 @@ from pathlib import Path
 
 from issuekit.commands._common import print_json, run_command
 from issuekit.config import load_config
-from issuekit.core import issue_dict, parse_issue_id_arg
+from issuekit.core import parse_issue_id_arg
 from issuekit.errors import WorkflowError
 from issuekit.workflow import ReaddressResult, readdress_issue
 
@@ -32,30 +32,12 @@ def run(args) -> int:
         config = load_config(Path.cwd())
         result = readdress_issue(issue_id, reason=args.reason, config=config)
         if args.json:
-            print_json(readdress_result_dict(result))
+            print_json(result.to_dict())
             return 0
         _print_result(result)
         return 0
 
     return run_command(action, errors=(WorkflowError, ValueError))
-
-
-def readdress_result_dict(result: ReaddressResult) -> dict[str, object]:
-    issue = issue_dict(result.issue)
-    return {
-        "id": result.issue.id,
-        "ref": result.issue.ref,
-        "title": result.issue.title,
-        "previous": {
-            "target_worker": result.previous.target_worker,
-            "stage": result.previous.stage,
-            "assignee": result.previous.assignee,
-        },
-        "expected_target_worker": result.expected_target_worker,
-        "actor": result.actor,
-        "audit_reason": result.audit_reason,
-        "issue": issue,
-    }
 
 
 def _print_result(result: ReaddressResult) -> None:

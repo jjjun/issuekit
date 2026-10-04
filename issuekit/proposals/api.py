@@ -217,7 +217,7 @@ def adopt_proposal_with_append(
                 )
                 raise ProposalAppendError(message, outcome=outcome, append_error=message)
             try:
-                from issuekit.commands.edit import edit_issue
+                from issuekit.issues.service import edit_issue
                 from issuekit.store import ApiStore
 
                 issue = _append_and_verify_adopted_issue(
@@ -355,9 +355,12 @@ def auto_adopt_incoming_proposals(
     policy = config.triage
     if not policy.trusted_origins:
         return []
+    from issuekit.proposals.service import list_incoming_proposals
+
+    pending = list_incoming_proposals(config)
     adopted: list[dict] = []
     with api_client(config) as client:
-        for proposal in client.list_proposals(status="pending"):
+        for proposal in pending:
             if len(adopted) >= policy.max_adoptions_per_cycle:
                 break
             if not matches_triage_policy(proposal, config):

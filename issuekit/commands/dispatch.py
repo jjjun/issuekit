@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 import argparse
-from contextlib import nullcontext
 from pathlib import Path
 
 from issuekit.commands._common import print_json, run_command
-from issuekit.config import IssuekitConfig, load_config
-from issuekit.core import Issue, issue_dict, parse_issue_id_arg
+from issuekit.config import load_config
+from issuekit.core import issue_dict, parse_issue_id_arg
 from issuekit.errors import WorkflowError
-from issuekit.workers.addressing import target_worker_repo_id, validate_target_worker
+from issuekit.issues.service import dispatch_issue
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:
@@ -60,41 +59,3 @@ def run(args) -> int:
         return 0
 
     return run_command(action, errors=(WorkflowError, ValueError))
-
-
-def dispatch_issue(
-    issue_id: int,
-    *,
-    target_worker: str,
-    assignee: str | None = None,
-    stage: str | None = None,
-    allow_unregistered_worker: bool = False,
-    config: IssuekitConfig | None = None,
-    store=None,
-) -> Issue:
-    config = config or IssuekitConfig()
-    if stage is not None and stage not in {"todo", "planned"}:
-        raise WorkflowError(
-            "Dispatch stage must be todo or planned.",
-            code="invalid_stage",
-        )
-    from issuekit.store import get_store
-
-    manager = get_store(config) if store is None else nullcontext(store)
-    with manager as active_store:
-        workers = active_store.list_workers(
-            repo_id=target_worker_repo_id(target_worker),
-            project=config.project,
-        )
-        validated_target = validate_target_worker(
-            target_worker,
-            config=config,
-            workers=workers,
-            allow_unregistered=allow_unregistered_worker,
-        )
-        return active_store.dispatch_issue(
-            issue_id,
-            target_worker=validated_target,
-            assignee=assignee,
-            stage=stage,
-        )

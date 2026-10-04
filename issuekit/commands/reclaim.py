@@ -7,7 +7,7 @@ from pathlib import Path
 
 from issuekit.commands._common import print_json, run_command
 from issuekit.config import load_config
-from issuekit.core import issue_dict, parse_issue_id_arg
+from issuekit.core import parse_issue_id_arg
 from issuekit.errors import WorkflowError
 from issuekit.issues.orphans import DEFAULT_STALE_AFTER_SEC
 from issuekit.workers.registry import WorkerListingError
@@ -54,7 +54,7 @@ def run(args) -> int:
             config=config,
         )
         if args.json:
-            print_json(reclaim_result_dict(result))
+            print_json(result.to_dict())
             return 0
         _print_result(result)
         return 0
@@ -63,26 +63,6 @@ def run(args) -> int:
         action,
         errors=(WorkerListingError, WorkflowError, ValueError),
     )
-
-
-def reclaim_result_dict(result: ReclaimResult) -> dict[str, object]:
-    issue = issue_dict(result.issue)
-    issue["worker"] = result.issue.worker
-    return {
-        "id": result.issue.id,
-        "ref": result.issue.ref,
-        "title": result.issue.title,
-        "previous": {
-            "assignee": result.previous.assignee,
-            "worker": result.previous.worker,
-            "stage": result.previous.stage,
-        },
-        "expected_worker": result.expected_worker,
-        "actor": result.actor,
-        "reason": result.reason,
-        "audit_reason": result.audit_reason,
-        "issue": issue,
-    }
 
 
 def _print_result(result: ReclaimResult) -> None:

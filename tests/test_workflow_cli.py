@@ -4,11 +4,10 @@ from pathlib import Path
 import pytest
 
 from issuekit import cli
-from issuekit.commands.approve import approve_issue
-from issuekit.commands.complete import complete_issue
 from issuekit.config import IssuekitConfig
 from issuekit.errors import WorkflowError
 from issuekit.guards.author import read_author_guards
+from issuekit.issues.service import approve_issue, complete_issue
 from issuekit.testing import FakeIssuekitClient
 from tests.issue_helpers import api_issue
 

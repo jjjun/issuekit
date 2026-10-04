@@ -56,6 +56,7 @@ from issuekit.proposals.api import (
     matches_triage_policy,
     send_proposal,
 )
+from issuekit.proposals.service import list_incoming_proposals
 
 _DECISIONS = {"adopt", "adopt_and_reply", "reply", "discard"}
 _DECISION_FIELD = {
@@ -174,8 +175,7 @@ def run_triage_author_cycle(
     evaluated = 0
     limit = config.triage.max_adoptions_per_cycle
 
-    with api_client(config) as client:
-        pending = client.list_proposals(status="pending")
+    pending = list_incoming_proposals(config)
 
     for proposal in pending:
         if abort_event is not None and abort_event.is_set():

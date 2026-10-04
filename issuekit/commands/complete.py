@@ -6,14 +6,13 @@ import argparse
 from pathlib import Path
 
 from issuekit.commands._common import run_command
-from issuekit.config import IssuekitConfig, load_config
+from issuekit.config import load_config
 from issuekit.core import (
-    Issue,
     parse_issue_id_arg,
 )
 from issuekit.errors import WorkflowError
-from issuekit.inputs import active_issue_not_found, require_ascii, resolve_text
-from issuekit.store import managed_issue_store
+from issuekit.inputs import active_issue_not_found, resolve_text
+from issuekit.issues.service import complete_issue
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:
@@ -77,32 +76,3 @@ def run(args) -> int:
         errors=(OSError, UnicodeError, ValueError, WorkflowError),
         lookup_error=lambda _exc: active_issue_not_found(issue_id),
     )
-
-
-def complete_issue(
-    issue_id: int,
-    *,
-    summary: str = "",
-    verification: str = "",
-    force: bool = False,
-    config: IssuekitConfig | None = None,
-    store=None,
-    agent_model: str | None = None,
-    agent_reasoning_effort: str | None = None,
-) -> Issue:
-    require_ascii(
-        summary,
-        verification,
-        message="--summary and --verification must be ASCII-only.",
-    )
-
-    config = config or IssuekitConfig()
-    with managed_issue_store(config, store) as active_store:
-        return active_store.complete_issue(  # type: ignore[attr-defined]
-            issue_id,
-            summary=summary,
-            verification=verification,
-            force=force,
-            agent_model=agent_model,
-            agent_reasoning_effort=agent_reasoning_effort,
-        )

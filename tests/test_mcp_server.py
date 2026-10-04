@@ -525,7 +525,7 @@ def test_create_proposal_check_tool_matches_cli_json(
     )
     fake_api.install_client(client)
     monkeypatch.setattr(
-        "issuekit.commands.proposal_check_request.utcnow",
+        "issuekit.proposals.checks.utcnow",
         lambda: datetime(2026, 1, 1, 6, 0, 0, tzinfo=UTC),
     )
     server = create_server(tmp_path)

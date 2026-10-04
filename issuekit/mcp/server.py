@@ -16,12 +16,6 @@ from mcp.server.fastmcp import Context, FastMCP
 from issuekit import __version__
 from issuekit.agents.proposal_check import list_worker_proposal_checks
 from issuekit.api.token_cache import read_cached_token
-from issuekit.commands.approve import approve_issue
-from issuekit.commands.dispatch import dispatch_issue as command_dispatch_issue
-from issuekit.commands.edit import edit_issue
-from issuekit.commands.proposal_check_request import request_proposal_check
-from issuekit.commands.readdress import readdress_result_dict
-from issuekit.commands.reclaim import reclaim_result_dict
 from issuekit.config import (
     IssuekitConfig,
     api_url_origin,
@@ -31,11 +25,10 @@ from issuekit.config import (
     resolve_repository_root,
 )
 from issuekit.config.local import LocalConfigError, load_toml, read_local_config
-from issuekit.core import issue_dict, worker_display_from_row
+from issuekit.core import issue_dict
 from issuekit.errors import WorkflowError
 from issuekit.gitutil import git_root
 from issuekit.guards.author import (
-    create_author_guard,
     guard_dict,
     stop_message,
 )
@@ -44,18 +37,20 @@ from issuekit.issues.orphans import (
     list_stale_claims,
     stale_claim_dict,
 )
+from issuekit.issues.service import approve_issue, edit_issue
+from issuekit.issues.service import dispatch_issue as issue_dispatch
 from issuekit.issues.session import new_session_token
-from issuekit.negotiation import NegotiationThreadSummary, ThreadStatus, get_negotiation_store
+from issuekit.negotiation import ThreadStatus, get_negotiation_store
 from issuekit.negotiation.engine import inspect_thread
 from issuekit.prompts.protocol import render_protocol, render_server_instructions
 from issuekit.proposals.api import (
     adopt_proposal_with_append,
     api_client,
-    build_proposal,
-    discard_outgoing_proposal,
     list_outgoing_proposals,
-    send_proposal,
 )
+from issuekit.proposals.checks import request_proposal_check
+from issuekit.proposals.service import discard_proposal as discard_proposal_service
+from issuekit.proposals.service import list_incoming_proposals, propose_with_guard
 from issuekit.store import get_store
 from issuekit.workers.registry import list_api_workers, remove_api_repo, remove_api_worker
 from issuekit.workflow import (
@@ -450,15 +445,7 @@ def create_server(
         ) -> dict[str, Any]:
             async with _api_config(root, ctx) as (config, _config_root):
                 result = remove_api_worker(config, address, force=force)
-            return {
-                "worker": result.worker,
-                "display": worker_display_from_row(result.worker),
-                "deleted": result.deleted,
-                "implementing_issues": [
-                    issue_dict(issue) | {"worker": issue.worker}
-                    for issue in result.implementing_issues
-                ],
-            }
+            return result.to_dict()
 
         @server.tool(
             description=(
@@ -472,7 +459,7 @@ def create_server(
         ) -> dict[str, Any]:
             async with _api_config(root, ctx) as (config, _config_root):
                 result = remove_api_repo(config, repo)
-            return {"repo_key": result.repo_key, "deleted": result.deleted}
+            return result.to_dict()
 
     @server.tool(
         description=(
@@ -504,7 +491,7 @@ def create_server(
                 reason=reason,
                 config=config,
             )
-        return reclaim_result_dict(result)
+        return result.to_dict()
 
     reclaim_description = (
         "Return an orphaned or stale implementing claim to the implement pool. "
@@ -559,7 +546,7 @@ def create_server(
                 reason=reason,
                 config=config,
             )
-        return readdress_result_dict(result)
+        return result.to_dict()
 
     async def dispatch_issue_impl(
         id: int,
@@ -570,7 +557,7 @@ def create_server(
         ctx: Context | None = None,
     ) -> dict[str, Any]:
         async with _api_store(root, ctx) as (config, _config_root, store):
-            issue = command_dispatch_issue(
+            issue = issue_dispatch(
                 id,
                 target_worker=target_worker,
                 assignee=assignee,
@@ -654,8 +641,9 @@ def create_server(
         ctx: Context | None = None,
     ) -> dict[str, Any]:
         async with _api_config(root, ctx) as (config, config_root):
-            proposal = build_proposal(
+            outcome = propose_with_guard(
                 config_root,
+                config,
                 to=to,
                 title=title,
                 body=body,
@@ -664,22 +652,15 @@ def create_server(
                 reply=reply,
                 blocking=blocking,
                 depends_on=depends_on,
+                author_agent=agent,
+                session=MCP_SESSION,
             )
-            sent = send_proposal(config, proposal)
-        if sent.get("payload_mismatch"):
+        sent = outcome.sent
+        if outcome.mismatched:
             return {**sent, "ok": False}
-        if sent.get("deduplicated") or sent.get("idempotent_existing"):
+        if outcome.deduplicated:
             return sent
-        guard = create_author_guard(
-            config_root,
-            config=config,
-            kind="proposal",
-            item_id=sent.get("id"),
-            ref=f"{proposal.to}#{sent.get('id')}",
-            target_project=proposal.to,
-            author_agent=agent,
-            author_session=MCP_SESSION,
-        )
+        guard = outcome.guard
         sent = dict(sent)
         sent["authorGuard"] = guard_dict(guard)
         sent["stop"] = stop_message(guard)
@@ -688,8 +669,7 @@ def create_server(
     @server.tool(description="List incoming cross-repository proposals.")
     async def list_incoming(ctx: Context | None = None) -> list[dict[str, Any]]:
         async with _api_config(root, ctx) as (config, _config_root):
-            with api_client(config) as client:
-                return client.list_proposals(status="pending")
+            return list_incoming_proposals(config)
 
     @server.tool(
         description=(
@@ -727,7 +707,7 @@ def create_server(
                     return inspect_thread(thread_id, store=store).to_dict()
                 thread_status = ThreadStatus(status) if status else None
                 return [
-                    _negotiation_thread_summary_dict(summary)
+                    summary.to_dict()
                     for summary in store.list_threads(status=thread_status)
                 ]
 
@@ -759,10 +739,7 @@ def create_server(
         ctx: Context | None = None,
     ) -> dict[str, Any]:
         async with _api_config(root, ctx) as (config, _config_root):
-            if to:
-                return discard_outgoing_proposal(config, to=to, proposal_id=proposal_id)
-            with api_client(config) as client:
-                return client.discard_proposal(proposal_id)
+            return discard_proposal_service(config, proposal_id, to=to)
 
     @server.tool(
         description=(
@@ -807,18 +784,6 @@ def create_server(
             )
 
     return server
-
-
-def _negotiation_thread_summary_dict(
-    summary: NegotiationThreadSummary,
-) -> dict[str, object]:
-    return {
-        "thread_id": summary.thread_id,
-        "status": summary.status.value,
-        "agreed_contract": summary.agreed_contract,
-        "issue_refs": summary.issue_refs.to_dict() if summary.issue_refs else None,
-        "updated": summary.updated,
-    }
 
 
 async def _health_status(root: Path, ctx: Context | None = None) -> dict[str, Any]:

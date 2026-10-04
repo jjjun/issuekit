@@ -19,6 +19,7 @@ from issuekit.issues.display import dependency_detail_lines, dependency_marker
 from issuekit.prompts.protocol import effective_agent_roles
 from issuekit.proposals.api import api_client
 from issuekit.proposals.model import ProposalError
+from issuekit.proposals.service import list_incoming_proposals
 from issuekit.store import get_store
 from issuekit.workflow import resolve_implementer
 
@@ -205,8 +206,7 @@ def run(args) -> int:
 def _incoming_proposals(config) -> list[dict]:
     if not config.api_url:
         return []
-    with api_client(config) as client:
-        return client.list_proposals(status="pending")
+    return list_incoming_proposals(config)
 
 
 def _pending_proposal_check_count(config) -> int:

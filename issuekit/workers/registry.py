@@ -15,6 +15,7 @@ from issuekit.config import IssuekitConfig
 from issuekit.config.project_profile import load_project_profile
 from issuekit.core import (
     Issue,
+    issue_dict,
     worker_display_from_row,
     worker_key_matches_row,
     worker_keys_from_row,
@@ -47,6 +48,17 @@ class WorkerRemovalResult:
     deleted: JsonDict
     implementing_issues: tuple[Issue, ...]
 
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "worker": self.worker,
+            "display": worker_display_from_row(self.worker),
+            "deleted": self.deleted,
+            "implementing_issues": [
+                issue_dict(issue) | {"worker": issue.worker}
+                for issue in self.implementing_issues
+            ],
+        }
+
 
 @dataclass(frozen=True)
 class WorkerClaim:
@@ -73,6 +85,9 @@ class WorkerPruneResult:
 class RepoRemovalResult:
     repo_key: str
     deleted: JsonDict
+
+    def to_dict(self) -> dict[str, object]:
+        return {"repo_key": self.repo_key, "deleted": self.deleted}
 
 
 def post_worker_registration(

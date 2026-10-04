@@ -1,7 +1,5 @@
 import pytest
 
-from issuekit.commands.approve import approve_issue
-from issuekit.commands.complete import complete_issue
 from issuekit.config import IssuekitConfig, WorkerIdentity
 from issuekit.core import Issue
 from issuekit.errors import WorkflowError
@@ -11,6 +9,7 @@ from issuekit.guards.author import (
     create_author_guard,
     read_author_guards,
 )
+from issuekit.issues.service import approve_issue, complete_issue
 from issuekit.testing import FakeIssuekitClient
 from issuekit.workflow import (
     claim_issue,

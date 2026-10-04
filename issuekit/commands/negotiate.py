@@ -228,7 +228,7 @@ def run_threads(args) -> int:
 
             summaries = store.list_threads(status=status)
             if args.json:
-                print_json([_thread_summary_to_dict(summary) for summary in summaries])
+                print_json([summary.to_dict() for summary in summaries])
             else:
                 _print_human_thread_summaries(summaries)
             return 0
@@ -388,16 +388,6 @@ def _print_human_finalization_result(result: NegotiationFinalizationResult) -> N
         f"negotiation thread={result.thread_id} {action} "
         f"provider={result.backend_issue_ref} consumer={result.frontend_issue_ref}"
     )
-
-
-def _thread_summary_to_dict(summary: NegotiationThreadSummary) -> dict[str, object]:
-    return {
-        "thread_id": summary.thread_id,
-        "status": summary.status.value,
-        "agreed_contract": summary.agreed_contract,
-        "issue_refs": summary.issue_refs.to_dict() if summary.issue_refs else None,
-        "updated": summary.updated,
-    }
 
 
 def _print_human_thread_summaries(summaries: list[NegotiationThreadSummary]) -> None:

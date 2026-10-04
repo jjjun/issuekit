@@ -3,19 +3,16 @@
 from __future__ import annotations
 
 import argparse
-from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from issuekit.commands._common import (
     print_json,
     run_command,
 )
-from issuekit.config import IssuekitConfig, load_config
-from issuekit.core import VALID_ISSUE_PRIORITIES, Issue, issue_dict, parse_issue_id_arg
+from issuekit.config import load_config
+from issuekit.core import issue_dict, parse_issue_id_arg
 from issuekit.errors import WorkflowError
-from issuekit.inputs import active_issue_not_found, require_ascii, resolve_text
-from issuekit.issues.dependencies import dependency_refs_or_workflow_error
-from issuekit.store import managed_issue_store
+from issuekit.issues.service import edit_issue
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:
@@ -75,108 +72,3 @@ def run(args) -> int:
         action,
         errors=(OSError, UnicodeError, ValueError, WorkflowError),
     )
-
-
-def edit_issue(
-    issue_id: int,
-    *,
-    title: str | None = None,
-    body: str | None = None,
-    body_file: str | None = None,
-    append: str | None = None,
-    append_file: str | None = None,
-    priority: str | None = None,
-    depends_on: str | Sequence[str] | None = None,
-    force: bool = False,
-    config: IssuekitConfig | None = None,
-    store=None,
-) -> Issue:
-    _validate_edit_input(
-        title=title,
-        body=body,
-        body_file=body_file,
-        append=append,
-        append_file=append_file,
-        priority=priority,
-        depends_on=depends_on,
-    )
-    config = config or IssuekitConfig()
-
-    with managed_issue_store(config, store) as active_store:
-        existing = active_store.get_issue(issue_id)
-        if existing is None:
-            raise ValueError(active_issue_not_found(issue_id))
-        if existing.issue_status == "completed":
-            raise WorkflowError(f"Issue #{issue_id} is completed and cannot be edited.")
-        stage = existing.stage or "todo"
-        if stage not in {"todo", "planned"} and not force:
-            raise WorkflowError(
-                f"Issue #{issue_id} is at stage {stage}; "
-                "pass --force to edit an issue that is already in flight."
-            )
-
-        update_body = _body_update(
-            stored_body=lambda: active_store.get_issue_edit_body(issue_id),
-            body=body,
-            body_file=body_file,
-            append=append,
-            append_file=append_file,
-        )
-        return active_store.update_issue(
-            issue_id,
-            title=title.strip() if title is not None else None,
-            body=update_body,
-            priority=priority,
-            depends_on=(
-                dependency_refs_or_workflow_error(depends_on)
-                if depends_on is not None
-                else None
-            ),
-        )
-
-
-def _validate_edit_input(
-    *,
-    title: str | None,
-    body: str | None,
-    body_file: str | None,
-    append: str | None,
-    append_file: str | None,
-    priority: str | None,
-    depends_on: str | Sequence[str] | None,
-) -> None:
-    body_modes = [value is not None for value in (body, body_file, append, append_file)]
-    if sum(body_modes) > 1:
-        raise ValueError("Pass only one of --body, --body-file, --append, or --append-file.")
-    if title is None and not any(body_modes) and priority is None and depends_on is None:
-        raise ValueError(
-            "At least one of --title, --body, --body-file, --append, "
-            "--append-file, --priority, or --depends-on is required."
-        )
-    if title is not None:
-        if not title.strip():
-            raise ValueError("--title is required.")
-        require_ascii(title, message="--title must be ASCII-only.")
-    if priority is not None and priority not in VALID_ISSUE_PRIORITIES:
-        raise ValueError(f"Invalid priority: {priority}")
-    if depends_on is not None:
-        dependency_refs_or_workflow_error(depends_on)
-
-
-def _body_update(
-    *,
-    stored_body: Callable[[], str],
-    body: str | None,
-    body_file: str | None,
-    append: str | None,
-    append_file: str | None,
-) -> str | None:
-    update_body = resolve_text(body, body_file)
-    if update_body is not None:
-        require_ascii(update_body, message="--body and --body-file must be ASCII-only.")
-        return update_body
-    append_body = resolve_text(append, append_file)
-    if append_body is not None:
-        require_ascii(append_body, message="--append and --append-file must be ASCII-only.")
-        return f"{stored_body()}\n\n{append_body}"
-    return None

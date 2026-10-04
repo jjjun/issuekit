@@ -9,6 +9,7 @@ from issuekit.core import (
     VALID_ISSUE_PRIORITIES,
     Issue,
     is_valid_workflow_token,
+    issue_dict,
     worker_keys_match,
 )
 from issuekit.errors import WorkflowError
@@ -34,6 +35,25 @@ class ReclaimResult:
     actor: str
     audit_reason: str | None
 
+    def to_dict(self) -> dict[str, object]:
+        issue = issue_dict(self.issue)
+        issue["worker"] = self.issue.worker
+        return {
+            "id": self.issue.id,
+            "ref": self.issue.ref,
+            "title": self.issue.title,
+            "previous": {
+                "assignee": self.previous.assignee,
+                "worker": self.previous.worker,
+                "stage": self.previous.stage,
+            },
+            "expected_worker": self.expected_worker,
+            "actor": self.actor,
+            "reason": self.reason,
+            "audit_reason": self.audit_reason,
+            "issue": issue,
+        }
+
 
 @dataclass(frozen=True)
 class ReaddressResult:
@@ -42,6 +62,23 @@ class ReaddressResult:
     expected_target_worker: str
     actor: str
     audit_reason: str | None
+
+    def to_dict(self) -> dict[str, object]:
+        issue = issue_dict(self.issue)
+        return {
+            "id": self.issue.id,
+            "ref": self.issue.ref,
+            "title": self.issue.title,
+            "previous": {
+                "target_worker": self.previous.target_worker,
+                "stage": self.previous.stage,
+                "assignee": self.previous.assignee,
+            },
+            "expected_target_worker": self.expected_target_worker,
+            "actor": self.actor,
+            "audit_reason": self.audit_reason,
+            "issue": issue,
+        }
 
 
 def claim_next(

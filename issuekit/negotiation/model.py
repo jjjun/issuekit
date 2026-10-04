@@ -75,6 +75,15 @@ class NegotiationThreadSummary:
     issue_refs: NegotiationIssueRefs | None = None
     updated: str = ""
 
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "thread_id": self.thread_id,
+            "status": self.status.value,
+            "agreed_contract": self.agreed_contract,
+            "issue_refs": self.issue_refs.to_dict() if self.issue_refs else None,
+            "updated": self.updated,
+        }
+
 
 class NegotiationStore(Protocol):
     def __enter__(self) -> NegotiationStore:

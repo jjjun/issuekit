@@ -18,12 +18,12 @@ from issuekit.agents.readonly import (
     stdout_text,
 )
 from issuekit.agents.registry import resolve_adapter
-from issuekit.commands.approve import approve_issue
 from issuekit.config import IssuekitConfig
 from issuekit.core import Issue, worker_keys_match
 from issuekit.encoding import ASCII_ONLY_HINT, has_non_ascii, sanitize_to_ascii
 from issuekit.errors import WorkflowError
 from issuekit.gitutil import GitStatusEntry, git_status_entries, git_status_short, run_git
+from issuekit.issues.service import approve_issue
 from issuekit.prompts import (
     REVIEW_PROMPT,
     ReviewParseError,

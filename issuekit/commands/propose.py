@@ -16,19 +16,20 @@ from issuekit.config.refs import (
 )
 from issuekit.core import VALID_ISSUE_PRIORITIES
 from issuekit.errors import WorkflowError
-from issuekit.guards.author import create_author_guard, guard_dict, stop_message
+from issuekit.guards.author import guard_dict, stop_message
 from issuekit.issues.session import resolved_or_new_session_token
 from issuekit.proposals import ProposalError
 from issuekit.proposals.api import (
     ProposalAppendError,
     adopt_proposal_with_append,
-    api_client,
-    build_proposal,
-    discard_outgoing_proposal,
     get_outgoing_proposal,
     list_outgoing_proposals,
     proposal_id_arg,
-    send_proposal,
+)
+from issuekit.proposals.service import (
+    discard_proposal,
+    list_incoming_proposals,
+    propose_with_guard,
 )
 
 
@@ -186,8 +187,9 @@ def run_propose(args) -> int:
             project=args.project,
         )
         session = resolved_or_new_session_token("cli")
-        proposal = build_proposal(
+        outcome = propose_with_guard(
             Path.cwd(),
+            config,
             to=args.to,
             title=args.title,
             body=args.body,
@@ -196,14 +198,16 @@ def run_propose(args) -> int:
             reply=args.reply,
             blocking=args.blocking,
             depends_on=args.depends_on,
-            config=config,
+            author_agent=args.agent,
+            session=session,
         )
-        created = send_proposal(config, proposal)
     except (LookupError, ProposalError, RefError, ValueError, WorkflowError) as exc:
         print(str(exc), file=sys.stderr)
         return 1
+    created = outcome.sent
+    proposal = outcome.proposal
     warning = created.get("warning")
-    mismatched = bool(created.get("payload_mismatch"))
+    mismatched = outcome.mismatched
     if args.json:
         output = dict(created)
         output.pop("warning", None)
@@ -214,8 +218,7 @@ def run_propose(args) -> int:
         return 1
     for preflight_warning in created.get("warnings", []):
         print(preflight_warning, file=sys.stderr)
-    deduplicated = bool(created.get("deduplicated") or created.get("idempotent_existing"))
-    if deduplicated:
+    if outcome.deduplicated:
         if args.json:
             print_json(output)
         else:
@@ -224,20 +227,7 @@ def run_propose(args) -> int:
                 "with a matching title and body; no new proposal was created."
             )
         return 0
-    try:
-        guard = create_author_guard(
-            Path.cwd(),
-            config=config,
-            kind="proposal",
-            item_id=created.get("id"),
-            ref=f"{proposal.to}#{created.get('id')}",
-            target_project=proposal.to,
-            author_agent=args.agent,
-            author_session=session,
-        )
-    except ValueError as exc:
-        print(str(exc), file=sys.stderr)
-        return 1
+    guard = outcome.guard
     if args.json:
         output["authorGuard"] = guard_dict(guard)
         output["stop"] = stop_message(guard)
@@ -254,8 +244,7 @@ def run_propose(args) -> int:
 def run_incoming(args) -> int:
     config = load_config(Path.cwd())
     try:
-        with api_client(config) as client:
-            incoming = client.list_proposals(status="pending")
+        incoming = list_incoming_proposals(config)
     except (ProposalError, WorkflowError, ValueError) as exc:
         print(str(exc), file=sys.stderr)
         return 1
@@ -356,13 +345,11 @@ def run_discard(args) -> int:
     config = load_config(Path.cwd())
     to = getattr(args, "to", None)
     try:
-        if to:
-            discarded = discard_outgoing_proposal(
-                config, to=to, proposal_id=proposal_id_arg(args.proposal)
-            )
-        else:
-            with api_client(config) as client:
-                discarded = client.discard_proposal(proposal_id_arg(args.proposal))
+        discarded = discard_proposal(
+            config,
+            proposal_id_arg(args.proposal),
+            to=to,
+        )
     except (ProposalError, WorkflowError, ValueError) as exc:
         print(str(exc), file=sys.stderr)
         return 1

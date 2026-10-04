@@ -9,7 +9,6 @@ from issuekit.commands._common import print_json, run_command
 from issuekit.config import load_config
 from issuekit.errors import WorkflowError
 from issuekit.workers.registry import (
-    RepoRemovalResult,
     WorkerListingError,
     WorkerRemovalError,
     remove_api_repo,
@@ -41,7 +40,7 @@ def run_remove(args) -> int:
         config = load_config(Path.cwd())
         result = remove_api_repo(config, args.repo)
         if args.json:
-            print_json(repo_removal_result_dict(result))
+            print_json(result.to_dict())
             return 0
         print(f"Removed repo {result.repo_key}.")
         return 0
@@ -50,10 +49,3 @@ def run_remove(args) -> int:
         action,
         errors=(WorkerListingError, WorkerRemovalError, WorkflowError, ValueError),
     )
-
-
-def repo_removal_result_dict(result: RepoRemovalResult) -> dict[str, object]:
-    return {
-        "repo_key": result.repo_key,
-        "deleted": result.deleted,
-    }
