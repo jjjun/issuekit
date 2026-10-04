@@ -113,11 +113,17 @@ def scan_mojibake(
         except OSError:
             continue
 
-        offsets = newline_offsets(text)
+        if text.isascii():
+            continue
+
         artifacts = find_encoding_artifacts(
             text,
             include_halfwidth_katakana=options.include_halfwidth_katakana,
         )
+        if not artifacts:
+            continue
+
+        offsets = newline_offsets(text)
         if (
             options.line_scope == "changed-lines"
             and changed_lines_by_path is not None

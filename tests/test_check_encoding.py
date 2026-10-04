@@ -119,6 +119,47 @@ def test_check_encoding_bom_fails(tmp_path: Path, monkeypatch, capsys) -> None:
     assert "bom.py" in capsys.readouterr().err
 
 
+@pytest.mark.parametrize("options", [[], ["--changed"]], ids=["default", "changed"])
+def test_check_encoding_from_subdirectory_checks_repo_root_bom(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+    options: list[str],
+) -> None:
+    init_git_repo(tmp_path)
+    add_tracked(tmp_path, "bom.py", b"print('clean')\n")
+    commit_all(tmp_path)
+    (tmp_path / "bom.py").write_bytes(b"\xef\xbb\xbfprint('bad')\n")
+    nested = tmp_path / "nested"
+    nested.mkdir()
+    monkeypatch.chdir(nested)
+
+    exit_code = cli.main(["check-encoding", *options])
+
+    assert exit_code == 1
+    assert "bom.py" in capsys.readouterr().err
+
+
+def test_check_encoding_fix_from_subdirectory_strips_repo_root_bom(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    init_git_repo(tmp_path)
+    payload = b"print('clean')\n"
+    add_tracked(tmp_path, "bom.py", b"\xef\xbb\xbf" + payload)
+    nested = tmp_path / "nested"
+    nested.mkdir()
+    monkeypatch.chdir(nested)
+
+    exit_code = cli.main(["check-encoding", "--fix"])
+
+    assert exit_code == 0
+    assert "Fixed BOM: bom.py" in capsys.readouterr().out
+    assert (tmp_path / "bom.py").read_bytes() == payload
+    assert not (nested / "bom.py").exists()
+
+
 def test_check_encoding_checks_docs_issues_files(tmp_path: Path, monkeypatch, capsys) -> None:
     init_git_repo(tmp_path)
     add_tracked(tmp_path, "docs/issues/bom.md", b"\xef\xbb\xbf# bad\n")

@@ -167,7 +167,7 @@ def run(args) -> int:
     ]
 
     for file in source_files:
-        path = Path(file)
+        path = repo_root / file
         try:
             content = path.read_bytes()
             has_bom = content.startswith(BOM)

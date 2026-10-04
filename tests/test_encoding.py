@@ -3,6 +3,7 @@ from pathlib import Path
 import issuekit.agents.run_claimed as run_claimed
 from issuekit import encoding
 from issuekit.commands.check_encoding import _stray_carriage_return_lines
+from issuekit.encoding import scan as encoding_scan
 from issuekit.gitutil import GitResult, GitStatusEntry
 
 
@@ -15,6 +16,80 @@ def test_encoding_artifact_detection() -> None:
     assert encoding.find_encoding_artifacts("\uff71")
     assert not encoding.find_encoding_artifacts("\uff71", include_halfwidth_katakana=False)
     assert not encoding.find_encoding_artifacts("plain ascii")
+
+
+def test_scan_mojibake_preserves_hits_for_ascii_mojibake_and_japanese_files(
+    tmp_path: Path,
+) -> None:
+    paths = (Path("plain.py"), Path("bad.txt"), Path("japanese.md"))
+    (tmp_path / paths[0]).write_text("value = 'hello'\n", encoding="utf-8")
+    (tmp_path / paths[1]).write_text(
+        "corrupt \u7e67\uff62\u7e5d\u4e5d\u0393\n", encoding="utf-8"
+    )
+    (tmp_path / paths[2]).write_text("日本語の文章です\n", encoding="utf-8")
+
+    result = encoding.scan_mojibake(
+        tmp_path,
+        paths,
+        options=encoding.MojibakeScanOptions(
+            failure_classes=frozenset({"confirmed", "unconfirmed"}),
+            include_halfwidth_katakana=True,
+            source_extensions=None,
+            line_scope="whole-file",
+            exclude_patterns=(),
+            excluded_hit_classes=frozenset(),
+        ),
+    )
+
+    assert result.confirmed_hits == (
+        {
+            "file": "bad.txt",
+            "line": 1,
+            "column": 9,
+            "code_point": "U+7E67",
+            "context": (
+                "... U+0072 U+0075 U+0070 U+0074 U+0020 [U+7E67] "
+                "U+FF62 U+7E5D U+4E5D U+0393 U+000A ..."
+            ),
+            "recovered": "U+30A2 U+30CB U+30E1",
+        },
+    )
+    assert result.unconfirmed_hits == ()
+
+
+def test_scan_mojibake_skips_artifact_detection_for_ascii_files(
+    tmp_path: Path, monkeypatch
+) -> None:
+    path = Path("plain.py")
+    (tmp_path / path).write_text("value = 'hello'\n", encoding="utf-8")
+    calls: list[str] = []
+
+    def record_find_encoding_artifacts(
+        text: str, *, include_halfwidth_katakana: bool = True
+    ) -> list[tuple[int, str]]:
+        calls.append(text)
+        return []
+
+    monkeypatch.setattr(
+        encoding_scan, "find_encoding_artifacts", record_find_encoding_artifacts
+    )
+
+    result = encoding.scan_mojibake(
+        tmp_path,
+        (path,),
+        options=encoding.MojibakeScanOptions(
+            failure_classes=frozenset({"confirmed", "unconfirmed"}),
+            include_halfwidth_katakana=True,
+            source_extensions=None,
+            line_scope="whole-file",
+            exclude_patterns=(),
+            excluded_hit_classes=frozenset(),
+        ),
+    )
+
+    assert calls == []
+    assert result.confirmed_hits == ()
+    assert result.unconfirmed_hits == ()
 
 
 def test_sanitize_to_ascii_folds_punctuation_and_compatibility_forms() -> None:
