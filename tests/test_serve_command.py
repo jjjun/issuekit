@@ -5,7 +5,6 @@ import signal
 import subprocess
 import sys
 import threading
-from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -19,23 +18,13 @@ from issuekit.commands import serve, serve_loop
 from issuekit.config import TriagePolicy
 from issuekit.errors import WorkflowError
 from issuekit.testing import FakeIssuekitClient
+from tests.agent_fakes import FakeResult, create_reviewable_diff
+from tests.api_helpers import configure_registered_api
+from tests.git_helpers import init_git_repo
 from tests.issue_helpers import api_issue
 
 
-@dataclass(frozen=True)
-class FakeResult:
-    exit_code: int = 0
-    stdout_path: Path = Path("out.log")
-    agent_log_path: Path = Path("agent.log")
-    elapsed_sec: float = 1.25
-    timed_out: bool = False
-    parsed: dict[str, str] | None = None
-    status_short: str | None = " M tracked.py"
-    status_path: Path | None = Path("status.json")
-    report_path: Path | None = None
-
-
-class FakeRunner:
+class ServeRunner:
     calls: list[
         tuple[AgentPrompt, Path, float, str | None, int | None, str | None]
     ] = []
@@ -70,7 +59,10 @@ class FakeRunner:
                 kwargs.get("prompt_suffix"),
             )
         )
-        return FakeResult(parsed={"resume_session_id": "abc123"})
+        return FakeResult(
+            parsed={"resume_session_id": "abc123"},
+            status_short=" M tracked.py",
+        )
 
 
 class ReviewApprovingRunner:
@@ -173,7 +165,10 @@ class RecoveryErrorThenRunner:
         self.attempts[issue_id] = self.attempts.get(issue_id, 0) + 1
         if issue_id == 1 and self.attempts[issue_id] == 1:
             raise RuntimeError("temporary recovery failure")
-        return FakeResult(parsed={"resume_session_id": "def456"})
+        return FakeResult(
+            parsed={"resume_session_id": "def456"},
+            status_short=" M tracked.py",
+        )
 
 
 def _configure_registered_api(
@@ -185,24 +180,18 @@ def _configure_registered_api(
     assignees: str | None = None,
     triage: str = "",
 ) -> None:
-    config = "api_url = 'https://mine.example'\nproject = 'demo'\n"
+    extra_config = ""
     if assignees is not None:
-        config += f"assignees = [{assignees}]\n"
-    config += triage
-    (tmp_path / "issuekit.toml").write_text(config, encoding="utf-8", newline="\n")
-    (tmp_path / "issuekit.local.toml").write_text(
-        (
-            "[worker]\n"
-            "machine_id = 'machine'\n"
-            "repo_id = 'demo'\n"
-            "worker_name = 'checkout'\n"
-        ),
-        encoding="utf-8",
-        newline="\n",
+        extra_config += f"assignees = [{assignees}]\n"
+    extra_config += triage
+    configure_registered_api(
+        tmp_path,
+        monkeypatch,
+        fake_api,
+        client,
+        worker_name="checkout",
+        extra_config=extra_config,
     )
-    fake_api.install_client(client)
-    fake_api.install_client(client)
-    fake_api.install_client(client)
     monkeypatch.setattr(
         "issuekit.agentrun.adapter.shutil.which",
         lambda binary: f"/test-bin/{binary}",
@@ -212,27 +201,6 @@ def _configure_registered_api(
         lambda _binary, _mode: None,
     )
     monkeypatch.chdir(tmp_path)
-
-
-def _init_git_repo(path: Path) -> None:
-    subprocess.run(["git", "init"], cwd=str(path), check=True, stdout=subprocess.DEVNULL)
-    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=str(path), check=True)
-    subprocess.run(["git", "config", "user.name", "Test User"], cwd=str(path), check=True)
-    subprocess.run(["git", "config", "core.autocrlf", "false"], cwd=str(path), check=True)
-    subprocess.run(["git", "add", "."], cwd=str(path), check=True)
-    subprocess.run(
-        ["git", "commit", "-m", "baseline"],
-        cwd=str(path),
-        check=True,
-        stdout=subprocess.DEVNULL,
-    )
-
-
-def _create_reviewable_diff(path: Path) -> None:
-    (path / ".gitignore").write_text(".agent-runs/\n", encoding="utf-8", newline="\n")
-    (path / "code.py").write_text("value = 1\n", encoding="utf-8", newline="\n")
-    _init_git_repo(path)
-    (path / "code.py").write_text("value = 2\n", encoding="utf-8", newline="\n")
 
 
 def test_backoff_uses_current_initial_value(monkeypatch) -> None:
@@ -411,11 +379,11 @@ def test_serve_once_claims_runs_and_submits(
     capsys,
 ) -> None:
     client = FakeIssuekitClient([api_issue(1, "First", author="claude", body="# Issue #1: First\n")])
-    FakeRunner.calls.clear()
-    FakeRunner.models.clear()
-    FakeRunner.reasoning_efforts.clear()
+    ServeRunner.calls.clear()
+    ServeRunner.models.clear()
+    ServeRunner.reasoning_efforts.clear()
     _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
-    monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", FakeRunner)
+    monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", ServeRunner)
 
     exit_code = cli.main(
         [
@@ -433,8 +401,8 @@ def test_serve_once_claims_runs_and_submits(
     )
 
     assert exit_code == 0
-    assert len(FakeRunner.calls) == 1
-    prompt, repo, timeout, agent_name, issue_id, prompt_suffix = FakeRunner.calls[0]
+    assert len(ServeRunner.calls) == 1
+    prompt, repo, timeout, agent_name, issue_id, prompt_suffix = ServeRunner.calls[0]
     assert prompt.path == tmp_path / ".agent-runs" / "issue-1.md"
     assert prompt.body == "# Issue #1: First\n"
     assert repo == tmp_path
@@ -442,8 +410,8 @@ def test_serve_once_claims_runs_and_submits(
     assert agent_name == "codex"
     assert issue_id == 1
     assert prompt_suffix is None
-    assert FakeRunner.models == ["gpt-5.6"]
-    assert FakeRunner.reasoning_efforts == ["medium"]
+    assert ServeRunner.models == ["gpt-5.6"]
+    assert ServeRunner.reasoning_efforts == ["medium"]
     assert [call["method"] for call in client.calls] == ["upsert_repo", "upsert_worker", "claim_next", "submit"]
     assert client.calls[2]["body"]["worker"] == "checkout.demo@machine"
     assert "event=submitted issue=1" in capsys.readouterr().err
@@ -471,7 +439,7 @@ def test_serve_review_once_reviews_open_pool_issue(
     )
     ReviewApprovingRunner.calls.clear()
     _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
-    _create_reviewable_diff(tmp_path)
+    create_reviewable_diff(tmp_path)
     monkeypatch.setattr("issuekit.agents.review.AgentRunner", ReviewApprovingRunner)
 
     exit_code = cli.main(["serve", "--agent", "codex", "--review", "--once"])
@@ -537,7 +505,7 @@ def test_serve_review_skips_failed_issue_and_reviews_next_issue(
         ]
     )
     _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
-    _create_reviewable_diff(tmp_path)
+    create_reviewable_diff(tmp_path)
     monkeypatch.setattr(serve_loop, "BACKOFF_INITIAL_SEC", 0.0)
     monkeypatch.setattr(
         "issuekit.agents.review.AgentRunner",
@@ -576,7 +544,7 @@ def test_serve_review_once_reports_discarded_decision(
         ]
     )
     _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
-    _create_reviewable_diff(tmp_path)
+    create_reviewable_diff(tmp_path)
     monkeypatch.setattr("issuekit.agents.review.AgentRunner", ReviewNonJsonRunner)
 
     exit_code = cli.main(["serve", "--agent", "codex", "--review", "--once"])
@@ -617,7 +585,7 @@ def test_serve_review_reports_agent_run_without_local_changes_as_error(
     _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
     (tmp_path / ".gitignore").write_text(".agent-runs/\n", encoding="utf-8", newline="\n")
     (tmp_path / "code.py").write_text("value = 1\n", encoding="utf-8", newline="\n")
-    _init_git_repo(tmp_path)
+    init_git_repo(tmp_path, message="baseline", autocrlf=True)
     monkeypatch.setattr("issuekit.agents.review.AgentRunner", ReviewApprovingRunner)
 
     exit_code = cli.main(["serve", "--agent", "codex", "--review", "--once"])
@@ -692,7 +660,7 @@ def test_serve_proposal_checks_once_processes_pending_check(
         )
     ]
     _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
-    _init_git_repo(tmp_path)
+    init_git_repo(tmp_path, message="baseline", autocrlf=True)
     monkeypatch.setattr("issuekit.agents.proposal_check.resolve_adapter", lambda *a, **k: object())
     monkeypatch.setattr(serve, "AgentRunner", ProposalCheckRunner)
 
@@ -975,7 +943,7 @@ def test_serve_triage_auto_adopts_before_claiming(
             }
         ]
     )
-    FakeRunner.calls.clear()
+    ServeRunner.calls.clear()
     _configure_registered_api(
         fake_api,
         tmp_path,
@@ -989,7 +957,7 @@ def test_serve_triage_auto_adopts_before_claiming(
             "max_adoptions_per_cycle = 3\n"
         ),
     )
-    monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", FakeRunner)
+    monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", ServeRunner)
 
     exit_code = cli.main(["serve", "--agent", "codex", "--once", "--triage"])
 
@@ -1010,7 +978,7 @@ def test_serve_triage_auto_adopts_before_claiming(
     assert client.calls[4]["body"]["worker"] == "checkout.demo@machine"
     assert client.get_proposal(1)["status"] == "adopted"
     assert client.get_issue(1)["origin_proposal_id"] == "1"
-    assert FakeRunner.calls == []
+    assert ServeRunner.calls == []
     captured = capsys.readouterr()
     assert "event=auto_adopted proposal=1 issue=1 priority=high" in captured.err
     assert "event=held_for_release issue=1" in captured.err
@@ -1089,7 +1057,7 @@ def test_serve_triage_adoption_error_logs_and_still_claims(
         return original_adopt(proposal_id, priority=priority)
 
     monkeypatch.setattr(client, "adopt_proposal", fail_second_adoption)
-    FakeRunner.calls.clear()
+    ServeRunner.calls.clear()
     _configure_registered_api(
         fake_api,
         tmp_path,
@@ -1103,7 +1071,7 @@ def test_serve_triage_adoption_error_logs_and_still_claims(
             "max_adoptions_per_cycle = 3\n"
         ),
     )
-    monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", FakeRunner)
+    monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", ServeRunner)
 
     exit_code = cli.main(["serve", "--agent", "codex", "--once", "--triage"])
 
@@ -1116,7 +1084,7 @@ def test_serve_triage_adoption_error_logs_and_still_claims(
         "claim_next",
         "submit",
     ]
-    assert [call[4] for call in FakeRunner.calls] == [1]
+    assert [call[4] for call in ServeRunner.calls] == [1]
     captured = capsys.readouterr()
     assert "event=auto_adopted proposal=1 issue=1 priority=high" in captured.err
     assert (
@@ -1204,9 +1172,9 @@ def test_serve_once_recovers_own_orphan_before_polling(
             )
         ]
     )
-    FakeRunner.calls.clear()
+    ServeRunner.calls.clear()
     _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
-    monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", FakeRunner)
+    monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", ServeRunner)
 
     exit_code = cli.main(["serve", "--agent", "codex", "--once"])
 
@@ -1220,7 +1188,7 @@ def test_serve_once_recovers_own_orphan_before_polling(
         }
     ]
     assert [call["method"] for call in client.calls] == ["upsert_repo", "upsert_worker", "submit"]
-    assert [call[4] for call in FakeRunner.calls] == [1]
+    assert [call[4] for call in ServeRunner.calls] == [1]
     captured = capsys.readouterr()
     assert "event=recovered issue=1" in captured.err
     assert "event=submitted issue=1" in captured.err
@@ -1261,15 +1229,15 @@ def test_serve_no_orphan_claims_normally(
     monkeypatch,
 ) -> None:
     client = FakeIssuekitClient([api_issue(1, "Ready", author="claude")])
-    FakeRunner.calls.clear()
+    ServeRunner.calls.clear()
     _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
-    monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", FakeRunner)
+    monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", ServeRunner)
 
     exit_code = cli.main(["serve", "--agent", "codex", "--once"])
 
     assert exit_code == 0
     assert [call["method"] for call in client.calls] == ["upsert_repo", "upsert_worker", "claim_next", "submit"]
-    assert [call[4] for call in FakeRunner.calls] == [1]
+    assert [call[4] for call in ServeRunner.calls] == [1]
 
 
 def test_serve_preflight_failure_does_not_claim_issue(
@@ -1406,7 +1374,7 @@ def test_serve_retries_failed_claim_and_releases_it_at_failure_limit(
 
         def run(self, *args, issue_id=None, **kwargs) -> FakeResult:
             self.calls.append(issue_id)
-            return FakeResult(exit_code=1)
+            return FakeResult(exit_code=1, status_short=" M tracked.py")
 
     client = FakeIssuekitClient([api_issue(1, "Ready", author="claude")])
     _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
@@ -1479,15 +1447,15 @@ def test_serve_recovered_issue_counts_toward_max_issues(
             api_issue(2, "Ready", author="claude"),
         ]
     )
-    FakeRunner.calls.clear()
+    ServeRunner.calls.clear()
     _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
-    monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", FakeRunner)
+    monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", ServeRunner)
 
     exit_code = cli.main(["serve", "--agent", "codex", "--max-issues", "1", "--interval", "0"])
 
     assert exit_code == 0
     assert [call["method"] for call in client.calls] == ["upsert_repo", "upsert_worker", "submit"]
-    assert [call[4] for call in FakeRunner.calls] == [1]
+    assert [call[4] for call in ServeRunner.calls] == [1]
 
 
 def test_serve_max_issues_stops_after_successful_submissions(
@@ -1502,9 +1470,9 @@ def test_serve_max_issues_stops_after_successful_submissions(
             api_issue(3, "Third", author="claude"),
         ]
     )
-    FakeRunner.calls.clear()
+    ServeRunner.calls.clear()
     _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
-    monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", FakeRunner)
+    monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", ServeRunner)
 
     exit_code = cli.main(["serve", "--agent", "codex", "--max-issues", "2", "--interval", "0"])
 
@@ -1517,7 +1485,7 @@ def test_serve_max_issues_stops_after_successful_submissions(
         "claim_next",
         "submit",
     ]
-    assert [call[4] for call in FakeRunner.calls] == [1, 2]
+    assert [call[4] for call in ServeRunner.calls] == [1, 2]
 
 
 def test_serve_requires_registered_worker(

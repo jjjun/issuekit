@@ -1,5 +1,4 @@
-import subprocess
-from dataclasses import dataclass, replace
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -10,19 +9,10 @@ from issuekit.agents import review as review_agent
 from issuekit.agents.handoff import NO_IMPLEMENTATION_CHANGES_MARKER
 from issuekit.core import Issue
 from issuekit.testing import FakeIssuekitClient
+from tests.agent_fakes import FakeResult, create_reviewable_diff
+from tests.api_helpers import configure_registered_api
+from tests.git_helpers import init_git_repo
 from tests.issue_helpers import api_issue
-
-
-@dataclass(frozen=True)
-class FakeResult:
-    exit_code: int = 0
-    stdout_path: Path = Path("out.log")
-    agent_log_path: Path = Path("agent.log")
-    elapsed_sec: float = 1.25
-    timed_out: bool = False
-    parsed: dict[str, str] | None = None
-    status_short: str | None = ""
-    status_path: Path | None = Path("status.json")
 
 
 class ApprovingRunner:
@@ -169,40 +159,6 @@ class CloseTrackingClient(FakeIssuekitClient):
         self.close_count += 1
 
 
-def _configure_registered_api(fake_api, tmp_path: Path, monkeypatch, client: FakeIssuekitClient) -> None:
-    (tmp_path / "issuekit.toml").write_text(
-        "api_url = 'https://mine.example'\nproject = 'demo'\n",
-        encoding="utf-8",
-        newline="\n",
-    )
-    (tmp_path / "issuekit.local.toml").write_text(
-        (
-            "[worker]\n"
-            "machine_id = 'machine'\n"
-            "repo_id = 'demo'\n"
-            "worker_name = 'reviewer'\n"
-        ),
-        encoding="utf-8",
-        newline="\n",
-    )
-    fake_api.install_client(client)
-    monkeypatch.chdir(tmp_path)
-
-
-def _init_git_repo(path: Path) -> None:
-    subprocess.run(["git", "init"], cwd=str(path), check=True, stdout=subprocess.DEVNULL)
-    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=str(path), check=True)
-    subprocess.run(["git", "config", "user.name", "Test User"], cwd=str(path), check=True)
-    subprocess.run(["git", "config", "core.autocrlf", "false"], cwd=str(path), check=True)
-    subprocess.run(["git", "add", "."], cwd=str(path), check=True)
-    subprocess.run(
-        ["git", "commit", "-m", "baseline"],
-        cwd=str(path),
-        check=True,
-        stdout=subprocess.DEVNULL,
-    )
-
-
 def test_review_command_closes_lookup_store_when_issue_is_missing(
     fake_api,
     tmp_path: Path,
@@ -210,20 +166,15 @@ def test_review_command_closes_lookup_store_when_issue_is_missing(
     capsys,
 ) -> None:
     client = CloseTrackingClient()
-    _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
+    configure_registered_api(
+        tmp_path, monkeypatch, fake_api, client, worker_name="reviewer"
+    )
 
     exit_code = cli.main(["review", "99", "--agent", "codex"])
 
     assert exit_code == 1
     assert "Active issue #99 was not found." in capsys.readouterr().err
     assert client.close_count == 1
-
-
-def _create_reviewable_diff(path: Path) -> None:
-    (path / ".gitignore").write_text(".agent-runs/\n", encoding="utf-8", newline="\n")
-    (path / "code.py").write_text("value = 1\n", encoding="utf-8", newline="\n")
-    _init_git_repo(path)
-    (path / "code.py").write_text("value = 2\n", encoding="utf-8", newline="\n")
 
 
 def _issue() -> Issue:
@@ -266,8 +217,10 @@ def test_review_command_approves_with_distinct_worker_identity(
         ]
     )
     ApprovingRunner.calls.clear()
-    _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
-    _create_reviewable_diff(tmp_path)
+    configure_registered_api(
+        tmp_path, monkeypatch, fake_api, client, worker_name="reviewer"
+    )
+    create_reviewable_diff(tmp_path)
     monkeypatch.setattr("issuekit.commands.review.AgentRunner", ApprovingRunner)
 
     exit_code = cli.main(["review", "1", "--agent", "codex", "--timeout-sec", "9"])
@@ -321,8 +274,10 @@ def test_review_command_rejects_zero_exit_error_envelope_before_verdict(
             )
         ]
     )
-    _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
-    _create_reviewable_diff(tmp_path)
+    configure_registered_api(
+        tmp_path, monkeypatch, fake_api, client, worker_name="reviewer"
+    )
+    create_reviewable_diff(tmp_path)
     monkeypatch.setattr("issuekit.commands.review.AgentRunner", ErrorEnvelopeReviewRunner)
 
     exit_code = cli.main(["review", "1", "--agent", "codex"])
@@ -355,8 +310,10 @@ def test_review_command_parses_codex_jsonl_review_block(
             )
         ]
     )
-    _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
-    _create_reviewable_diff(tmp_path)
+    configure_registered_api(
+        tmp_path, monkeypatch, fake_api, client, worker_name="reviewer"
+    )
+    create_reviewable_diff(tmp_path)
     monkeypatch.setattr("issuekit.commands.review.AgentRunner", CodexJsonlReviewRunner)
 
     exit_code = cli.main(["review", "1", "--agent", "codex"])
@@ -389,8 +346,10 @@ def test_review_command_approves_with_sanitized_non_ascii_verification(
             )
         ]
     )
-    _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
-    _create_reviewable_diff(tmp_path)
+    configure_registered_api(
+        tmp_path, monkeypatch, fake_api, client, worker_name="reviewer"
+    )
+    create_reviewable_diff(tmp_path)
     monkeypatch.setattr("issuekit.commands.review.AgentRunner", NonAsciiApprovingRunner)
 
     exit_code = cli.main(["review", "1", "--agent", "codex"])
@@ -424,8 +383,10 @@ def test_review_command_records_mapping_valued_verification(
             )
         ]
     )
-    _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
-    _create_reviewable_diff(tmp_path)
+    configure_registered_api(
+        tmp_path, monkeypatch, fake_api, client, worker_name="reviewer"
+    )
+    create_reviewable_diff(tmp_path)
     monkeypatch.setattr(
         "issuekit.commands.review.AgentRunner",
         MappingVerificationRunner,
@@ -462,8 +423,10 @@ def test_review_command_sends_runtime_on_both_verdicts(fake_api, tmp_path: Path,
             ),
         ]
     )
-    _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
-    _create_reviewable_diff(tmp_path)
+    configure_registered_api(
+        tmp_path, monkeypatch, fake_api, client, worker_name="reviewer"
+    )
+    create_reviewable_diff(tmp_path)
     monkeypatch.setattr("issuekit.commands.review.AgentRunner", ApprovingRunner)
 
     assert cli.main(
@@ -500,8 +463,10 @@ def test_review_command_requests_changes(
             )
         ]
     )
-    _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
-    _create_reviewable_diff(tmp_path)
+    configure_registered_api(
+        tmp_path, monkeypatch, fake_api, client, worker_name="reviewer"
+    )
+    create_reviewable_diff(tmp_path)
     monkeypatch.setattr("issuekit.commands.review.AgentRunner", RequestChangesRunner)
 
     exit_code = cli.main(["review", "1", "--agent", "claude"])
@@ -541,8 +506,10 @@ def test_review_command_requests_changes_with_sanitized_non_ascii_notes(
             )
         ]
     )
-    _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
-    _create_reviewable_diff(tmp_path)
+    configure_registered_api(
+        tmp_path, monkeypatch, fake_api, client, worker_name="reviewer"
+    )
+    create_reviewable_diff(tmp_path)
     monkeypatch.setattr(
         "issuekit.commands.review.AgentRunner",
         NonAsciiRequestChangesRunner,
@@ -582,7 +549,9 @@ def test_review_command_rejects_same_worker_self_review(
         ]
     )
     ApprovingRunner.calls.clear()
-    _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
+    configure_registered_api(
+        tmp_path, monkeypatch, fake_api, client, worker_name="reviewer"
+    )
     monkeypatch.setattr("issuekit.commands.review.AgentRunner", ApprovingRunner)
 
     exit_code = cli.main(["review", "1", "--agent", "codex"])
@@ -612,8 +581,10 @@ def test_review_command_reports_discarded_decision_for_malformed_review_output(
             )
         ]
     )
-    _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
-    _create_reviewable_diff(tmp_path)
+    configure_registered_api(
+        tmp_path, monkeypatch, fake_api, client, worker_name="reviewer"
+    )
+    create_reviewable_diff(tmp_path)
     monkeypatch.setattr("issuekit.commands.review.AgentRunner", MalformedReviewRunner)
 
     exit_code = cli.main(["review", "1", "--agent", "codex"])
@@ -652,8 +623,10 @@ def test_review_command_reports_no_decision_for_timed_out_review(
             )
         ]
     )
-    _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
-    _create_reviewable_diff(tmp_path)
+    configure_registered_api(
+        tmp_path, monkeypatch, fake_api, client, worker_name="reviewer"
+    )
+    create_reviewable_diff(tmp_path)
     monkeypatch.setattr("issuekit.commands.review.AgentRunner", TimedOutReviewRunner)
 
     exit_code = cli.main(["review", "1", "--agent", "codex"])
@@ -684,8 +657,10 @@ def test_review_command_discards_fenced_non_json_review_output(
             )
         ]
     )
-    _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
-    _create_reviewable_diff(tmp_path)
+    configure_registered_api(
+        tmp_path, monkeypatch, fake_api, client, worker_name="reviewer"
+    )
+    create_reviewable_diff(tmp_path)
     monkeypatch.setattr("issuekit.commands.review.AgentRunner", NonJsonReviewRunner)
 
     exit_code = cli.main(["review", "1", "--agent", "codex"])
@@ -722,7 +697,9 @@ def test_review_command_self_review_names_no_eligible_reviewer(
             )
         ]
     )
-    _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
+    configure_registered_api(
+        tmp_path, monkeypatch, fake_api, client, worker_name="reviewer"
+    )
     (tmp_path / "issuekit.toml").write_text(
         "api_url = 'https://mine.example'\n"
         "project = 'demo'\n"
@@ -759,7 +736,9 @@ def test_review_command_self_review_keeps_plain_message_when_another_agent_exist
             )
         ]
     )
-    _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
+    configure_registered_api(
+        tmp_path, monkeypatch, fake_api, client, worker_name="reviewer"
+    )
 
     exit_code = cli.main(["review", "1", "--agent", "codex"])
 
@@ -790,10 +769,12 @@ def test_review_command_rejects_empty_implementation_diff_before_agent(
         ]
     )
     ApprovingRunner.calls.clear()
-    _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
+    configure_registered_api(
+        tmp_path, monkeypatch, fake_api, client, worker_name="reviewer"
+    )
     (tmp_path / ".gitignore").write_text(".agent-runs/\n", encoding="utf-8", newline="\n")
     (tmp_path / "code.py").write_text("value = 1\n", encoding="utf-8", newline="\n")
-    _init_git_repo(tmp_path)
+    init_git_repo(tmp_path, message="baseline", autocrlf=True)
     monkeypatch.setattr("issuekit.commands.review.AgentRunner", ApprovingRunner)
 
     exit_code = cli.main(["review", "1", "--agent", "codex"])
@@ -828,10 +809,12 @@ def test_review_command_rejects_agent_run_without_local_changes(
     )
     client = FakeIssuekitClient([raw_issue])
     ApprovingRunner.calls.clear()
-    _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
+    configure_registered_api(
+        tmp_path, monkeypatch, fake_api, client, worker_name="reviewer"
+    )
     (tmp_path / ".gitignore").write_text(".agent-runs/\n", encoding="utf-8", newline="\n")
     (tmp_path / "code.py").write_text("value = 1\n", encoding="utf-8", newline="\n")
-    _init_git_repo(tmp_path)
+    init_git_repo(tmp_path, message="baseline", autocrlf=True)
     monkeypatch.setattr("issuekit.commands.review.AgentRunner", ApprovingRunner)
 
     exit_code = cli.main(["review", "1", "--agent", "codex"])
@@ -873,10 +856,12 @@ def test_review_command_allows_no_changes_handoff_without_local_diff(
     )
     client = FakeIssuekitClient([raw_issue])
     ApprovingRunner.calls.clear()
-    _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
+    configure_registered_api(
+        tmp_path, monkeypatch, fake_api, client, worker_name="reviewer"
+    )
     (tmp_path / ".gitignore").write_text(".agent-runs/\n", encoding="utf-8", newline="\n")
     (tmp_path / "code.py").write_text("value = 1\n", encoding="utf-8", newline="\n")
-    _init_git_repo(tmp_path)
+    init_git_repo(tmp_path, message="baseline", autocrlf=True)
     monkeypatch.setattr("issuekit.commands.review.AgentRunner", ApprovingRunner)
 
     exit_code = cli.main(["review", "1", "--agent", "codex"])
@@ -921,10 +906,12 @@ def test_review_command_allows_handoff_evidence_without_local_diff(
     )
     client = FakeIssuekitClient([raw_issue])
     ApprovingRunner.calls.clear()
-    _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
+    configure_registered_api(
+        tmp_path, monkeypatch, fake_api, client, worker_name="reviewer"
+    )
     (tmp_path / ".gitignore").write_text(".agent-runs/\n", encoding="utf-8", newline="\n")
     (tmp_path / "code.py").write_text("value = 1\n", encoding="utf-8", newline="\n")
-    _init_git_repo(tmp_path)
+    init_git_repo(tmp_path, message="baseline", autocrlf=True)
     monkeypatch.setattr("issuekit.commands.review.AgentRunner", ApprovingRunner)
 
     exit_code = cli.main(["review", "1", "--agent", "codex"])
@@ -971,7 +958,7 @@ def test_collect_git_diff_context_includes_untracked_text_and_binary(
 ) -> None:
     (tmp_path / ".gitignore").write_text(".agent-runs/\n", encoding="utf-8", newline="\n")
     (tmp_path / "tracked.py").write_text("value = 1\n", encoding="utf-8", newline="\n")
-    _init_git_repo(tmp_path)
+    init_git_repo(tmp_path, message="baseline", autocrlf=True)
     (tmp_path / "new file.py").write_text("first\nsecond\n", encoding="utf-8", newline="\n")
     (tmp_path / "asset.bin").write_bytes(b"\0binary")
 
@@ -1293,11 +1280,13 @@ def test_review_command_allows_change_to_already_dirty_worktree_path(
             )
         ]
     )
-    _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
+    configure_registered_api(
+        tmp_path, monkeypatch, fake_api, client, worker_name="reviewer"
+    )
     (tmp_path / ".gitignore").write_text(".agent-runs/\n", encoding="utf-8", newline="\n")
     code_path = tmp_path / filename
     code_path.write_text("value = 1\n", encoding="utf-8", newline="\n")
-    _init_git_repo(tmp_path)
+    init_git_repo(tmp_path, message="baseline", autocrlf=True)
     code_path.write_text("value = 2\n", encoding="utf-8", newline="\n")
 
     class MutatingRunner(ApprovingRunner):

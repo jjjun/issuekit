@@ -31,6 +31,7 @@ from issuekit.negotiation.engine import (
     origin_issue_ref_from_thread,
 )
 from issuekit.testing import FakeIssuekitClient
+from tests.git_helpers import init_git_repo
 from tests.issue_helpers import api_issue
 
 
@@ -365,31 +366,9 @@ def test_negotiate_rejects_worktree_mutations_from_either_side(
         )
 
 
-def _init_git_repository(path: Path) -> None:
-    subprocess.run(["git", "init"], cwd=path, check=True, capture_output=True)
-    subprocess.run(
-        ["git", "config", "user.email", "test@example.com"],
-        cwd=path,
-        check=True,
-        capture_output=True,
-    )
-    subprocess.run(
-        ["git", "config", "user.name", "Test"],
-        cwd=path,
-        check=True,
-        capture_output=True,
-    )
-    subprocess.run(
-        ["git", "commit", "--allow-empty", "-m", "initial"],
-        cwd=path,
-        check=True,
-        capture_output=True,
-    )
-
-
 @pytest.mark.parametrize("runner_type", [CommittingRunner, BranchSwitchingRunner])
 def test_negotiate_rejects_head_or_branch_changes(tmp_path, runner_type) -> None:
-    _init_git_repository(tmp_path)
+    init_git_repo(tmp_path, allow_empty=True)
     runner = runner_type(
         [_block(side="consumer", verdict="agree", contract="GET /items")]
     )

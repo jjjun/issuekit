@@ -3,42 +3,25 @@
 from __future__ import annotations
 
 import json
-import subprocess
 from pathlib import Path
 
 import pytest
 
 import issuekit.proposals.api as proposals_api
 from issuekit import cli
-from issuekit.agentrun import AgentPrompt, AgentResult
+from issuekit.agentrun import AgentPrompt
 from issuekit.agents import router
 from issuekit.agents.registry import resolve_adapter
 from issuekit.agents.router import RouterParseError, parse_router_output
 from issuekit.config import RouterPolicy, load_config
 from issuekit.proposals import ProposalError
 from issuekit.testing import FakeIssuekitClient
-
-
-class FakeRunner:
-    def __init__(self, outputs: list[str]) -> None:
-        self._outputs = list(outputs)
-        self.calls: list[dict] = []
-
-    def run(self, adapter, prompt: AgentPrompt, repo, **kwargs) -> AgentResult:
-        self.calls.append({"prompt": prompt, "repo": repo, **kwargs})
-        text = self._outputs.pop(0) if self._outputs else ""
-        return AgentResult(
-            exit_code=0,
-            stdout_path=Path("out.log"),
-            agent_log_path=Path("agent.log"),
-            elapsed_sec=0.1,
-            timed_out=False,
-            parsed={"stdout": text},
-        )
+from tests.agent_fakes import FakeRunner, fenced_block
+from tests.git_helpers import init_git_repo
 
 
 def _route_block(payload: dict) -> str:
-    return "```route\n" + json.dumps(payload) + "\n```\n"
+    return fenced_block("route", payload)
 
 
 def _write_config(tmp_path: Path, *, extra_router: str = "") -> None:
@@ -83,7 +66,7 @@ def _register_catalog_projects(
 
 def _setup(fake_api, monkeypatch, tmp_path, outputs, *, profiles=None, extra_router: str = ""):
     _write_config(tmp_path, extra_router=extra_router)
-    _init_git_repo(tmp_path)
+    init_git_repo(tmp_path)
     profiles = profiles or [
         {
             "project": "api",
@@ -113,18 +96,6 @@ def _write_request_state(tmp_path: Path, state: dict) -> None:
     state_path = tmp_path / ".agent-runs" / "pm-requests.json"
     state_path.parent.mkdir()
     state_path.write_text(json.dumps(state, indent=2), encoding="utf-8", newline="\n")
-
-
-def _init_git_repo(path: Path) -> None:
-    for args in (
-        ("init", "-q"),
-        ("config", "user.email", "test@example.com"),
-        ("config", "user.name", "Test User"),
-        ("add", "."),
-        ("commit", "-qm", "initial"),
-    ):
-        result = subprocess.run(["git", *args], cwd=path, check=False)
-        assert result.returncode == 0
 
 
 def test_load_config_reads_router_policy(tmp_path: Path) -> None:
@@ -1293,7 +1264,7 @@ def test_router_allows_change_to_already_dirty_worktree_path(
     )
     changed_path = tmp_path / filename
     changed_path.write_text("value = 1\n", encoding="utf-8", newline="\n")
-    _init_git_repo(tmp_path)
+    init_git_repo(tmp_path)
     changed_path.write_text("value = 2\n", encoding="utf-8", newline="\n")
 
     class MutatingRunner(FakeRunner):

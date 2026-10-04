@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import subprocess
 import threading
 from dataclasses import replace
 from pathlib import Path
@@ -23,24 +22,8 @@ from issuekit.agents.registry import resolve_adapter
 from issuekit.config import AgentRunConfig, RoleOverlay, load_config
 from issuekit.errors import WorkflowError
 from issuekit.testing import FakeIssuekitClient
-
-
-class FakeRunner:
-    def __init__(self, outputs: list[str]) -> None:
-        self._outputs = list(outputs)
-        self.calls: list[dict] = []
-
-    def run(self, adapter, prompt: AgentPrompt, repo, **kwargs) -> AgentResult:
-        self.calls.append({"prompt": prompt, "repo": repo, **kwargs})
-        text = self._outputs.pop(0) if self._outputs else ""
-        return AgentResult(
-            exit_code=0,
-            stdout_path=Path("out.log"),
-            agent_log_path=Path("agent.log"),
-            elapsed_sec=0.1,
-            timed_out=False,
-            parsed={"stdout": text},
-        )
+from tests.agent_fakes import FakeRunner
+from tests.git_helpers import init_git_repo
 
 
 def _write_config(tmp_path: Path) -> None:
@@ -71,21 +54,9 @@ def _check_block(**fields: str) -> str:
     return "```proposal-check\n" + json.dumps(fields) + "\n```\n"
 
 
-def _init_git_repo(path: Path) -> None:
-    for args in (
-        ("init", "-q"),
-        ("config", "user.email", "test@example.com"),
-        ("config", "user.name", "Test User"),
-        ("add", "."),
-        ("commit", "-qm", "initial"),
-    ):
-        result = subprocess.run(["git", *args], cwd=path, check=False)
-        assert result.returncode == 0
-
-
 def _setup(fake_api, monkeypatch, tmp_path: Path, *, output: str):
     _write_config(tmp_path)
-    _init_git_repo(tmp_path)
+    init_git_repo(tmp_path)
     client = FakeIssuekitClient(
         proposals=[
             {
@@ -788,7 +759,7 @@ def test_proposal_check_allows_change_to_already_dirty_worktree_path(
     )
     changed_path = tmp_path / filename
     changed_path.write_text("value = 1\n", encoding="utf-8", newline="\n")
-    _init_git_repo(tmp_path)
+    init_git_repo(tmp_path)
     changed_path.write_text("value = 2\n", encoding="utf-8", newline="\n")
 
     class MutatingRunner(FakeRunner):

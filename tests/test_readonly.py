@@ -15,6 +15,7 @@ from issuekit.agents.readonly import (
 )
 from issuekit.errors import WorkflowError
 from issuekit.prompts import TRIAGE_PROMPT
+from tests.git_helpers import init_git_repo
 
 
 def test_prompt_from_spec_rejects_unknown_keyword(tmp_path: Path) -> None:
@@ -28,16 +29,9 @@ def test_prompt_from_spec_rejects_unknown_keyword(tmp_path: Path) -> None:
         )
 
 
-def _init_git_repo(path: Path) -> None:
+def _init_readonly_repo(path: Path) -> None:
     (path / "tracked.txt").write_text("baseline\n", encoding="utf-8", newline="\n")
-    for args in (
-        ("init", "-q"),
-        ("config", "user.email", "test@example.com"),
-        ("config", "user.name", "Test User"),
-        ("add", "."),
-        ("commit", "-qm", "initial"),
-    ):
-        subprocess.run(["git", *args], cwd=path, check=True)
+    init_git_repo(path)
 
 
 def _git_path(path: Path, name: str) -> Path:
@@ -105,7 +99,7 @@ def test_readonly_evaluation_identifies_failed_status_snapshot(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    _init_git_repo(tmp_path)
+    _init_readonly_repo(tmp_path)
     runner = ResultRunner()
     monkeypatch.setattr(readonly, "git_status_entries", lambda *args, **kwargs: None)
 
@@ -127,7 +121,7 @@ def test_readonly_evaluation_identifies_failed_status_snapshot(
 def test_readonly_evaluation_drops_issuekit_api_credentials(
     tmp_path: Path,
 ) -> None:
-    _init_git_repo(tmp_path)
+    _init_readonly_repo(tmp_path)
     runner = ResultRunner()
 
     run_readonly_evaluation(
@@ -160,7 +154,7 @@ def test_readonly_evaluation_protects_durable_agent_run_state(
     tmp_path: Path,
     relative_path: Path,
 ) -> None:
-    _init_git_repo(tmp_path)
+    _init_readonly_repo(tmp_path)
     state_path = tmp_path / relative_path
     state_path.parent.mkdir(parents=True, exist_ok=True)
     state_path.write_text("before\n", encoding="utf-8", newline="\n")
@@ -204,7 +198,7 @@ def test_readonly_evaluation_rejects_git_and_local_config_changes(
     tmp_path: Path,
     relative_path: Path,
 ) -> None:
-    _init_git_repo(tmp_path)
+    _init_readonly_repo(tmp_path)
     if relative_path.parts[0] == "git:config":
         path = _git_path(tmp_path, "config")
     elif relative_path.parts[0] == "git:hooks":
@@ -241,7 +235,7 @@ def test_readonly_evaluation_rejects_git_and_local_config_changes(
 def test_readonly_evaluation_passes_when_durable_state_is_unchanged(
     tmp_path: Path,
 ) -> None:
-    _init_git_repo(tmp_path)
+    _init_readonly_repo(tmp_path)
     run = run_readonly_evaluation(
         agent="codex",
         adapter=object(),
@@ -263,7 +257,7 @@ def test_readonly_evaluation_passes_when_durable_state_is_unchanged(
 def test_readonly_evaluation_ignores_content_change_to_already_dirty_path(
     tmp_path: Path,
 ) -> None:
-    _init_git_repo(tmp_path)
+    _init_readonly_repo(tmp_path)
     changed_path = tmp_path / "tracked.txt"
     changed_path.write_text("dirty before\n", encoding="utf-8", newline="\n")
     runner = ResultRunner(
@@ -292,7 +286,7 @@ def test_readonly_evaluation_ignores_content_change_to_already_dirty_path(
 def test_readonly_evaluation_detects_deletion_of_already_dirty_path(
     tmp_path: Path,
 ) -> None:
-    _init_git_repo(tmp_path)
+    _init_readonly_repo(tmp_path)
     changed_path = tmp_path / "tracked.txt"
     changed_path.write_text("dirty before\n", encoding="utf-8", newline="\n")
     runner = ResultRunner(mutate=changed_path.unlink)
@@ -315,7 +309,7 @@ def test_readonly_evaluation_detects_deletion_of_already_dirty_path(
 def test_readonly_evaluation_detects_newly_modified_tracked_path(
     tmp_path: Path,
 ) -> None:
-    _init_git_repo(tmp_path)
+    _init_readonly_repo(tmp_path)
     changed_path = tmp_path / "tracked.txt"
     runner = ResultRunner(
         mutate=lambda: changed_path.write_text(
@@ -341,7 +335,7 @@ def test_readonly_evaluation_detects_newly_modified_tracked_path(
 
 
 def test_readonly_evaluation_detects_new_untracked_path(tmp_path: Path) -> None:
-    _init_git_repo(tmp_path)
+    _init_readonly_repo(tmp_path)
     added_path = tmp_path / "added.txt"
     runner = ResultRunner(
         mutate=lambda: added_path.write_text(
@@ -369,7 +363,7 @@ def test_readonly_evaluation_detects_new_untracked_path(tmp_path: Path) -> None:
 def test_readonly_evaluation_detects_disappearing_baseline_path(
     tmp_path: Path,
 ) -> None:
-    _init_git_repo(tmp_path)
+    _init_readonly_repo(tmp_path)
     changed_path = tmp_path / "tracked.txt"
     changed_path.write_text("dirty\n", encoding="utf-8", newline="\n")
     runner = ResultRunner(
@@ -396,7 +390,7 @@ def test_readonly_evaluation_detects_disappearing_baseline_path(
 
 
 def test_readonly_evaluation_detects_rename(tmp_path: Path) -> None:
-    _init_git_repo(tmp_path)
+    _init_readonly_repo(tmp_path)
 
     run = run_readonly_evaluation(
         agent="codex",
@@ -420,7 +414,7 @@ def test_readonly_evaluation_detects_rename(tmp_path: Path) -> None:
 
 
 def test_readonly_evaluation_detects_commit(tmp_path: Path) -> None:
-    _init_git_repo(tmp_path)
+    _init_readonly_repo(tmp_path)
     changed_path = tmp_path / "tracked.txt"
 
     def commit_change() -> None:
@@ -444,7 +438,7 @@ def test_readonly_evaluation_detects_commit(tmp_path: Path) -> None:
 
 
 def test_require_clean_run_names_changed_paths(tmp_path: Path, capsys) -> None:
-    _init_git_repo(tmp_path)
+    _init_readonly_repo(tmp_path)
     added_path = tmp_path / "added.txt"
     run = run_readonly_evaluation(
         agent="codex",
@@ -498,7 +492,7 @@ def test_failed_readonly_run_also_reports_repository_mutation(
     timed_out,
     error_type,
 ) -> None:
-    _init_git_repo(tmp_path)
+    _init_readonly_repo(tmp_path)
     changed_path = tmp_path / "tracked.txt"
     runner = ResultRunner(
         mutate=lambda: changed_path.write_text(

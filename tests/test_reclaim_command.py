@@ -5,20 +5,9 @@ import pytest
 
 from issuekit import cli
 from issuekit.testing import FakeIssuekitClient
+from tests.agent_fakes import implementing_issue
 from tests.api_helpers import configure_api
 from tests.issue_helpers import api_issue
-
-
-def _implementing(issue_id: int, worker: str, *, assignee: str = "claude") -> dict:
-    return api_issue(
-        issue_id,
-        f"Task {issue_id}",
-        status="in_progress",
-        stage="implementing",
-        assignee=assignee,
-        implementer=assignee,
-        worker=worker,
-    )
 
 
 def test_reclaim_refuses_healthy_claim_without_force(
@@ -27,7 +16,7 @@ def test_reclaim_refuses_healthy_claim_without_force(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    client = FakeIssuekitClient([_implementing(5, "live.issuekit@machine")])
+    client = FakeIssuekitClient([implementing_issue(5, "live.issuekit@machine")])
     client.upsert_worker(
         machine_id="machine", repo_id="issuekit", worker_name="live", path="/repo"
     )
@@ -48,7 +37,7 @@ def test_reclaim_force_proceeds_for_healthy_claim(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    client = FakeIssuekitClient([_implementing(5, "live.issuekit@machine")])
+    client = FakeIssuekitClient([implementing_issue(5, "live.issuekit@machine")])
     configure_api(tmp_path, monkeypatch, fake_api, client, project="issuekit")
 
     assert cli.main(["reclaim", "5", "--force"]) == 0
@@ -78,7 +67,7 @@ def test_reclaim_proceeds_for_stale_claim_with_expected_worker(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    client = FakeIssuekitClient([_implementing(6, "machine/issuekit/dead")])
+    client = FakeIssuekitClient([implementing_issue(6, "machine/issuekit/dead")])
     configure_api(tmp_path, monkeypatch, fake_api, client, project="issuekit")
 
     assert cli.main(["reclaim", "6", "--json"]) == 0
@@ -114,7 +103,7 @@ def test_reclaim_forwards_reason(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    client = FakeIssuekitClient([_implementing(6, "machine/issuekit/dead")])
+    client = FakeIssuekitClient([implementing_issue(6, "machine/issuekit/dead")])
     configure_api(tmp_path, monkeypatch, fake_api, client, project="issuekit")
 
     assert cli.main(["reclaim", "6", "--force", "--reason", "stale checkout"]) == 0
@@ -138,7 +127,7 @@ def test_reclaim_rejects_non_ascii_reason(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    client = FakeIssuekitClient([_implementing(6, "machine/issuekit/dead")])
+    client = FakeIssuekitClient([implementing_issue(6, "machine/issuekit/dead")])
     configure_api(tmp_path, monkeypatch, fake_api, client, project="issuekit")
 
     assert cli.main(["reclaim", "6", "--force", "--reason", "stale \u2603"]) == 1
