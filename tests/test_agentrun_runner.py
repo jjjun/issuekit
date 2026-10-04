@@ -20,8 +20,8 @@ from issuekit.agentrun import (
     RunStatus,
     build_adapter,
 )
-from issuekit.agentrun.runner import _RunWatcher
 from issuekit.agentrun.status import read_status, status_path, write_status
+from issuekit.agentrun.watcher import _RunWatcher
 
 
 class FakeAdapter(AgentAdapter):
@@ -1094,7 +1094,7 @@ def test_watcher_slow_tick_cannot_overwrite_terminal_status(
         return 0
 
     monkeypatch.setattr(
-        "issuekit.agentrun.runner.changed_file_count", slow_changed_file_count
+        "issuekit.agentrun.watcher.changed_file_count", slow_changed_file_count
     )
     watcher = _RunWatcher(
         run_status_path=run_status_path,
@@ -1135,7 +1135,7 @@ def test_watcher_skips_changed_file_count_without_heartbeat(
         raise AssertionError("changed_file_count should not be called")
 
     monkeypatch.setattr(
-        "issuekit.agentrun.runner.changed_file_count",
+        "issuekit.agentrun.watcher.changed_file_count",
         unexpected_changed_file_count,
     )
     watcher = _RunWatcher(

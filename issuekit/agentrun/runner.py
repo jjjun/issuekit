@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import os
 import signal
 import subprocess
@@ -19,16 +18,15 @@ from issuekit.agentrun.adapter import AgentAdapter, ConfigAgentAdapter
 from issuekit.agentrun.parsed import parsed_int, parsed_is_error, parsed_usage
 from issuekit.agentrun.run_dir import prepare_run_dir
 from issuekit.agentrun.status import (
-    HEARTBEAT_INTERVAL_SEC,
     RunStatus,
     read_status,
     repo_relative,
     status_path,
     write_status,
 )
-from issuekit.coerce import last_nonempty_line
+from issuekit.agentrun.watcher import _RunWatcher
 from issuekit.file_permissions import open_owner_only_new, write_owner_only_text
-from issuekit.gitutil import changed_file_count, git_status_short
+from issuekit.gitutil import git_status_short
 
 MAX_PROMPT_CHARS = 24_000
 
@@ -77,127 +75,22 @@ def implementation_report_instruction(destination: str) -> str:
     )
 
 
-class _RunWatcher:
-    """Background watcher that updates status JSON and optionally emits a heartbeat."""
-
-    def __init__(
-        self,
-        *,
-        run_status_path: Path,
-        run_status: RunStatus,
-        repo: Path,
-        agent_log_path: Path,
-        stdout_log_path: Path | None = None,
-        enable_heartbeat: bool,
-        start_time: float,
-    ) -> None:
-        self.run_status_path = run_status_path
-        self.run_status = run_status
-        self.repo = repo
-        self.agent_log_path = agent_log_path
-        self.stdout_log_path = stdout_log_path
-        self.enable_heartbeat = enable_heartbeat
-        self.start_time = start_time
-        self._stop_event = threading.Event()
-        self._thread = threading.Thread(target=self._loop, daemon=True)
-
-    def start(self) -> None:
-        self._thread.start()
-
-    def stop(self) -> None:
-        self._stop_event.set()
-        self._thread.join()
-
-    def _loop(self) -> None:
-        while not self._stop_event.is_set():
-            try:
-                self._tick()
-            except Exception as exc:  # noqa: BLE001 - a tick must never kill the writer
-                sys.stderr.write(f"\nstatus writer tick failed (continuing): {exc}\n")
-                sys.stderr.flush()
-            self._stop_event.wait(timeout=HEARTBEAT_INTERVAL_SEC)
-
-    def _tick(self) -> None:
-        last_line = self._read_latest_log_line()
-        now = datetime.now().replace(microsecond=0).isoformat()
-
-        self.run_status = replace(
-            self.run_status,
-            last_log_line=last_line,
-            last_log_at=now if last_line else self.run_status.last_log_at,
-            heartbeat_at=now,
-        )
-        write_status(self.run_status_path, self.run_status)
-
-        if self.enable_heartbeat:
-            changed = changed_file_count(self.repo)
-            elapsed = time.monotonic() - self.start_time
-            minutes, seconds = divmod(int(elapsed), 60)
-            line_text = last_line or "-"
-            if len(line_text) > 50:
-                line_text = line_text[:47] + "..."
-            msg = (
-                f"[{minutes:02d}:{seconds:02d}] running run={self.run_status.run_id} "
-                f"changed={changed} last: {line_text}"
-            )
-            max_width = 100
-            if len(msg) > max_width:
-                msg = msg[: max_width - 3] + "..."
-            sys.stderr.write(f"\r{msg}")
-            sys.stderr.flush()
-
-    def _read_latest_log_line(self) -> str | None:
-        stderr_entry = _read_log_entry(self.agent_log_path)
-        if self.stdout_log_path is None:
-            return stderr_entry[0] if stderr_entry is not None else None
-
-        stdout_entry = _read_log_entry(self.stdout_log_path)
-        if stdout_entry is None:
-            return stderr_entry[0] if stderr_entry is not None else None
-
-        summary = _summarize_json_event(stdout_entry[0])
-        if summary is None:
-            return stderr_entry[0] if stderr_entry is not None else None
-        if stderr_entry is None or stdout_entry[1] >= stderr_entry[1]:
-            return summary
-        return stderr_entry[0]
+@dataclass(frozen=True)
+class _RunFiles:
+    run_id: str
+    stdout_path: Path
+    agent_log_path: Path
+    report_path: Path | None
+    status_path: Path
+    status: RunStatus
 
 
-def _read_log_entry(path: Path) -> tuple[str, int] | None:
-    try:
-        data = path.read_bytes()
-        modified_at = path.stat().st_mtime_ns
-    except OSError:
-        return None
-    if not data:
-        return None
-    line = last_nonempty_line(data.decode("utf-8", errors="replace"))
-    return (line, modified_at) if line is not None else None
-
-
-def _summarize_json_event(line: str) -> str | None:
-    try:
-        event = json.loads(line)
-    except json.JSONDecodeError:
-        return None
-    if not isinstance(event, dict) or not isinstance(event.get("type"), str):
-        return None
-
-    event_type = event["type"]
-    summary = event_type
-    if event_type == "item.completed":
-        item = event.get("item")
-        if isinstance(item, dict) and isinstance(item.get("type"), str):
-            item_type = item["type"]
-            summary = f"{event_type} {item_type}"
-            command = item.get("command")
-            if item_type == "command_execution" and isinstance(command, str):
-                summary += f": {' '.join(command.split())}"
-
-    summary = summary.encode("ascii", errors="replace").decode("ascii")
-    if len(summary) > 200:
-        summary = summary[:197] + "..."
-    return summary
+@dataclass(frozen=True)
+class _RunContext:
+    repo: Path
+    binary: Path
+    argv: list[str]
+    files: _RunFiles
 
 
 class AgentRunner:
@@ -221,22 +114,92 @@ class AgentRunner:
         implementer_report: bool = False,
         drop_env: Sequence[str] = (),
     ) -> AgentResult:
+        context = self._prepare_run(
+            adapter=adapter,
+            prompt=prompt,
+            repo=repo,
+            agent_name=agent_name,
+            issue_id=issue_id,
+            prompt_suffix=prompt_suffix,
+            run_dir=run_dir,
+            session_id=session_id,
+            resume_session=resume_session,
+            implementer_report=implementer_report,
+        )
+        enable_heartbeat = sys.stderr.isatty() or follow
+        start = time.monotonic()
+        exit_code, timed_out, run_error, run_status = self._launch_and_supervise(
+            context=context,
+            start_time=start,
+            timeout=timeout,
+            abort_event=abort_event,
+            enable_heartbeat=enable_heartbeat,
+            issuekit_session=issuekit_session,
+            drop_env=drop_env,
+        )
+
+        elapsed, parsed = self._finalize_status(
+            adapter=adapter,
+            run_files=context.files,
+            run_status=run_status,
+            exit_code=exit_code,
+            timed_out=timed_out,
+            start_time=start,
+        )
+
+        return self._build_result(
+            context=context,
+            exit_code=exit_code,
+            timed_out=timed_out,
+            run_error=run_error,
+            elapsed=elapsed,
+            parsed=parsed,
+        )
+
+    def _build_result(
+        self,
+        *,
+        context: _RunContext,
+        exit_code: int,
+        timed_out: bool,
+        run_error: BaseException | None,
+        elapsed: float,
+        parsed: dict[str, str] | None,
+    ) -> AgentResult:
+        status_short = git_status_short(context.repo)
+        if run_error is not None:
+            raise run_error
+        return AgentResult(
+            exit_code=exit_code,
+            stdout_path=context.files.stdout_path,
+            agent_log_path=context.files.agent_log_path,
+            elapsed_sec=elapsed,
+            timed_out=timed_out,
+            parsed=parsed,
+            status_short=status_short,
+            status_path=context.files.status_path,
+            report_path=context.files.report_path,
+        )
+
+    def _prepare_run(
+        self,
+        *,
+        adapter: AgentAdapter,
+        prompt: AgentPrompt,
+        repo: Path,
+        agent_name: str | None,
+        issue_id: int | None,
+        prompt_suffix: str | None,
+        run_dir: Path | None,
+        session_id: str | None,
+        resume_session: bool,
+        implementer_report: bool,
+    ) -> _RunContext:
         plan_path = prompt.path.absolute()
         repo = repo.resolve()
         if not repo.exists():
             raise FileNotFoundError(f"Repo directory not found: {repo}")
-
-        if prompt_suffix:
-            prompt_text = f"{prompt.pointer}\n\n{prompt_suffix}"
-        else:
-            prompt_text = prompt.pointer
-        composed_prompt = adapter.compose_prompt(prompt_text)
-        if len(composed_prompt) > MAX_PROMPT_CHARS:
-            raise ValueError(
-                f"Composed prompt is {len(composed_prompt)} characters; "
-                f"limit is {MAX_PROMPT_CHARS}."
-            )
-
+        prompt_text = self._compose_prompt(adapter, prompt, prompt_suffix)
         binary = adapter.resolve_binary()
         argv = [str(binary)] + adapter.build_argv(
             prompt_text,
@@ -244,7 +207,88 @@ class AgentRunner:
             session_id=session_id,
             resume=resume_session,
         )
+        files = self._prepare_run_files(
+            repo=repo,
+            plan_path=plan_path,
+            prompt=prompt,
+            agent_name=agent_name,
+            issue_id=issue_id,
+            implementer_report=implementer_report,
+            run_dir=run_dir,
+        )
+        return _RunContext(repo=repo, binary=binary, argv=argv, files=files)
 
+    def _launch_and_supervise(
+        self,
+        *,
+        context: _RunContext,
+        start_time: float,
+        timeout: float,
+        abort_event: threading.Event | None,
+        enable_heartbeat: bool,
+        issuekit_session: str | None,
+        drop_env: Sequence[str],
+    ) -> tuple[int, bool, BaseException | None, RunStatus]:
+        files = context.files
+        with (
+            os.fdopen(open_owner_only_new(files.stdout_path), "w", encoding="utf-8") as out_f,
+            os.fdopen(open_owner_only_new(files.agent_log_path), "w", encoding="utf-8") as log_f,
+        ):
+            kwargs = self._popen_kwargs(
+                repo=context.repo,
+                stdout_file=out_f,
+                agent_log_file=log_f,
+                issuekit_session=issuekit_session,
+                report_path=files.report_path,
+                drop_env=drop_env,
+            )
+            proc, run_status = self._launch(
+                binary=context.binary,
+                argv=context.argv,
+                kwargs=kwargs,
+                run_files=files,
+                start_time=start_time,
+            )
+            result = self._supervise(
+                proc=proc,
+                run_status=run_status,
+                run_files=files,
+                repo=context.repo,
+                start_time=start_time,
+                timeout=timeout,
+                abort_event=abort_event,
+                enable_heartbeat=enable_heartbeat,
+            )
+            return (*result, run_status)
+
+    def _compose_prompt(
+        self,
+        adapter: AgentAdapter,
+        prompt: AgentPrompt,
+        prompt_suffix: str | None,
+    ) -> str:
+        prompt_text = (
+            f"{prompt.pointer}\n\n{prompt_suffix}" if prompt_suffix else prompt.pointer
+        )
+        composed_prompt = adapter.compose_prompt(prompt_text)
+        if len(composed_prompt) > MAX_PROMPT_CHARS:
+            raise ValueError(
+                f"Composed prompt is {len(composed_prompt)} characters; "
+                f"limit is {MAX_PROMPT_CHARS}."
+            )
+        return prompt_text
+
+    def _prepare_run_files(
+        self,
+        *,
+        repo: Path,
+        plan_path: Path,
+        prompt: AgentPrompt,
+        agent_name: str | None,
+        issue_id: int | None,
+        implementer_report: bool,
+        run_dir: Path | None,
+    ) -> _RunFiles:
         run_dir_existed = (run_dir or repo / ".agent-runs").exists()
         run_dir = prepare_run_dir(repo, run_dir)
         if not run_dir_existed:
@@ -259,14 +303,13 @@ class AgentRunner:
         agent_log_path = run_dir / f"{run_id}.agent.log"
         report_path = run_dir / f"{run_id}.report.md" if implementer_report else None
         run_status_path = status_path(run_dir, run_id)
-        started_at = datetime.now().replace(microsecond=0).isoformat()
         run_status = RunStatus(
             run_id=run_id,
             agent=agent_name or "unknown",
             issue=issue_id,
             status="running",
             pid=None,
-            started_at=started_at,
+            started_at=datetime.now().replace(microsecond=0).isoformat(),
             ended_at=None,
             elapsed_sec=None,
             exit_code=None,
@@ -276,92 +319,134 @@ class AgentRunner:
         )
         write_status(run_status_path, run_status)
         self._release_run_id_reservation(reservation_path)
+        return _RunFiles(
+            run_id=run_id,
+            stdout_path=stdout_path,
+            agent_log_path=agent_log_path,
+            report_path=report_path,
+            status_path=run_status_path,
+            status=run_status,
+        )
 
-        enable_heartbeat = sys.stderr.isatty() or follow
-        start = time.monotonic()
-        with os.fdopen(
-            open_owner_only_new(stdout_path),
-            "w",
-            encoding="utf-8",
-        ) as out_f, os.fdopen(
-            open_owner_only_new(agent_log_path),
-            "w",
-            encoding="utf-8",
-        ) as log_f:
-            kwargs: dict[str, Any] = {
-                "stdin": subprocess.DEVNULL,
-                "stdout": out_f,
-                "stderr": log_f,
-                "cwd": str(repo),
-            }
-            env = os.environ.copy()
-            for key in drop_env:
-                env.pop(key, None)
-            if issuekit_session is not None or report_path is not None:
-                if issuekit_session is not None:
-                    env["ISSUEKIT_SESSION"] = issuekit_session
-                if report_path is not None:
-                    env["ISSUEKIT_IMPLEMENTER_REPORT_FILE"] = str(report_path)
-            kwargs["env"] = env
-            if os.name == "nt":
-                kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
-            else:
-                kwargs["start_new_session"] = True
+    def _popen_kwargs(
+        self,
+        *,
+        repo: Path,
+        stdout_file: Any,
+        agent_log_file: Any,
+        issuekit_session: str | None,
+        report_path: Path | None,
+        drop_env: Sequence[str],
+    ) -> dict[str, Any]:
+        kwargs: dict[str, Any] = {
+            "stdin": subprocess.DEVNULL,
+            "stdout": stdout_file,
+            "stderr": agent_log_file,
+            "cwd": str(repo),
+        }
+        env = os.environ.copy()
+        for key in drop_env:
+            env.pop(key, None)
+        if issuekit_session is not None:
+            env["ISSUEKIT_SESSION"] = issuekit_session
+        if report_path is not None:
+            env["ISSUEKIT_IMPLEMENTER_REPORT_FILE"] = str(report_path)
+        kwargs["env"] = env
+        if os.name == "nt":
+            kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+        else:
+            kwargs["start_new_session"] = True
+        return kwargs
 
-            try:
-                proc = subprocess.Popen(argv, **kwargs)
-            except OSError as exc:
-                write_status(
-                    run_status_path,
-                    replace(
-                        run_status,
-                        status="failed",
-                        ended_at=datetime.now().replace(microsecond=0).isoformat(),
-                        elapsed_sec=time.monotonic() - start,
-                        exit_code=1,
-                        failure_reason=str(exc),
-                    ),
-                )
-                raise RuntimeError(f"Could not launch {binary}: {exc}") from exc
-            run_status = replace(run_status, pid=proc.pid)
-            write_status(run_status_path, run_status)
-
-            watcher = _RunWatcher(
-                run_status_path=run_status_path,
-                run_status=run_status,
-                repo=repo,
-                agent_log_path=agent_log_path,
-                stdout_log_path=stdout_path,
-                enable_heartbeat=enable_heartbeat,
-                start_time=start,
+    def _launch(
+        self,
+        *,
+        binary: Path,
+        argv: list[str],
+        kwargs: dict[str, Any],
+        run_files: _RunFiles,
+        start_time: float,
+    ) -> tuple[subprocess.Popen, RunStatus]:
+        try:
+            proc = subprocess.Popen(argv, **kwargs)
+        except OSError as exc:
+            write_status(
+                run_files.status_path,
+                replace(
+                    run_files.status,
+                    status="failed",
+                    ended_at=datetime.now().replace(microsecond=0).isoformat(),
+                    elapsed_sec=time.monotonic() - start_time,
+                    exit_code=1,
+                    failure_reason=str(exc),
+                ),
             )
-            watcher.start()
+            raise RuntimeError(f"Could not launch {binary}: {exc}") from exc
+        run_status = replace(run_files.status, pid=proc.pid)
+        write_status(run_files.status_path, run_status)
+        return proc, run_status
 
-            run_error: BaseException | None = None
-            try:
-                exit_code, timed_out = self._wait_for_process(
-                    proc,
-                    timeout=timeout,
-                    abort_event=abort_event,
-                )
-            except BaseException as exc:
-                self._kill_process_group(proc)
-                exit_code = 130
-                timed_out = False
-                run_error = exc
-            finally:
-                watcher.stop()
-                if enable_heartbeat:
-                    sys.stderr.write("\n")
-                    sys.stderr.flush()
+    def _supervise(
+        self,
+        *,
+        proc: subprocess.Popen,
+        run_status: RunStatus,
+        run_files: _RunFiles,
+        repo: Path,
+        start_time: float,
+        timeout: float,
+        abort_event: threading.Event | None,
+        enable_heartbeat: bool,
+    ) -> tuple[int, bool, BaseException | None]:
+        watcher = _RunWatcher(
+            run_status_path=run_files.status_path,
+            run_status=run_status,
+            repo=repo,
+            agent_log_path=run_files.agent_log_path,
+            stdout_log_path=run_files.stdout_path,
+            enable_heartbeat=enable_heartbeat,
+            start_time=start_time,
+        )
+        watcher.start()
+        run_error: BaseException | None = None
+        try:
+            exit_code, timed_out = self._wait_for_process(
+                proc,
+                timeout=timeout,
+                abort_event=abort_event,
+            )
+        except BaseException as exc:
+            self._kill_process_group(proc)
+            exit_code = 130
+            timed_out = False
+            run_error = exc
+        finally:
+            watcher.stop()
+            if enable_heartbeat:
+                sys.stderr.write("\n")
+                sys.stderr.flush()
+        return exit_code, timed_out, run_error
 
-        elapsed = time.monotonic() - start
+    def _finalize_status(
+        self,
+        *,
+        adapter: AgentAdapter,
+        run_files: _RunFiles,
+        run_status: RunStatus,
+        exit_code: int,
+        timed_out: bool,
+        start_time: float,
+    ) -> tuple[float, dict[str, str] | None]:
+        elapsed = time.monotonic() - start_time
         terminal_status = self._terminal_status(exit_code, timed_out)
-
         stdout_text = ""
         try:
-            stdout_text = stdout_path.read_text(encoding="utf-8", errors="replace")
-            agent_log_text = agent_log_path.read_text(encoding="utf-8", errors="replace")
+            stdout_text = run_files.stdout_path.read_text(
+                encoding="utf-8", errors="replace"
+            )
+            agent_log_text = run_files.agent_log_path.read_text(
+                encoding="utf-8", errors="replace"
+            )
             parsed = adapter.parse_output(stdout_text, agent_log_text)
         except Exception:  # noqa: BLE001 - parsing must never block the terminal status write
             parsed = None
@@ -369,12 +454,12 @@ class AgentRunner:
 
         # Preserve fields the watcher may have written.
         try:
-            current_status = read_status(run_status_path)
+            current_status = read_status(run_files.status_path)
         except (OSError, ValueError):
             current_status = run_status
 
         write_status(
-            run_status_path,
+            run_files.status_path,
             replace(
                 current_status,
                 status=terminal_status,
@@ -396,23 +481,7 @@ class AgentRunner:
                 ),
             ),
         )
-
-        status_short = git_status_short(repo)
-
-        if run_error is not None:
-            raise run_error
-
-        return AgentResult(
-            exit_code=exit_code,
-            stdout_path=stdout_path,
-            agent_log_path=agent_log_path,
-            elapsed_sec=elapsed,
-            timed_out=timed_out,
-            parsed=parsed,
-            status_short=status_short,
-            status_path=run_status_path,
-            report_path=report_path,
-        )
+        return elapsed, parsed
 
     def _reserve_run_id(self, run_dir: Path) -> tuple[str, Path]:
         base = datetime.now().strftime("%Y%m%d-%H%M%S")

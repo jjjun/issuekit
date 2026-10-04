@@ -7,6 +7,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+from issuekit.agentrun.logtail import tail_lines
 from issuekit.agentrun.run_dir import prepare_run_dir
 from issuekit.agentrun.status import (
     RUN_ID_PATTERN,
@@ -184,6 +185,5 @@ def _print_log_tail(label: str, path: Path | None) -> None:
     if not path.exists():
         print("Log file not found.")
         return
-    lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
-    for line in lines[-TAIL_LINES:]:
+    for line in tail_lines(path, TAIL_LINES):
         print(line)
