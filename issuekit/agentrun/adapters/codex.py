@@ -8,7 +8,7 @@ from functools import cache
 from pathlib import Path
 
 from issuekit.agentrun.adapter import ConfigAgentAdapter
-from issuekit.agentrun.config import AgentRunConfig
+from issuekit.agentrun.parsed import encode_usage, int_counts
 
 
 class CodexAdapter(ConfigAgentAdapter):
@@ -36,14 +36,7 @@ class CodexAdapter(ConfigAgentAdapter):
         if self.run_config.runtime != "exec":
             return None
 
-        approval_argv = self.run_config.approval_argv
-        if approval_argv is None:
-            approval_argv = (
-                (self.run_config.approval_flag,)
-                + ((self.run_config.approval_value,) if self.run_config.approval_value else ())
-                if self.run_config.approval_flag
-                else ()
-            )
+        approval_argv = self.effective_approval_argv()
 
         for index, argument in enumerate(approval_argv):
             if argument in ("--sandbox", "-s"):
@@ -52,21 +45,6 @@ class CodexAdapter(ConfigAgentAdapter):
             elif argument.startswith("--sandbox="):
                 return argument.partition("=")[2]
         return None
-
-    def __init__(
-        self,
-        agent_name: str = "codex",
-        *,
-        run_config: AgentRunConfig,
-        model: str | None = None,
-        reasoning_effort: str | None = None,
-    ) -> None:
-        super().__init__(
-            agent_name,
-            run_config=run_config,
-            model=model,
-            reasoning_effort=reasoning_effort,
-        )
 
     def build_argv(
         self,
@@ -122,7 +100,7 @@ class CodexAdapter(ConfigAgentAdapter):
                 error_event_pending = False
                 if not turn_failed:
                     failure_reason = None
-                usage = _usage_counts(event.get("usage"))
+                usage = int_counts(event.get("usage"))
             elif event_type == "turn.failed":
                 turn_failed = True
                 error = event.get("error")
@@ -140,7 +118,7 @@ class CodexAdapter(ConfigAgentAdapter):
             parsed["stdout"] = ""
         if session_id is not None:
             parsed["session_id"] = session_id
-        parsed.update({f"usage_{name}": str(count) for name, count in usage.items()})
+        parsed.update(encode_usage(usage))
         if turn_failed or error_event_pending:
             parsed["is_error"] = "true"
             if failure_reason is not None:
@@ -183,13 +161,3 @@ def _probe_sandbox(binary: str, mode: str) -> str | None:
         or result.stdout.strip()
         or f"probe exited with status {result.returncode} without diagnostic output"
     )
-
-
-def _usage_counts(usage: object) -> dict[str, int]:
-    if not isinstance(usage, dict):
-        return {}
-    return {
-        name: count
-        for name, count in usage.items()
-        if isinstance(name, str) and isinstance(count, int) and not isinstance(count, bool)
-    }

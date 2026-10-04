@@ -47,6 +47,29 @@ def test_run_git_redirects_stdin_and_normalizes_result(
     assert captured["stdin"] == subprocess.DEVNULL
 
 
+def test_git_status_short_disables_optional_locks(tmp_path: Path, monkeypatch) -> None:
+    captured: dict = {}
+
+    def fake_run(*args, **kwargs):
+        captured["args"] = args[0]
+        return subprocess.CompletedProcess(args[0], 0, stdout=" M file.py\n", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    assert git_status_short(tmp_path) == "M file.py"
+    assert captured["args"] == [
+        "git",
+        "-c",
+        "core.fsmonitor=false",
+        "--no-optional-locks",
+        "-c",
+        "core.quotepath=false",
+        "--no-pager",
+        "status",
+        "--short",
+    ]
+
+
 def test_parse_git_status_z_handles_all_path_shapes() -> None:
     special = 'space "quote"\tline\n日本語.py'
     entries = parse_git_status_z(
@@ -249,4 +272,36 @@ def test_git_status_and_readonly_fingerprint_disable_repo_fsmonitor(
     assert git_status_short(tmp_path) == ""
     assert git_status_entries(tmp_path) == ()
     assert repository_fingerprint(tmp_path).worktree == ()
+    assert not marker.exists()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="requires a POSIX fsmonitor script")
+def test_agentrun_status_and_changed_count_disable_repo_fsmonitor(
+    tmp_path: Path,
+) -> None:
+    _require_git()
+    _git(tmp_path, "init", "-b", "main")
+    _commit_file(tmp_path)
+
+    marker = tmp_path.parent / f"{tmp_path.name}-agentrun-fsmonitor-marker"
+    script = tmp_path.parent / f"{tmp_path.name}-agentrun-fsmonitor.sh"
+    script.write_text(
+        f"#!/bin/sh\nprintf invoked >> '{marker}'\nprintf 'token\\n\\n'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    script.chmod(0o755)
+    _git(tmp_path, "config", "core.fsmonitor", str(script))
+
+    subprocess.run(
+        ["git", "status", "--short"],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+    )
+    assert marker.exists()
+    marker.unlink()
+
+    assert git_status_short(tmp_path) == ""
+    assert changed_file_count(tmp_path) == 0
     assert not marker.exists()

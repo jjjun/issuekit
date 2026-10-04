@@ -2,9 +2,10 @@
 
 `issuekit/agentrun/` is the small, reusable runtime for invoking a headless
 coding-agent CLI. It deliberately imports no issuekit application layer; its
-only dependency on the rest of the package is the leaf helper
-`issuekit.file_permissions`. This keeps process execution independent of issue
-tracker state and makes the boundary clear when adding agent-related code.
+dependencies on the rest of the package are the leaf helpers `issuekit.coerce`,
+`issuekit.gitutil`, and `issuekit.file_permissions`. This keeps process
+execution independent of issue tracker state and makes the boundary clear when
+adding agent-related code.
 
 ## Layers
 
@@ -29,10 +30,10 @@ that reads `IssuekitConfig` to produce an adapter for the runtime. The one
 exception is `run_claimed`, which reads `config.agents` directly to choose the
 App Server runner when an agent sets `runtime = "codex_app_server"`.
 
-Nothing under `issuekit/agentrun/` may import `issuekit.config`,
-`issuekit.workflow`, `issuekit.store`, or `issuekit.proposals`. The runtime
-has its own `_coerce.py` and `git.py` because it needs a few helper functions
-without taking dependencies on `issuekit.core` and `issuekit.gitutil`.
+`issuekit/agentrun/` may import only its own runtime modules and the leaf modules
+`issuekit.coerce`, `issuekit.gitutil`, and `issuekit.file_permissions` from the
+rest of the package. Leaf modules import only the standard library and other
+leaf modules. Application modules may also use these leaves.
 
 When adding code, put CLI launch, process supervision, and run-artifact logic
 in `agentrun`; put issue lifecycle, proposal, and workflow decisions in

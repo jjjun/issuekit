@@ -9,6 +9,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 
 from issuekit.agentrun.config import AgentRunConfig
+from issuekit.agentrun.parsed import encode_usage, int_counts
 
 
 class AgentBinaryNotFoundError(RuntimeError):
@@ -82,6 +83,18 @@ class ConfigAgentAdapter(AgentAdapter):
                 "add speed_argv to the agent configuration or remove speed."
             )
 
+    def effective_approval_argv(self) -> tuple[str, ...]:
+        """Return explicit approval argv or its flag/value configuration."""
+        if self.run_config.approval_argv is not None:
+            return self.run_config.approval_argv
+        if not self.run_config.approval_flag:
+            return ()
+        return (self.run_config.approval_flag,) + (
+            (self.run_config.approval_value,)
+            if self.run_config.approval_value
+            else ()
+        )
+
     def resolve_binary(self) -> Path:
         found = shutil.which(self.run_config.binary)
         if found:
@@ -113,14 +126,7 @@ class ConfigAgentAdapter(AgentAdapter):
         prompt = self.compose_prompt(prompt)
         argv = list(self.run_config.headless_argv)
         argv.append(prompt)
-        approval_argv = self.run_config.approval_argv
-        if approval_argv is None:
-            approval_argv = (
-                (self.run_config.approval_flag,)
-                + ((self.run_config.approval_value,) if self.run_config.approval_value else ())
-                if self.run_config.approval_flag
-                else ()
-            )
+        approval_argv = self.effective_approval_argv()
         speed_argv = self.run_config.speed_argv if self.run_config.speed is True else ()
         if _has_settings_argument(approval_argv) and _has_settings_argument(speed_argv):
             approval_settings, approval_argv = _without_settings_arguments(approval_argv)
@@ -310,10 +316,7 @@ def _result_envelope_fields(stdout: str) -> dict[str, str]:
     if isinstance(cost, (int, float)) and not isinstance(cost, bool):
         fields["cost_usd"] = str(cost)
     usage = envelope.get("usage")
-    if isinstance(usage, dict):
-        for name, count in usage.items():
-            if isinstance(count, int) and not isinstance(count, bool):
-                fields[f"usage_{name}"] = str(count)
+    fields.update(encode_usage(int_counts(usage)))
     permission_denials = envelope.get("permission_denials")
     if isinstance(permission_denials, list):
         fields["permission_denials"] = str(len(permission_denials))

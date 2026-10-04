@@ -19,8 +19,8 @@ else:
 
     msvcrt = None
 
-from issuekit.agentrun.git import run_git
 from issuekit.file_permissions import ensure_owner_only_directory, open_owner_only
+from issuekit.gitutil import run_git
 
 
 def prepare_run_dir(repo: Path, run_dir: Path | None = None) -> Path:
@@ -42,7 +42,7 @@ def prepare_run_dir(repo: Path, run_dir: Path | None = None) -> Path:
                 ],
                 repo,
             )
-        if result.returncode != 0:
+        if result is None or result.returncode != 0:
             raise RuntimeError("Could not check whether git tracks files under .agent-runs.")
         tracked_output = result.stdout.encode("utf-8", errors="surrogateescape")
         tracked = [path for path in tracked_output.split(b"\0") if path]

@@ -109,6 +109,7 @@ def test_codex_reviewer_uses_workspace_write_without_mcp() -> None:
 def test_codex_sandbox_preflight_runs_command_and_caches_success(tmp_path: Path) -> None:
     binary, calls = _fake_codex_binary(tmp_path, exit_code=0, stderr="")
     adapter = CodexAdapter(
+        "codex",
         run_config=AgentRunConfig(
             binary=str(binary),
             headless_argv=("exec",),
@@ -133,6 +134,7 @@ def test_codex_sandbox_preflight_blocks_launch_and_caches_failure(
         stderr="bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted\n",
     )
     adapter = CodexAdapter(
+        "codex",
         run_config=AgentRunConfig(
             binary=str(binary),
             headless_argv=("exec",),

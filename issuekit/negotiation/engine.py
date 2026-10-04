@@ -12,8 +12,9 @@ from typing import Protocol
 from issuekit.agentrun import AgentAdapter, AgentPrompt, AgentResult, AgentRunner
 from issuekit.agents.readonly import require_clean_run, run_readonly_evaluation
 from issuekit.agents.registry import resolve_adapter
+from issuekit.coerce import last_nonempty_line
 from issuekit.config import IssuekitConfig
-from issuekit.core import Issue, last_nonempty_line
+from issuekit.core import Issue
 from issuekit.errors import WorkflowError
 from issuekit.negotiation.model import (
     NegotiationEntry,

@@ -17,6 +17,7 @@ from issuekit.agentrun import (
     AgentRunner,
 )
 from issuekit.agentrun.adapter import AgentAdapter
+from issuekit.agentrun.parsed import parsed_int, parsed_is_error, parsed_usage
 from issuekit.agentrun.runner import implementation_report_instruction
 from issuekit.agentrun.status import is_dead, list_statuses, read_status
 from issuekit.agents.app_server_runtime import AppServerAttemptRunner
@@ -269,7 +270,7 @@ def run_and_submit(
 
     if result.timed_out:
         return RunOutcome(issue=issue, result=result, exit_code=124, reason="timed_out")
-    agent_reported_error = (result.parsed or {}).get("is_error") == "true"
+    agent_reported_error = parsed_is_error(result.parsed) is True
     if result.exit_code != 0 or agent_reported_error:
         if _is_startup_failure(result):
             print(
@@ -527,17 +528,13 @@ def _diagnostic_log_detail(result: AgentResult) -> str:
 
 def _is_startup_failure(result: AgentResult) -> bool:
     parsed = result.parsed or {}
-    if parsed.get("is_error") != "true":
+    if parsed_is_error(parsed) is not True:
         return False
-    num_turns = parsed.get("num_turns")
-    if num_turns is not None:
-        try:
-            if int(num_turns) <= 1:
-                return True
-        except ValueError:
-            pass
-    usage_values = [value for key, value in parsed.items() if key.startswith("usage_")]
-    return not usage_values or all(value == "0" for value in usage_values)
+    num_turns = parsed_int(parsed, "num_turns")
+    if num_turns is not None and num_turns <= 1:
+        return True
+    usage_values = parsed_usage(parsed).values()
+    return not usage_values or all(value == 0 for value in usage_values)
 
 
 def _has_report_content(path: Path) -> bool:

@@ -20,6 +20,7 @@ from issuekit.agentrun.app_server import (
     CommandJournal,
     normalize_notification,
 )
+from issuekit.agentrun.parsed import encode_usage, int_counts
 from issuekit.agentrun.run_dir import prepare_run_dir
 from issuekit.agentrun.runner import (
     AgentPrompt,
@@ -49,13 +50,7 @@ def _usage_total(event: Mapping[str, Any]) -> dict[str, int]:
     payload = event.get("payload")
     usage = payload.get("usage") if isinstance(payload, Mapping) else None
     total = usage.get("total") if isinstance(usage, Mapping) else None
-    if not isinstance(total, Mapping):
-        return {}
-    return {
-        str(name): count
-        for name, count in total.items()
-        if isinstance(count, int) and not isinstance(count, bool)
-    }
+    return int_counts(total)
 
 
 @dataclass(frozen=True)
@@ -479,7 +474,7 @@ class AppServerAttemptRunner:
             "runtime": "codex_app_server",
             "agent_session_id": session_id or "",
             "native_session_id": native_session_id or "",
-            **{f"usage_{name}": str(count) for name, count in usage_total.items()},
+            **encode_usage(usage_total),
         }
         if failure_reason is not None:
             parsed["failure_reason"] = failure_reason

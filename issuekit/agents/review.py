@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import TextIO
 
 from issuekit.agentrun import AgentResult, AgentRunner
+from issuekit.agentrun.parsed import parsed_is_error
 from issuekit.agents.handoff import NO_IMPLEMENTATION_CHANGES_MARKER
 from issuekit.agents.readonly import (
     prompt_from_spec,
@@ -173,7 +174,7 @@ def run_review_and_decide(
             print(f"ERROR: {run.repository_error}", file=err)
     if result.timed_out:
         return ReviewOutcome(issue=issue, result=result, verdict=_empty_verdict(), exit_code=124)
-    if result.exit_code != 0 or (result.parsed or {}).get("is_error") == "true":
+    if result.exit_code != 0 or parsed_is_error(result.parsed) is True:
         return ReviewOutcome(
             issue=issue,
             result=result,

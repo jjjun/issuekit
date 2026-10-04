@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from issuekit.agentrun.run_dir import prepare_run_dir
-from issuekit.core import optional_int
+from issuekit.coerce import optional_int
 from issuekit.errors import WorkflowError
 from issuekit.file_permissions import write_owner_only_text
 from issuekit.negotiation.model import (

@@ -15,9 +15,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from issuekit.agentrun._coerce import last_nonempty_line
 from issuekit.agentrun.adapter import AgentAdapter, ConfigAgentAdapter
-from issuekit.agentrun.git import changed_file_count, git_status_short
+from issuekit.agentrun.parsed import parsed_int, parsed_is_error, parsed_usage
 from issuekit.agentrun.run_dir import prepare_run_dir
 from issuekit.agentrun.status import (
     HEARTBEAT_INTERVAL_SEC,
@@ -27,7 +26,9 @@ from issuekit.agentrun.status import (
     status_path,
     write_status,
 )
+from issuekit.coerce import last_nonempty_line
 from issuekit.file_permissions import open_owner_only_new, write_owner_only_text
+from issuekit.gitutil import changed_file_count, git_status_short
 
 MAX_PROMPT_CHARS = 24_000
 
@@ -383,10 +384,10 @@ class AgentRunner:
                 failure_reason=(parsed or {}).get("failure_reason"),
                 terminal_reason=(parsed or {}).get("terminal_reason"),
                 session_id=(parsed or {}).get("session_id"),
-                usage=_parsed_usage_counts(parsed),
+                usage=parsed_usage(parsed),
                 final_message=_parsed_final_message(parsed, stdout_text),
-                is_error=_parsed_error_flag(parsed),
-                permission_denials=_parsed_optional_int(parsed, "permission_denials"),
+                is_error=parsed_is_error(parsed),
+                permission_denials=parsed_int(parsed, "permission_denials"),
                 permission_denied_tools=(parsed or {}).get("permission_denied_tools"),
                 api_error_status=(parsed or {}).get("api_error_status"),
                 fast_mode_state=(parsed or {}).get("fast_mode_state"),
@@ -517,37 +518,6 @@ class AgentRunner:
             except ProcessLookupError:
                 pass
             proc.wait()
-
-
-def _parsed_usage_counts(parsed: dict[str, str] | None) -> dict[str, int]:
-    usage: dict[str, int] = {}
-    for key, value in (parsed or {}).items():
-        if not key.startswith("usage_"):
-            continue
-        try:
-            usage[key.removeprefix("usage_")] = int(value)
-        except ValueError:
-            continue
-    return usage
-
-
-def _parsed_error_flag(parsed: dict[str, str] | None) -> bool | None:
-    value = (parsed or {}).get("is_error")
-    if value == "true":
-        return True
-    if value == "false":
-        return False
-    return None
-
-
-def _parsed_optional_int(parsed: dict[str, str] | None, key: str) -> int | None:
-    value = (parsed or {}).get(key)
-    if value is None:
-        return None
-    try:
-        return int(value)
-    except ValueError:
-        return None
 
 
 def _warn_if_fast_mode_disabled(

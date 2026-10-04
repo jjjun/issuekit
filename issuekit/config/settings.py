@@ -11,13 +11,12 @@ from string import Formatter
 from urllib.parse import urlparse
 
 from issuekit.agentrun.config import AgentRunConfig
+from issuekit.coerce import optional_int, optional_str
 from issuekit.config.root import resolve_repository_root
 from issuekit.core import (
     VALID_ISSUE_PRIORITIES,
     WORKFLOW_TOKEN_MAX_LEN,
     is_valid_workflow_token,
-    optional_int,
-    optional_str,
     qualified_worker_key,
     worker_key,
 )

@@ -1,4 +1,4 @@
-"""Small runtime-local text and value helpers."""
+"""Shared coercion helpers."""
 
 from __future__ import annotations
 

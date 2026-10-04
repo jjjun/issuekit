@@ -116,6 +116,96 @@ def test_agentrun_does_not_import_application_layers() -> None:
     assert violations == []
 
 
+def _issuekit_imports(tree: ast.Module, package_name: str) -> list[str]:
+    modules: list[str] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            modules.extend(
+                alias.name for alias in node.names if alias.name.startswith("issuekit")
+            )
+        elif (
+            isinstance(node, ast.ImportFrom)
+            and node.module is not None
+            and node.level == 0
+        ):
+            if node.module == "issuekit":
+                modules.extend(f"issuekit.{alias.name}" for alias in node.names)
+            elif node.module.startswith("issuekit."):
+                modules.append(node.module)
+        elif isinstance(node, ast.ImportFrom) and node.level:
+            package_parts = package_name.split(".")
+            base_parts = package_parts[: len(package_parts) - node.level + 1]
+            if node.module:
+                modules.append(".".join((*base_parts, node.module)))
+            elif base_parts:
+                modules.extend(
+                    ".".join((*base_parts, alias.name)) for alias in node.names
+                )
+    return modules
+
+
+def test_leaf_modules_import_only_standard_library_and_other_leaves() -> None:
+    package_dir = Path(__file__).parents[1] / "issuekit"
+    leaves = {
+        "issuekit.coerce": package_dir / "coerce.py",
+        "issuekit.file_permissions": package_dir / "file_permissions.py",
+        "issuekit.gitutil": package_dir / "gitutil.py",
+    }
+    violations: list[str] = []
+
+    for module, path in leaves.items():
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for imported in _issuekit_imports(tree, "issuekit"):
+            if imported not in leaves:
+                violations.append(f"{module}: {imported}")
+
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                imported_modules = [alias.name for alias in node.names]
+            elif (
+                isinstance(node, ast.ImportFrom)
+                and node.module is not None
+                and node.level == 0
+            ):
+                imported_modules = [node.module]
+            else:
+                continue
+            for imported in imported_modules:
+                if imported.startswith("issuekit"):
+                    continue
+                if imported.split(".", 1)[0] not in sys.stdlib_module_names:
+                    violations.append(f"{module}: non-standard module {imported}")
+
+    assert violations == []
+
+
+def test_agentrun_imports_only_runtime_modules_and_leaf_modules() -> None:
+    agentrun_dir = Path(__file__).parents[1] / "issuekit" / "agentrun"
+    package_dir = Path(__file__).parents[1] / "issuekit"
+    leaves = {
+        "issuekit.coerce",
+        "issuekit.file_permissions",
+        "issuekit.gitutil",
+    }
+    violations: list[str] = []
+
+    for path in agentrun_dir.rglob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        package_name = ".".join(
+            ("issuekit", *path.relative_to(package_dir).parent.parts)
+        )
+        for imported in _issuekit_imports(tree, package_name):
+            if (
+                imported == "issuekit.agentrun"
+                or imported.startswith("issuekit.agentrun.")
+                or imported in leaves
+            ):
+                continue
+            violations.append(f"{path.relative_to(agentrun_dir)}: {imported}")
+
+    assert violations == []
+
+
 def test_exception_tuples_do_not_repeat_runtime_error_subclasses() -> None:
     package_dir = Path(__file__).parents[1] / "issuekit"
     class_bases: dict[str, tuple[str, ...]] = {}

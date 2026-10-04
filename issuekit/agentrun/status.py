@@ -13,7 +13,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
 
-from issuekit.agentrun._coerce import optional_float, optional_int, optional_str
+from issuekit.agentrun.parsed import int_counts
+from issuekit.coerce import optional_float, optional_int, optional_str
 from issuekit.file_permissions import chmod_600, open_owner_only
 
 RunStatusValue = Literal["running", "completed", "failed", "timed_out", "abandoned"]
@@ -81,7 +82,7 @@ class RunStatus:
                 failure_reason=optional_str(data.get("failure_reason")),
                 terminal_reason=optional_str(data.get("terminal_reason")),
                 session_id=optional_str(data.get("session_id")),
-                usage=_usage_counts(data.get("usage")),
+                usage=int_counts(data.get("usage")),
                 final_message=optional_str(data.get("final_message")),
                 is_error=(
                     data.get("is_error")
@@ -147,16 +148,6 @@ class RunStatus:
 
 def status_path(run_dir: Path, run_id: str) -> Path:
     return run_dir / f"{run_id}.status.json"
-
-
-def _usage_counts(value: object) -> dict[str, int]:
-    if not isinstance(value, dict):
-        return {}
-    return {
-        name: count
-        for name, count in value.items()
-        if isinstance(name, str) and isinstance(count, int) and not isinstance(count, bool)
-    }
 
 
 def write_status(path: Path, status: RunStatus) -> None:
