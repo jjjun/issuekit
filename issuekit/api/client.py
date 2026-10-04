@@ -20,15 +20,13 @@ from issuekit.core import is_valid_workflow_token
 
 from .agent_sessions import AgentSessionResourceMixin
 from .base import ClientTransportMixin
-from .resources import (
-    IssueResourceMixin,
-    ProfileResourceMixin,
-    ProposalCheckResourceMixin,
-    ProposalResourceMixin,
-    WorkerResourceMixin,
-)
+from .issue_resources import IssueResourceMixin
+from .profile_resources import ProfileResourceMixin
+from .proposal_check_resources import ProposalCheckResourceMixin
+from .proposal_resources import ProposalResourceMixin
 from .security import jwt_expiry
 from .token_cache import read_cached_token
+from .worker_resources import WorkerResourceMixin
 
 # Keep idle sockets disabled for long-lived clients (issuekit#179).
 DEFAULT_HTTP_LIMITS = httpx.Limits(

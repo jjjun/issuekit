@@ -8,7 +8,7 @@ from urllib.parse import urljoin
 
 import httpx
 
-from issuekit.core import drop_none
+from issuekit.core import drop_none, is_valid_workflow_token
 from issuekit.errors import WorkflowError
 from issuekit.urls import api_url_origin
 
@@ -349,3 +349,9 @@ def worker_rows(payload: Any) -> list[JsonDict]:
         page_label="Worker list response",
         item_label="Worker response",
     )
+
+
+def _validate_project_token(project: str) -> str:
+    if not project or not is_valid_workflow_token(project):
+        raise ValueError(f"Invalid project token: {project}")
+    return project
