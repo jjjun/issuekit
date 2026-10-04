@@ -612,7 +612,7 @@ def proposal_id_arg(value: str) -> int:
     try:
         proposal_id = int(value)
     except ValueError as exc:
-        raise ProposalError(f"Proposal id must be an integer in API mode: {value}") from exc
+        raise ProposalError(f"Proposal id must be an integer: {value}") from exc
     if proposal_id <= 0:
         raise ProposalError(f"Proposal id must be positive: {value}")
     return proposal_id

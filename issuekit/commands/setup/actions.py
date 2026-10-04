@@ -14,9 +14,7 @@ from issuekit.commands.init import (
     append_codex_issuekit_table,
     find_codex_issuekit_table,
 )
-from issuekit.config import IssuekitConfig, load_config
 from issuekit.config.local import missing_gitignore_entries
-from issuekit.workflow import WorkflowError
 
 
 @dataclass(frozen=True)
@@ -29,22 +27,12 @@ class SetupAction:
 
 def collect_setup_actions(cwd: Path) -> list[SetupAction]:
     actions: list[SetupAction] = []
-    try:
-        issues_dir = load_config(cwd).issues_path(cwd)
-    except (ValueError, WorkflowError, OSError):
-        issues_dir = IssuekitConfig().issues_path(cwd)
-    issues_readme = issues_dir / "README.md"
-    try:
-        issues_readme_path = issues_readme.relative_to(cwd).as_posix()
-    except ValueError:
-        issues_readme_path = issues_readme.as_posix()
     _add_missing_file_actions(
         cwd,
         actions,
         (
             ".gitattributes",
             ".editorconfig",
-            issues_readme_path,
             ".pre-commit-config.yaml",
         ),
     )

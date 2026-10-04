@@ -82,14 +82,14 @@ def restore_config_env() -> Iterator[None]:
 
 def test_load_config_reads_standalone_issuekit_toml(tmp_path: Path) -> None:
     (tmp_path / "issuekit.toml").write_text(
-        "issues_dir = 'docs/issues'\n",
+        "project = 'standalone-project'\n",
         encoding="utf-8",
         newline="\n",
     )
 
     config = load_config(tmp_path)
 
-    assert config.issues_dir == "docs/issues"
+    assert config.project == "standalone-project"
 
 
 def test_load_config_from_subdirectory_uses_repository_root(
@@ -233,12 +233,12 @@ def test_load_config_reads_check_encoding_exclude(tmp_path: Path) -> None:
 
 def test_load_config_reads_machine_config(tmp_path: Path, monkeypatch) -> None:
     machine_path = tmp_path / "machine.toml"
-    machine_path.write_text("issues_dir = 'machine/issues'\n", encoding="utf-8")
+    machine_path.write_text("project = 'machine-project'\n", encoding="utf-8")
     monkeypatch.setenv("ISSUEKIT_CONFIG", str(machine_path))
 
     config = load_config(tmp_path)
 
-    assert config.issues_dir == "machine/issues"
+    assert config.project == "machine-project"
     assert config.machine_config_path == machine_path
 
 
@@ -352,7 +352,7 @@ def test_repo_config_overrides_machine_and_merges_agent_keys(
     machine_path = tmp_path / "machine.toml"
     machine_path.write_text(
         (
-            "issues_dir = 'machine/issues'\n[agents.codex]\n"
+            "project = 'machine-project'\n[agents.codex]\n"
             "model = 'machine-model'\nreasoning_effort = 'medium'\n"
             "speed = 'on'\nspeed_argv = ['--speed', 'priority']\n"
             "approval_flag = '--approve-for-me'\n"
@@ -360,7 +360,7 @@ def test_repo_config_overrides_machine_and_merges_agent_keys(
         encoding="utf-8",
     )
     (tmp_path / "issuekit.toml").write_text(
-        "issues_dir = 'repo/issues'\n",
+        "project = 'repo-project'\n",
         encoding="utf-8",
     )
     monkeypatch.setenv("ISSUEKIT_CONFIG", str(machine_path))
@@ -368,7 +368,7 @@ def test_repo_config_overrides_machine_and_merges_agent_keys(
     config = load_config(tmp_path)
     codex = dict(config.agents)["codex"]
 
-    assert config.issues_dir == "repo/issues"
+    assert config.project == "repo-project"
     assert codex.model == "machine-model"
     assert codex.reasoning_effort == "medium"
     assert codex.speed is True
@@ -761,18 +761,18 @@ def test_load_config_names_invalid_float_setting(tmp_path: Path) -> None:
 
 def test_load_config_prefers_pyproject_tool_issuekit(tmp_path: Path) -> None:
     (tmp_path / "pyproject.toml").write_text(
-        "[tool.issuekit]\nissues_dir = 'py/issues'\n",
+        "[tool.issuekit]\nproject = 'py-project'\n",
         encoding="utf-8",
         newline="\n",
     )
     (tmp_path / "issuekit.toml").write_text(
-        "issues_dir = 'standalone/issues'\n",
+        "project = 'standalone-project'\n",
         encoding="utf-8",
         newline="\n",
     )
 
     assert load_config(tmp_path) == IssuekitConfig(
-        issues_dir="py/issues",
+        project="py-project",
     )
 
 
@@ -1358,13 +1358,13 @@ def test_load_config_uses_issuekit_toml_when_pyproject_has_no_issuekit_table(
         newline="\n",
     )
     (tmp_path / "issuekit.toml").write_text(
-        "issues_dir = 'standalone/issues'\n",
+        "project = 'standalone-project'\n",
         encoding="utf-8",
         newline="\n",
     )
 
     assert load_config(tmp_path) == IssuekitConfig(
-        issues_dir="standalone/issues",
+        project="standalone-project",
     )
 
 
@@ -1547,7 +1547,7 @@ def test_config_worker_key_returns_registered_identity() -> None:
 def test_load_config_malformed_issuekit_toml_names_file(tmp_path: Path) -> None:
     issuekit_path = tmp_path / "issuekit.toml"
     issuekit_path.write_text(
-        "issues_dir = [\n",
+        "project = [\n",
         encoding="utf-8",
         newline="\n",
     )

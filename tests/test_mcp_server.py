@@ -187,14 +187,17 @@ def test_server_registers_override_tools_when_enabled(tmp_path: Path) -> None:
 
 def test_server_tool_schemas_match_the_contract(tmp_path: Path) -> None:
     # This digest covers the MCP tool contract. If it changes, confirm the
-    # schema change was intended, describe it in the commit message, then update
-    # this digest.
+    # schema change was intended, then update this digest.
     assert _tool_schema_digest(create_server(tmp_path)) == (
-        "bf88316125665b74202556f75812c0217f6fb467bcb0940d66eac054fa6b3dbe"
+        "d63249fd9665d14250ae7521d22ef0eac2f42713fea51b98e195986415c98000"
     )
     assert _tool_schema_digest(create_server(tmp_path, allow_overrides=True)) == (
-        "92d6bd40abf8b319ddc882473e769c93ddf779ffdf6064d55bf8c0a144136a64"
+        "b0575a458b0274f402adf5e64144448e4cbaa9c6d8905f1e7db8b8060bc345dd"
     )
+    for name in ("adopt_proposal", "discard_proposal"):
+        schema = _tool_schema(create_server(tmp_path), name)
+        assert "proposal_id" in schema["required"]
+        assert "proposal_file" not in schema["properties"]
 
 
 def test_default_server_schemas_hide_emergency_overrides(tmp_path: Path) -> None:
@@ -264,7 +267,6 @@ def test_health_tool_reports_config_and_local_state(
     monkeypatch.setenv("ISSUEKIT_TOKEN_CACHE", str(tmp_path / "token.json"))
     machine_path = tmp_path / "machine.toml"
     machine_path.write_text(
-        "issues_dir = 'machine/issues'\n"
         "trusted_api_origins = ['https://mine.example']\n",
         encoding="utf-8",
     )

@@ -53,7 +53,6 @@ from issuekit.proposals.api import (
     build_proposal,
     discard_outgoing_proposal,
     list_outgoing_proposals,
-    proposal_id_arg,
     send_proposal,
 )
 from issuekit.store import get_store
@@ -735,17 +734,15 @@ def create_server(
 
     @server.tool(description="Adopt an incoming proposal as a local active issue.")
     async def adopt_proposal(
-        proposal_id: int | None = None,
-        proposal_file: str | None = None,
+        proposal_id: int,
         priority: str = "medium",
         append: str | None = None,
         ctx: Context | None = None,
     ) -> dict[str, Any]:
         async with _api_config(root, ctx) as (config, _config_root):
-            raw_id = proposal_id if proposal_id is not None else proposal_id_arg(proposal_file or "")
             return adopt_proposal_with_append(
                 config,
-                raw_id,
+                proposal_id,
                 priority=priority,
                 append_text=append,
             )
@@ -758,17 +755,15 @@ def create_server(
         )
     )
     async def discard_proposal(
-        proposal_id: int | None = None,
-        proposal_file: str | None = None,
+        proposal_id: int,
         to: str | None = None,
         ctx: Context | None = None,
     ) -> dict[str, Any]:
         async with _api_config(root, ctx) as (config, _config_root):
-            raw_id = proposal_id if proposal_id is not None else proposal_id_arg(proposal_file or "")
             if to:
-                return discard_outgoing_proposal(config, to=to, proposal_id=int(raw_id))
+                return discard_outgoing_proposal(config, to=to, proposal_id=proposal_id)
             with api_client(config) as client:
-                return client.discard_proposal(int(raw_id))
+                return client.discard_proposal(proposal_id)
 
     @server.tool(
         description=(

@@ -104,13 +104,12 @@ cannot prove that an already-open codex or Claude Code stdio transport is live.
 is an explicit alias for that path.
 
 Because it runs `init`, `issuekit setup` writes the base init files:
-`.gitattributes`, `.editorconfig`, the issues directory `README.md`
-(`docs/issues/README.md` by default), `.pre-commit-config.yaml` with the
+`.gitattributes`, `.editorconfig`, `.pre-commit-config.yaml` with the
 `check-encoding` and `author-guard` hooks, and the `issuekit.local.toml` and
 `.agent-runs/` entries in `.gitignore`. Existing templated files are skipped
 unless you pass `--force`. Force refreshes only the issuekit MCP entries and
-issuekit-owned template files (`.gitattributes`, `.editorconfig`, and the issues
-README); it preserves other MCP servers and settings. An existing
+issuekit-owned template files (`.gitattributes` and `.editorconfig`); it
+preserves other MCP servers and settings. An existing
 `.pre-commit-config.yaml` is never overwritten, and missing hooks get printed
 guidance instead of an edit.
 

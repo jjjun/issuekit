@@ -319,7 +319,6 @@ def test_info_json_surfaces_machine_config_path(
     _configure_api(tmp_path, monkeypatch, _issue_client())
     machine_path = tmp_path / "machine.toml"
     machine_path.write_text(
-        "issues_dir = 'machine/issues'\n"
         "trusted_api_origins = ['https://mine.example']\n",
         encoding="utf-8",
     )

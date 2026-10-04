@@ -54,11 +54,6 @@ stage (`implementing`, `review`, or `changes_requested`) is missing, and a
 stage filter such as `issuekit queue --stage` must name a listed stage. Adding
 a name does not create a workflow stage, so keep the default list.
 
-`issues_dir` sets the directory for local issue documents and defaults to
-`docs/issues`. `issuekit init` writes its issue-directory README there. During
-an agent run, changes under this directory do not count as implementation
-changes, and the submit-time mojibake scan excludes it.
-
 ## Machine config
 
 Machine-wide defaults can be stored in `~/.config/issuekit/config.toml` on both
@@ -75,7 +70,7 @@ but its `roles` and `model_prompts` sub-tables replace the machine ones whole.
 Agent launch settings are machine-only and cannot be overridden by repository
 config. Other values, including the `[triage]`, `[router]`, and `[agent_roles]`
 tables, are replaced whole by the higher-precedence layer. Repository identity
-settings such as `project`, `work_branch`, `issues_dir`, and `profile_*`
+settings such as `project`, `work_branch`, and `profile_*`
 normally belong in repository config.
 
 Because one machine config serves every checkout, issuekit is lenient with it:
@@ -553,7 +548,11 @@ worktree. Set `gate_halfwidth_kana = false` only when touched generated files
 legitimately contain half-width katakana; other encoding-artifact checks remain
 enabled. The gate honors `check_encoding_exclude` for unconfirmed hits, so use
 only narrow repo-relative path globs for generated trees or known-legitimate
-text. Confirmed corruption still blocks submission in every path.
+text. Confirmed corruption still blocks submission in every path. Files under
+`docs/issues/` count as implementation changes and are scanned by both the
+agent submit gate and `check-encoding --gate`. Add a matching
+`check_encoding_exclude` pattern to suppress unconfirmed candidates there; the
+same patterns apply to both scans.
 
 The gate is per-agent policy, set in the agent table next to a heavy-deletion
 warning. It applies when issuekit launches the agent for implementation

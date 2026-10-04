@@ -17,10 +17,7 @@ def test_init_fresh_dir_gets_full_scaffold(tmp_path: Path, monkeypatch, capsys) 
         "issuekit.local.toml\n.agent-runs/\n.env\n"
     )
     assert (tmp_path / ".pre-commit-config.yaml").exists()
-    assert (tmp_path / "docs" / "issues" / "README.md").exists()
-    assert not (tmp_path / "docs" / "issues" / "incoming").exists()
-    assert not (tmp_path / "docs" / "issues" / "active").exists()
-    assert not (tmp_path / "docs" / "issues" / "indexes").exists()
+    assert not (tmp_path / "docs" / "issues").exists()
 
 
 def test_init_rerun_preserves_existing_files(tmp_path: Path, monkeypatch) -> None:
@@ -103,8 +100,8 @@ def test_init_written_files_have_no_bom_or_crlf(tmp_path: Path, monkeypatch) -> 
         tmp_path / ".gitattributes",
         tmp_path / ".editorconfig",
         tmp_path / ".pre-commit-config.yaml",
-        tmp_path / "docs" / "issues" / "README.md",
     ]:
         content = path.read_bytes()
         assert not content.startswith(b"\xef\xbb\xbf")
         assert b"\r\n" not in content
+    assert not (tmp_path / "docs" / "issues" / "README.md").exists()

@@ -169,7 +169,6 @@ def run_and_submit(
     agent: str,
     config: IssuekitConfig,
     cwd: Path,
-    issues_dir: Path,
     timeout: float,
     model: str | None = None,
     reasoning_effort: str | None = None,
@@ -246,7 +245,7 @@ def run_and_submit(
         else:
             runner_factory = AgentRunner
     fingerprint_before = worktree_fingerprint(cwd)
-    _warn_if_resuming_stale_run(issue_id, cwd, issues_dir, run_dir, out=out)
+    _warn_if_resuming_stale_run(issue_id, cwd, run_dir, out=out)
     try:
         result = runner_factory().run(
             adapter,
@@ -295,7 +294,7 @@ def run_and_submit(
         )
 
     with managed_issue_store(config, store) as active_store:
-        implementation_entries = _implementation_entries(snapshot, cwd, issues_dir)
+        implementation_entries = _implementation_entries(snapshot)
         if snapshot.root == cwd.resolve() and not implementation_entries:
             current_issue = active_store.get_issue(issue_id)
             if current_issue is not None and current_issue.stage == "review":
@@ -313,10 +312,8 @@ def run_and_submit(
                 current_stage = current_issue.stage if current_issue is not None else "unknown"
                 log_detail = _diagnostic_log_detail(result)
                 # implementation_entries is already empty here, so every
-                # non-issues-dir entry in the unfiltered set is pre-existing.
-                unattributed_entries = _all_implementation_entries(
-                    snapshot, cwd, issues_dir
-                )
+                # unfiltered entry is pre-existing.
+                unattributed_entries = _all_implementation_entries(snapshot)
                 if unattributed_entries:
                     print(
                         "ERROR: agent produced no implementation changes; not "
@@ -373,7 +370,6 @@ def run_and_submit(
             _warn_heavy_deletions(
                 snapshot,
                 cwd,
-                issues_dir,
                 deletion_threshold=policy.diff_shape_warn_deletions,
                 err=err,
             )
@@ -381,7 +377,6 @@ def run_and_submit(
             confirmed_hits, unconfirmed_hits = _mojibake_touched_hits(
                 snapshot,
                 cwd,
-                issues_dir,
                 include_halfwidth_katakana=config.gate_halfwidth_kana,
                 exclude_patterns=config.check_encoding_exclude,
             )
@@ -490,7 +485,6 @@ def _submission_summary(
 def _warn_if_resuming_stale_run(
     issue_id: int,
     cwd: Path,
-    issues_dir: Path,
     run_dir: Path,
     *,
     out: TextIO,
@@ -504,7 +498,7 @@ def _warn_if_resuming_stale_run(
     if root != cwd.resolve():
         return
     entries = git_status_entries(cwd)
-    if not _filter_implementation_entries(entries, cwd, issues_dir):
+    if not entries:
         return
     previous_runs = [status for status in list_statuses(run_dir) if status.issue == issue_id]
     if not previous_runs or not is_dead(previous_runs[0]):
@@ -593,7 +587,6 @@ def review_feedback_prompt(issue_body: str) -> str | None:
 def _mojibake_touched_hits(
     snapshot: ImplementationChangeSnapshot,
     repo: Path,
-    issues_dir: Path,
     *,
     include_halfwidth_katakana: bool,
     exclude_patterns: tuple[str, ...],
@@ -601,7 +594,6 @@ def _mojibake_touched_hits(
     paths = changed_readable_paths(
         repo,
         snapshot.status_entries or (),
-        excluded_root=issues_dir,
         readable_paths=snapshot.readable_paths,
     )
     changed_lines_by_path = changed_line_numbers(repo, paths, git_runner=run_git)
@@ -632,14 +624,13 @@ def _mojibake_touched_hits(
 def _warn_heavy_deletions(
     snapshot: ImplementationChangeSnapshot,
     repo: Path,
-    issues_dir: Path,
     *,
     deletion_threshold: int,
     err: TextIO,
 ) -> None:
     if snapshot.root != repo.resolve():
         return
-    implementation_entries = _implementation_entries(snapshot, repo, issues_dir)
+    implementation_entries = _implementation_entries(snapshot)
     if not implementation_entries:
         return
     result = run_git(
@@ -765,49 +756,13 @@ def _is_readable_regular_file(path: Path) -> bool:
 
 def _implementation_entries(
     snapshot: ImplementationChangeSnapshot,
-    repo: Path,
-    issues_dir: Path,
 ) -> tuple[GitStatusEntry, ...]:
-    return _filter_implementation_entries(snapshot.status_entries, repo, issues_dir)
+    return snapshot.status_entries or ()
 
 
 def _all_implementation_entries(
     snapshot: ImplementationChangeSnapshot,
-    repo: Path,
-    issues_dir: Path,
 ) -> tuple[GitStatusEntry, ...]:
-    """Non-issues-dir status entries, regardless of which run produced them."""
+    """All status entries, regardless of which run produced them."""
 
-    return _filter_implementation_entries(snapshot.all_status_entries, repo, issues_dir)
-
-
-def _filter_implementation_entries(
-    entries: tuple[GitStatusEntry, ...] | None,
-    repo: Path,
-    issues_dir: Path,
-) -> tuple[GitStatusEntry, ...]:
-    return tuple(
-        entry
-        for entry in entries or ()
-        if _entry_is_implementation_change(entry, repo, issues_dir)
-    )
-
-
-def _entry_is_implementation_change(
-    entry: GitStatusEntry,
-    repo: Path,
-    issues_dir: Path,
-) -> bool:
-    return any(
-        not _is_under_issues_dir(repo / path, issues_dir)
-        for path in (entry.path, entry.original_path)
-        if path is not None
-    )
-
-
-def _is_under_issues_dir(path: Path, issues_dir: Path) -> bool:
-    try:
-        path.resolve().relative_to(issues_dir.resolve())
-        return True
-    except ValueError:
-        return False
+    return snapshot.all_status_entries or ()

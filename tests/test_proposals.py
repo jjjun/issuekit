@@ -2067,7 +2067,7 @@ def test_api_cli_adopt_requires_integer_id(tmp_path: Path, monkeypatch, capsys) 
 
     assert cli.main(["adopt", "proposal.md"]) == 1
 
-    assert "Proposal id must be an integer" in capsys.readouterr().err
+    assert "Proposal id must be an integer: proposal.md" in capsys.readouterr().err
 
 
 def test_proposal_commands_require_api_url(tmp_path: Path, monkeypatch, capsys) -> None:

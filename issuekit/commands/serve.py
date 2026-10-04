@@ -265,7 +265,6 @@ def run(args) -> int:
         print(f"Agent preflight failed: {exc}", file=sys.stderr)
         return 1
 
-    issues_dir = config.issues_path(cwd)
     try:
         run_dir = prepare_run_dir(cwd)
     except RuntimeError as exc:
@@ -294,7 +293,6 @@ def run(args) -> int:
                     agent=agent,
                     config=config,
                     cwd=cwd,
-                    issues_dir=issues_dir,
                     log_path=log_path,
                     controller=controller,
                     adapter=adapter,
@@ -354,7 +352,6 @@ def _serve_loop(
     agent: str,
     config: IssuekitConfig,
     cwd: Path,
-    issues_dir: Path,
     log_path: Path,
     controller: ShutdownController,
     adapter: AgentAdapter | None = None,
@@ -574,7 +571,6 @@ def _serve_loop(
                 agent=agent,
                 config=config,
                 cwd=cwd,
-                issues_dir=issues_dir,
                 log_path=log_path,
                 controller=controller,
                 backoff=backoff_seconds,

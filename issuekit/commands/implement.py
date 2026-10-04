@@ -94,7 +94,6 @@ def run(args) -> int:
                 "No implementer is configured. Pass --agent, set default_implementer, "
                 "or configure exactly one enabled assignee."
             )
-        issues_dir = config.issues_path(cwd)
         with get_store(config) as store:
             issue = store.get_issue(issue_id)
         if issue is None:
@@ -150,7 +149,6 @@ def run(args) -> int:
                 adapter=adapter,
                 config=config,
                 cwd=cwd,
-                issues_dir=issues_dir,
                 timeout=float(args.timeout_sec),
                 model=args.model,
                 reasoning_effort=args.reasoning_effort,

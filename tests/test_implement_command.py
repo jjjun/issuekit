@@ -32,53 +32,47 @@ def test_review_feedback_prompt_keeps_markdown_headings_until_handoff() -> None:
     assert "Do not include this." not in prompt
 
 
-def test_rename_across_issues_directory_is_an_implementation_change(
+def test_implementation_entries_include_docs_issues_changes(
     tmp_path: Path,
 ) -> None:
-    issues_dir = tmp_path / "issues"
     snapshot = run_claimed_agent.ImplementationChangeSnapshot(
         root=tmp_path,
         status_entries=(
             GitStatusEntry(
-                status="R ",
-                path=Path("issues/moved.py"),
-                original_path=Path("code.py"),
+                status=" M",
+                path=Path("docs/issues/x.md"),
             ),
         ),
-        changed_paths=(Path("issues/moved.py"), Path("code.py")),
-        readable_paths=(Path("issues/moved.py"),),
+        changed_paths=(Path("docs/issues/x.md"),),
+        readable_paths=(Path("docs/issues/x.md"),),
     )
 
-    assert run_claimed_agent._implementation_entries(
-        snapshot,
-        tmp_path,
-        issues_dir,
-    )
+    assert [entry.path for entry in run_claimed_agent._implementation_entries(snapshot)] == [
+        Path("docs/issues/x.md")
+    ]
 
 
 def test_snapshot_all_status_entries_includes_attributable_and_preexisting(
     tmp_path: Path,
 ) -> None:
-    issues_dir = tmp_path / "issues"
     existing_path = tmp_path / "existing.py"
     existing_path.write_text("value = 1\n", encoding="utf-8", newline="\n")
     _init_git_repo(tmp_path)
     existing_path.write_text("value = 2\n", encoding="utf-8", newline="\n")
 
     fingerprint_before = run_claimed_agent.worktree_fingerprint(tmp_path)
-    changed_path = tmp_path / "changed.py"
+    changed_path = tmp_path / "docs" / "issues" / "x.md"
+    changed_path.parent.mkdir(parents=True)
     changed_path.write_text("value = 1\n", encoding="utf-8", newline="\n")
     snapshot = run_claimed_agent._implementation_change_snapshot(
         tmp_path, fingerprint_before
     )
 
-    attributable = run_claimed_agent._implementation_entries(snapshot, tmp_path, issues_dir)
-    assert [entry.path for entry in attributable] == [Path("changed.py")]
-    all_entries = run_claimed_agent._all_implementation_entries(
-        snapshot, tmp_path, issues_dir
-    )
+    attributable = run_claimed_agent._implementation_entries(snapshot)
+    assert [entry.path for entry in attributable] == [Path("docs/issues/x.md")]
+    all_entries = run_claimed_agent._all_implementation_entries(snapshot)
     assert sorted(entry.path for entry in all_entries) == [
-        Path("changed.py"),
+        Path("docs/issues/x.md"),
         Path("existing.py"),
     ]
 
@@ -208,7 +202,6 @@ def test_run_and_submit_uses_agent_runner_by_default(
         agent="codex",
         config=IssuekitConfig(),
         cwd=tmp_path,
-        issues_dir=tmp_path / "issues",
         timeout=10,
     )
 
@@ -251,7 +244,6 @@ def test_run_and_submit_selects_app_server_runner_when_opted_in(
         agent="codex",
         config=config,
         cwd=tmp_path,
-        issues_dir=tmp_path / "issues",
         timeout=10,
     )
 

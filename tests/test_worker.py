@@ -193,7 +193,6 @@ def test_config_reads_local_worker_without_unrelated_local_overrides(
         (
             "[tool.issuekit]\n"
             "project = \"explicit\"\n"
-            "issues_dir = \"committed/issues\"\n"
             "worker.machine_id = \"committed-machine\"\n"
             "worker.repo_id = \"committed-repo\"\n"
             "worker.worker_name = \"committed-worker\"\n"
@@ -204,7 +203,6 @@ def test_config_reads_local_worker_without_unrelated_local_overrides(
     (tmp_path / "issuekit.local.toml").write_text(
         (
             "project = \"ignored\"\n"
-            "issues_dir = \"ignored/issues\"\n"
             "[worker]\n"
             "machine_id = \"local-machine\"\n"
             "repo_id = \"local-repo\"\n"
@@ -216,7 +214,6 @@ def test_config_reads_local_worker_without_unrelated_local_overrides(
 
     assert load_config(tmp_path) == IssuekitConfig(
         project="explicit",
-        issues_dir="committed/issues",
         worker=WorkerIdentity(
             machine_id="local-machine",
             repo_id="local-repo",

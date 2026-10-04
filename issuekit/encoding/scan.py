@@ -150,20 +150,13 @@ def changed_readable_paths(
     repo: Path,
     status_entries: Sequence[GitStatusEntry],
     *,
-    excluded_root: Path,
     readable_paths: Collection[Path] | None = None,
 ) -> tuple[Path, ...]:
-    """Select readable changed paths outside a submit-gate metadata tree."""
+    """Select readable changed paths."""
 
     readable_path_set = set(readable_paths) if readable_paths is not None else None
     paths: list[Path] = []
     for entry in status_entries:
-        if not any(
-            not _is_under_root(repo / path, excluded_root)
-            for path in (entry.path, entry.original_path)
-            if path is not None
-        ):
-            continue
         path = entry.path
         if readable_path_set is not None:
             if path not in readable_path_set:
@@ -245,14 +238,6 @@ def _invalid_utf8_hit(file: str) -> dict[str, int | str]:
 def _has_source_extension(file: str, source_extensions: Collection[str]) -> bool:
     suffix = Path(file).suffix
     return bool(suffix) and suffix[1:].lower() in source_extensions
-
-
-def _is_under_root(path: Path, root: Path) -> bool:
-    try:
-        path.resolve().relative_to(root.resolve())
-        return True
-    except ValueError:
-        return False
 
 
 def _is_readable_regular_file(path: Path) -> bool:

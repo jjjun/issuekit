@@ -623,6 +623,40 @@ def test_check_encoding_gate_reproduces_unconfirmed_submit_candidate(
     assert "Encoding submit gate failed" in captured.err
 
 
+@pytest.mark.parametrize(("excluded", "expected_exit_code"), [(False, 1), (True, 0)])
+def test_check_encoding_gate_scans_docs_issues_unless_excluded(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+    excluded: bool,
+    expected_exit_code: int,
+) -> None:
+    init_git_repo(tmp_path)
+    add_tracked(tmp_path, "docs/issues/x.md", b"value = 'clean'\n")
+    commit_all(tmp_path)
+    if excluded:
+        (tmp_path / "issuekit.toml").write_text(
+            "check_encoding_exclude = ['docs/issues/**']\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+    (tmp_path / "docs" / "issues" / "x.md").write_text(
+        "value = '\u8b4c'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = cli.main(["check-encoding", "--gate"])
+    captured = capsys.readouterr()
+
+    assert exit_code == expected_exit_code
+    if excluded:
+        assert "docs/issues/x.md" not in captured.err
+    else:
+        assert "docs/issues/x.md:1:10: U+8B4C" in captured.err
+
+
 def test_check_encoding_gate_scans_changed_files_without_source_extension(
     tmp_path: Path,
     monkeypatch,

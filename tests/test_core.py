@@ -11,18 +11,17 @@ def test_load_config_reads_tool_issuekit(
 ) -> None:
     monkeypatch.setenv("ISSUEKIT_CONFIG", "")
     (tmp_path / "pyproject.toml").write_text(
-        "[tool.issuekit]\nissues_dir = 'custom/issues'\n",
+        "[tool.issuekit]\nproject = 'custom-project'\n",
         encoding="utf-8",
     )
 
     config = load_config(tmp_path)
 
     assert config == IssuekitConfig(
-        issues_dir="custom/issues",
+        project="custom-project",
         assignees=IssuekitConfig.assignees,
         stages=IssuekitConfig.stages,
     )
-    assert config.issues_path(tmp_path) == tmp_path / "custom" / "issues"
 
 
 def test_parse_issue_id_arg() -> None:

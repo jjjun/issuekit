@@ -124,7 +124,6 @@ def run(args) -> int:
         scan_paths = changed_readable_paths(
             repo_root,
             entries,
-            excluded_root=config.issues_path(repo_root),
         )
         changed_lines_by_path = changed_line_numbers(repo_root, scan_paths)
         whole_file_paths = {

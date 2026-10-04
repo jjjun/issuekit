@@ -80,7 +80,6 @@ def test_mojibake_gate_batches_changed_line_and_tracked_path_queries(
     confirmed, unconfirmed = run_claimed._mojibake_touched_hits(
         snapshot,
         tmp_path,
-        tmp_path / ".issues",
         include_halfwidth_katakana=True,
         exclude_patterns=(),
     )

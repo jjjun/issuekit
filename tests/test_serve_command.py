@@ -817,7 +817,6 @@ def test_serve_proposal_checks_backs_off_after_cycle_error(
         agent="codex",
         config=serve.IssuekitConfig(api_url="https://mine.example"),
         cwd=tmp_path,
-        issues_dir=tmp_path / "docs" / "issues",
         log_path=tmp_path / "serve.log",
         controller=StopAfterSleep(),
     )
@@ -2000,7 +1999,6 @@ def test_serve_backs_off_after_claim_error(monkeypatch, tmp_path: Path, capsys) 
         agent="codex",
         config=config,
         cwd=tmp_path,
-        issues_dir=tmp_path / "docs" / "issues",
         log_path=tmp_path / "serve.log",
         controller=StopAfterSleep(),
     )
@@ -2062,7 +2060,6 @@ def test_serve_loop_reuses_store_across_idle_polls(monkeypatch, tmp_path: Path) 
         agent="codex",
         config=config,
         cwd=tmp_path,
-        issues_dir=tmp_path / "docs" / "issues",
         log_path=tmp_path / "serve.log",
         controller=controller,
     )
@@ -2142,7 +2139,6 @@ def test_serve_retries_failed_hold_before_claiming(monkeypatch, tmp_path: Path, 
             agent="codex",
             config=config,
             cwd=tmp_path,
-            issues_dir=tmp_path / "docs" / "issues",
             log_path=tmp_path / "serve.log",
             controller=controller,
         )
@@ -2225,7 +2221,6 @@ def test_serve_loop_claim_ignores_author_guard_outside_configured_cwd(
         agent="codex",
         config=config,
         cwd=loop_cwd,
-        issues_dir=loop_cwd / "docs" / "issues",
         log_path=loop_cwd / "serve.log",
         controller=StopController(),
     )

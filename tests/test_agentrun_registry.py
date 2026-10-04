@@ -417,7 +417,7 @@ def test_load_config_reads_agents(tmp_path: Path, monkeypatch) -> None:
 
 def test_load_config_preserves_defaults_when_no_agent_table(tmp_path: Path) -> None:
     (tmp_path / "issuekit.toml").write_text(
-        "issues_dir = 'docs/issues'\n",
+        "project = 'demo'\n",
         encoding="utf-8",
         newline="\n",
     )

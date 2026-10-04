@@ -72,7 +72,6 @@ def test_issuekit_diff_operations_disable_textconv(
         run_claimed._warn_heavy_deletions(
             snapshot,
             tmp_path,
-            tmp_path / "docs/issues",
             deletion_threshold=0,
             err=io.StringIO(),
         )

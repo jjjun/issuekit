@@ -139,7 +139,6 @@ class IssuekitConfig:
     allow_insecure_api_url: bool = False
     project: str = "issuekit"
     api_timeout: float = 30.0
-    issues_dir: str = "docs/issues"
     assignees: tuple[str, ...] = ("codex", "claude", "kimi")
     stages: tuple[str, ...] = (
         "planned",
@@ -234,12 +233,6 @@ class IssuekitConfig:
         ("codex", AgentPolicy(mojibake_gate=True, diff_shape_warn_deletions=40)),
         ("claude", AgentPolicy(mojibake_gate=True, diff_shape_warn_deletions=40)),
     )
-
-    def issues_path(self, cwd: Path | str = ".") -> Path:
-        path = Path(self.issues_dir)
-        if path.is_absolute():
-            return path
-        return Path(cwd) / path
 
     def worker_key(self) -> str | None:
         if self.worker is None:
@@ -393,7 +386,6 @@ def load_config(cwd: Path | str = ".") -> IssuekitConfig:
             _environment_value("ISSUEKIT_API_TIMEOUT")
             or raw_config.get("api_timeout", IssuekitConfig.api_timeout),
         ),
-        issues_dir=str(raw_config.get("issues_dir", IssuekitConfig.issues_dir)),
         assignees=assignees,
         stages=_string_tuple(raw_config.get("stages", IssuekitConfig.stages)),
         default_implementer=default_implementer,

@@ -37,7 +37,7 @@ repos:
 def register(subparsers: argparse._SubParsersAction) -> None:
     init_parser = subparsers.add_parser(
         "init",
-        help="Install docs/issues tracker templates in the current repository.",
+        help="Install encoding and handoff scaffolding in the current repository.",
     )
     init_parser.add_argument(
         "--force",
@@ -72,12 +72,10 @@ def run(args) -> int:
 
 def init_repo(cwd: Path, *, force: bool = False, with_mcp: bool = False) -> InitResult:
     result = InitResult(written=[], skipped=[], guidance=[])
-    config = load_config(cwd)
-    issues_dir = config.issues_path(cwd)
+    load_config(cwd)
 
     _write_template(cwd, cwd / ".gitattributes", "gitattributes", force, result)
     _write_template(cwd, cwd / ".editorconfig", "editorconfig", force, result)
-    _write_template(cwd, issues_dir / "README.md", "issues_README.md", force, result)
     _write_local_config_ignore(cwd, result)
     _write_pre_commit(cwd, result)
     if with_mcp:

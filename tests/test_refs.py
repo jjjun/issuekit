@@ -18,7 +18,7 @@ def test_add_ref_updates_effective_refs(tmp_path: Path) -> None:
     source.mkdir()
     target.mkdir()
     (target / "issuekit.toml").write_text(
-        'issues_dir = "tracker"\n',
+        'project = "tracker"\n',
         encoding="utf-8",
         newline="\n",
     )

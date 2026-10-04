@@ -270,8 +270,25 @@ def test_setup_check_invalid_config_still_lists_missing_scaffold_files(
     assert exit_code == 0
     assert "[MISSING] .gitattributes" in output
     assert "[MISSING] .editorconfig" in output
-    assert "[MISSING] docs/issues/README.md" in output
+    assert "docs/issues/README.md" not in output
     assert "[MISSING] .pre-commit-config.yaml" in output
+
+
+def test_init_and_setup_do_not_create_or_report_issue_readme(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["init"]) == 0
+    issue_readme = tmp_path / "docs" / "issues" / "README.md"
+    assert not issue_readme.exists()
+    capsys.readouterr()
+
+    assert cli.main(["setup", "check"]) == 0
+    assert "docs/issues/README.md" not in capsys.readouterr().out
+    assert not issue_readme.exists()
 
 
 def test_setup_check_json_stale_repo_reports_updates_without_writing(
@@ -414,7 +431,7 @@ def test_setup_diagnostics_surface_machine_config_path(
     tmp_path: Path, monkeypatch
 ) -> None:
     machine_path = tmp_path / "machine.toml"
-    machine_path.write_text("issues_dir = 'machine/issues'\n", encoding="utf-8")
+    machine_path.write_text("project = 'machine-project'\n", encoding="utf-8")
     monkeypatch.setenv("ISSUEKIT_CONFIG", str(machine_path))
 
     diagnostics = setup.collect_diagnostics(tmp_path)
@@ -471,14 +488,9 @@ def test_setup_check_json_blocked_repo_reports_manual_action_without_writing(
     assert _file_snapshot(tmp_path) == before
 
 
-def test_setup_check_uses_configured_issues_directory(tmp_path: Path) -> None:
-    (tmp_path / "issuekit.toml").write_text('issues_dir = "work/issues"\n', encoding="utf-8")
-
-    init_repo(tmp_path, with_mcp=True)
-
+def test_setup_check_does_not_report_issue_readme(tmp_path: Path) -> None:
     actions = collect_setup_actions(tmp_path)
     missing_paths = {action.path for action in actions if action.state == "missing"}
-    assert "work/issues/README.md" not in missing_paths
     assert "docs/issues/README.md" not in missing_paths
 
 
