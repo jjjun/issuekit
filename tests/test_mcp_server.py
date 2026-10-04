@@ -19,8 +19,10 @@ from issuekit import cli
 from issuekit.api import token_cache as token_cache_module
 from issuekit.api.client import BURST_HTTP_LIMITS
 from issuekit.config import load_config
+from issuekit.mcp import runtime as mcp_runtime
 from issuekit.mcp import server as mcp_server
 from issuekit.mcp.server import create_server
+from issuekit.mcp.tools import negotiation as mcp_negotiation
 from issuekit.negotiation import MockNegotiationStore, ThreadStatus, Verdict
 from issuekit.prompts.protocol import render_protocol
 from issuekit.testing import FakeIssuekitClient
@@ -597,7 +599,7 @@ def test_list_negotiation_threads_reads_mock_store_without_api_client(
         seen["use_mock"] = use_mock
         return store
 
-    monkeypatch.setattr(mcp_server, "get_negotiation_store", fake_store)
+    monkeypatch.setattr(mcp_negotiation, "get_negotiation_store", fake_store)
     server = create_server(tmp_path)
 
     summaries = _call(
@@ -645,7 +647,7 @@ def test_list_negotiation_threads_closes_store(
 
     store = TrackingStore(None)
     monkeypatch.setattr(
-        mcp_server,
+        mcp_negotiation,
         "get_negotiation_store",
         lambda config, *, use_mock: store,
     )
@@ -1026,7 +1028,7 @@ def test_get_protocol_discovers_client_workspace_root(
     async def fake_client_roots(ctx):
         return (repo_root,)
 
-    monkeypatch.setattr(mcp_server, "_client_roots", fake_client_roots)
+    monkeypatch.setattr(mcp_runtime, "_client_roots", fake_client_roots)
     server = create_server(process_root)
 
     assert _call(server, "get_protocol", {"agent": "claude"}) == render_protocol("codex")
@@ -1191,7 +1193,7 @@ def test_mcp_lifecycle_tools_discover_client_workspace_root(
     async def fake_client_roots(ctx):
         return (repo_root,)
 
-    monkeypatch.setattr(mcp_server, "_client_roots", fake_client_roots)
+    monkeypatch.setattr(mcp_runtime, "_client_roots", fake_client_roots)
     server = create_server(process_root)
 
     submitted = _call(server, "submit_for_review", {"id": 1, "summary": "Implemented."})
@@ -1247,7 +1249,7 @@ def test_missing_api_url_message_hints_when_machine_config_is_missing(
     monkeypatch.delenv("ISSUEKIT_API_URL", raising=False)
     monkeypatch.setenv("ISSUEKIT_CONFIG", str(machine_path))
 
-    message = mcp_server._missing_api_url_message(tmp_path)
+    message = mcp_runtime._missing_api_url_message(tmp_path)
 
     assert f"Machine config: {machine_path} (missing)." in message
     assert (
@@ -1271,15 +1273,15 @@ def test_mcp_loads_api_config_from_machine_config_at_git_root(
     )
     monkeypatch.delenv("ISSUEKIT_API_URL", raising=False)
     monkeypatch.setenv("ISSUEKIT_CONFIG", str(machine_path))
-    monkeypatch.setattr(mcp_server, "git_root", lambda root: repo_root)
+    monkeypatch.setattr(mcp_runtime, "git_root", lambda root: repo_root)
 
     assert load_config(nested_root).api_url == "https://mine.example"
 
-    config, config_root = asyncio.run(mcp_server._load_api_config(nested_root))
+    config, config_root = asyncio.run(mcp_runtime._load_api_config(nested_root))
 
     assert config.api_url == "https://mine.example"
     assert config_root == repo_root
-    message = mcp_server._missing_api_url_message(repo_root)
+    message = mcp_runtime._missing_api_url_message(repo_root)
     assert f"Machine config: {machine_path} (readable; api_url: present)" in message
     assert "If the CLI finds a machine config" not in message
     assert "issuekit show <id>" in message
@@ -1300,7 +1302,7 @@ def test_missing_api_url_message_explains_empty_process_api_url(
     monkeypatch.setenv("ISSUEKIT_API_URL", " \t ")
 
     with pytest.raises(Exception) as excinfo:
-        asyncio.run(mcp_server._load_api_config(repo_root))
+        asyncio.run(mcp_runtime._load_api_config(repo_root))
 
     message = str(excinfo.value)
     assert (
@@ -1318,9 +1320,9 @@ def test_configured_git_root_uses_process_api_url(
     nested_root.mkdir(parents=True)
     monkeypatch.setenv("ISSUEKIT_CONFIG", "")
     monkeypatch.setenv("ISSUEKIT_API_URL", "https://mine.example")
-    monkeypatch.setattr(mcp_server, "git_root", lambda _root: repo_root)
+    monkeypatch.setattr(mcp_runtime, "git_root", lambda _root: repo_root)
 
-    assert mcp_server._configured_root(nested_root) == repo_root
+    assert mcp_runtime._configured_root(nested_root) == repo_root
 
 
 def test_unreadable_machine_config_is_reported_without_crashing_root_resolution(
@@ -1332,7 +1334,10 @@ def test_unreadable_machine_config_is_reported_without_crashing_root_resolution(
     machine_path = tmp_path / "machine.toml"
     machine_path.write_text("api_url = 'https://private.example'\n", encoding="utf-8")
     monkeypatch.setenv("ISSUEKIT_CONFIG", str(machine_path))
-    monkeypatch.setattr(mcp_server, "git_root", lambda _root: repo_root)
+    monkeypatch.setattr(mcp_runtime, "git_root", lambda _root: repo_root)
+    outside_root = tmp_path / "outside"
+    outside_root.mkdir()
+    assert mcp_runtime._configured_root(outside_root) == repo_root
     original_read_text = Path.read_text
 
     def read_text(path: Path, *args, **kwargs) -> str:
@@ -1342,8 +1347,8 @@ def test_unreadable_machine_config_is_reported_without_crashing_root_resolution(
 
     monkeypatch.setattr(Path, "read_text", read_text)
 
-    assert mcp_server._machine_config_has_api_url() is False
-    assert mcp_server._configured_root(repo_root) == repo_root
+    assert mcp_runtime._machine_config_has_api_url() is False
+    assert mcp_runtime._configured_root(repo_root) == repo_root
 
     status = _call(create_server(repo_root), "health", {})
 
@@ -1352,7 +1357,7 @@ def test_unreadable_machine_config_is_reported_without_crashing_root_resolution(
     assert status["machine_config_status"] == "unreadable: PermissionError"
     assert "Cannot read machine config" in status["errors"][0]
     assert "private.example" not in json.dumps(status)
-    message = mcp_server._missing_api_url_message(repo_root)
+    message = mcp_runtime._missing_api_url_message(repo_root)
     assert f"Machine config: {machine_path} (unreadable: PermissionError)." in message
     assert "If the CLI finds a machine config" not in message
 
