@@ -10,8 +10,12 @@ import pytest
 
 from issuekit import cli
 from issuekit.agentrun import AgentBinaryNotFoundError, AgentPrompt
+from issuekit.agents import implementation_changes, implementer_flow, implementer_report
 from issuekit.agents import run_claimed as run_claimed_agent
-from issuekit.agents.run_claimed import review_feedback_prompt
+from issuekit.agents.handoff import (
+    NO_IMPLEMENTATION_CHANGES_MARKER,
+    review_feedback_prompt,
+)
 from issuekit.config import IssuekitConfig
 from issuekit.core import Issue
 from issuekit.errors import WorkflowError
@@ -37,7 +41,7 @@ def test_review_feedback_prompt_keeps_markdown_headings_until_handoff() -> None:
 def test_implementation_entries_include_docs_issues_changes(
     tmp_path: Path,
 ) -> None:
-    snapshot = run_claimed_agent.ImplementationChangeSnapshot(
+    snapshot = implementation_changes.ImplementationChangeSnapshot(
         root=tmp_path,
         status_entries=(
             GitStatusEntry(
@@ -49,7 +53,7 @@ def test_implementation_entries_include_docs_issues_changes(
         readable_paths=(Path("docs/issues/x.md"),),
     )
 
-    assert [entry.path for entry in run_claimed_agent._implementation_entries(snapshot)] == [
+    assert [entry.path for entry in implementation_changes.implementation_entries(snapshot)] == [
         Path("docs/issues/x.md")
     ]
 
@@ -62,17 +66,17 @@ def test_snapshot_all_status_entries_includes_attributable_and_preexisting(
     init_git_repo(tmp_path, message="baseline", autocrlf=True)
     existing_path.write_text("value = 2\n", encoding="utf-8", newline="\n")
 
-    fingerprint_before = run_claimed_agent.worktree_fingerprint(tmp_path)
+    fingerprint_before = implementation_changes.worktree_fingerprint(tmp_path)
     changed_path = tmp_path / "docs" / "issues" / "x.md"
     changed_path.parent.mkdir(parents=True)
     changed_path.write_text("value = 1\n", encoding="utf-8", newline="\n")
-    snapshot = run_claimed_agent._implementation_change_snapshot(
+    snapshot = implementation_changes.implementation_change_snapshot(
         tmp_path, fingerprint_before
     )
 
-    attributable = run_claimed_agent._implementation_entries(snapshot)
+    attributable = implementation_changes.implementation_entries(snapshot)
     assert [entry.path for entry in attributable] == [Path("docs/issues/x.md")]
-    all_entries = run_claimed_agent._all_implementation_entries(snapshot)
+    all_entries = implementation_changes.all_implementation_entries(snapshot)
     assert sorted(entry.path for entry in all_entries) == [
         Path("docs/issues/x.md"),
         Path("existing.py"),
@@ -151,8 +155,8 @@ def _claimed_issue() -> Issue:
 
 def _stub_implementation_snapshot(
     tmp_path: Path,
-) -> run_claimed_agent.ImplementationChangeSnapshot:
-    return run_claimed_agent.ImplementationChangeSnapshot(
+) -> implementation_changes.ImplementationChangeSnapshot:
+    return implementation_changes.ImplementationChangeSnapshot(
         root=tmp_path,
         status_entries=(),
         changed_paths=(),
@@ -161,7 +165,7 @@ def _stub_implementation_snapshot(
 
 
 def test_implementation_prompt_names_implementer_report_channel(tmp_path: Path) -> None:
-    prompt = run_claimed_agent.implementation_prompt(tmp_path / "issue-1.md")
+    prompt = implementer_flow.implementation_prompt(tmp_path / "issue-1.md")
 
     assert "$ISSUEKIT_IMPLEMENTER_REPORT_FILE" in prompt
     assert "answers to any reporting requests in the plan" in prompt
@@ -181,11 +185,11 @@ def test_run_and_submit_uses_agent_runner_by_default(
 
     monkeypatch.setattr(run_claimed_agent, "AgentRunner", SelectedAgentRunner)
     monkeypatch.setattr(
-        run_claimed_agent, "resolve_adapter", lambda *args, **kwargs: SelectionAdapter()
+        implementer_flow, "resolve_adapter", lambda *args, **kwargs: SelectionAdapter()
     )
     monkeypatch.setattr(
-        run_claimed_agent,
-        "_implementation_change_snapshot",
+        implementation_changes,
+        "implementation_change_snapshot",
         lambda cwd, fingerprint_before: _stub_implementation_snapshot(tmp_path),
     )
 
@@ -223,11 +227,11 @@ def test_run_and_submit_selects_app_server_runner_when_opted_in(
         run_claimed_agent, "AppServerAttemptRunner", SelectedAppServerRunner
     )
     monkeypatch.setattr(
-        run_claimed_agent, "resolve_adapter", lambda *args, **kwargs: SelectionAdapter()
+        implementer_flow, "resolve_adapter", lambda *args, **kwargs: SelectionAdapter()
     )
     monkeypatch.setattr(
-        run_claimed_agent,
-        "_implementation_change_snapshot",
+        implementation_changes,
+        "implementation_change_snapshot",
         lambda cwd, fingerprint_before: _stub_implementation_snapshot(tmp_path),
     )
 
@@ -370,7 +374,7 @@ def test_submission_summary_includes_sanitized_implementer_report(tmp_path: Path
         report_path=report_path,
     )
 
-    summary = run_claimed_agent._submission_summary("Implemented.", result, tmp_path)
+    summary = implementer_report.submission_summary("Implemented.", result, tmp_path)
 
     assert summary == (
         "Implemented.\n"
@@ -384,7 +388,7 @@ def test_submission_summary_includes_sanitized_implementer_report(tmp_path: Path
 def test_submission_summary_marks_allowed_no_changes(tmp_path: Path) -> None:
     result = FakeResult(stdout_path=tmp_path / ".agent-runs" / "run.out.log")
 
-    summary = run_claimed_agent._submission_summary(
+    summary = implementer_report.submission_summary(
         "Implemented by codex via issuekit implement.",
         result,
         tmp_path,
@@ -394,7 +398,7 @@ def test_submission_summary_marks_allowed_no_changes(tmp_path: Path) -> None:
     assert summary.splitlines() == [
         "Implemented by codex via issuekit implement.",
         "Run log: `.agent-runs/run.out.log`",
-        run_claimed_agent.NO_IMPLEMENTATION_CHANGES_MARKER,
+        NO_IMPLEMENTATION_CHANGES_MARKER,
     ]
 
 
@@ -403,7 +407,7 @@ def test_submission_summary_sanitizes_non_ascii_run_log_path() -> None:
         stdout_path=Path("D:/\u65e5\u672c\u8a9e/runs/run.out.log"),
     )
 
-    summary = run_claimed_agent._submission_summary(
+    summary = implementer_report.submission_summary(
         "Implemented.",
         result,
         Path("G:/workspace/projects/issuekit"),
@@ -415,15 +419,15 @@ def test_submission_summary_sanitizes_non_ascii_run_log_path() -> None:
 def test_submission_summary_bounds_implementer_report(tmp_path: Path) -> None:
     report_path = tmp_path / "run.report.md"
     report_path.write_text(
-        "x" * (run_claimed_agent.MAX_IMPLEMENTER_REPORT_CHARS + 1),
+        "x" * (implementer_report.MAX_IMPLEMENTER_REPORT_CHARS + 1),
         encoding="utf-8",
     )
     result = FakeResult(stdout_path=tmp_path / "run.out.log", report_path=report_path)
 
-    summary = run_claimed_agent._submission_summary("Implemented.", result, tmp_path)
+    summary = implementer_report.submission_summary("Implemented.", result, tmp_path)
     included_report = summary.split("Implementer report:\n", 1)[1]
 
-    assert len(included_report) == run_claimed_agent.MAX_IMPLEMENTER_REPORT_CHARS
+    assert len(included_report) == implementer_report.MAX_IMPLEMENTER_REPORT_CHARS
     assert included_report.endswith("[Implementer report truncated; see run log.]")
 
 
@@ -562,14 +566,14 @@ def test_implement_command_mojibake_gate_scans_full_file_when_diff_fails(
             )
             return FakeResult(status_short=" M code.py")
 
-    original_run_git = run_claimed_agent.run_git
+    original_run_git = implementation_changes.run_git
 
     def fail_changed_line_diff(args, cwd, **kwargs):
         if "diff" in args and "--unified=0" in args:
             return None
         return original_run_git(args, cwd, **kwargs)
 
-    monkeypatch.setattr(run_claimed_agent, "run_git", fail_changed_line_diff)
+    monkeypatch.setattr(implementation_changes, "run_git", fail_changed_line_diff)
     monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", MojibakeRunner)
 
     assert cli.main(["implement", "1", "--agent", "codex"]) == 1
@@ -897,7 +901,7 @@ def test_implement_command_blocks_when_git_has_no_implementation_changes(
 
     monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", CleanRunner)
     monkeypatch.setattr(
-        run_claimed_agent,
+        implementer_report,
         "read_status",
         lambda path: SimpleNamespace(
             last_log_line="Blocked: no workspace runner.",
@@ -931,7 +935,7 @@ def test_implement_command_prefers_failure_reason_over_last_log_line(
 
     monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", CleanRunner)
     monkeypatch.setattr(
-        run_claimed_agent,
+        implementer_report,
         "read_status",
         lambda path: SimpleNamespace(
             last_log_line="Ignoring N permissions.allow entries: workspace not trusted.",
@@ -1255,7 +1259,7 @@ def test_implement_command_allows_no_change_submit_with_flag(
     assert [call["method"] for call in client.calls] == ["claim", "submit"]
     summary_lines = client.calls[-1]["body"]["summary"].splitlines()
     assert summary_lines[1].startswith("Run log: ")
-    assert summary_lines[2:] == [run_claimed_agent.NO_IMPLEMENTATION_CHANGES_MARKER]
+    assert summary_lines[2:] == [NO_IMPLEMENTATION_CHANGES_MARKER]
 
 
 def test_implement_command_blocks_submit_when_report_is_missing(
@@ -1886,7 +1890,7 @@ def test_implement_command_prints_submit_error_reason_when_guard_blocks_submit(
     def raise_guard_error(*args, **kwargs):
         raise WorkflowError("Author-session guard blocks submit.")
 
-    monkeypatch.setattr(run_claimed_agent, "submit_for_review", raise_guard_error)
+    monkeypatch.setattr(implementer_flow, "submit_for_review", raise_guard_error)
 
     exit_code = cli.main(["implement", "1", "--agent", "codex"])
 
@@ -1925,7 +1929,7 @@ def test_implement_command_prints_unknown_stage_when_stage_lookup_also_fails(
         should_fail_lookup["value"] = True
         raise WorkflowError("Author-session guard blocks submit.")
 
-    monkeypatch.setattr(run_claimed_agent, "submit_for_review", raise_guard_error)
+    monkeypatch.setattr(implementer_flow, "submit_for_review", raise_guard_error)
 
     exit_code = cli.main(["implement", "1", "--agent", "codex"])
 

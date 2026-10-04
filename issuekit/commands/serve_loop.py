@@ -14,12 +14,12 @@ from types import FrameType
 from typing import Literal
 
 from issuekit.agentrun.adapter import AgentAdapter
+from issuekit.agents.handoff import review_feedback_prompt
 from issuekit.agents.review import (
     ReviewRunParseError,
     run_review_and_decide,
 )
 from issuekit.agents.run_claimed import (
-    review_feedback_prompt,
     run_and_submit,
 )
 from issuekit.config import IssuekitConfig

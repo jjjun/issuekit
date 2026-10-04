@@ -1,7 +1,7 @@
 from pathlib import Path
 
-import issuekit.agents.run_claimed as run_claimed
 from issuekit import encoding
+from issuekit.agents import implementation_changes
 from issuekit.commands.check_encoding import _stray_carriage_return_lines
 from issuekit.encoding import scan as encoding_scan
 from issuekit.gitutil import GitResult, GitStatusEntry
@@ -140,8 +140,8 @@ def test_mojibake_gate_batches_changed_line_and_tracked_path_queries(
             stderr="",
         )
 
-    monkeypatch.setattr(run_claimed, "run_git", fake_run_git)
-    snapshot = run_claimed.ImplementationChangeSnapshot(
+    monkeypatch.setattr(implementation_changes, "run_git", fake_run_git)
+    snapshot = implementation_changes.ImplementationChangeSnapshot(
         root=tmp_path,
         status_entries=(
             GitStatusEntry(status=" M", path=Path("changed.py")),
@@ -152,7 +152,7 @@ def test_mojibake_gate_batches_changed_line_and_tracked_path_queries(
         readable_paths=paths,
     )
 
-    confirmed, unconfirmed = run_claimed._mojibake_touched_hits(
+    confirmed, unconfirmed = implementation_changes.mojibake_touched_hits(
         snapshot,
         tmp_path,
         include_halfwidth_katakana=True,
@@ -260,10 +260,10 @@ def test_implementation_snapshot_uses_raw_non_ascii_status_paths(tmp_path, monke
     status = fake_git_status_short(tmp_path, strip=False, untracked_files="all")
     parsed = GitStatusEntry(status=status[:2], path=Path(status[3:].strip()))
     (tmp_path / parsed.path).write_text("value = 1\n", encoding="utf-8", newline="\n")
-    monkeypatch.setattr(run_claimed, "git_root", lambda repo: tmp_path.resolve())
-    monkeypatch.setattr(run_claimed, "git_status_entries", lambda repo: (parsed,))
+    monkeypatch.setattr(implementation_changes, "git_root", lambda repo: tmp_path.resolve())
+    monkeypatch.setattr(implementation_changes, "git_status_entries", lambda repo: (parsed,))
 
-    snapshot = run_claimed._implementation_change_snapshot(tmp_path)
+    snapshot = implementation_changes.implementation_change_snapshot(tmp_path)
 
     assert snapshot.changed_paths == (Path("日本語.py"),)
     assert snapshot.readable_paths == snapshot.changed_paths

@@ -15,10 +15,11 @@ from issuekit.agentrun import AgentRunner
 from issuekit.agentrun.adapter import AgentAdapter
 from issuekit.agentrun.run_dir import ServeLockError, prepare_run_dir
 from issuekit.agentrun.run_dir import serve_lock as _serve_lock
+from issuekit.agents.implementer_flow import release_claim_after_run_error
 from issuekit.agents.proposal_check import (
     run_proposal_check_cycle,
 )
-from issuekit.agents.run_claimed import _release_claim_after_run_error, preflight_agent
+from issuekit.agents.run_claimed import preflight_agent
 from issuekit.agents.triage_author import TriageDecision, run_triage_author_cycle
 from issuekit.commands._common import (
     add_agent_option,
@@ -608,7 +609,7 @@ def _serve_loop(
                 **fields,
             )
             if issue_id is not None:
-                _release_claim_after_run_error(
+                release_claim_after_run_error(
                     issue_id,
                     config=config,
                     store=store,

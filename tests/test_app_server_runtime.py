@@ -14,7 +14,7 @@ from issuekit.agentrun.config import AgentRunConfig
 from issuekit.agentrun.runner import AgentPrompt
 from issuekit.agents import app_server_runtime
 from issuekit.agents.app_server_runtime import AppServerAttemptRunner
-from issuekit.agents.run_claimed import implementation_prompt
+from issuekit.agents.implementer_flow import implementation_prompt
 from issuekit.api.client import BURST_HTTP_LIMITS
 from issuekit.config import IssuekitConfig, WorkerIdentity
 from issuekit.core import Issue
