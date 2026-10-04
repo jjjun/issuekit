@@ -5,6 +5,8 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from issuekit.api import IssuekitClient
+from issuekit.api.factory import client_for, require_api_url
 from issuekit.commands._common import add_json_flag, print_json
 from issuekit.config import load_config, resolve_repository_root
 from issuekit.core import issue_dict
@@ -17,10 +19,8 @@ from issuekit.guards.author import (
 )
 from issuekit.issues.display import dependency_detail_lines, dependency_marker
 from issuekit.prompts.protocol import effective_agent_roles
-from issuekit.proposals.api import api_client
 from issuekit.proposals.model import ProposalError
-from issuekit.proposals.service import list_incoming_proposals
-from issuekit.store import get_store
+from issuekit.store import ApiStore
 from issuekit.urls import api_url_origin
 from issuekit.workflow import resolve_implementer
 
@@ -41,18 +41,20 @@ def run(args) -> int:
     pending_proposal_checks = 0
     api_error = None
     try:
-        with get_store(config) as store:
-            active_issues = store.find_for()
-            completed_count = store.count_issues(
-                status="completed", include_completed=True
-            )
-            latest_completed_id = store.latest_issue_id(
-                status="completed",
-                include_completed=True,
-                total=completed_count,
-            )
-        incoming_proposals = _incoming_proposals(config)
-        pending_proposal_checks = _pending_proposal_check_count(config)
+        require_api_url(config, "API store")
+        with client_for(config, keepalive=True) as client:
+            with ApiStore(config, client=client) as store:
+                active_issues = store.find_for()
+                completed_count = store.count_issues(
+                    status="completed", include_completed=True
+                )
+                latest_completed_id = store.latest_issue_id(
+                    status="completed",
+                    include_completed=True,
+                    total=completed_count,
+                )
+            incoming_proposals = client.list_proposals(status="pending")
+            pending_proposal_checks = _pending_proposal_check_count(config, client)
     except (ProposalError, ValueError, WorkflowError) as exc:
         api_error = str(exc)
     author_guards = read_author_guards(repo_root)
@@ -204,23 +206,16 @@ def run(args) -> int:
     return 1 if api_error else 0
 
 
-def _incoming_proposals(config) -> list[dict]:
-    if not config.api_url:
-        return []
-    return list_incoming_proposals(config)
-
-
-def _pending_proposal_check_count(config) -> int:
+def _pending_proposal_check_count(config, client: IssuekitClient) -> int:
     worker_keys = config.worker_lookup_keys()
     if not config.api_url or not worker_keys:
         return 0
-    with api_client(config) as client:
-        checks = {
-            int(check["id"])
-            for worker_key in worker_keys
-            for check in client.list_proposal_checks(
-                target_worker=worker_key,
-                status="pending",
-            )
-        }
+    checks = {
+        int(check["id"])
+        for worker_key in worker_keys
+        for check in client.list_proposal_checks(
+            target_worker=worker_key,
+            status="pending",
+        )
+    }
     return len(checks)

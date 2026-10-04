@@ -1,5 +1,6 @@
 import pytest
 
+from issuekit.api.client import DEFAULT_HTTP_LIMITS
 from issuekit.config import IssuekitConfig
 from issuekit.core import issue_dict
 from issuekit.errors import WorkflowError
@@ -21,6 +22,25 @@ def test_get_store_uses_api_when_api_url_is_set() -> None:
     store = get_store(IssuekitConfig(api_url="https://mine.example"))
 
     assert isinstance(store, ApiStore)
+
+
+def test_get_store_uses_default_http_limits(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, object] = {}
+
+    class RecordingHTTPClient:
+        def __init__(self, **kwargs) -> None:
+            captured.update(kwargs)
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr("issuekit.api.client.httpx.Client", RecordingHTTPClient)
+    store = get_store(IssuekitConfig(api_url="https://mine.example"))
+
+    try:
+        assert captured["limits"] is DEFAULT_HTTP_LIMITS
+    finally:
+        store.close()
 
 
 def test_api_store_context_manager_closes_only_owned_clients(fake_api, monkeypatch) -> None:

@@ -1,9 +1,11 @@
 import subprocess
 from pathlib import Path
 
+import httpx
 import pytest
 
 from issuekit import cli
+from issuekit.api.client import DEFAULT_HTTP_LIMITS
 from issuekit.config import IssuekitConfig, WorkerIdentity, load_config
 from issuekit.config.refs import add_ref
 from issuekit.workers.identity import (
@@ -747,6 +749,36 @@ def test_try_post_worker_registration_propagates_unexpected_exceptions(
 
     with pytest.raises(RuntimeError, match="programming error"):
         worker_registry.try_post_worker_registration(IssuekitConfig(), tmp_path)
+
+
+def test_worker_heartbeat_client_uses_default_http_limits(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from issuekit.workers import registry as worker_registry
+
+    captured: dict[str, object] = {}
+
+    class RecordingHTTPClient:
+        def __init__(self, **kwargs) -> None:
+            captured.update(kwargs)
+
+        def request(self, method: str, url: str, **kwargs) -> httpx.Response:
+            request = httpx.Request(method, url)
+            return httpx.Response(200, json={}, request=request)
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setenv("ISSUEKIT_API_TOKEN", "static-token")
+    monkeypatch.setattr("issuekit.api.client.httpx.Client", RecordingHTTPClient)
+    config = IssuekitConfig(
+        api_url="https://mine.example",
+        worker=WorkerIdentity("machine", "demo", "worker"),
+    )
+
+    assert worker_registry.try_post_worker_registration(config, tmp_path)
+    assert captured["limits"] is DEFAULT_HTTP_LIMITS
 
 
 def test_add_cli_posts_configured_role_and_description(

@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import ssl
 import subprocess
 import time
 from pathlib import Path
@@ -16,7 +17,7 @@ import issuekit.api.security as security_module
 import issuekit.api.token_cache as token_cache_module
 import issuekit.file_permissions as file_permissions_module
 from issuekit.api import IssuekitClient
-from issuekit.api.client import DEFAULT_HTTP_LIMITS
+from issuekit.api.client import DEFAULT_HTTP_LIMITS, _shared_ssl_context
 from issuekit.errors import WorkflowError
 from issuekit.testing import FakeIssuekitClient
 
@@ -378,6 +379,36 @@ def test_client_owned_http_client_accepts_transport_overrides(
 
     assert captured["limits"] is limits
     assert captured["headers"] == headers
+
+
+def test_owned_clients_share_verified_ssl_context(monkeypatch: pytest.MonkeyPatch) -> None:
+    original_create_ssl_context = httpx.create_ssl_context
+    created_contexts: list[ssl.SSLContext] = []
+
+    def create_ssl_context(*args, **kwargs) -> ssl.SSLContext:
+        context = original_create_ssl_context(*args, **kwargs)
+        created_contexts.append(context)
+        return context
+
+    monkeypatch.setattr(httpx, "create_ssl_context", create_ssl_context)
+    _shared_ssl_context.cache_clear()
+    clients: list[IssuekitClient] = []
+    try:
+        clients = [
+            IssuekitClient("https://mine.example", token="static-token")
+            for _ in range(3)
+        ]
+
+        assert len(created_contexts) == 1
+        context = clients[0]._http._transport._pool._ssl_context
+        assert isinstance(context, ssl.SSLContext)
+        assert context.verify_mode == ssl.CERT_REQUIRED
+        assert context.check_hostname is True
+        assert all(client._http._transport._pool._ssl_context is context for client in clients)
+    finally:
+        for client in clients:
+            client.close()
+        _shared_ssl_context.cache_clear()
 
 
 def test_client_reauthenticates_once_after_401() -> None:

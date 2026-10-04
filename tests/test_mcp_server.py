@@ -17,6 +17,7 @@ else:
 import issuekit.proposals.api as proposals_api
 from issuekit import cli
 from issuekit.api import token_cache as token_cache_module
+from issuekit.api.client import BURST_HTTP_LIMITS
 from issuekit.config import load_config
 from issuekit.mcp import server as mcp_server
 from issuekit.mcp.server import create_server
@@ -2186,6 +2187,33 @@ def test_api_proposal_tools_send_list_adopt_and_discard(
     assert adopted["append_applied"] is True
     assert adopted["appended_chars"] == len("Implementation plan.")
     assert discarded["status"] == "discarded"
+
+
+def test_mcp_incoming_proposal_client_uses_burst_http_limits(
+    fake_api,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = FakeIssuekitClient(
+        proposals=[
+            {"id": 1, "origin": "source#1@abc", "title": "Incoming", "body": "Body."}
+        ]
+    )
+    configure_api(tmp_path, monkeypatch, fake_api, client)
+    constructions: list[dict[str, object]] = []
+
+    def recording_client(*args, **kwargs):
+        constructions.append(kwargs)
+        return client
+
+    fake_api.install_factory(recording_client)
+    server = create_server(tmp_path)
+
+    incoming = _call(server, "list_incoming", {})
+
+    assert [proposal["id"] for proposal in incoming] == [1]
+    assert len(constructions) == 1
+    assert constructions[0]["http_limits"] is BURST_HTTP_LIMITS
 
 
 def test_mcp_adopt_proposal_raises_for_persistent_append_failure(

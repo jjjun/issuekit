@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Self
 
-from issuekit.api.client import IssuekitClient
+from issuekit.api.client import BURST_HTTP_LIMITS, IssuekitClient
 from issuekit.errors import WorkflowError
 
 if TYPE_CHECKING:
@@ -15,9 +15,12 @@ def client_for(
     config: IssuekitConfig,
     *,
     project: str | None = None,
+    keepalive: bool = False,
     **overrides: Any,
 ) -> IssuekitClient:
     overrides.setdefault("allow_insecure_api_url", config.allow_insecure_api_url)
+    if keepalive:
+        overrides.setdefault("http_limits", BURST_HTTP_LIMITS)
     return IssuekitClient(
         config.api_url,
         project=project or config.project,

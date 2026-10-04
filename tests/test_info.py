@@ -37,7 +37,6 @@ def configure_info_api(
     )
     monkeypatch.setenv("ISSUEKIT_CONFIG", str(machine_path))
     configure_api(tmp_path, monkeypatch, fake_api, client, project=project)
-    monkeypatch.setattr(info_command, "api_client", lambda config: client)
 
 
 def test_info_json_shape(fake_api, tmp_path: Path, monkeypatch) -> None:
@@ -121,10 +120,10 @@ def test_info_unreachable_api_prints_local_config_and_error(
     monkeypatch.setenv("ISSUEKIT_API_URL", "https://mine.example")
     monkeypatch.chdir(tmp_path)
 
-    def unavailable(_config):
+    def unavailable(_config, **_kwargs):
         raise WorkflowError("API request failed: connection refused")
 
-    monkeypatch.setattr(info_command, "get_store", unavailable)
+    monkeypatch.setattr(info_command, "client_for", unavailable)
     exit_code = cli.main(["info"])
     captured = capsys.readouterr()
 
@@ -422,6 +421,35 @@ def test_info_json_lists_incoming_proposals(fake_api, tmp_path: Path, monkeypatc
             "id": 9,
         }
     ]
+
+
+def test_info_constructs_one_api_client(
+    fake_api,
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = _issue_client()
+    configure_info_api(tmp_path, monkeypatch, fake_api, client)
+    (tmp_path / "issuekit.local.toml").write_text(
+        "[worker]\nmachine_id = 'machine'\nrepo_id = 'demo'\nworker_name = 'worker'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    constructions = 0
+
+    def recording_client(*args, **kwargs):
+        nonlocal constructions
+        constructions += 1
+        return client
+
+    fake_api.install_factory(recording_client)
+
+    assert cli.main(["info", "--json"]) == 0
+    capsys.readouterr()
+
+    assert constructions == 1
+    assert any(call["method"] == "list_proposal_checks" for call in client.calls)
 
 
 def test_info_reports_pending_proposal_check_count(

@@ -140,6 +140,7 @@ def api_client(config: IssuekitConfig, *, project: str | None = None) -> Issueki
     return client_for(
         config,
         project=project,
+        keepalive=True,
     )
 
 

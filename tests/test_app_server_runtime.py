@@ -15,6 +15,7 @@ from issuekit.agentrun.runner import AgentPrompt
 from issuekit.agents import app_server_runtime
 from issuekit.agents.app_server_runtime import AppServerAttemptRunner
 from issuekit.agents.run_claimed import implementation_prompt
+from issuekit.api.client import BURST_HTTP_LIMITS
 from issuekit.config import IssuekitConfig, WorkerIdentity
 from issuekit.core import Issue
 from issuekit.errors import WorkflowError
@@ -43,6 +44,7 @@ class FakeAgentSessionClient:
     list_error: WorkflowError | None = None
 
     def __init__(self, *args, **kwargs) -> None:
+        self.init_kwargs = kwargs
         self.commands: list[dict[str, object]] = []
         self.events: list[dict[str, object]] = []
         self.acknowledgements: list[tuple[str, dict[str, object]]] = []
@@ -307,6 +309,7 @@ def test_app_server_runner_returns_result_for_successful_attempt(
         "total_tokens": 42,
     }
     client = FakeAgentSessionClient.instances[-1]
+    assert client.init_kwargs["http_limits"] is BURST_HTTP_LIMITS
     stopped = [
         event for event in client.events if event["event_type"] == "runtime_stopped"
     ]

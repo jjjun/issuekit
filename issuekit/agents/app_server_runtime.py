@@ -143,7 +143,7 @@ class AppServerAttemptRunner:
                 f"{pointer}"
             )
 
-        with client_for(self.config) as client:
+        with client_for(self.config, keepalive=True) as client:
             parent, resume = self._recovery_ancestry(client, issue_id, repo)
             context = self._create_and_acquire(
                 client,

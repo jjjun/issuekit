@@ -9,7 +9,9 @@ client created here; auth requests disable redirects per request.
 from __future__ import annotations
 
 import os
+import ssl
 from collections.abc import Mapping
+from functools import cache
 from threading import Lock
 
 import httpx
@@ -28,11 +30,23 @@ from .resources import (
 from .security import jwt_expiry
 from .token_cache import read_cached_token
 
+# Keep idle sockets disabled for long-lived clients (issuekit#179).
 DEFAULT_HTTP_LIMITS = httpx.Limits(
     max_connections=5,
     max_keepalive_connections=0,
     keepalive_expiry=1.0,
 )
+# Use only when a client closes promptly or polls more often than expiry (issuekit#179).
+BURST_HTTP_LIMITS = httpx.Limits(
+    max_connections=5,
+    max_keepalive_connections=2,
+    keepalive_expiry=5.0,
+)
+
+
+@cache
+def _shared_ssl_context() -> ssl.SSLContext:
+    return httpx.create_ssl_context()
 
 
 class IssuekitClient(
@@ -87,6 +101,7 @@ class IssuekitClient(
                 timeout=timeout,
                 follow_redirects=True,
                 limits=http_limits or DEFAULT_HTTP_LIMITS,
+                verify=_shared_ssl_context(),
                 headers=headers,
             )
         else:

@@ -8,6 +8,7 @@ import pytest
 
 import issuekit.proposals.api as proposals_api
 from issuekit import cli
+from issuekit.api.client import BURST_HTTP_LIMITS
 from issuekit.config import IssuekitConfig, TriagePolicy
 from issuekit.guards.author import read_author_guards
 from issuekit.proposals import ProposalError, origin_destination
@@ -34,6 +35,20 @@ def test_origin_destination_uses_project_segment() -> None:
 def test_api_client_requires_api_url() -> None:
     with pytest.raises(ProposalError, match="Proposal command requires api_url"):
         api_client(IssuekitConfig())
+
+
+def test_api_client_uses_burst_http_limits(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class RecordingClient:
+        def __init__(self, *args, **kwargs) -> None:
+            captured.update(kwargs)
+
+    monkeypatch.setattr("issuekit.api.factory.IssuekitClient", RecordingClient)
+
+    api_client(IssuekitConfig(api_url="https://mine.example"))
+
+    assert captured["http_limits"] is BURST_HTTP_LIMITS
 
 
 def test_matches_triage_policy_skips_pending_threaded_proposal_from_trusted_origin() -> None:
