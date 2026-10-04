@@ -122,8 +122,9 @@ resets it. Idle polls always wait `--interval`, not the backoff.
   ignored unless `--proposal-checks` is selected.
 - `--priority high|medium|low` narrows the implement pool.
 - `--model` and `--reasoning-effort` apply to every agent this loop launches.
-  For mixed-agent setups prefer per-agent config or `[agents.<name>.roles.<role>]`
-  overlays.
+  For mixed-agent setups prefer per-agent model and reasoning settings or
+  `[agents.<name>.roles.<role>]` overlays. Keep executable, launch, and
+  permission settings in machine config.
 
 ## Concurrency, logging, and shutdown
 

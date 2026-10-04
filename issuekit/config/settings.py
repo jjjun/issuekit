@@ -6,7 +6,7 @@ import os
 import sys
 import warnings
 from dataclasses import dataclass, field, fields, replace
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from string import Formatter
 from urllib.parse import urlparse
 
@@ -506,6 +506,12 @@ def _load_raw_config(
             _reject_machine_only_repo_settings(
                 pyproject_config, machine_path
             )
+            _reject_repo_agent_launch_keys(
+                pyproject_config,
+                repo_config_source,
+                machine_path,
+                machine_config,
+            )
             if "api_url" in pyproject_config:
                 api_url_source = "repo_config"
             # pyproject's [tool.issuekit] wins when present so Python repos keep
@@ -517,6 +523,12 @@ def _load_raw_config(
         repo_config_source = "issuekit.toml"
         issuekit_config = _load_config_toml(issuekit_path)
         _reject_machine_only_repo_settings(issuekit_config, machine_path)
+        _reject_repo_agent_launch_keys(
+            issuekit_config,
+            repo_config_source,
+            machine_path,
+            machine_config,
+        )
         if "api_url" in issuekit_config:
             api_url_source = "repo_config"
         raw_config = _merge_config_layers(raw_config, issuekit_config)
@@ -555,6 +567,64 @@ def _reject_machine_only_repo_settings(
             f"({path_label}); set ISSUEKIT_ALLOW_INSECURE=1 in the process "
             "environment instead."
         )
+
+
+def _reject_repo_agent_launch_keys(
+    config: dict[str, object],
+    source: str,
+    machine_path: Path | None,
+    machine_config: dict[str, object],
+) -> None:
+    path_label = (
+        str(machine_path) if machine_path is not None else "ISSUEKIT_CONFIG is empty"
+    )
+    repo_agents = config.get("agents")
+    if not isinstance(repo_agents, dict):
+        return
+    machine_agents = machine_config.get("agents")
+    machine_agent_names = (
+        {
+            name
+            for name, agent_config in machine_agents.items()
+            if isinstance(agent_config, dict)
+        }
+        if isinstance(machine_agents, dict)
+        else set()
+    )
+    built_in_agent_names = {name for name, _agent in IssuekitConfig.agents}
+    for agent_name, agent_config in repo_agents.items():
+        if not isinstance(agent_config, dict):
+            continue
+        if agent_name not in built_in_agent_names | machine_agent_names:
+            raise ValueError(
+                f"{source} defines agent '{agent_name}'; define new agents in "
+                f"machine config ({path_label})."
+            )
+        for key in agent_config:
+            if key in _MACHINE_ONLY_AGENT_KEYS:
+                _reject_repo_agent_launch_key(
+                    source, f"agents.{agent_name}.{key}", path_label
+                )
+        roles = agent_config.get("roles")
+        if not isinstance(roles, dict):
+            continue
+        for role, overlay in roles.items():
+            if not isinstance(overlay, dict):
+                continue
+            for key in overlay:
+                if key not in {"model", "reasoning_effort"}:
+                    _reject_repo_agent_launch_key(
+                        source,
+                        f"agents.{agent_name}.roles.{role}.{key}",
+                        path_label,
+                    )
+
+
+def _reject_repo_agent_launch_key(source: str, setting: str, path_label: str) -> None:
+    raise ValueError(
+        f"{source} sets {setting}; agent launch settings (binary, argv, approval "
+        f"flags, runtime) can only be set in machine config ({path_label})."
+    )
 
 
 def _load_trusted_api_origins(value: object) -> tuple[str, ...]:
@@ -733,6 +803,19 @@ _AGENT_CONFIG_KEYS = (
     | frozenset({"roles"})
 )
 _ROLE_OVERLAY_KEYS = frozenset(config_field.name for config_field in fields(RoleOverlay))
+REPO_AGENT_KEYS = frozenset(
+    {
+        "model",
+        "reasoning_effort",
+        "speed",
+        "roles",
+        "prompt_suffix",
+        "model_prompts",
+        "mojibake_gate",
+        "diff_shape_warn_deletions",
+    }
+)
+_MACHINE_ONLY_AGENT_KEYS = _AGENT_CONFIG_KEYS - REPO_AGENT_KEYS
 
 
 def _keep_machine_setting(
@@ -1235,6 +1318,15 @@ def _agent_run_config_overrides(cfg: dict[str, object]) -> dict[str, object]:
         value = cfg.get(key, _SENTINEL)
         if value is not _SENTINEL:
             overrides[key] = loader(value)
+    binary = overrides.get("binary")
+    if binary is not None:
+        overrides["binary"] = _validate_agent_command_or_path(binary, "binary")
+    known_paths = overrides.get("known_paths")
+    if known_paths is not None:
+        overrides["known_paths"] = tuple(
+            _validate_agent_command_or_path(path, "known_paths")
+            for path in known_paths
+        )
     effort_argv = overrides.get("effort_argv")
     if effort_argv is not None:
         _validate_effort_argv(effort_argv)
@@ -1250,6 +1342,22 @@ def _agent_run_config_overrides(cfg: dict[str, object]) -> dict[str, object]:
     if app_server_argv is not None:
         _validate_app_server_argv(app_server_argv)
     return overrides
+
+
+def _validate_agent_command_or_path(value: object, setting: str) -> str:
+    text = str(value)
+    if not text:
+        raise ValueError(f"{setting} must be a bare command name or an absolute path.")
+    expanded = Path(text).expanduser()
+    has_separator = "/" in text or "\\" in text
+    is_absolute = expanded.is_absolute() or PureWindowsPath(text).is_absolute()
+    if has_separator and not is_absolute:
+        raise ValueError(
+            f"{setting} must be a bare command name or an absolute path."
+        )
+    if has_separator and expanded.is_absolute():
+        return str(expanded)
+    return text
 
 
 def _validate_effort_argv(value: object) -> None:

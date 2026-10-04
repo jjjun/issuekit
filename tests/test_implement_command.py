@@ -367,8 +367,15 @@ def test_implement_command_selects_app_server_runtime(
         tmp_path,
         monkeypatch,
         client,
-        extra_config="[agents.codex]\nruntime = 'codex_app_server'\n",
     )
+    machine_path = tmp_path / "machine.toml"
+    machine_path.write_text(
+        "trusted_api_origins = ['https://mine.example']\n"
+        "[agents.codex]\nruntime = 'codex_app_server'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setenv("ISSUEKIT_CONFIG", str(machine_path))
     monkeypatch.setattr(run_claimed_agent, "AgentRunner", SelectedAgentRunner)
     monkeypatch.setattr(
         run_claimed_agent, "AppServerAttemptRunner", SelectedAppServerRunner

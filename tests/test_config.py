@@ -32,6 +32,33 @@ _ENV_KEYS = (
     "DOTENV_EXTRA",
     "MALFORMED_LINE",
 )
+_REPO_CONFIG_SOURCES = (
+    ("issuekit.toml", "issuekit.toml", "[agents.codex]"),
+    (
+        "pyproject.toml",
+        "pyproject [tool.issuekit]",
+        "[tool.issuekit.agents.codex]",
+    ),
+)
+_MACHINE_ONLY_AGENT_SETTINGS = (
+    ("binary", "binary = 'codex'\n"),
+    ("adapter", "adapter = 'codex'\n"),
+    ("runtime", "runtime = 'exec'\n"),
+    ("app_server_argv", "app_server_argv = ['app-server']\n"),
+    ("lease_ttl_seconds", "lease_ttl_seconds = 60\n"),
+    ("known_paths", "known_paths = ['/opt/codex']\n"),
+    ("headless_argv", "headless_argv = ['exec']\n"),
+    ("resumable", "resumable = true\n"),
+    ("session_flag", "session_flag = '--session-id'\n"),
+    ("resume_flag", "resume_flag = '--resume'\n"),
+    ("approval_flag", "approval_flag = '--sandbox'\n"),
+    ("approval_value", "approval_value = 'workspace-write'\n"),
+    ("output_format_flag", "output_format_flag = '--output'\n"),
+    ("output_format", "output_format = 'json'\n"),
+    ("model_flag", "model_flag = '--model'\n"),
+    ("effort_argv", "effort_argv = ['--effort', '{value}']\n"),
+    ("speed_argv", "speed_argv = ['--fast']\n"),
+)
 
 
 @pytest.fixture(autouse=True)
@@ -338,11 +365,12 @@ def test_repo_config_overrides_machine_and_merges_agent_keys(
             "issues_dir = 'machine/issues'\n[agents.codex]\n"
             "model = 'machine-model'\nreasoning_effort = 'medium'\n"
             "speed = 'on'\nspeed_argv = ['--speed', 'priority']\n"
+            "approval_flag = '--approve-for-me'\n"
         ),
         encoding="utf-8",
     )
     (tmp_path / "issuekit.toml").write_text(
-        "issues_dir = 'repo/issues'\n[agents.codex]\napproval_flag = '--approve-for-me'\n",
+        "issues_dir = 'repo/issues'\n",
         encoding="utf-8",
     )
     monkeypatch.setenv("ISSUEKIT_CONFIG", str(machine_path))
@@ -443,6 +471,250 @@ def test_machine_config_ignores_unknown_top_level_and_agent_settings(
         f"Ignoring unsupported machine config setting agents.claude.unknown in {machine_path}.",
     ]
     assert dict(config.agents)["claude"] == dict(IssuekitConfig.agents)["claude"]
+
+
+@pytest.mark.parametrize(("filename", "source", "agent_table"), _REPO_CONFIG_SOURCES)
+@pytest.mark.parametrize(("key", "setting"), _MACHINE_ONLY_AGENT_SETTINGS)
+def test_repo_config_rejects_machine_only_agent_settings(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    filename: str,
+    source: str,
+    agent_table: str,
+    key: str,
+    setting: str,
+) -> None:
+    machine_path = tmp_path / "machine.toml"
+    machine_path.write_text("", encoding="utf-8", newline="\n")
+    monkeypatch.setenv("ISSUEKIT_CONFIG", str(machine_path))
+    (tmp_path / filename).write_text(
+        f"{agent_table}\n{setting}",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    with pytest.raises(ValueError) as excinfo:
+        load_config(tmp_path)
+
+    message = str(excinfo.value)
+    assert source in message
+    assert f"agents.codex.{key}" in message
+    assert str(machine_path) in message
+    assert "can only be set in machine config" in message
+
+
+@pytest.mark.parametrize(("filename", "source", "agent_table"), _REPO_CONFIG_SOURCES)
+def test_repo_config_rejects_role_approval_argv(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    filename: str,
+    source: str,
+    agent_table: str,
+) -> None:
+    machine_path = tmp_path / "machine.toml"
+    machine_path.write_text("", encoding="utf-8", newline="\n")
+    monkeypatch.setenv("ISSUEKIT_CONFIG", str(machine_path))
+    agent_prefix = agent_table.removesuffix("]")
+    (tmp_path / filename).write_text(
+        f"{agent_prefix}.roles.reviewer]\napproval_argv = ['--safe-mode']\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    with pytest.raises(ValueError) as excinfo:
+        load_config(tmp_path)
+
+    message = str(excinfo.value)
+    assert source in message
+    assert "agents.codex.roles.reviewer.approval_argv" in message
+    assert str(machine_path) in message
+
+
+@pytest.mark.parametrize(("filename", "source", "agent_table"), _REPO_CONFIG_SOURCES)
+def test_repo_config_rejects_checkout_relative_binary_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    filename: str,
+    source: str,
+    agent_table: str,
+) -> None:
+    machine_path = tmp_path / "machine.toml"
+    machine_path.write_text("", encoding="utf-8", newline="\n")
+    monkeypatch.setenv("ISSUEKIT_CONFIG", str(machine_path))
+    (tmp_path / filename).write_text(
+        f"{agent_table}\nbinary = 'scripts/x'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    with pytest.raises(ValueError) as excinfo:
+        load_config(tmp_path)
+
+    assert source in str(excinfo.value)
+    assert "agents.codex.binary" in str(excinfo.value)
+
+
+@pytest.mark.parametrize(("filename", "source", "agent_table"), _REPO_CONFIG_SOURCES)
+def test_repo_config_rejects_custom_agent_definitions(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    filename: str,
+    source: str,
+    agent_table: str,
+) -> None:
+    machine_path = tmp_path / "machine.toml"
+    machine_path.write_text("", encoding="utf-8", newline="\n")
+    monkeypatch.setenv("ISSUEKIT_CONFIG", str(machine_path))
+    agent_prefix = agent_table.removesuffix("codex]")
+    (tmp_path / filename).write_text(
+        f"{agent_prefix}custom]\nmodel = 'custom-model'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    with pytest.raises(ValueError) as excinfo:
+        load_config(tmp_path)
+
+    message = str(excinfo.value)
+    assert f"{source} defines agent 'custom'" in message
+    assert "define new agents in machine config" in message
+    assert str(machine_path) in message
+
+
+@pytest.mark.parametrize(("filename", "source", "agent_table"), _REPO_CONFIG_SOURCES)
+def test_repo_config_keeps_agent_model_and_policy_settings(
+    tmp_path: Path,
+    filename: str,
+    source: str,
+    agent_table: str,
+) -> None:
+    agent_prefix = agent_table.removesuffix("]")
+    (tmp_path / filename).write_text(
+        (
+            f"{agent_table}\n"
+            "model = 'gpt-6-sol'\n"
+            "reasoning_effort = 'high'\n"
+            "speed = true\n"
+            "prompt_suffix = 'Use focused changes.'\n"
+            "mojibake_gate = true\n"
+            "diff_shape_warn_deletions = 12\n"
+            f"{agent_prefix}.model_prompts]\n"
+            "'gpt-6-sol' = 'Model guidance.'\n"
+            f"{agent_prefix}.roles.reviewer]\n"
+            "model = 'gpt-6-sol-review'\n"
+            "reasoning_effort = 'medium'\n"
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    config = load_config(tmp_path)
+    codex = dict(config.agents)["codex"]
+
+    assert codex.model == "gpt-6-sol"
+    assert codex.reasoning_effort == "high"
+    assert codex.speed is True
+    assert codex.prompt_suffix == "Use focused changes."
+    assert codex.model_prompts == (("gpt-6-sol", "Model guidance."),)
+    assert dict(config.agent_policies)["codex"].mojibake_gate is True
+    assert dict(config.agent_policies)["codex"].diff_shape_warn_deletions == 12
+    assert dict(dict(config.agent_role_overlays)["codex"])["reviewer"] == RoleOverlay(
+        model="gpt-6-sol-review", reasoning_effort="medium"
+    )
+
+
+def test_machine_config_loads_agent_launch_settings(tmp_path: Path, monkeypatch) -> None:
+    machine_path = tmp_path / "machine.toml"
+    machine_path.write_text(
+        "[agents.codex]\n"
+        + "".join(setting for _key, setting in _MACHINE_ONLY_AGENT_SETTINGS),
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setenv("ISSUEKIT_CONFIG", str(machine_path))
+
+    codex = dict(load_config(tmp_path).agents)["codex"]
+
+    assert codex.binary == "codex"
+    assert codex.adapter == "codex"
+    assert codex.runtime == "exec"
+    assert codex.app_server_argv == ("app-server",)
+    assert codex.lease_ttl_seconds == 60
+    assert codex.known_paths == ("/opt/codex",)
+    assert codex.headless_argv == ("exec",)
+    assert codex.resumable is True
+    assert codex.session_flag == "--session-id"
+    assert codex.resume_flag == "--resume"
+    assert codex.approval_flag == "--sandbox"
+    assert codex.approval_value == "workspace-write"
+    assert codex.output_format_flag == "--output"
+    assert codex.output_format == "json"
+    assert codex.model_flag == "--model"
+    assert codex.effort_argv == ("--effort", "{value}")
+    assert codex.speed_argv == ("--fast",)
+
+
+@pytest.mark.parametrize("binary", ["scripts/x", "scripts\\x"])
+def test_machine_config_rejects_relative_agent_binary_paths(
+    tmp_path: Path, monkeypatch, binary: str
+) -> None:
+    machine_path = tmp_path / "machine.toml"
+    machine_path.write_text(
+        f"[agents.codex]\nbinary = '{binary}'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setenv("ISSUEKIT_CONFIG", str(machine_path))
+
+    with pytest.raises(ValueError, match="binary must be a bare command name"):
+        load_config(tmp_path)
+
+
+@pytest.mark.parametrize("path", ["scripts/x", "scripts\\x"])
+def test_machine_config_rejects_relative_known_agent_paths(
+    tmp_path: Path, monkeypatch, path: str
+) -> None:
+    machine_path = tmp_path / "machine.toml"
+    machine_path.write_text(
+        f"[agents.codex]\nknown_paths = ['{path}']\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setenv("ISSUEKIT_CONFIG", str(machine_path))
+
+    with pytest.raises(ValueError, match="known_paths must be a bare command name"):
+        load_config(tmp_path)
+
+
+@pytest.mark.parametrize("binary", ["codex", "/opt/codex/bin/codex"])
+def test_machine_config_accepts_bare_or_absolute_agent_binary(
+    tmp_path: Path, monkeypatch, binary: str
+) -> None:
+    machine_path = tmp_path / "machine.toml"
+    machine_path.write_text(
+        f"[agents.codex]\nbinary = '{binary}'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setenv("ISSUEKIT_CONFIG", str(machine_path))
+
+    assert dict(load_config(tmp_path).agents)["codex"].binary == binary
+
+
+def test_machine_config_expands_user_home_agent_binary(
+    tmp_path: Path, monkeypatch
+) -> None:
+    machine_path = tmp_path / "machine.toml"
+    machine_path.write_text(
+        "[agents.codex]\nbinary = '~/codex/bin/codex'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setenv("ISSUEKIT_CONFIG", str(machine_path))
+
+    assert dict(load_config(tmp_path).agents)["codex"].binary == str(
+        Path.home() / "codex/bin/codex"
+    )
 
 
 def test_machine_config_ignores_invalid_triage_default_priority(
@@ -1143,14 +1415,17 @@ def test_load_config_local_disabled_agents_override_committed_config(
 
 
 def test_load_config_defaults_assignees_to_enabled_agent_names(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    machine_path = tmp_path / "machine.toml"
+    machine_path.write_text(
+        "[agents.custom]\nbinary = 'custom-agent'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setenv("ISSUEKIT_CONFIG", str(machine_path))
     (tmp_path / "issuekit.toml").write_text(
-        (
-            "disabled_agents = ['kimi']\n"
-            "[agents.custom]\n"
-            "binary = 'custom-agent'\n"
-        ),
+        "disabled_agents = ['kimi']\n",
         encoding="utf-8",
         newline="\n",
     )
@@ -1372,19 +1647,30 @@ def test_load_config_validates_default_implementer(
         load_config(tmp_path)
 
 
-def test_load_config_reads_agent_guardrail_fields(tmp_path: Path) -> None:
-    (tmp_path / "issuekit.toml").write_text(
+def test_load_config_reads_agent_guardrail_fields(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    machine_path = tmp_path / "machine.toml"
+    machine_path.write_text(
         (
             "[agents.codex]\n"
             "binary = 'codex'\n"
             "headless_argv = ['exec']\n"
             "model_flag = '--model'\n"
-            "model = 'gpt-5.3-codex-spark'\n"
-            "speed = true\n"
             "speed_argv = ['--speed', 'priority']\n"
-            "prompt_suffix = 'Keep diffs small.'\n"
             "resumable = true\n"
             "session_flag = '--session-id'\n"
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setenv("ISSUEKIT_CONFIG", str(machine_path))
+    (tmp_path / "issuekit.toml").write_text(
+        (
+            "[agents.codex]\n"
+            "model = 'gpt-5.3-codex-spark'\n"
+            "speed = true\n"
+            "prompt_suffix = 'Keep diffs small.'\n"
             "mojibake_gate = true\n"
             "diff_shape_warn_deletions = 12\n"
             "[agents.codex.model_prompts]\n"
@@ -1420,12 +1706,16 @@ def test_load_config_reads_agent_guardrail_fields(tmp_path: Path) -> None:
     assert dict(config.agent_policies)["codex"].diff_shape_warn_deletions == 12
 
 
-def test_load_config_rejects_invalid_effort_argv_template(tmp_path: Path) -> None:
-    (tmp_path / "issuekit.toml").write_text(
+def test_load_config_rejects_invalid_effort_argv_template(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    machine_path = tmp_path / "machine.toml"
+    machine_path.write_text(
         '[agents.codex]\neffort_argv = ["--x", "{"]\n',
         encoding="utf-8",
         newline="\n",
     )
+    monkeypatch.setenv("ISSUEKIT_CONFIG", str(machine_path))
 
     with pytest.raises(ValueError, match="Invalid effort_argv template"):
         load_config(tmp_path)
@@ -1452,8 +1742,11 @@ def test_load_config_rejects_invalid_speed(tmp_path: Path) -> None:
         load_config(tmp_path)
 
 
-def test_load_config_merges_builtin_agent_overrides(tmp_path: Path) -> None:
-    (tmp_path / "issuekit.toml").write_text(
+def test_load_config_merges_builtin_agent_overrides(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    machine_path = tmp_path / "machine.toml"
+    machine_path.write_text(
         (
             "[agents.codex]\n"
             "approval_flag = '--sandbox'\n"
@@ -1462,6 +1755,7 @@ def test_load_config_merges_builtin_agent_overrides(tmp_path: Path) -> None:
         encoding="utf-8",
         newline="\n",
     )
+    monkeypatch.setenv("ISSUEKIT_CONFIG", str(machine_path))
 
     config = load_config(tmp_path)
     agents = dict(config.agents)
@@ -1500,8 +1794,11 @@ def test_load_config_reads_claude_reasoning_effort(tmp_path: Path) -> None:
     assert dict(load_config(tmp_path).agents)["claude"].reasoning_effort == "medium"
 
 
-def test_load_config_codex_app_server_is_explicit_opt_in(tmp_path: Path) -> None:
-    (tmp_path / "issuekit.toml").write_text(
+def test_load_config_codex_app_server_is_explicit_opt_in(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    machine_path = tmp_path / "machine.toml"
+    machine_path.write_text(
         (
             "[agents.codex]\n"
             "runtime = 'codex_app_server'\n"
@@ -1511,6 +1808,7 @@ def test_load_config_codex_app_server_is_explicit_opt_in(tmp_path: Path) -> None
         encoding="utf-8",
         newline="\n",
     )
+    monkeypatch.setenv("ISSUEKIT_CONFIG", str(machine_path))
 
     codex = dict(load_config(tmp_path).agents)["codex"]
 
@@ -1536,26 +1834,33 @@ def test_load_config_codex_exec_remains_default(tmp_path: Path) -> None:
     ],
 )
 def test_load_config_rejects_invalid_app_server_settings(
-    tmp_path: Path, config_text: str, message: str
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    config_text: str,
+    message: str,
 ) -> None:
-    (tmp_path / "issuekit.toml").write_text(
+    machine_path = tmp_path / "machine.toml"
+    machine_path.write_text(
         f"[agents.codex]\n{config_text}",
         encoding="utf-8",
         newline="\n",
     )
+    monkeypatch.setenv("ISSUEKIT_CONFIG", str(machine_path))
 
     with pytest.raises(ValueError, match=message):
         load_config(tmp_path)
 
 
 def test_load_config_rejects_app_server_runtime_for_non_codex_agent(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    (tmp_path / "issuekit.toml").write_text(
+    machine_path = tmp_path / "machine.toml"
+    machine_path.write_text(
         "[agents.claude]\nruntime = 'codex_app_server'\n",
         encoding="utf-8",
         newline="\n",
     )
+    monkeypatch.setenv("ISSUEKIT_CONFIG", str(machine_path))
 
     with pytest.raises(ValueError, match="only for agents.codex"):
         load_config(tmp_path)
@@ -1594,12 +1899,16 @@ def test_load_config_reads_agent_role_overlays(tmp_path: Path) -> None:
     }
 
 
-def test_load_config_reads_negotiation_approval_argv(tmp_path: Path) -> None:
-    (tmp_path / "issuekit.toml").write_text(
+def test_load_config_reads_negotiation_approval_argv(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    machine_path = tmp_path / "machine.toml"
+    machine_path.write_text(
         '[agents.kimi.roles.negotiation]\napproval_argv = ["--sandbox", "read-only"]\n',
         encoding="utf-8",
         newline="\n",
     )
+    monkeypatch.setenv("ISSUEKIT_CONFIG", str(machine_path))
 
     config = load_config(tmp_path)
 
@@ -1621,7 +1930,7 @@ def test_load_config_reads_negotiation_approval_argv(tmp_path: Path) -> None:
         ),
         (
             "[agents.claude.roles.reviewer]\nbinary = 'claude'\n",
-            "only supports model, reasoning_effort, and approval_argv",
+            "can only be set in machine config",
         ),
     ],
 )
@@ -1664,12 +1973,16 @@ def test_load_config_honors_false_builtin_agent_override(tmp_path: Path) -> None
     assert codex.prompt_suffix == dict(IssuekitConfig.agents)["codex"].prompt_suffix
 
 
-def test_load_config_empty_agent_string_clears_optional_default(tmp_path: Path) -> None:
-    (tmp_path / "issuekit.toml").write_text(
+def test_load_config_empty_agent_string_clears_optional_default(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    machine_path = tmp_path / "machine.toml"
+    machine_path.write_text(
         "[agents.codex]\napproval_flag = ''\n",
         encoding="utf-8",
         newline="\n",
     )
+    monkeypatch.setenv("ISSUEKIT_CONFIG", str(machine_path))
 
     codex = dict(load_config(tmp_path).agents)["codex"]
 

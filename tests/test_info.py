@@ -228,14 +228,13 @@ def test_info_surfaces_effective_agent_config_and_sources(
     machine_path = tmp_path / "machine.toml"
     machine_path.write_text(
         "trusted_api_origins = ['https://mine.example']\n"
-        "[agents.codex]\nmodel = 'machine-model'\n",
+        "[agents.codex]\nmodel = 'machine-model'\n"
+        "approval_flag = '--approve-for-me'\n",
         encoding="utf-8",
         newline="\n",
     )
     with (tmp_path / "issuekit.toml").open("a", encoding="utf-8", newline="\n") as handle:
-        handle.write(
-            "disabled_agents = ['kimi']\n[agents.codex]\napproval_flag = '--approve-for-me'\n"
-        )
+        handle.write("disabled_agents = ['kimi']\n")
     monkeypatch.setenv("ISSUEKIT_CONFIG", str(machine_path))
 
     cli.main(["info", "--json"])
@@ -292,14 +291,13 @@ def test_info_text_surfaces_effective_agent_config_and_sources(
     machine_path = tmp_path / "machine.toml"
     machine_path.write_text(
         "trusted_api_origins = ['https://mine.example']\n"
-        "[agents.codex]\nmodel = 'machine-model'\n",
+        "[agents.codex]\nmodel = 'machine-model'\n"
+        "approval_flag = '--approve-for-me'\n",
         encoding="utf-8",
         newline="\n",
     )
     with (tmp_path / "issuekit.toml").open("a", encoding="utf-8", newline="\n") as handle:
-        handle.write(
-            "disabled_agents = ['kimi']\n[agents.codex]\napproval_flag = '--approve-for-me'\n"
-        )
+        handle.write("disabled_agents = ['kimi']\n")
     monkeypatch.setenv("ISSUEKIT_CONFIG", str(machine_path))
 
     cli.main(["info"])

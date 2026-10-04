@@ -1107,8 +1107,14 @@ def test_serve_preflight_rejects_missing_binary_without_claiming(
     client = FakeIssuekitClient([api_issue(1, "Ready", author="claude")])
     _configure_registered_api(tmp_path, monkeypatch, client)
     issue_before = client.get_issue(1)
-    with (tmp_path / "issuekit.toml").open("a", encoding="utf-8", newline="\n") as fh:
-        fh.write("[agents.codex]\nbinary = 'missing-codex'\nknown_paths = []\n")
+    machine_path = tmp_path / "machine.toml"
+    machine_path.write_text(
+        "trusted_api_origins = ['https://mine.example']\n"
+        "[agents.codex]\nbinary = 'missing-codex'\nknown_paths = []\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setenv("ISSUEKIT_CONFIG", str(machine_path))
     monkeypatch.setattr("issuekit.agentrun.adapter.shutil.which", lambda _binary: None)
 
     exit_code = cli.main(["serve", "--agent", "codex", "--once"])

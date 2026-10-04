@@ -241,14 +241,16 @@ def test_resolve_adapter_rejects_configured_speed_without_template(
 
 
 def test_resolve_adapter_rejects_role_reasoning_effort_without_template(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch,
 ) -> None:
-    (tmp_path / "issuekit.toml").write_text(
+    machine_path = tmp_path / "machine.toml"
+    machine_path.write_text(
         "[agents.kimi.roles.reviewer]\n"
         "reasoning_effort = 'medium'\napproval_argv = ['--safe-mode']\n",
         encoding="utf-8",
         newline="\n",
     )
+    monkeypatch.setenv("ISSUEKIT_CONFIG", str(machine_path))
 
     with pytest.raises(
         ValueError,
@@ -383,8 +385,9 @@ def test_config_agent_adapter_resolve_binary_uses_path(monkeypatch, tmp_path: Pa
     assert adapter.resolve_binary() == fake_bin
 
 
-def test_load_config_reads_agents(tmp_path: Path) -> None:
-    (tmp_path / "issuekit.toml").write_text(
+def test_load_config_reads_agents(tmp_path: Path, monkeypatch) -> None:
+    machine_path = tmp_path / "machine.toml"
+    machine_path.write_text(
         (
             "[agents.custom]\n"
             "binary = 'my-agent'\n"
@@ -398,6 +401,7 @@ def test_load_config_reads_agents(tmp_path: Path) -> None:
         encoding="utf-8",
         newline="\n",
     )
+    monkeypatch.setenv("ISSUEKIT_CONFIG", str(machine_path))
 
     config = load_config(tmp_path)
     agents_dict = dict(config.agents)

@@ -40,20 +40,27 @@ in `agentrun`; put issue lifecycle, proposal, and workflow decisions in
 
 ## Configuration split
 
-`AgentRunConfig` in `issuekit/agentrun/config.py` holds launch settings only.
-`AgentPolicy` in `issuekit/config/settings.py` holds issuekit policy, including
-`mojibake_gate` and `diff_shape_warn_deletions`. Both are configured through
-the same `[agents.<name>]` TOML table (or `[tool.issuekit.agents.<name>]` in
-`pyproject.toml`), so this internal split does not change the configuration
-surface.
+`AgentRunConfig` in `issuekit/agentrun/config.py` holds the effective settings
+used to launch an agent. Machine config owns executable selection and launch
+or permission arguments; repository config can tune `model`,
+`reasoning_effort`, `speed`, prompt text, and role model or effort overlays.
+Repository config can also set `mojibake_gate` and
+`diff_shape_warn_deletions`, which `AgentPolicy` in
+`issuekit/config/settings.py` applies as issuekit policy. Both layers use an
+`[agents.<name>]` table, but only machine config may define a new agent or set
+launch keys. Python repositories use `[tool.issuekit.agents.<name>]` for the
+repository-supported tuning keys.
 
 ## Add an agent
 
-For a config-only agent, add an `[agents.<name>]` table with the CLI `binary`,
-`headless_argv`, approval and output flags, `model_flag`, `effort_argv`,
-`speed`, and `speed_argv`. The agent then uses `ConfigAgentAdapter`; no code
-change is required. `speed` is a boolean switch, and `speed_argv` contains the
-literal per-CLI arguments emitted when it is true.
+For a config-only agent, define it in machine config with an
+`[agents.<name>]` table containing the CLI `binary`, `headless_argv`, approval
+and output flags, `model_flag`, `effort_argv`, and `speed_argv`. Repository
+config may then tune its `model`, `reasoning_effort`, `speed`, and prompt text.
+The agent uses `ConfigAgentAdapter`; no code change is required. `speed` is a
+boolean switch, and machine-config `speed_argv` contains the literal per-CLI
+arguments emitted when it is true. Executables must be bare command names or
+absolute paths so issuekit never resolves one from the current checkout.
 
 Create a custom adapter only when its CLI needs behavior declarative
 configuration cannot express. `issuekit/agentrun/adapters/kimi.py` overrides
@@ -72,7 +79,7 @@ Issuekit relies on non-bare Claude `-p` behavior for instruction-file
 discovery, `.mcp.json` servers, and OAuth sign-in. See the [Claude Code headless
 documentation](https://code.claude.com/docs/en/headless). If a future Claude
 Code release makes `--bare` the default for `-p`, add its documented opt-out
-flag through `[agents.claude] headless_argv`.
+flag through machine config `[agents.claude] headless_argv`.
 
 ## Run artifacts
 

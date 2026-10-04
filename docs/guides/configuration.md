@@ -71,16 +71,17 @@ platforms (on Windows, `%USERPROFILE%\.config\issuekit\config.toml`).
 `XDG_CONFIG_HOME` is honored on both platforms. Set `ISSUEKIT_CONFIG` to use an
 explicit file, or set it to an empty string to disable machine config loading.
 Existing Windows users with a config under `%APPDATA%` should move it to
-`%USERPROFILE%\.config\issuekit\` or set `ISSUEKIT_CONFIG`. Machine config has
-lower precedence than repository config and cannot define `worker`; checkout
-registration belongs in `issuekit.local.toml`. Agent tables merge by key between
-machine and repository layers, one level deep: a repository `[agents.codex]`
-table overrides individual keys such as `model`, but its `roles` and
-`model_prompts` sub-tables replace the machine ones whole. Other values,
-including the `[triage]`, `[router]`, and `[agent_roles]` tables, are replaced
-whole by the higher-precedence layer. Repository identity settings such as
-`project`, `work_branch`, `issues_dir`, and `profile_*` normally belong in
-repository config.
+`%USERPROFILE%\.config\issuekit\` or set `ISSUEKIT_CONFIG`. Machine config
+cannot define `worker`; checkout registration belongs in
+`issuekit.local.toml`. For settings that repository config may set, agent
+tables merge by key between machine and repository layers, one level deep: a
+repository `[agents.codex]` table overrides individual keys such as `model`,
+but its `roles` and `model_prompts` sub-tables replace the machine ones whole.
+Agent launch settings are machine-only and cannot be overridden by repository
+config. Other values, including the `[triage]`, `[router]`, and `[agent_roles]`
+tables, are replaced whole by the higher-precedence layer. Repository identity
+settings such as `project`, `work_branch`, `issues_dir`, and `profile_*`
+normally belong in repository config.
 
 Because one machine config serves every checkout, issuekit is lenient with it:
 unknown keys at any level, `[agent_roles]` entries with an invalid role, and an
@@ -225,47 +226,61 @@ update those settings when you disable the agent they name.
 
 ## Agent overlays
 
-Built-in agent configs can be patched by name. A table such as
-`[tool.issuekit.agents.codex]` overlays only the keys it specifies and leaves
-other built-in agents unchanged. For `pyproject.toml`, use:
+Repository config can tune how configured agents behave, but it cannot choose
+the executable or its launch and permission arguments. Use the repository table
+for model and reasoning defaults, speed selection, prompt text, role model and
+reasoning overlays, and submit-time policy. Built-in agents can be patched by
+name. A Python repository can use:
 
 ```toml
 [tool.issuekit.agents.codex]
 model = "gpt-6-sol"
+reasoning_effort = "medium"
+speed = true
 
 [tool.issuekit.agents.codex.model_prompts]
 "gpt-6-sol" = "Follow the gpt-6-sol project guidance."
 ```
 
 For standalone `issuekit.toml`, use `[agents.codex]` and
-`[agents.codex.model_prompts]` without the `tool.issuekit` prefix.
+`[agents.codex.model_prompts]` without the `tool.issuekit` prefix. Repository
+config can also tune `mojibake_gate` and `diff_shape_warn_deletions`; see
+[Encoding checks](#encoding-checks).
 
-A table with a new name, such as `[tool.issuekit.agents.gemini]`, defines a
-custom agent that starts with no flags and `binary` set to the table name.
-Agent tables accept these keys:
+Set launch settings in machine config, which applies to every checkout on that
+machine:
 
-| Key | Meaning |
+| Machine-only keys | Meaning |
 |-----|---------|
-| `binary` | Executable looked up on `PATH`; defaults to the table name. |
-| `known_paths` | Fallback executable paths tried after `PATH`; `~` is expanded. |
-| `headless_argv` | Arguments placed before the prompt, such as `["exec"]` or `["-p"]`. |
-| `approval_flag`, `approval_value` | Permission flag and its optional value. |
-| `output_format_flag`, `output_format` | Output-format flag and value; the flag is emitted only when both are set. |
-| `model_flag`, `model` | Model flag and default model; without `model_flag`, no model is passed. |
-| `reasoning_effort`, `effort_argv` | Default effort and its argv template using `{value}`. |
-| `speed`, `speed_argv` | Boolean switch and the literal arguments it emits. |
+| `binary`, `adapter`, `known_paths` | Executable and adapter selection. `binary` and each fallback entry must be a bare command or an absolute path. |
+| `headless_argv`, `approval_flag`, `approval_value`, `roles.<role>.approval_argv` | Launch and permission arguments. |
+| `output_format_flag`, `output_format`, `model_flag`, `effort_argv`, `speed_argv` | CLI argument templates and output format. |
 | `resumable`, `session_flag`, `resume_flag` | Session support; see below. |
-| `prompt_suffix`, `model_prompts` | Text appended to implementer prompts, and per-model text appended to every matching prompt. |
-| `adapter` | Marker for a custom adapter class; `codex` and `kimi` are built in, and an unknown marker fails with `Unknown adapter`. |
 | `runtime`, `app_server_argv`, `lease_ttl_seconds` | Runtime selection; see the App Server paragraphs below. |
-| `mojibake_gate`, `diff_shape_warn_deletions` | Submit-time policy; see [Encoding checks](#encoding-checks). |
-| `roles` | Per-role `model`, `reasoning_effort`, and `approval_argv` overlays; see below. |
+
+Use a machine config table such as `[agents.codex]` for those settings. A
+custom agent must also be defined there; for example, `[agents.gemini]` starts
+with `binary = "gemini"` and no other launch flags. Repository config may tune
+that agent only after the machine config defines it.
+
+The repository-supported agent keys are `model`, `reasoning_effort`, `speed`,
+`roles`, `prompt_suffix`, `model_prompts`, `mojibake_gate`, and
+`diff_shape_warn_deletions`. For example, per-role model and effort overlays
+can be committed:
+
+```toml
+[tool.issuekit.agents.claude.roles.reviewer]
+model = "claude-opus-5-5"
+reasoning_effort = "high"
+```
 
 Role overlays accept `implementer`, `reviewer`, `router`, `triage`, and
-`negotiation`. A role's `approval_argv` replaces the built-in launch policy
-and the agent-level `approval_flag` and `approval_value`; it is a complete
-argument list, not an additive list. For example, standalone `issuekit.toml`
-can give Claude reviewers permission to run a project's tests:
+`negotiation`. Repository role overlays support only `model` and
+`reasoning_effort`. In machine config, a role's `approval_argv` replaces the
+built-in launch policy and the agent-level `approval_flag` and
+`approval_value`; it is a complete argument list, not an additive list. For
+example, machine config can give Claude reviewers permission to run a project's
+tests:
 
 ```toml
 [agents.claude.roles.reviewer]
@@ -310,12 +325,12 @@ launch and stops with the probe error if the host blocks it. On Ubuntu with
 AppArmor user-namespace restrictions, allow unprivileged user namespaces for
 /usr/bin/bwrap, for example with an AppArmor profile containing `userns,` or
 by setting `kernel.apparmor_restrict_unprivileged_userns=0`, then rerun. To
-opt out for a role, set its `approval_argv` explicitly.
+opt out for a role, set its `approval_argv` explicitly in machine config.
 Implementer runs keep the existing unsandboxed defaults. For other `exec`
-runtimes, configure `approval_flag = "--sandbox"` and
-`approval_value = "workspace-write"` to restrict filesystem access. Enable
-network access with
-`headless_argv = ["exec", "-c", "sandbox_workspace_write.network_access=true"]`.
+runtimes, set `approval_flag = "--sandbox"` and
+`approval_value = "workspace-write"` in machine config to restrict filesystem
+access. Enable network access by setting the machine config `headless_argv` to
+`["exec", "-c", "sandbox_workspace_write.network_access=true"]`.
 Codex CLI 0.147.0 added `--approve-for-me`, which uses `workspace-write` and
 automatically reviews sandbox escalations. The old `codex exec --full-auto` flag
 was removed in Codex CLI 0.147.0; use `--sandbox workspace-write` instead.
@@ -328,7 +343,7 @@ for `Read`, `Grep`, `Glob`, and read-only Git commands, and
 configured MCP servers. Implementer runs keep the existing
 `bypassPermissions` default. Kimi has no built-in read-only launch policy, so
 resolving it for a read-only role fails before launch unless
-`[agents.kimi.roles.<role>] approval_argv` is configured.
+machine config `[agents.kimi.roles.<role>] approval_argv` is configured.
 
 Claude reviewer Bash commands are limited to the read-only Git allowlist by
 default. To run tests, add only the required project commands to a complete
@@ -338,7 +353,8 @@ platform sandbox support and dependencies such as `bubblewrap` and `socat` on
 Linux. If the sandbox cannot be used, keep the restricted allowlist and add
 only the test commands the reviewer needs.
 
-`headless_argv` entries go before the prompt. Do not put a variadic Claude option
+Machine config controls `headless_argv`; its entries go before the prompt. Do
+not put a variadic Claude option
 such as `--allowedTools <tools...>` last, because it can consume the prompt;
 configure allow rules in `.claude/settings.json` instead. To tell Claude that
 no one can answer permission prompts during an unattended run, include
@@ -347,10 +363,11 @@ requires Claude Code 2.1.259 or later). In a `-p` run without a permission host,
 the flag also tells Claude not to retry denied requests.
 
 Codex implementation runs use `codex exec` by default. API-backed projects can
-opt into issue-owned App Server attempts for Codex implement and serve runs:
+opt into issue-owned App Server attempts for Codex implement and serve runs by
+setting this in machine config:
 
 ```toml
-[tool.issuekit.agents.codex]
+[agents.codex]
 runtime = "codex_app_server"
 lease_ttl_seconds = 60
 ```
@@ -394,8 +411,8 @@ is repeated in the final `runtime_stopped` event, in the run's
 Server and exec runs can be compared without reading the raw agent log.
 
 The built-in Claude config bypasses permissions so headless implementer runs
-can execute shell commands unattended. Stricter projects can use
-`[agents.claude] approval_value = "acceptEdits"`; see
+can execute shell commands unattended. Stricter projects can set
+`[agents.claude] approval_value = "acceptEdits"` in machine config; see
 [Strict permission modes](#strict-permission-modes) for its `-p` limitations
 and command allow rules.
 
@@ -405,7 +422,7 @@ Issuekit relies on non-bare Claude `-p` behavior for instruction-file discovery,
 `.mcp.json` servers, and OAuth sign-in. See the [Claude Code headless
 documentation](https://code.claude.com/docs/en/headless). If a future Claude
 Code release makes `--bare` the default for `-p`, add its documented opt-out
-flag through `[agents.claude] headless_argv`.
+flag through machine config `[agents.claude] headless_argv`.
 
 That config also sets `output_format = "json"`, so Claude returns a result
 envelope instead of bare text. An agent configured with `output_format = "json"`
