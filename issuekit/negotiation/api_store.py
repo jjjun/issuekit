@@ -6,6 +6,7 @@ import sys
 from typing import Any
 
 from issuekit.api import IssuekitClient
+from issuekit.api.factory import OwnedApiClient
 from issuekit.config import IssuekitConfig
 from issuekit.core import optional_int
 from issuekit.errors import WorkflowError
@@ -23,7 +24,7 @@ from issuekit.negotiation.model import (
 )
 
 
-class ApiNegotiationStore:
+class ApiNegotiationStore(OwnedApiClient):
     """Negotiation store backed by mine-py's proposal thread endpoints."""
 
     def __init__(
@@ -31,24 +32,7 @@ class ApiNegotiationStore:
         config: IssuekitConfig,
         client: IssuekitClient | None = None,
     ) -> None:
-        self.config = config
-        self._owns_client = client is None
-        self.client = client or IssuekitClient(
-            config.api_url,
-            project=config.project,
-            timeout=config.api_timeout,
-            allow_insecure_api_url=config.allow_insecure_api_url,
-        )
-
-    def close(self) -> None:
-        if self._owns_client:
-            self.client.close()
-
-    def __enter__(self) -> ApiNegotiationStore:
-        return self
-
-    def __exit__(self, *_: object) -> None:
-        self.close()
+        super().__init__(config, client)
 
     def create_thread(
         self,

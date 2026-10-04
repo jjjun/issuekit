@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from issuekit.api import IssuekitClient
+from issuekit.api.factory import client_for, require_api_url
 from issuekit.commands._common import active_issue_not_found, read_text_file, require_ascii
 from issuekit.config import IssuekitConfig, load_config
 from issuekit.config.refs import RefError, list_effective_refs
@@ -135,15 +136,10 @@ def hold_adopted_issue(
 
 
 def api_client(config: IssuekitConfig, *, project: str | None = None) -> IssuekitClient:
-    if not config.api_url:
-        raise ProposalError(
-            "Proposal commands require api_url in issuekit.toml/[tool.issuekit] or ISSUEKIT_API_URL."
-        )
-    return IssuekitClient(
-        config.api_url,
-        project=project or config.project,
-        timeout=config.api_timeout,
-        allow_insecure_api_url=config.allow_insecure_api_url,
+    require_api_url(config, "Proposal command", error=ProposalError)
+    return client_for(
+        config,
+        project=project,
     )
 
 
@@ -554,10 +550,6 @@ def validate_target_project(config: IssuekitConfig, target_project: str) -> None
 
 
 def fetch_project_catalog(config: IssuekitConfig) -> tuple[str, ...]:
-    if not config.api_url:
-        raise ProposalError(
-            "Proposal commands require api_url in issuekit.toml/[tool.issuekit] or ISSUEKIT_API_URL."
-        )
     with api_client(config) as client:
         profile_projects = _project_names_from_rows(client.list_project_profiles())
         worker_projects = _project_names_from_rows(client.list_workers())

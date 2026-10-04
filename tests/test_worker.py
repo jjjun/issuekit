@@ -14,6 +14,13 @@ from issuekit.workers.identity import (
     register_worker,
     worker_key,
 )
+from issuekit.workers.registry import (
+    WorkerListingError,
+    list_api_workers,
+    prune_api_workers,
+    remove_api_repo,
+    remove_api_worker,
+)
 
 
 @pytest.mark.parametrize(
@@ -31,6 +38,20 @@ def test_parse_repo_id_from_remote(remote_url: str, expected: str) -> None:
 
 def test_worker_key_matches_registry_key_format() -> None:
     assert worker_key(WorkerIdentity("machine", "repo", "checkout")) == "checkout.repo"
+
+
+@pytest.mark.parametrize(
+    ("operation", "kwargs"),
+    [
+        (list_api_workers, {}),
+        (remove_api_worker, {"address": "machine.repo"}),
+        (prune_api_workers, {"stale_after_sec": 60, "dry_run": True}),
+        (remove_api_repo, {"repo_key": "repo"}),
+    ],
+)
+def test_api_worker_operations_require_api_url(operation, kwargs) -> None:
+    with pytest.raises(WorkerListingError, match="requires api_url"):
+        operation(IssuekitConfig(), **kwargs)
 
 
 @pytest.mark.parametrize(

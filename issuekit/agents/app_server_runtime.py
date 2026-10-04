@@ -27,6 +27,7 @@ from issuekit.agentrun.runner import (
     implementation_report_instruction,
 )
 from issuekit.api import IssuekitClient
+from issuekit.api.factory import client_for, require_api_url
 from issuekit.config import IssuekitConfig
 from issuekit.core import Issue
 from issuekit.errors import WorkflowError
@@ -101,8 +102,11 @@ class AppServerAttemptRunner:
             raise ValueError("App Server attempt requires an issue id.")
         if agent_name != "codex":
             raise ValueError("codex_app_server runtime is Codex-only.")
-        if not self.config.api_url:
-            raise ValueError("codex_app_server runtime requires api_url.")
+        require_api_url(
+            self.config,
+            "Codex App Server runtime",
+            error=ValueError,
+        )
         worker_id = self.config.worker_key()
         if worker_id is None:
             raise ValueError("codex_app_server runtime requires a registered worker.")
@@ -144,12 +148,7 @@ class AppServerAttemptRunner:
                 f"{pointer}"
             )
 
-        with IssuekitClient(
-            self.config.api_url,
-            project=self.config.project,
-            timeout=self.config.api_timeout,
-            allow_insecure_api_url=self.config.allow_insecure_api_url,
-        ) as client:
+        with client_for(self.config) as client:
             parent, resume = self._recovery_ancestry(client, issue_id, repo)
             context = self._create_and_acquire(
                 client,

@@ -9,7 +9,7 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
-from issuekit.api import IssuekitClient
+from issuekit.api.factory import client_for
 from issuekit.api.security import warn_insecure_api_url
 from issuekit.config import api_url_origin, load_config
 from issuekit.errors import WorkflowError
@@ -63,14 +63,11 @@ def run_login(args) -> int:
                 file=sys.stderr,
             )
             return 1
-        with IssuekitClient(
-            config.api_url,
-            project=config.project,
-            timeout=config.api_timeout,
+        with client_for(
+            config,
             username=username,
             password=password,
             use_env_token=False,
-            allow_insecure_api_url=config.allow_insecure_api_url,
         ) as client:
             client.login(force=True)
             expiry = _format_expiry(client.token_expiry)
@@ -88,12 +85,9 @@ def run_logout(_args) -> int:
         if not config.api_url:
             print("Error: API URL is required; set api_url or ISSUEKIT_API_URL.", file=sys.stderr)
             return 1
-        with IssuekitClient(
-            config.api_url,
-            project=config.project,
-            timeout=config.api_timeout,
+        with client_for(
+            config,
             use_env_token=False,
-            allow_insecure_api_url=config.allow_insecure_api_url,
         ) as client:
             client.logout()
     except (WorkflowError, ValueError) as exc:

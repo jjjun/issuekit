@@ -2,12 +2,14 @@ import json
 import subprocess
 from pathlib import Path
 
+import pytest
+
 import issuekit.proposals.api as proposals_api
 from issuekit import cli
 from issuekit.config import IssuekitConfig, TriagePolicy
 from issuekit.guards.author import read_author_guards
 from issuekit.proposals import ProposalError, origin_destination
-from issuekit.proposals.api import _git_commit
+from issuekit.proposals.api import _git_commit, api_client
 from issuekit.testing import FakeIssuekitClient
 from tests.issue_helpers import api_issue
 
@@ -25,6 +27,11 @@ def _proposal_call(client: FakeIssuekitClient) -> dict[str, object]:
 
 def test_origin_destination_uses_project_segment() -> None:
     assert origin_destination("source#42@abc123") == "source"
+
+
+def test_api_client_requires_api_url() -> None:
+    with pytest.raises(ProposalError, match="Proposal command requires api_url"):
+        api_client(IssuekitConfig())
 
 
 def test_matches_triage_policy_skips_pending_threaded_proposal_from_trusted_origin() -> None:
@@ -2116,7 +2123,7 @@ def test_proposal_commands_require_api_url(tmp_path: Path, monkeypatch, capsys) 
 
     assert cli.main(["incoming"]) == 1
 
-    assert "Proposal commands require api_url" in capsys.readouterr().err
+    assert "Proposal command requires api_url" in capsys.readouterr().err
 
 
 def test_invalid_origin_destination_raises() -> None:

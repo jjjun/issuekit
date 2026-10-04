@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from issuekit.api.factory import require_api_url
 from issuekit.config import IssuekitConfig
-from issuekit.errors import WorkflowError
 from issuekit.negotiation.api_store import ApiNegotiationStore
 from issuekit.negotiation.mock_store import MockNegotiationStore
 from issuekit.negotiation.model import NegotiationStore
@@ -16,10 +16,5 @@ def get_negotiation_store(
 ) -> NegotiationStore:
     if use_mock:
         return MockNegotiationStore()
-    if not config.api_url:
-        raise WorkflowError(
-            "API negotiation store requires api_url. Set api_url in "
-            "issuekit.toml/[tool.issuekit] or ISSUEKIT_API_URL.",
-            code="missing_api_url",
-        )
+    require_api_url(config, "API negotiation store")
     return ApiNegotiationStore(config)

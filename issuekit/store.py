@@ -7,6 +7,7 @@ from contextlib import contextmanager
 from typing import Any, Protocol
 
 from issuekit.api import IssuekitClient
+from issuekit.api.factory import OwnedApiClient, require_api_url
 from issuekit.config import IssuekitConfig
 from issuekit.core import (
     Issue,
@@ -111,26 +112,9 @@ class IssueStore(Protocol):
         """List registered workers used to validate directed targets."""
 
 
-class ApiStore:
+class ApiStore(OwnedApiClient):
     def __init__(self, config: IssuekitConfig, client: IssuekitClient | None = None) -> None:
-        self.config = config
-        self._owns_client = client is None
-        self.client = client or IssuekitClient(
-            config.api_url,
-            project=config.project,
-            timeout=config.api_timeout,
-            allow_insecure_api_url=config.allow_insecure_api_url,
-        )
-
-    def close(self) -> None:
-        if self._owns_client:
-            self.client.close()
-
-    def __enter__(self) -> ApiStore:
-        return self
-
-    def __exit__(self, *_: object) -> None:
-        self.close()
+        super().__init__(config, client)
 
     def read_all_issues(self) -> tuple[list[Issue], list[Issue], list[Issue]]:
         all_issues = self._list_issues(include_completed=True)
@@ -575,12 +559,7 @@ def managed_issue_store(
 
 
 def get_store(config: IssuekitConfig) -> IssueStore:
-    if not config.api_url:
-        raise WorkflowError(
-            "API store requires api_url. Set api_url in issuekit.toml/[tool.issuekit] "
-            "or ISSUEKIT_API_URL.",
-            code="missing_api_url",
-        )
+    require_api_url(config, "API store")
     return ApiStore(config)
 
 

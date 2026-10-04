@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from issuekit.api import IssuekitClient, JsonDict
+from issuekit.api.factory import client_for, require_api_url
 from issuekit.config import IssuekitConfig
 from issuekit.config.project_profile import load_project_profile
 from issuekit.core import (
@@ -92,12 +93,7 @@ def post_worker_registration(
         worker_metadata["role"] = config.worker_role
     if config.worker_description and "description" not in worker_metadata:
         worker_metadata["description"] = config.worker_description
-    with IssuekitClient(
-        config.api_url,
-        project=config.project,
-        timeout=config.api_timeout,
-        allow_insecure_api_url=config.allow_insecure_api_url,
-    ) as client:
+    with client_for(config) as client:
         try:
             client.upsert_repo(
                 repo_key=worker.repo_id,
@@ -160,17 +156,8 @@ def list_api_workers(
     repo_id: str | None = None,
     project: str | None = None,
 ) -> list[JsonDict]:
-    if not config.api_url:
-        raise WorkerListingError(
-            "Listing workers requires api_url in issuekit.toml/[tool.issuekit] "
-            "or ISSUEKIT_API_URL."
-        )
-    with IssuekitClient(
-        config.api_url,
-        project=config.project,
-        timeout=config.api_timeout,
-        allow_insecure_api_url=config.allow_insecure_api_url,
-    ) as client:
+    require_api_url(config, "Listing workers", error=WorkerListingError)
+    with client_for(config) as client:
         return client.list_workers(repo_id=repo_id, project=project)
 
 
@@ -180,11 +167,7 @@ def remove_api_worker(
     *,
     force: bool = False,
 ) -> WorkerRemovalResult:
-    if not config.api_url:
-        raise WorkerListingError(
-            "Removing workers requires api_url in issuekit.toml/[tool.issuekit] "
-            "or ISSUEKIT_API_URL."
-        )
+    require_api_url(config, "Removing workers", error=WorkerListingError)
     worker = resolve_api_worker(config, address)
     try:
         issues = _worker_implementing_issues(config, worker)
@@ -204,12 +187,7 @@ def remove_api_worker(
             f"{issue_list}; rerun with --force to remove it anyway."
         )
     worker_id = _worker_delete_id(worker)
-    with IssuekitClient(
-        config.api_url,
-        project=config.project,
-        timeout=config.api_timeout,
-        allow_insecure_api_url=config.allow_insecure_api_url,
-    ) as client:
+    with client_for(config) as client:
         deleted = client.delete_worker(worker_id)
     return WorkerRemovalResult(
         worker=worker,
@@ -226,11 +204,7 @@ def prune_api_workers(
     expected_candidates: tuple[WorkerPruneCandidate, ...] | None = None,
     now: datetime | None = None,
 ) -> WorkerPruneResult:
-    if not config.api_url:
-        raise WorkerListingError(
-            "Pruning workers requires api_url in issuekit.toml/[tool.issuekit] "
-            "or ISSUEKIT_API_URL."
-        )
+    require_api_url(config, "Pruning workers", error=WorkerListingError)
     current = now or datetime.now(UTC)
     workers = list_api_workers(config)
     workers_by_project: dict[str, list[JsonDict]] = {}
@@ -281,12 +255,7 @@ def prune_api_workers(
             "rerun --dry-run and confirm again."
         )
     deleted: list[JsonDict] = []
-    with IssuekitClient(
-        config.api_url,
-        project=config.project,
-        timeout=config.api_timeout,
-        allow_insecure_api_url=config.allow_insecure_api_url,
-    ) as client:
+    with client_for(config) as client:
         for candidate in candidates:
             deleted.append(client.delete_worker(_worker_delete_id(candidate.worker)))
     return WorkerPruneResult(
@@ -332,17 +301,8 @@ def worker_claim_dict(claim: WorkerClaim) -> dict[str, object]:
 
 
 def remove_api_repo(config: IssuekitConfig, repo_key: str) -> RepoRemovalResult:
-    if not config.api_url:
-        raise WorkerListingError(
-            "Removing repos requires api_url in issuekit.toml/[tool.issuekit] "
-            "or ISSUEKIT_API_URL."
-        )
-    with IssuekitClient(
-        config.api_url,
-        project=config.project,
-        timeout=config.api_timeout,
-        allow_insecure_api_url=config.allow_insecure_api_url,
-    ) as client:
+    require_api_url(config, "Removing repos", error=WorkerListingError)
+    with client_for(config) as client:
         try:
             deleted = client.delete_repo(repo_key)
         except WorkflowError as exc:
