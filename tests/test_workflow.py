@@ -9,7 +9,7 @@ from issuekit.guards.author import (
     ENFORCE_AUTHOR_HANDOFF_ENV,
     AuthorOrchestrationContext,
     create_author_guard,
-    read_author_guard,
+    read_author_guards,
 )
 from issuekit.testing import FakeIssuekitClient
 from issuekit.workflow import (
@@ -645,7 +645,7 @@ def test_proposal_author_guard_does_not_block_claim_next(tmp_path, monkeypatch) 
 
     assert issue is not None
     assert issue.id == 1
-    assert read_author_guard(tmp_path) is not None
+    assert read_author_guards(tmp_path)
     assert client.calls == [{"method": "claim_next", "body": {"assignee": "codex"}}]
 
 
@@ -665,7 +665,7 @@ def test_proposal_author_guard_does_not_block_claim_issue(tmp_path, monkeypatch)
     issue = claim_issue(1, "codex", config=config, cwd=tmp_path)
 
     assert issue.id == 1
-    assert read_author_guard(tmp_path) is not None
+    assert read_author_guards(tmp_path)
 
 
 def test_work_branch_guard_blocks_claim_before_api_call(tmp_path, monkeypatch) -> None:
@@ -911,7 +911,7 @@ def test_author_guard_enforcement_env_matrix(
 
     assert issue.id == 1
     if guard_present:
-        assert read_author_guard(tmp_path) is not None
+        assert read_author_guards(tmp_path)
 
 
 def test_claim_sends_allow_self_implement_when_enforcement_off(tmp_path, monkeypatch) -> None:
@@ -1084,7 +1084,7 @@ def test_proposal_author_guard_does_not_block_submit_for_review(tmp_path, monkey
     issue = submit_for_review(1, summary="Implemented.", config=config, cwd=tmp_path)
 
     assert issue.stage == "review"
-    assert read_author_guard(tmp_path) is not None
+    assert read_author_guards(tmp_path)
 
 
 def test_submit_for_review_passes_structured_fields(monkeypatch) -> None:

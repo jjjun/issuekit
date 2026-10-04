@@ -84,11 +84,6 @@ def create_author_guard(
     return guard
 
 
-def read_author_guard(cwd: Path | str = ".") -> AuthorGuard | None:
-    guards = read_author_guards(cwd)
-    return guards[0] if guards else None
-
-
 def read_author_guards(cwd: Path | str = ".") -> tuple[AuthorGuard, ...]:
     try:
         raw_guards = read_local_config(cwd).author_guards

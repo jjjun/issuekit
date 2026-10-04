@@ -1,7 +1,6 @@
 """Agent prompt templates and paired structured-output contracts."""
 
 from .spec import (
-    NEGOTIATION_RESUMED_ROUND_PROMPT,
     NEGOTIATION_ROUND_PROMPT,
     PROMPT_SPECS,
     PROPOSAL_CHECK_PROMPT,
@@ -26,7 +25,6 @@ from .spec import (
 )
 
 __all__ = [
-    "NEGOTIATION_RESUMED_ROUND_PROMPT",
     "NEGOTIATION_ROUND_PROMPT",
     "PROMPT_SPECS",
     "PROPOSAL_CHECK_PROMPT",

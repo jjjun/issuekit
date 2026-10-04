@@ -38,7 +38,7 @@ issuekit complete <direct-issue-id> --force --summary "Superseded by proposal <p
 in the form `worker.repo[@machine]`. For example, `--to prod.mine-py@main1`
 sends the proposal to the `mine-py` project and directs it to that worker. A
 project becomes visible to other repos after that project runs `issuekit add`
-or `issuekit register` against the API, or otherwise pushes a project profile.
+against the API, or otherwise pushes a project profile.
 Issuekit combines registered worker projects and project profiles when the API
 exposes both catalogs, so either registration path makes the project visible.
 If the API exposes its project catalog, issuekit rejects unknown targets before

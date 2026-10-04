@@ -8,7 +8,7 @@ from issuekit import store as store_module
 from issuekit.commands.approve import approve_issue
 from issuekit.commands.complete import complete_issue
 from issuekit.config import IssuekitConfig
-from issuekit.guards.author import read_author_guard
+from issuekit.guards.author import read_author_guards
 from issuekit.testing import FakeIssuekitClient
 from issuekit.workflow import WorkflowError
 from tests.issue_helpers import api_issue
@@ -277,8 +277,7 @@ def test_author_command_uses_api_allocated_id(
     assert exit_code == 0
     assert "Authored issue: demo#1" in captured.out
     assert "API validation passed" not in captured.out
-    guard = read_author_guard(tmp_path)
-    assert guard is not None
+    guard = read_author_guards(tmp_path)[0]
     assert client.calls[0] == {
         "method": "create_issue",
         "body": {

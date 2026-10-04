@@ -219,20 +219,6 @@ def worker_key_matches_row(
     )
 
 
-def directed_target_matches(target_worker: str, claiming_key: str) -> bool:
-    """Return True when a claiming worker key satisfies a directed target.
-
-    Mirrors the API server semantics: a machine-qualified target only matches
-    a claiming key that carries the same machine id, while a bare target stays
-    machine-agnostic.
-    """
-    return worker_keys_match(
-        target_worker,
-        claiming_key,
-        require_target_machine=True,
-    )
-
-
 @dataclass(frozen=True)
 class _WorkerKeyParts:
     worker_name: str

@@ -11,7 +11,6 @@ from .author import (
     create_author_guard,
     enforce_no_author_guard,
     guard_dict,
-    read_author_guard,
     read_author_guards,
     stop_message,
 )
@@ -37,7 +36,6 @@ __all__ = [
     "guards_dict",
     "guard_dict",
     "read_author_guards",
-    "read_author_guard",
     "separation_guard_note",
     "stop_message",
 ]

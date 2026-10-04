@@ -145,11 +145,6 @@ class _RunWatcher:
             sys.stderr.write(f"\r{msg}")
             sys.stderr.flush()
 
-    @staticmethod
-    def _read_last_log_line(path: Path) -> str | None:
-        entry = _read_log_entry(path)
-        return entry[0] if entry is not None else None
-
     def _read_latest_log_line(self) -> str | None:
         stderr_entry = _read_log_entry(self.agent_log_path)
         if self.stdout_log_path is None:

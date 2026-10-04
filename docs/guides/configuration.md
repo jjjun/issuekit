@@ -623,7 +623,7 @@ the configured exclusions exactly and cannot be combined with scan modifiers.
 
 ## Registration and repo metadata
 
-Run `issuekit add` / `issuekit register` from a git-managed checkout. The
+Run `issuekit add` from a git-managed checkout. The
 command registers the repo issue namespace and a worker for this checkout in one
 step. It derives `repo_id` and the canonical repo URL from `remote.origin.url`;
 in a git checkout with no origin, pass `--repo-id <repository-id>` explicitly.

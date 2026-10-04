@@ -35,11 +35,10 @@ The model is pull-based: authors publish work to a pool, implementers pull from
 that pool, and reviewers pull from the review pool. No central orchestrator is
 required for the normal author -> implement -> review cycle.
 
-Register each checkout once with `issuekit add` (alias `issuekit register`)
-before pulling work. It records repo_id, worker_name, and machine metadata in a
-gitignored `issuekit.local.toml`, so claims report which worker checkout holds
-an issue as `worker.repo@machine`. Multiple checkouts of one repo can use
-distinct worker names.
+Register each checkout once with `issuekit add` before pulling work. It records
+repo_id, worker_name, and machine metadata in a gitignored `issuekit.local.toml`,
+so claims report which worker checkout holds an issue as `worker.repo@machine`.
+Multiple checkouts of one repo can use distinct worker names.
 
 Assignment chooses the implementing agent. Direction chooses the checkout that
 must run host-specific or checkout-specific work. Use `issuekit author

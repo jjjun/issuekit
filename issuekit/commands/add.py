@@ -17,7 +17,6 @@ from issuekit.workers.registry import try_post_worker_registration
 def register(subparsers: argparse._SubParsersAction) -> None:
     add_parser = subparsers.add_parser(
         "add",
-        aliases=("register",),
         help="Register this checkout as a local worker.",
     )
     add_parser.add_argument("--machine-id", help="Override the hostname-derived machine id.")

@@ -204,26 +204,6 @@ class AgentSessionResourceMixin:
             label="Agent event batch response",
         )
 
-    def list_agent_events(
-        self,
-        number: int,
-        session_id: str,
-        *,
-        after: str | None = None,
-        event_type: str | None = None,
-        limit: int = 100,
-    ) -> JsonDict:
-        session_id = validate_session_token(session_id, label="agent session")
-        return self._agent_session_request(
-            "GET",
-            number,
-            f"/{session_id}/events",
-            params=drop_none(
-                {"after": after, "event_type": event_type, "limit": limit}
-            ),
-            label="Agent event list response",
-        )
-
     def seal_agent_session(
         self,
         number: int,

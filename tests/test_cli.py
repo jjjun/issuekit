@@ -17,7 +17,6 @@ EXPECTED_COMMANDS = {
     "show",
     "next-review",
     "add",
-    "register",
     "login",
     "logout",
     "author-guard",
@@ -332,7 +331,6 @@ def test_handlers_are_stubs(command: str) -> None:
     if command in {
         "check-encoding",
         "add",
-        "register",
         "approve",
         "review",
         "claim",

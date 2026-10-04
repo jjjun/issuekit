@@ -5,7 +5,7 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any
 
-from issuekit.core import directed_target_matches, drop_none, worker_keys_match
+from issuekit.core import drop_none, worker_keys_match
 from issuekit.workflow import WorkflowError
 
 JsonDict = dict[str, Any]
@@ -737,4 +737,8 @@ def _matches_target_worker(issue: JsonDict, worker: str | None) -> bool:
     target_worker = str(issue.get("target_worker") or "")
     if not target_worker:
         return True
-    return directed_target_matches(target_worker, worker or "")
+    return worker_keys_match(
+        target_worker,
+        worker or "",
+        require_target_machine=True,
+    )

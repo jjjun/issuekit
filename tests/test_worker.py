@@ -276,7 +276,7 @@ def test_add_cli_writes_worker_and_gitignore(
     monkeypatch.setenv("ISSUEKIT_WORKER_REGISTRY", str(tmp_path / "workers.toml"))
     monkeypatch.setattr("issuekit.workers.identity.platform.node", lambda: "win-desktop")
 
-    assert cli.main(["register", "--repo-id", "project"]) == 0
+    assert cli.main(["add", "--repo-id", "project"]) == 0
 
     captured = capsys.readouterr()
     assert "worker      =" in captured.out

@@ -178,14 +178,6 @@ NEGOTIATION_ROUND_PROMPT = PromptSpec(
     required_keys=("side", "verdict", "contract", "notes"),
 )
 
-NEGOTIATION_RESUMED_ROUND_PROMPT = PromptSpec(
-    template_name="negotiation_round_resumed.md",
-    block_language="negotiation",
-    block_label="Negotiation block",
-    parse_error_type=NegotiationParseError,
-    required_keys=("side", "verdict", "contract", "notes"),
-)
-
 PROMPT_SPECS = MappingProxyType(
     {
         "triage": TRIAGE_PROMPT,
@@ -193,7 +185,6 @@ PROMPT_SPECS = MappingProxyType(
         "review": REVIEW_PROMPT,
         "router": ROUTER_PROMPT,
         "negotiation_round": NEGOTIATION_ROUND_PROMPT,
-        "negotiation_round_resumed": NEGOTIATION_RESUMED_ROUND_PROMPT,
     }
 )
 
@@ -208,7 +199,6 @@ TEMPLATE_NAMES = (
     "router_pointer.md",
     "review_feedback.md",
     "negotiation_round.md",
-    "negotiation_round_resumed.md",
     "negotiation_round_pointer.md",
 )
 

@@ -1,7 +1,6 @@
 """Tests for worker identity key helpers."""
 
 from issuekit.core import (
-    directed_target_matches,
     qualified_worker_key,
     worker_key_matches_row,
     worker_keys_from_row,
@@ -45,16 +44,36 @@ def test_worker_keys_match_rejects_malformed_qualified_forms() -> None:
     assert not worker_keys_match("@pike3", "alpha.mine-py@pike3")
 
 
-def test_directed_target_matches_bare_target_is_machine_agnostic() -> None:
-    assert directed_target_matches("alpha.mine-py", "alpha.mine-py@pike3")
-    assert directed_target_matches("alpha", "alpha")
+def test_worker_keys_match_bare_directed_target_is_machine_agnostic() -> None:
+    assert worker_keys_match(
+        "alpha.mine-py",
+        "alpha.mine-py@pike3",
+        require_target_machine=True,
+    )
+    assert worker_keys_match("alpha", "alpha", require_target_machine=True)
 
 
-def test_directed_target_matches_qualified_target_requires_machine() -> None:
-    assert directed_target_matches("alpha.mine-py@pike3", "alpha.mine-py@pike3")
-    assert directed_target_matches("alpha@pike3", "alpha.mine-py@pike3")
-    assert not directed_target_matches("alpha.mine-py@pike3", "alpha.mine-py@main1")
-    assert not directed_target_matches("alpha.mine-py@pike3", "alpha.mine-py")
+def test_worker_keys_match_qualified_directed_target_requires_machine() -> None:
+    assert worker_keys_match(
+        "alpha.mine-py@pike3",
+        "alpha.mine-py@pike3",
+        require_target_machine=True,
+    )
+    assert worker_keys_match(
+        "alpha@pike3",
+        "alpha.mine-py@pike3",
+        require_target_machine=True,
+    )
+    assert not worker_keys_match(
+        "alpha.mine-py@pike3",
+        "alpha.mine-py@main1",
+        require_target_machine=True,
+    )
+    assert not worker_keys_match(
+        "alpha.mine-py@pike3",
+        "alpha.mine-py",
+        require_target_machine=True,
+    )
 
 
 def test_worker_keys_from_row_includes_qualified_key() -> None:

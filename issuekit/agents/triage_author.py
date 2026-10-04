@@ -32,9 +32,6 @@ from issuekit.agents.proposal_eval import (
 from issuekit.agents.readonly import prompt_from_spec
 from issuekit.agents.registry import resolve_adapter
 from issuekit.agents.triage_state import (
-    STATE_FILENAME as _STATE_FILENAME,
-)
-from issuekit.agents.triage_state import (
     load_state,
     now,
     save_state,
@@ -72,9 +69,6 @@ _SUPERSEDES_LINE_PATTERN = re.compile(
 )
 
 LogFn = Callable[..., None]
-
-# Compatibility re-export for callers that historically imported this name here.
-STATE_FILENAME = _STATE_FILENAME
 
 
 @dataclass(frozen=True)

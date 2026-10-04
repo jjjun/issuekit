@@ -6,7 +6,7 @@ import issuekit.proposals.api as proposals_api
 from issuekit import cli
 from issuekit import store as store_module
 from issuekit.config import IssuekitConfig, TriagePolicy
-from issuekit.guards.author import read_author_guard, read_author_guards
+from issuekit.guards.author import read_author_guards
 from issuekit.proposals import ProposalError, origin_destination
 from issuekit.proposals.api import _git_commit
 from issuekit.testing import FakeIssuekitClient
@@ -73,8 +73,7 @@ def test_api_cli_propose_posts_expected_body_and_dedupes(
     assert first["deduplicated"] is False
     assert "Proposal target#1 sent to target." in first["stop"]
     assert "STOP_NOW" not in first["stop"]
-    guard = read_author_guard(tmp_path)
-    assert guard is not None
+    guard = read_author_guards(tmp_path)[0]
     assert guard.kind == "proposal"
     assert guard.project == "source"
     assert guard.target_project == "target"
@@ -1292,7 +1291,7 @@ def test_api_cli_propose_deduplicated_matching_payload_reports_deduplicated(
     assert "already has pending proposal #1" in captured.out
     assert "Sent proposal" not in captured.out
     assert "no new proposal was created" in captured.out
-    assert read_author_guard(tmp_path) is None
+    assert read_author_guards(tmp_path) == ()
 
 
 def test_api_cli_propose_deduplicated_response_with_stale_origin_still_reports_mismatch(

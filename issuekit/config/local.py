@@ -22,10 +22,6 @@ class LocalConfig:
     refs: dict[str, str]
     author_guards: tuple[dict[str, object], ...]
 
-    @property
-    def author_guard(self) -> dict[str, object] | None:
-        return self.author_guards[0] if self.author_guards else None
-
 
 _PRESERVE = object()
 

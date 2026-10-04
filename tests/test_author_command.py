@@ -13,7 +13,7 @@ from issuekit.commands.author import (
 )
 from issuekit.config import IssuekitConfig
 from issuekit.config.refs import RefError
-from issuekit.guards.author import read_author_guard, read_author_guards
+from issuekit.guards.author import read_author_guards
 from issuekit.testing import FakeIssuekitClient
 from issuekit.workflow import WorkflowError
 
@@ -93,8 +93,7 @@ def test_author_command_creates_issue_via_api(tmp_path: Path, monkeypatch, capsy
     assert "API validation passed" not in captured.out
     assert "Authored issue: demo#1" in captured.out
     assert "STOP_NOW" in captured.out
-    guard = read_author_guard(tmp_path)
-    assert guard is not None
+    guard = read_author_guards(tmp_path)[0]
     assert guard.kind == "issue"
     assert guard.id == "1"
     assert guard.project == "demo"
@@ -400,8 +399,7 @@ def test_author_command_project_override_allows_scratch_cwd(
     captured = capsys.readouterr()
     assert exit_code == 0
     assert "Authored issue: demo#1" in captured.out
-    guard = read_author_guard(tmp_path)
-    assert guard is not None
+    guard = read_author_guards(tmp_path)[0]
     assert guard.project == "demo"
     assert client.calls[0]["body"]["title"] == "Explicit project"
 
@@ -590,8 +588,7 @@ def test_author_command_records_configured_session(
 
     assert exit_code == 0
     capsys.readouterr()
-    guard = read_author_guard(tmp_path)
-    assert guard is not None
+    guard = read_author_guards(tmp_path)[0]
     assert guard.author_session == "author-123"
     assert client.calls[0]["body"]["session"] == "author-123"
     assert client.get_issue(1)["author_session"] == "author-123"
@@ -619,8 +616,7 @@ def test_author_command_generates_shared_fallback_session(
 
     assert exit_code == 0
     capsys.readouterr()
-    guard = read_author_guard(tmp_path)
-    assert guard is not None
+    guard = read_author_guards(tmp_path)[0]
     assert guard.author_session is not None
     assert guard.author_session.startswith("cli-")
     assert client.calls[0]["body"]["session"] == guard.author_session
@@ -662,7 +658,7 @@ def test_author_command_blocks_likely_cross_project_direct_authoring(
     assert "issuekit propose --to target" in captured.err
     assert "--direct-local-author" in captured.err
     assert client.calls == []
-    assert read_author_guard(target) is None
+    assert read_author_guards(target) == ()
 
 
 def test_author_command_allows_short_name_dependency_ref(
@@ -734,7 +730,7 @@ def test_author_command_explains_short_name_prose_ref_style_match(
     assert "ref-style reference to related project pm" in captured.err
     assert "bare project names shorter than 4 characters are ignored" in captured.err
     assert client.calls == []
-    assert read_author_guard(target) is None
+    assert read_author_guards(target) == ()
 
 
 @pytest.mark.parametrize(
@@ -987,7 +983,7 @@ def test_author_command_fails_closed_when_related_refs_cannot_be_loaded(
     assert "workspace config is temporarily unavailable" in captured.err
     assert "--direct-local-author" in captured.err
     assert client.calls == []
-    assert read_author_guard(tmp_path) is None
+    assert read_author_guards(tmp_path) == ()
 
 
 def test_author_command_direct_local_author_overrides_cross_project_preflight(
