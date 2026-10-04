@@ -9,8 +9,6 @@ from issuekit import cli
 from issuekit.agentrun import AgentPrompt, AgentResult
 from issuekit.commands.negotiate import (
     MockIssueCreator,
-    _proposal_ref_parts,
-    _proposal_target,
     _resolve_counterpart_cwd,
     finalize_negotiation,
     inspect_thread,
@@ -1187,75 +1185,6 @@ def test_finalize_negotiation_is_idempotent() -> None:
     assert sorted(creator.issues) == ["backend#1", "frontend#1"]
 
 
-def test_finalize_proposal_negotiation_reuses_source_as_provider_issue() -> None:
-    client = FakeIssuekitClient(
-        proposals=[
-            {
-                "id": 31,
-                "target_project": "provider",
-                "origin": "consumer#9@abc123",
-                "title": "Add cursor pagination",
-                "body": "Negotiate the pagination contract.",
-            }
-        ]
-    )
-    store = ApiNegotiationStore(
-        IssuekitConfig(api_url="https://mine.example", project="provider"),
-        client=client,
-    )
-    source = store.begin_proposal_thread(
-        31,
-        initiator_project="consumer",
-        initiator_side="consumer",
-    )
-    for side, round_number in (("consumer", 1), ("provider", 2)):
-        method = store.append_initial_entry if round_number == 1 else store.append_entry
-        method(
-            source.thread_id,
-            side=side,
-            verdict=Verdict.agree,
-            title=f"{side} agree",
-            body="Accepted.",
-            origin=f"provider#proposal:31@{side}:round-{round_number}",
-            contract="GET /items?cursor=token",
-        )
-    store.set_status(
-        source.thread_id,
-        ThreadStatus.agreed,
-        agreed_contract="GET /items?cursor=token",
-    )
-
-    first = finalize_negotiation(
-        thread_id=source.thread_id,
-        to_project="provider",
-        author_agent="codex",
-        priority="medium",
-        config=IssuekitConfig(api_url="https://mine.example", project="consumer"),
-        store=store,
-        issue_creator=MockIssueCreator(),
-    )
-    retry = finalize_negotiation(
-        thread_id=source.thread_id,
-        to_project="provider",
-        author_agent="codex",
-        priority="medium",
-        config=IssuekitConfig(api_url="https://mine.example", project="consumer"),
-        store=store,
-        issue_creator=MockIssueCreator(),
-    )
-
-    assert first.backend_issue_ref == "provider#1"
-    assert first.frontend_issue_ref == "consumer#2"
-    assert first.created is True
-    assert retry == type(retry)(
-        thread_id=source.thread_id,
-        backend_issue_ref="provider#1",
-        frontend_issue_ref="consumer#2",
-        created=False,
-    )
-    assert client.get_proposal(31)["adopted_issue_number"] == 1
-
-
 def test_finalize_negotiation_refuses_non_agreed_thread() -> None:
     store = MockNegotiationStore(None)
     first = store.create_thread(
@@ -1724,27 +1653,46 @@ def test_negotiate_cli_requires_known_initiator_side_and_hides_retired_flags(
     assert cli.main(["negotiate", "--initiator-side", "unknown"]) == 2
     assert "invalid choice" in capsys.readouterr().err
 
+    assert (
+        cli.main(
+            [
+                "negotiate",
+                "--from-proposal",
+                "x#proposal:1",
+                "--initiator-side",
+                "consumer",
+                "--provider-agent",
+                "claude",
+                "--consumer-agent",
+                "codex",
+            ]
+        )
+        == 2
+    )
+    assert "--from-proposal" in capsys.readouterr().err
+
     assert cli.main(["negotiate", "--help"]) == 0
     help_text = capsys.readouterr().out
     assert "--provider-agent" in help_text
     assert "--consumer-agent" in help_text
     assert "--counterpart-ref" in help_text
-    assert "--from-proposal" in help_text
+    assert "--from-proposal" not in help_text
     assert "--cancel" in help_text
     assert "--frontend-agent" not in help_text
     assert "--backend-agent" not in help_text
     assert "--backend-ref" not in help_text
 
 
-def test_proposal_ref_parsing_infers_and_validates_target() -> None:
-    assert _proposal_ref_parts("mine-py#proposal:531") == ("mine-py", 531)
-    assert _proposal_target("mine-py#proposal:531", None) == "mine-py"
-    assert _proposal_target("mine-py#proposal:531", "mine-py") == "mine-py"
+def test_negotiate_cancel_requires_target_project(tmp_path, monkeypatch, capsys) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        "project = 'frontend'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.chdir(tmp_path)
 
-    with pytest.raises(ValueError, match="expected <project>#proposal:<id>"):
-        _proposal_ref_parts("mine-py#531")
-    with pytest.raises(ValueError, match="does not match proposal target"):
-        _proposal_target("mine-py#proposal:531", "other")
+    assert cli.main(["negotiate", "--cancel", "19"]) == 1
+    assert "--to is required with --cancel" in capsys.readouterr().err
 
 
 def test_negotiate_cli_finalize_json_uses_mock_store(tmp_path, monkeypatch, capsys) -> None:

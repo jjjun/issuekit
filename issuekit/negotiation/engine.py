@@ -100,7 +100,6 @@ class NegotiationThreadInspection:
     final_contract: str | None
     agreed_contract: str | None
     issue_refs: NegotiationIssueRefs | None
-    source_proposal_ref: str | None
     entries: tuple[NegotiationEntry, ...]
 
     def to_dict(self) -> dict[str, object]:
@@ -111,7 +110,6 @@ class NegotiationThreadInspection:
             "final_contract": self.final_contract,
             "agreed_contract": self.agreed_contract,
             "issue_refs": self.issue_refs.to_dict() if self.issue_refs else None,
-            "source_proposal_ref": self.source_proposal_ref,
             "entries": [
                 {
                     "id": entry.id,
@@ -275,45 +273,6 @@ def finalize_negotiation(
         PROVIDER_SIDE: f"Implement agreed contract from negotiation {thread_id}",
         CONSUMER_SIDE: f"Integrate agreed contract from negotiation {thread_id}",
     }
-    source_proposal_ref = (
-        store.get_source_proposal_ref(thread_id)
-        or source_proposal_ref_from_thread(thread)
-    )
-    if source_proposal_ref is not None:
-        if initiator_side != CONSUMER_SIDE:
-            raise WorkflowError(
-                "Proposal-seeded negotiation requires the initiating project to be "
-                "the consumer so the target proposal can become the provider issue.",
-                code="invalid_negotiation_side",
-            )
-        refs = store.finalize_proposal_thread(
-            thread_id,
-            consumer_project=projects[CONSUMER_SIDE],
-            author=author_agent,
-            priority=priority,
-            provider_title=titles[PROVIDER_SIDE],
-            provider_body=provider_issue_body(
-                thread_id=thread_id,
-                origin_issue_ref=source_proposal_ref,
-                consumer_issue_ref="pending",
-                contract=contract,
-            ),
-            consumer_title=titles[CONSUMER_SIDE],
-            consumer_body=consumer_issue_body(
-                thread_id=thread_id,
-                origin_issue_ref=source_proposal_ref,
-                provider_issue_ref="pending",
-                contract=contract,
-            ),
-        )
-        store.settle_thread_members(thread_id)
-        return NegotiationFinalizationResult(
-            thread_id=thread_id,
-            backend_issue_ref=refs.backend_issue_ref,
-            frontend_issue_ref=refs.frontend_issue_ref,
-            created=True,
-        )
-
     provider = issue_creator.create_issue(
         project=projects[PROVIDER_SIDE],
         title=titles[PROVIDER_SIDE],
@@ -380,7 +339,6 @@ def run_negotiation(
     reasoning_effort: str | None = None,
     counterpart_cwd: Path | None = None,
     runner: AgentRunner | None = None,
-    proposal_thread_id: str | None = None,
 ) -> NegotiationResult:
     """Drive a bounded provider/consumer negotiation to a terminal outcome."""
 
@@ -416,7 +374,7 @@ def run_negotiation(
         _other_side(initiator_side): counterpart_cwd or cwd,
     }
     sessions = _SideSessions(adapters)
-    resume_thread_id = proposal_thread_id or _find_resumable_thread_id(
+    resume_thread_id = _find_resumable_thread_id(
         store,
         issue=issue,
         config=config,
@@ -462,32 +420,6 @@ def run_negotiation(
                 outcome=stored_status.value,
                 runs=run_records,
             )
-        if not thread and proposal_thread_id is not None:
-            first = _run_side_turn(
-                round_number=1,
-                side=initiator_side,
-                agent=agents[initiator_side],
-                adapter=adapters[initiator_side],
-                session=sessions.next_round(initiator_side),
-                seed=seed,
-                thread=[],
-                issue=issue,
-                cwd=side_cwds[initiator_side],
-                timeout=timeout,
-                runner=runner,
-            )
-            store.append_initial_entry(
-                thread_id,
-                side=initiator_side,
-                verdict=first.parsed.verdict,
-                title=_entry_title(initiator_side, first.parsed),
-                body=first.parsed.notes,
-                origin=entry_origin(issue, config=config, side=initiator_side, round_number=1),
-                contract=first.parsed.contract,
-            )
-            run_records.append(first.run)
-            thread = store.get_thread(thread_id)
-            _require_supported_thread(thread_id, thread)
         if thread and thread[0].side != initiator_side:
             raise WorkflowError(
                 f"Negotiation thread {thread_id} was initiated by the {thread[0].side} "
@@ -550,7 +482,6 @@ def inspect_thread(thread_id: str, *, store: NegotiationStore) -> NegotiationThr
         if exc.code != "server_schema_drift":
             raise
         issue_refs = None
-    source_proposal_ref = store.get_source_proposal_ref(thread_id)
     return NegotiationThreadInspection(
         thread_id=thread_id,
         status=status,
@@ -558,7 +489,6 @@ def inspect_thread(thread_id: str, *, store: NegotiationStore) -> NegotiationThr
         final_contract=_latest_contract(thread),
         agreed_contract=store.get_agreed_contract(thread_id),
         issue_refs=issue_refs,
-        source_proposal_ref=source_proposal_ref or source_proposal_ref_from_thread(thread),
         entries=tuple(thread),
     )
 
@@ -914,13 +844,6 @@ def origin_issue_ref_from_thread(thread: list[NegotiationEntry]) -> str | None:
         return None
     origin = thread[0].origin.split("@", 1)[0].strip()
     return origin or None
-
-
-def source_proposal_ref_from_thread(thread: list[NegotiationEntry]) -> str | None:
-    origin_ref = origin_issue_ref_from_thread(thread)
-    if origin_ref is None or "#proposal:" not in origin_ref:
-        return None
-    return origin_ref
 
 
 def _require_issue_id(issue: Issue) -> int:

@@ -28,6 +28,28 @@ def test_origin_destination_uses_project_segment() -> None:
     assert origin_destination("source#42@abc123") == "source"
 
 
+def test_matches_triage_policy_skips_pending_threaded_proposal_from_trusted_origin() -> None:
+    config = IssuekitConfig(
+        api_url="https://mine.example",
+        project="target",
+        triage=TriagePolicy(
+            trusted_origins=("source",),
+            require_blocking=True,
+        ),
+    )
+
+    assert not proposals_api.matches_triage_policy(
+        {
+            "id": 8,
+            "status": "pending",
+            "origin": "source#42@abc123",
+            "blocking": True,
+            "thread_id": 19,
+        },
+        config,
+    )
+
+
 def test_api_cli_propose_posts_expected_body_and_dedupes(
     tmp_path: Path,
     monkeypatch,
@@ -1933,6 +1955,34 @@ def test_auto_adopt_incoming_proposals_filters_policy_and_caps(monkeypatch) -> N
     assert client.get_proposal(2)["status"] == "pending"
     assert client.get_proposal(3)["status"] == "pending"
     assert client.get_proposal(4)["status"] == "pending"
+
+
+def test_auto_adopt_skips_pending_threaded_proposal_from_trusted_origin(monkeypatch) -> None:
+    client = FakeIssuekitClient(
+        proposals=[
+            {
+                "id": 1,
+                "origin": "source#42@abc123",
+                "title": "Thread turn",
+                "body": "An active negotiation turn.",
+                "blocking": True,
+                "thread_id": 19,
+            }
+        ]
+    )
+    config = IssuekitConfig(
+        api_url="https://mine.example",
+        project="target",
+        triage=TriagePolicy(
+            trusted_origins=("source",),
+            require_blocking=True,
+        ),
+    )
+    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+
+    assert proposals_api.auto_adopt_incoming_proposals(config) == []
+    assert client.get_proposal(1)["status"] == "pending"
+    assert not any(call["method"] == "adopt_proposal" for call in client.calls)
 
 
 def test_auto_adopt_incoming_proposals_does_not_discard_superseded_refs(

@@ -108,9 +108,8 @@ undecided interfaces. Negotiation is CLI-only; MCP only inspects threads. Both
 sides run read-only, and issuekit rejects worktree, HEAD, or branch changes.
 `--counterpart-ref` selects the real counterpart checkout. Finalize agreed
 threads with `issuekit negotiate --finalize <thread_id>` to create linked issues.
-`--from-proposal` seeds consumer-side work and locks the proposal until atomic
-finalization or `--cancel`; it requires proposal-negotiation API support.
-Otherwise use `--from-issue`.
+Seed negotiations with `--from-issue`, and discard a superseded source
+proposal by hand.
 See the issuekit repository's `docs/guides/negotiation.md`.
 
 Local issues vs. cross-project proposals:

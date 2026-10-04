@@ -823,7 +823,6 @@ def _negotiation_thread_summary_dict(
         "status": summary.status.value,
         "agreed_contract": summary.agreed_contract,
         "issue_refs": summary.issue_refs.to_dict() if summary.issue_refs else None,
-        "source_proposal_ref": summary.source_proposal_ref,
         "updated": summary.updated,
     }
 

@@ -39,30 +39,6 @@ issuekit negotiate --from-issue <id> --to <project> --initiator-side provider --
 `--model` and `--reasoning-effort` apply to both agents for the run, and
 `--json` prints the result as JSON.
 
-A pending proposal authored by the current project can seed the thread instead.
-The proposal target is inferred from its qualified ref, and the initiating
-project must be the consumer because the target proposal becomes the provider
-issue after agreement:
-
-```powershell
-issuekit negotiate --from-proposal <project>#proposal:<id> --initiator-side consumer --provider-agent <agent> --consumer-agent <agent>
-```
-
-Starting this path atomically links and locks the pending proposal so inbox
-triage cannot adopt duplicate provider work. A blocked proposal negotiation
-remains linked and locked because the current mine-py API does not support
-transitioning a blocked thread to `cancelled`. Until that server support is
-available, `--cancel` reports the locked proposal and the missing transition:
-
-```powershell
-issuekit negotiate --cancel <thread_id> --from-proposal <project>#proposal:<id>
-```
-
-`--cancel` also accepts `--to <project>` in place of the proposal ref. The
-command can cancel a thread only when the target API supports the requested
-transition; a blocked proposal remains locked until mine-py adds
-`blocked` to `cancelled` support.
-
 The initiating checkout still supplies the configuration for the thread,
 agent selection, and issues created by finalization. The counterpart ref is only
 the counterpart agent's inspection directory; its checkout configuration is read
@@ -90,11 +66,15 @@ Each entry has one of these verdicts:
 - `blocked`
 
 A thread's status is `negotiating`, `agreed`, `blocked`, or `cancelled`. Any
-`blocked` entry makes the thread blocked. `--cancel` moves a thread that is
-still `negotiating` to `cancelled` in the store of the project named by `--to`
-or the `--from-proposal` ref. It is meant for proposal-seeded threads, which
-live in the target project's store; an issue-seeded thread lives in the
-initiating project's store, so cancelling one takes `--to <initiating-project>`.
+`blocked` entry makes the thread blocked. `--cancel` requires `--to <project>`
+and sends the `cancelled` status to that project's API. For an issue-seeded
+thread, use the initiating project. The API must accept the `cancelled` status;
+if it returns HTTP 422, issuekit reports that the API project does not accept
+the cancelled status yet.
+
+```powershell
+issuekit negotiate --cancel <thread_id> --to <initiating-project>
+```
 
 A thread becomes agreed only when the contract text matches after normalization,
 not merely because both sides chose `agree`. It converges in either of these
@@ -132,9 +112,6 @@ Rerunning the same command continues the existing thread:
 - With `--from-issue`, issuekit looks only at `negotiating` threads and resumes
   the one whose entries came from that issue. If several match, the command
   fails and asks you to inspect them with `issuekit threads`.
-- With `--from-proposal`, issuekit reuses the thread linked to the proposal. If
-  that thread is already `agreed` or `blocked`, the command returns the stored
-  outcome without running agents. A `cancelled` thread cannot be resumed.
 
 A rerun must pass the same `--initiator-side` as the run that opened the
 thread; otherwise it fails.
@@ -161,8 +138,7 @@ Use `threads --mock` to inspect the local mock negotiation store.
 
 `threads` and the MCP `list_negotiation_threads` tool read only the current
 project's thread store. Issue-seeded threads are stored in the initiating
-project, but proposal-seeded threads are stored in the target project, so
-inspect those from a checkout of the target project.
+project, so inspect them from that project's checkout.
 
 After a thread is agreed, finalize it with the target project:
 
@@ -170,29 +146,19 @@ After a thread is agreed, finalize it with the target project:
 issuekit negotiate --finalize <thread_id> --to <project> --author-agent <agent> --priority medium
 ```
 
-For a proposal-seeded thread, pass the proposal ref again so issuekit selects
-the target project's thread store:
-
-```powershell
-issuekit negotiate --finalize <thread_id> --from-proposal <project>#proposal:<id> --author-agent <agent> --priority medium
-```
-
 Finalization creates and cross-links provider and consumer implementation
-issues, and the consumer issue depends on the provider issue. For an
-issue-seeded thread, issuekit creates both issues. For a proposal-seeded
-thread, the API atomically adopts the source as the provider issue and creates
-or reuses the dependent consumer issue. Either way, rerunning `--finalize` on a
-finalized thread returns the existing refs. It refuses threads that are not
-agreed. The author agent is resolved from `--author-agent`, then
-`default_implementer`, then a single enabled assignee. `--priority` controls
-the priority of the created issues.
+issues, and the consumer issue depends on the provider issue. Rerunning
+`--finalize` on a finalized thread returns the existing refs. It refuses
+threads that are not agreed. The author agent is resolved from
+`--author-agent`, then `default_implementer`, then a single enabled assignee.
+`--priority` controls the priority of the created issues.
 
 ## Mock mode
 
 `--mock` uses `MockNegotiationStore`, persisted at
 `.agent-runs/negotiations/mock.json`, and `MockIssueCreator`. It prevents API
-proposals and issues from being created. `--cancel`, and running rounds with
-`--from-proposal`, require the API store and reject `--mock`.
+proposals and issues from being created. `--cancel` requires the API store and
+rejects `--mock`.
 
 Mock mode does not mock the agents. The configured agent CLIs still run and
 consume real tokens, so it is not a dry run.

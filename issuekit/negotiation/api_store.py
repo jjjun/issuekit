@@ -6,14 +6,12 @@ import sys
 from typing import Any
 
 from issuekit.api import IssuekitClient
-from issuekit.api.features import is_feature_unavailable
 from issuekit.config import IssuekitConfig
 from issuekit.core import optional_int
 from issuekit.negotiation.model import (
     NegotiationEntry,
     NegotiationIssueRefs,
     NegotiationThreadSummary,
-    ProposalNegotiationSource,
     ThreadStatus,
     Verdict,
     coerce_status,
@@ -87,29 +85,6 @@ class ApiNegotiationStore:
             target_project=self.config.project,
         )
         return entry
-
-    def begin_proposal_thread(
-        self,
-        proposal_id: int,
-        *,
-        initiator_project: str,
-        initiator_side: str,
-    ) -> ProposalNegotiationSource:
-        try:
-            payload = self.client.begin_proposal_negotiation(
-                proposal_id,
-                initiator_project=initiator_project,
-                initiator_side=initiator_side,
-            )
-        except WorkflowError as exc:
-            if not is_feature_unavailable(exc):
-                raise
-            raise WorkflowError(
-                "The API project does not support proposal-seeded negotiation; "
-                "use --from-issue or upgrade the API project.",
-                code="unsupported_feature",
-            ) from exc
-        return proposal_source_from_api(payload)
 
     def append_initial_entry(
         self,
@@ -233,10 +208,6 @@ class ApiNegotiationStore:
         payload = self.client.get_thread(_api_thread_id(thread_id))
         return issue_refs_from_api(payload, require_supported=True)
 
-    def get_source_proposal_ref(self, thread_id: str) -> str | None:
-        payload = self.client.get_thread(_api_thread_id(thread_id))
-        return _optional_api_string(payload.get("source_proposal_ref"))
-
     def set_issue_refs(self, thread_id: str, refs: NegotiationIssueRefs) -> None:
         payload = self.client.patch_thread(
             _api_thread_id(thread_id),
@@ -282,54 +253,23 @@ class ApiNegotiationStore:
             )
 
     def cancel_thread(self, thread_id: str) -> None:
-        payload = self.client.patch_thread(
-            _api_thread_id(thread_id),
-            status=ThreadStatus.cancelled.value,
-        )
+        try:
+            payload = self.client.patch_thread(
+                _api_thread_id(thread_id),
+                status=ThreadStatus.cancelled.value,
+            )
+        except WorkflowError as exc:
+            if exc.code != "http_422":
+                raise
+            raise WorkflowError(
+                "The API project does not accept the cancelled status yet.",
+                code="unsupported_feature",
+            ) from exc
         if payload.get("status") != ThreadStatus.cancelled.value:
             raise WorkflowError(
                 "Proposal thread response did not confirm cancellation.",
                 code="server_schema_drift",
             )
-
-    def finalize_proposal_thread(
-        self,
-        thread_id: str,
-        *,
-        consumer_project: str,
-        author: str,
-        priority: str,
-        provider_title: str,
-        provider_body: str,
-        consumer_title: str,
-        consumer_body: str,
-    ) -> NegotiationIssueRefs:
-        try:
-            payload = self.client.finalize_proposal_negotiation(
-                _api_thread_id(thread_id),
-                consumer_project=consumer_project,
-                author=author,
-                priority=priority,
-                provider_title=provider_title,
-                provider_body=provider_body,
-                consumer_title=consumer_title,
-                consumer_body=consumer_body,
-            )
-        except WorkflowError as exc:
-            if not is_feature_unavailable(exc):
-                raise
-            raise WorkflowError(
-                "The API project does not support proposal-seeded negotiation "
-                "finalization; use --from-issue or upgrade the API project.",
-                code="unsupported_feature",
-            ) from exc
-        refs = issue_refs_from_api(payload, require_supported=True)
-        if refs is None:
-            raise WorkflowError(
-                "Finalize proposal negotiation response did not include issue refs.",
-                code="server_schema_drift",
-            )
-        return refs
 
 
 def _with_negotiation_context(
@@ -502,71 +442,8 @@ def thread_summary_from_api(raw: Any) -> NegotiationThreadSummary:
         status=status,
         agreed_contract=contract,
         issue_refs=issue_refs_from_api(raw),
-        source_proposal_ref=_optional_api_string(raw.get("source_proposal_ref")),
         updated=updated,
     )
-
-
-def proposal_source_from_api(raw: Any) -> ProposalNegotiationSource:
-    if not isinstance(raw, dict):
-        raise WorkflowError(
-            "Begin proposal negotiation response was not a JSON object.",
-            code="invalid_response",
-        )
-    proposal = raw.get("proposal")
-    thread = raw.get("thread")
-    if not isinstance(proposal, dict) or not isinstance(thread, dict):
-        raise WorkflowError(
-            "Begin proposal negotiation response did not include proposal and thread objects.",
-            code="invalid_response",
-        )
-    required_strings = {
-        "proposal_ref": thread.get("source_proposal_ref"),
-        "title": proposal.get("title"),
-        "body": proposal.get("body"),
-        "origin": proposal.get("origin"),
-        "target_project": proposal.get("target_project"),
-        "initiator_side": thread.get("initiator_side"),
-    }
-    if (
-        not isinstance(required_strings["body"], str)
-        or any(
-            not isinstance(value, str) or not value
-            for name, value in required_strings.items()
-            if name != "body"
-        )
-    ):
-        raise WorkflowError(
-            "Begin proposal negotiation response contained invalid source fields.",
-            code="invalid_response",
-        )
-    try:
-        return ProposalNegotiationSource(
-            proposal_id=int(proposal["id"]),
-            proposal_ref=required_strings["proposal_ref"],
-            thread_id=str(thread["id"]),
-            title=required_strings["title"],
-            body=required_strings["body"],
-            origin=required_strings["origin"],
-            target_project=required_strings["target_project"],
-            initiator_side=required_strings["initiator_side"],
-        )
-    except (KeyError, TypeError, ValueError) as exc:
-        raise WorkflowError(
-            "Begin proposal negotiation response contained invalid source fields.",
-            code="invalid_response",
-        ) from exc
-
-
-def _optional_api_string(value: object) -> str | None:
-    if value is None:
-        return None
-    if not isinstance(value, str):
-        raise WorkflowError(
-            "Proposal thread source_proposal_ref was not a string or null.",
-            code="invalid_response",
-        )
-    return value
 
 
 def _status_from_api(raw: Any) -> ThreadStatus:

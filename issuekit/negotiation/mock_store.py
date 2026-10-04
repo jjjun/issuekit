@@ -16,7 +16,6 @@ from issuekit.negotiation.model import (
     NegotiationEntry,
     NegotiationIssueRefs,
     NegotiationThreadSummary,
-    ProposalNegotiationSource,
     ThreadStatus,
     Verdict,
     coerce_status,
@@ -80,18 +79,6 @@ class MockNegotiationStore:
         self._issue_refs.pop(thread_id, None)
         self._persist()
         return entry
-
-    def begin_proposal_thread(
-        self,
-        proposal_id: int,
-        *,
-        initiator_project: str,
-        initiator_side: str,
-    ) -> ProposalNegotiationSource:
-        raise WorkflowError(
-            "The mock negotiation store cannot resolve API proposals.",
-            code="unsupported",
-        )
 
     def append_initial_entry(
         self,
@@ -220,10 +207,6 @@ class MockNegotiationStore:
         self._ensure_thread(thread_id)
         return self._issue_refs.get(thread_id)
 
-    def get_source_proposal_ref(self, thread_id: str) -> str | None:
-        self._ensure_thread(thread_id)
-        return None
-
     def set_issue_refs(self, thread_id: str, refs: NegotiationIssueRefs) -> None:
         self._ensure_thread(thread_id)
         if self._statuses[thread_id] is not ThreadStatus.agreed:
@@ -257,23 +240,6 @@ class MockNegotiationStore:
             )
         self._statuses[thread_id] = ThreadStatus.cancelled
         self._persist()
-
-    def finalize_proposal_thread(
-        self,
-        thread_id: str,
-        *,
-        consumer_project: str,
-        author: str,
-        priority: str,
-        provider_title: str,
-        provider_body: str,
-        consumer_title: str,
-        consumer_body: str,
-    ) -> NegotiationIssueRefs:
-        raise WorkflowError(
-            "The mock negotiation store cannot finalize API proposals.",
-            code="unsupported",
-        )
 
     def _make_entry(
         self,

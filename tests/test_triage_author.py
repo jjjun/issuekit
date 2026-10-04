@@ -1016,7 +1016,13 @@ def test_triage_author_policy_gate_runs_before_agent(monkeypatch, tmp_path) -> N
         monkeypatch,
         tmp_path,
         proposals=[
-            {"id": 3, "origin": "stranger#1@abc", "title": "Untrusted", "body": "z"}
+            {
+                "id": 3,
+                "origin": "mine-py#1@abc",
+                "title": "Threaded proposal",
+                "body": "z",
+                "thread_id": 7,
+            }
         ],
         outputs=[_triage_block(decision="adopt", spec_markdown="nope")],
     )

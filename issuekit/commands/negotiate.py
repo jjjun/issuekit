@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import re
 import sys
 import tomllib
 from dataclasses import replace
@@ -13,11 +12,10 @@ from issuekit.agentrun import AgentRunner
 from issuekit.commands._common import print_json, run_agent_command, run_command
 from issuekit.config import IssuekitConfig, load_config
 from issuekit.config.refs import RefError, list_effective_refs
-from issuekit.core import Issue, parse_issue_id_arg
+from issuekit.core import parse_issue_id_arg
 from issuekit.gitutil import git_status_short
 from issuekit.negotiation import (
     NegotiationThreadSummary,
-    ProposalNegotiationSource,
     ThreadStatus,
     get_negotiation_store,
 )
@@ -47,10 +45,6 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         help="Drive a bounded cross-repository design negotiation.",
     )
     negotiate_parser.add_argument("--from-issue", help="Originating issue id.")
-    negotiate_parser.add_argument(
-        "--from-proposal",
-        help="Pending proposal ref, for example mine-py#proposal:531.",
-    )
     negotiate_parser.add_argument("--to", help="Target project name.")
     negotiate_parser.add_argument(
         "--finalize",
@@ -60,7 +54,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     negotiate_parser.add_argument(
         "--cancel",
         metavar="THREAD_ID",
-        help="Cancel a proposal-seeded negotiation and unlock its pending proposal.",
+        help="Cancel a negotiation thread.",
     )
     negotiate_parser.add_argument(
         "--provider-agent",
@@ -138,21 +132,9 @@ def run(args) -> int:
         config = load_config(cwd)
         if args.cancel:
             _require_cancel_args(args)
-            target_project = _proposal_target(args.from_proposal, args.to)
-            target_config = replace(config, project=target_project)
-            with get_negotiation_store(target_config, use_mock=False) as store:
+            store_config = replace(config, project=args.to)
+            with get_negotiation_store(store_config, use_mock=False) as store:
                 status = store.get_status(args.cancel)
-                if status is ThreadStatus.blocked:
-                    proposal_ref = store.get_source_proposal_ref(args.cancel)
-                    proposal_ref = proposal_ref or args.from_proposal
-                    if proposal_ref:
-                        raise WorkflowError(
-                            f"Cannot cancel blocked negotiation thread {args.cancel}: "
-                            f"source proposal {proposal_ref} remains locked because "
-                            "the mine-py API does not support transitioning a blocked "
-                            "proposal negotiation to cancelled.",
-                            code="unsupported_feature",
-                        )
                 if status is not ThreadStatus.cancelled:
                     store.cancel_thread(args.cancel)
                 store.settle_thread_members(args.cancel)
@@ -163,8 +145,6 @@ def run(args) -> int:
             return 0
         if args.finalize:
             _require_finalize_args(args)
-            if args.from_proposal:
-                args.to = _proposal_target(args.from_proposal, args.to)
             author_agent = resolve_implementer(args.author_agent, config)
             if author_agent is None:
                 raise WorkflowError(
@@ -174,13 +154,7 @@ def run(args) -> int:
             if not args.mock:
                 _warn_target_validation(config, args.to)
             creator: IssueCreator = MockIssueCreator() if args.mock else ApiIssueCreator(config)
-            store_config = config
-            if args.from_proposal:
-                store_config = replace(
-                    config,
-                    project=_proposal_target(args.from_proposal, args.to),
-                )
-            with get_negotiation_store(store_config, use_mock=bool(args.mock)) as store:
+            with get_negotiation_store(config, use_mock=bool(args.mock)) as store:
                 result = finalize_negotiation(
                     thread_id=args.finalize,
                     to_project=args.to,
@@ -197,8 +171,6 @@ def run(args) -> int:
             return 0
 
         _require_round_args(args)
-        if args.from_proposal:
-            args.to = _proposal_target(args.from_proposal, args.to)
         counterpart_cwd = _resolve_counterpart_cwd(args.counterpart_ref, args.to, cwd)
         max_rounds = int(args.max_rounds)
         if max_rounds < 1:
@@ -206,35 +178,14 @@ def run(args) -> int:
         if not args.mock:
             _warn_target_validation(config, args.to)
 
-        proposal_thread_id = None
-        store_config = config
-        if args.from_proposal:
-            if args.mock:
-                raise ValueError("--from-proposal requires the API negotiation store.")
-            if args.initiator_side != "consumer":
-                raise ValueError(
-                    "--from-proposal requires --initiator-side consumer because the "
-                    "target proposal becomes the provider issue."
-                )
-            proposal_id = _proposal_ref_parts(args.from_proposal)[1]
-            store_config = replace(config, project=args.to)
-            with get_negotiation_store(store_config, use_mock=False) as proposal_store:
-                source = proposal_store.begin_proposal_thread(
-                    proposal_id,
-                    initiator_project=config.project,
-                    initiator_side=args.initiator_side,
-                )
-            issue = _proposal_source_issue(source)
-            proposal_thread_id = source.thread_id
-        else:
-            issue_id = parse_issue_id_arg(args.from_issue)
-            with get_store(config) as issue_store:
-                issue = issue_store.get_issue(issue_id)
+        issue_id = parse_issue_id_arg(args.from_issue)
+        with get_store(config) as issue_store:
+            issue = issue_store.get_issue(issue_id)
             if issue is None:
                 print(f"Active issue #{issue_id} was not found.", file=sys.stderr)
                 return 1
 
-        with get_negotiation_store(store_config, use_mock=bool(args.mock)) as store:
+        with get_negotiation_store(config, use_mock=bool(args.mock)) as store:
             result = run_negotiation(
                 issue=issue,
                 to_project=args.to,
@@ -250,7 +201,6 @@ def run(args) -> int:
                 counterpart_cwd=counterpart_cwd,
                 store=store,
                 runner=AgentRunner(),
-                proposal_thread_id=proposal_thread_id,
             )
         if args.json:
             print_json(result.to_dict())
@@ -310,24 +260,23 @@ def run_threads(args) -> int:
 
 
 def _require_finalize_args(args) -> None:
-    if not args.to and not args.from_proposal:
-        raise ValueError("--to or --from-proposal is required with --finalize.")
+    if not args.to:
+        raise ValueError("--to is required with --finalize.")
     if args.from_issue:
         raise ValueError("--from-issue cannot be used with --finalize.")
 
 
 def _require_cancel_args(args) -> None:
-    if not args.from_proposal and not args.to:
-        raise ValueError("--from-proposal or --to is required with --cancel.")
+    if not args.to:
+        raise ValueError("--to is required with --cancel.")
     if args.mock:
         raise ValueError("--cancel requires the API negotiation store.")
 
 
 def _require_round_args(args) -> None:
-    if bool(args.from_issue) == bool(args.from_proposal):
+    if not args.from_issue:
         raise ValueError(
-            "Exactly one of --from-issue or --from-proposal is required unless "
-            "--finalize or --cancel is used."
+            "--from-issue is required unless --finalize or --cancel is used."
         )
     missing = [
         name
@@ -340,48 +289,8 @@ def _require_round_args(args) -> None:
     ]
     if missing:
         raise ValueError(f"{', '.join(missing)} required unless --finalize is used.")
-    if args.from_issue and not args.to:
+    if not args.to:
         raise ValueError("--to is required with --from-issue.")
-
-
-def _proposal_ref_parts(value: str) -> tuple[str, int]:
-    match = re.fullmatch(r"([A-Za-z0-9_.-]+)#proposal:([1-9][0-9]*)", value.strip())
-    if match is None:
-        raise ValueError(
-            f"Invalid proposal ref {value!r}; expected <project>#proposal:<id>."
-        )
-    return match.group(1), int(match.group(2))
-
-
-def _proposal_target(from_proposal: str | None, to_project: str | None) -> str:
-    if from_proposal:
-        proposal_project, _ = _proposal_ref_parts(from_proposal)
-        if to_project and to_project != proposal_project:
-            raise ValueError(
-                f"--to {to_project!r} does not match proposal target {proposal_project!r}."
-            )
-        return proposal_project
-    if not to_project:
-        raise ValueError("--to is required.")
-    return to_project
-
-
-def _proposal_source_issue(source: ProposalNegotiationSource) -> Issue:
-    return Issue(
-        id=source.proposal_id,
-        ref=source.proposal_ref,
-        title=source.title,
-        issue_status="active",
-        created="",
-        completed="",
-        priority="medium",
-        assignee="",
-        stage="todo",
-        implementer="",
-        author="",
-        body=source.body,
-        metadata={"origin": source.origin, "source_type": "proposal"},
-    )
 
 
 def _resolve_counterpart_cwd(
@@ -503,7 +412,6 @@ def _thread_summary_to_dict(summary: NegotiationThreadSummary) -> dict[str, obje
         "status": summary.status.value,
         "agreed_contract": summary.agreed_contract,
         "issue_refs": summary.issue_refs.to_dict() if summary.issue_refs else None,
-        "source_proposal_ref": summary.source_proposal_ref,
         "updated": summary.updated,
     }
 
@@ -512,14 +420,13 @@ def _print_human_thread_summaries(summaries: list[NegotiationThreadSummary]) -> 
     if not summaries:
         print("no negotiation threads")
         return
-    print("thread\tstatus\tupdated\tissue_refs\tsource_proposal")
+    print("thread\tstatus\tupdated\tissue_refs")
     for summary in summaries:
         refs = "-"
         if summary.issue_refs is not None:
             refs = f"{summary.issue_refs.backend_issue_ref},{summary.issue_refs.frontend_issue_ref}"
         print(
-            f"{summary.thread_id}\t{summary.status.value}\t{summary.updated or '-'}\t"
-            f"{refs}\t{summary.source_proposal_ref or '-'}"
+            f"{summary.thread_id}\t{summary.status.value}\t{summary.updated or '-'}\t{refs}"
         )
 
 
