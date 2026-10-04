@@ -10,24 +10,26 @@ from .identity import (
     register_worker,
     save_local_worker,
 )
+from .registration import (
+    WorkerHeartbeat,
+    WorkerRegistryConflict,
+    post_worker_registration,
+    try_post_worker_registration,
+)
 from .registry import (
     RepoRemovalResult,
     WorkerClaim,
-    WorkerHeartbeat,
     WorkerListingError,
     WorkerPruneCandidate,
     WorkerPruneResult,
-    WorkerRegistryConflict,
     WorkerRemovalError,
     WorkerRemovalResult,
     list_api_workers,
     list_worker_claims,
-    post_worker_registration,
     prune_api_workers,
     remove_api_repo,
     remove_api_worker,
     resolve_api_worker,
-    try_post_worker_registration,
     worker_claim_dict,
 )
 

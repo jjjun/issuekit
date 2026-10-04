@@ -1,4 +1,5 @@
 import subprocess
+from dataclasses import replace
 from pathlib import Path
 
 import httpx
@@ -8,6 +9,7 @@ from issuekit import cli
 from issuekit.api.client import DEFAULT_HTTP_LIMITS
 from issuekit.config import IssuekitConfig, WorkerIdentity, load_config
 from issuekit.config.refs import add_ref
+from issuekit.gitutil import GitResult
 from issuekit.workers.identity import (
     WorkerRegistrationError,
     canonicalize_remote_url,
@@ -611,7 +613,7 @@ def test_post_worker_registration_propagates_missing_repo_endpoint(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from issuekit.errors import WorkflowError
-    from issuekit.workers import registry as worker_registry
+    from issuekit.workers import registration as worker_registration
 
     fake_api.install_factory(lambda *args, **kwargs: RepoEndpointNotFoundRegistryClient())
 
@@ -622,7 +624,7 @@ def test_post_worker_registration_propagates_missing_repo_endpoint(
     )
 
     with pytest.raises(WorkflowError, match="repo endpoint not found") as exc_info:
-        worker_registry.post_worker_registration(config, tmp_path)
+        worker_registration.post_worker_registration(config, tmp_path)
 
     assert exc_info.value.code == "http_404"
 
@@ -657,19 +659,20 @@ def test_worker_heartbeat_tracks_consecutive_failures_and_resets(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from issuekit.errors import WorkflowError
-    from issuekit.workers import registry as worker_registry
+    from issuekit.workers import registration as worker_registration
 
     outcomes = iter((False, False, True, False))
     errors: list[tuple[int, object]] = []
 
-    def post(config, cwd, *, on_error):
+    def post(config, cwd, *, client, push_profile, on_error):
         succeeded = next(outcomes)
         if not succeeded:
             on_error(WorkflowError("registry offline", code="request_failed"))
         return succeeded
 
-    monkeypatch.setattr(worker_registry, "try_post_worker_registration", post)
-    heartbeat = worker_registry.WorkerHeartbeat(
+    monkeypatch.setattr(worker_registration, "try_post_worker_registration", post)
+    monkeypatch.setattr(worker_registration, "client_for", lambda _config: FakeRegistryClient())
+    heartbeat = worker_registration.WorkerHeartbeat(
         IssuekitConfig(
             api_url="https://mine.example",
             project="demo",
@@ -694,16 +697,192 @@ def test_worker_heartbeat_tracks_consecutive_failures_and_resets(
     assert heartbeat.beat() is False
     assert heartbeat.consecutive_failures == 1
     assert errors[-1] == (1, last_success)
+    heartbeat.stop()
+
+
+def test_worker_heartbeat_skips_unchanged_project_profile_put(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from issuekit.workers import registration as worker_registration
+
+    (tmp_path / "ISSUEKIT.md").write_text("profile\n", encoding="utf-8", newline="\n")
+    client = FakeRegistryClient()
+    monkeypatch.setattr(worker_registration, "client_for", lambda _config: client)
+    monkeypatch.setattr(worker_registration, "canonical_git_origin_url", lambda _path: None)
+    git_calls = _install_profile_git_fake(monkeypatch, ["head-one"])
+    heartbeat = worker_registration.WorkerHeartbeat(
+        IssuekitConfig(
+            api_url="https://mine.example",
+            project="demo",
+            worker=WorkerIdentity("machine", "demo", "checkout"),
+        ),
+        tmp_path,
+    )
+
+    assert heartbeat.beat()
+    first_beat_log_calls = [args for args in git_calls if args[0] == "log"]
+    assert heartbeat.beat()
+
+    assert len(client.profile_calls) == 1
+    assert len(client.repo_calls) == 2
+    assert len(client.calls) == 2
+    assert len([args for args in git_calls if args[0] == "log"]) == len(first_beat_log_calls) == 1
+    heartbeat.stop()
+    assert client.close_count == 1
+
+
+@pytest.mark.parametrize("change", ["profile", "summary", "tags", "head"])
+def test_worker_heartbeat_pushes_changed_project_profile(
+    change: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from issuekit.workers import registration as worker_registration
+
+    profile_path = tmp_path / "ISSUEKIT.md"
+    profile_path.write_text("profile\n", encoding="utf-8", newline="\n")
+    client = FakeRegistryClient()
+    monkeypatch.setattr(worker_registration, "client_for", lambda _config: client)
+    monkeypatch.setattr(worker_registration, "canonical_git_origin_url", lambda _path: None)
+    head_commit = ["head-one"]
+    _install_profile_git_fake(monkeypatch, head_commit)
+    config = IssuekitConfig(
+        api_url="https://mine.example",
+        project="demo",
+        worker=WorkerIdentity("machine", "demo", "checkout"),
+    )
+    heartbeat = worker_registration.WorkerHeartbeat(config, tmp_path)
+
+    assert heartbeat.beat()
+    if change == "profile":
+        profile_path.write_text("changed profile\n", encoding="utf-8", newline="\n")
+    elif change == "summary":
+        heartbeat.config = replace(config, profile_summary="Changed summary")
+    elif change == "tags":
+        heartbeat.config = replace(config, profile_tags=("changed",))
+    else:
+        head_commit[0] = "head-two"
+
+    assert heartbeat.beat()
+    assert len(client.profile_calls) == 2
+    heartbeat.stop()
+
+
+@pytest.mark.parametrize("first_response", ["failure", "stale"])
+def test_worker_heartbeat_retries_failed_or_stale_profile_push(
+    first_response: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from issuekit.errors import WorkflowError
+    from issuekit.workers import registration as worker_registration
+
+    class RetryingProfileClient(FakeRegistryClient):
+        def __init__(self) -> None:
+            super().__init__()
+            self.responses = [first_response, "success"]
+
+        def put_project_profile(self, **kwargs) -> dict[str, object]:
+            self.profile_calls.append(kwargs)
+            response = self.responses.pop(0)
+            if response == "failure":
+                raise WorkflowError("profile endpoint unavailable", code="http_404")
+            return {"stale": response == "stale", **kwargs}
+
+    (tmp_path / "ISSUEKIT.md").write_text("profile\n", encoding="utf-8", newline="\n")
+    client = RetryingProfileClient()
+    monkeypatch.setattr(worker_registration, "client_for", lambda _config: client)
+    monkeypatch.setattr(worker_registration, "canonical_git_origin_url", lambda _path: None)
+    _install_profile_git_fake(monkeypatch, ["head-one"])
+    heartbeat = worker_registration.WorkerHeartbeat(
+        IssuekitConfig(
+            api_url="https://mine.example",
+            project="demo",
+            worker=WorkerIdentity("machine", "demo", "checkout"),
+        ),
+        tmp_path,
+    )
+
+    assert heartbeat.beat()
+    assert heartbeat.beat()
+    assert len(client.profile_calls) == 2
+    heartbeat.stop()
+
+
+def test_worker_heartbeat_thread_reuses_and_closes_one_client(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from issuekit.workers import registration as worker_registration
+
+    heartbeat_ref: list[worker_registration.WorkerHeartbeat] = []
+    clients: list[FakeRegistryClient] = []
+
+    class StoppingRegistryClient(FakeRegistryClient):
+        def upsert_worker(self, **kwargs):
+            result = super().upsert_worker(**kwargs)
+            if len(self.calls) == 3:
+                heartbeat_ref[0]._stop.set()
+            return result
+
+    def client_for(_config):
+        client = StoppingRegistryClient()
+        clients.append(client)
+        return client
+
+    monkeypatch.setattr(worker_registration, "client_for", client_for)
+    monkeypatch.setattr(worker_registration, "canonical_git_origin_url", lambda _path: None)
+    _install_profile_git_fake(monkeypatch, ["head-one"])
+    heartbeat = worker_registration.WorkerHeartbeat(
+        IssuekitConfig(
+            api_url="https://mine.example",
+            project="demo",
+            worker=WorkerIdentity("machine", "demo", "checkout"),
+        ),
+        tmp_path,
+        interval=0,
+    )
+    heartbeat_ref.append(heartbeat)
+
+    heartbeat.start()
+    assert heartbeat._thread is not None
+    heartbeat._thread.join(timeout=5)
+    heartbeat.stop()
+
+    assert len(clients) == 1
+    assert len(clients[0].calls) == 3
+    assert clients[0].close_count == 1
+
+
+def _install_profile_git_fake(
+    monkeypatch: pytest.MonkeyPatch,
+    head_commit: list[str],
+) -> list[list[str]]:
+    git_calls: list[list[str]] = []
+
+    def run_git(args, _cwd, *, timeout=30, strict=False):
+        git_calls.append(list(args))
+        if args[:2] == ["rev-parse", "HEAD"]:
+            return GitResult(0, f"{head_commit[0]}\n", "")
+        if args[:2] == ["log", "-1"]:
+            return GitResult(0, "profile-commit 2026-01-01T00:00:00Z\n", "")
+        return GitResult(1, "", "")
+
+    monkeypatch.setattr("issuekit.config.project_profile.run_git", run_git)
+    monkeypatch.setattr("issuekit.workers.registration.run_git", run_git)
+    return git_calls
 
 
 def test_worker_heartbeat_run_continues_after_unexpected_exception(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from issuekit.workers import registry as worker_registry
+    from issuekit.workers import registration as worker_registration
 
     errors: list[tuple[Exception, int]] = []
-    heartbeat = worker_registry.WorkerHeartbeat(
+    monkeypatch.setattr(worker_registration, "client_for", lambda _config: FakeRegistryClient())
+    heartbeat = worker_registration.WorkerHeartbeat(
         IssuekitConfig(),
         tmp_path,
         on_error=lambda exc, consecutive, _last_success: errors.append(
@@ -740,22 +919,22 @@ def test_try_post_worker_registration_propagates_unexpected_exceptions(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from issuekit.workers import registry as worker_registry
+    from issuekit.workers import registration as worker_registration
 
     def fail(*args, **kwargs):
         raise RuntimeError("programming error")
 
-    monkeypatch.setattr(worker_registry, "post_worker_registration", fail)
+    monkeypatch.setattr(worker_registration, "post_worker_registration", fail)
 
     with pytest.raises(RuntimeError, match="programming error"):
-        worker_registry.try_post_worker_registration(IssuekitConfig(), tmp_path)
+        worker_registration.try_post_worker_registration(IssuekitConfig(), tmp_path)
 
 
 def test_worker_heartbeat_client_uses_default_http_limits(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from issuekit.workers import registry as worker_registry
+    from issuekit.workers import registration as worker_registration
 
     captured: dict[str, object] = {}
 
@@ -777,7 +956,7 @@ def test_worker_heartbeat_client_uses_default_http_limits(
         worker=WorkerIdentity("machine", "demo", "worker"),
     )
 
-    assert worker_registry.try_post_worker_registration(config, tmp_path)
+    assert worker_registration.try_post_worker_registration(config, tmp_path)
     assert captured["limits"] is DEFAULT_HTTP_LIMITS
 
 
@@ -945,12 +1124,16 @@ class FakeRegistryClient:
         self.calls: list[dict[str, str | None]] = []
         self.repo_calls: list[dict[str, object]] = []
         self.profile_calls: list[dict[str, object]] = []
+        self.close_count = 0
 
     def __enter__(self):
         return self
 
     def __exit__(self, *exc_info):
         return None
+
+    def close(self) -> None:
+        self.close_count += 1
 
     def upsert_repo(
         self,

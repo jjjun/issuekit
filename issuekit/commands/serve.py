@@ -64,7 +64,7 @@ from issuekit.proposals.adopt import (
 )
 from issuekit.signals import installed_signal_handlers
 from issuekit.store import get_store
-from issuekit.workers.registry import WorkerHeartbeat
+from issuekit.workers.registration import WorkerHeartbeat
 from issuekit.workflow import claim_next, next_review, require_implementer
 
 
