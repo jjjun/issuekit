@@ -4,7 +4,7 @@
 |---------|---------|
 | `issuekit info [--json]` | Show API tracker status and effective agent configuration. |
 | `issuekit show <id> [--json]` | Read one active or completed issue, including its body and handoff metadata, without changing it. |
-| `issuekit next-review [--reviewer <name>] [--json]` | Read the next issue waiting for a reviewer without changing issue state. |
+| `issuekit next-review [--reviewer <name>] [--json]` | Read the next issue in the open review pool when `--reviewer` is omitted, or for the named reviewer when supplied, without changing issue state. |
 | `issuekit validate` | Check API connectivity and issue response shape. |
 | `issuekit login [--user <username>]` | Authenticate to the API as the configured or specified user. |
 | `issuekit logout` | Clear the saved API authentication session. |
@@ -68,7 +68,7 @@ Text supplied to `author`, `edit`, `approve`, `complete`, `submit-review`, and
 `--timeout-sec` defaults to 600 for `implement`, `review`, `triage`, `request`,
 and `proposal-checks`; 1800 for `serve`; and 120 for `negotiate`.
 
-`issuekit info --json` includes `defaultReviewer`, the resolved
-`defaultImplementer`, its raw `configuredDefaultImplementer` value, and
-effective `agentRoles` including built-in role fallbacks. The text output shows
-the same policy values and roles.
+`issuekit info --json` includes the resolved `defaultImplementer`, its raw
+`configuredDefaultImplementer` value, and effective `agentRoles` including
+built-in role fallbacks. The text output shows the same policy values and
+roles.

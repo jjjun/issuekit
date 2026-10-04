@@ -279,7 +279,7 @@ def create_server(
         if issue is None:
             return {
                 "status": "none",
-                "assignee": reviewer or config.default_reviewer,
+                "assignee": reviewer or None,
                 "stage": "review",
             }
         return issue_dict(issue, include_body=True)

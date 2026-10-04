@@ -163,7 +163,7 @@ def test_info_json_output(tmp_path: Path, monkeypatch, capsys) -> None:
     assert payload["incomingProposals"] == []
     assert "authorGuard" not in payload
     assert payload["authorGuards"] == []
-    assert payload["defaultReviewer"] == "auto"
+    assert "defaultReviewer" not in payload
     assert payload["configuredDefaultImplementer"] is None
     assert payload["defaultImplementer"] is None
     assert payload["agentRoles"] == {
@@ -205,7 +205,6 @@ def test_info_surfaces_single_assignee_implementer_fallback(
     cli.main(["info"])
     text = capsys.readouterr().out
 
-    assert "Default reviewer: auto" in text
     assert "Default implementer: codex" in text
     assert "Configured default implementer: -" in text
     assert "Agent roles\n- kimi: implementer\n- codex: implementer\n- claude: reviewer" in text

@@ -1132,6 +1132,22 @@ def test_submit_for_review_passes_structured_fields(monkeypatch) -> None:
     ]
 
 
+def test_submit_for_review_rejects_unknown_reviewer_before_api_transition(
+    monkeypatch,
+) -> None:
+    client = FakeIssuekitClient([api_issue(1, "First")])
+
+    with pytest.raises(WorkflowError, match="Unknown assignee: nobody"):
+        submit_for_review(
+            1,
+            summary="Implemented.",
+            reviewer="nobody",
+            config=_config(client, monkeypatch),
+        )
+
+    assert client.calls == []
+
+
 def test_submit_for_review_defaults_branch_to_current_checkout(monkeypatch) -> None:
     client = FakeIssuekitClient(
         [
@@ -1311,8 +1327,6 @@ def test_approve_rejects_same_agent_same_worker_review(monkeypatch) -> None:
 def test_distinct_reviewer_guard_names_recovery() -> None:
     config = IssuekitConfig(
         assignees=("codex",),
-        default_reviewer="auto",
-        require_distinct_reviewer=True,
     )
     issue = Issue(
         id=1,
@@ -1334,10 +1348,10 @@ def test_distinct_reviewer_guard_names_recovery() -> None:
         resolve_reviewer(None, config, issue=issue)
 
     message = str(excinfo.value)
-    assert "Distinct-reviewer guard (require_distinct_reviewer)" in message
+    assert "Distinct-reviewer guard blocks auto reviewer resolution" in message
     assert "no configured reviewer is distinct from the issue implementer" in message
     assert "configure an assignee distinct from issue.implementer" in message
-    assert "API-backed mode always enforces this guard" in message
+    assert excinfo.value.code == "distinct_reviewer_guard"
     assert "compares against `issue.implementer`, not the author" in message
 
 

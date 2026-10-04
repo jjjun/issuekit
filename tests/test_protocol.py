@@ -26,6 +26,9 @@ def test_render_protocol_returns_each_agent_and_both() -> None:
         assert "author -> implement -> review cycle" in normalized
         assert "Open implement pool" in normalized
         assert "open review pool" in normalized
+        assert "default_reviewer" not in rendered
+        assert "require_distinct_reviewer" not in rendered
+        assert "API mode" not in rendered
         assert "Assignment chooses the implementing agent" in normalized
         assert "issuekit dispatch <id> --target-worker" in normalized
         assert "issuekit readdress <id>" in normalized
@@ -89,7 +92,8 @@ def test_render_protocol_returns_each_agent_and_both() -> None:
     assert "ASCII verification" in normalized_claude
     assert "ASCII notes" in normalized_claude
     assert "issuekit approve <id> --verification <text>" in claude
-    assert "whether assigned or in the open review pool" in normalized_claude
+    assert "inspect the open review pool" in normalized_claude
+    assert "inspect that reviewer's assigned issues" in normalized_claude
     assert "The CLI Pass" not in normalized_claude
     assert "Pass `--summary <text>` to `issuekit approve`" in normalized_claude
     assert "issuekit complete <id>" in claude

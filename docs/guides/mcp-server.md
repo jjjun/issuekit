@@ -242,7 +242,7 @@ operation, so it is the fallback when the MCP transport is down.
 | `get_protocol` | Read the handoff protocol for an agent or role. | `protocol` |
 | `claim_next_task` | Claim the next eligible issue for an implementer. Override parameters are available with `--allow-overrides`. | `claim` |
 | `submit_for_review` | Submit an implemented issue for review. Override parameters are available with `--allow-overrides`. | `submit-review` |
-| `next_review` | Read the next issue waiting for a reviewer. | `next-review` |
+| `next_review` | Read the next issue in the open review pool when `reviewer` is omitted, or for the named reviewer when supplied. | `next-review` |
 | `request_changes` | Return a review issue to its implementer with notes. | `request-changes` |
 | `approve` | Approve a review issue and complete it. | `approve` |
 | `get_issue` | Read one active or completed issue. | `show` |

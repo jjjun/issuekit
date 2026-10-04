@@ -172,7 +172,7 @@ class CloseTrackingClient(FakeIssuekitClient):
 
 def _configure_registered_api(tmp_path: Path, monkeypatch, client: FakeIssuekitClient) -> None:
     (tmp_path / "issuekit.toml").write_text(
-        "api_url = 'https://mine.example'\nproject = 'demo'\ndefault_reviewer = 'auto'\n",
+        "api_url = 'https://mine.example'\nproject = 'demo'\n",
         encoding="utf-8",
         newline="\n",
     )
@@ -714,7 +714,6 @@ def test_review_command_self_review_names_no_eligible_reviewer(
     (tmp_path / "issuekit.toml").write_text(
         "api_url = 'https://mine.example'\n"
         "project = 'demo'\n"
-        "default_reviewer = 'auto'\n"
         "disabled_agents = ['kimi', 'claude']\n",
         encoding="utf-8",
         newline="\n",

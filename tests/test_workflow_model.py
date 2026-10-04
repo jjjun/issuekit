@@ -20,7 +20,7 @@ def test_load_config_reads_workflow_sets(
 ) -> None:
     monkeypatch.setenv("ISSUEKIT_CONFIG", "")
     (tmp_path / "pyproject.toml").write_text(
-        "[tool.issuekit]\nassignees = ['alice']\nstages = ['draft']\ndefault_reviewer = 'alice'\n",
+        "[tool.issuekit]\nassignees = ['alice']\nstages = ['draft']\n",
         encoding="utf-8",
         newline="\n",
     )
@@ -28,5 +28,4 @@ def test_load_config_reads_workflow_sets(
     assert load_config(tmp_path) == IssuekitConfig(
         assignees=("alice",),
         stages=("draft",),
-        default_reviewer="alice",
     )

@@ -30,7 +30,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     )
     next_review_parser.add_argument(
         "--reviewer",
-        help="Reviewer assignee to inspect; defaults to the configured reviewer.",
+        help="Reviewer assignee to inspect; omit to use the open review pool.",
     )
     next_review_parser.add_argument(
         "--json",
@@ -97,7 +97,7 @@ def run_next_review(args) -> int:
             if issue is not None
             else {
                 "status": "none",
-                "assignee": args.reviewer or config.default_reviewer,
+                "assignee": args.reviewer or None,
                 "stage": "review",
             }
         )

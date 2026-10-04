@@ -1077,7 +1077,10 @@ def test_claim_next_task_requires_assignee_without_default_implementer(
     assert client.calls == []
 
 
-def test_review_round_trip_and_approve(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_submit_for_review_without_reviewer_uses_open_pool_and_approve(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     client = FakeIssuekitClient(
         [
             api_issue(
@@ -1447,19 +1450,52 @@ def test_submit_for_review_rejects_explicit_self_assignment(
         )
 
 
-def test_next_review_uses_configured_default_reviewer(
+def test_next_review_uses_explicit_reviewer(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     client = FakeIssuekitClient(
         [api_issue(1, "First", status="in_progress", assignee="codex", stage="review")]
     )
-    _configure_api(tmp_path, monkeypatch, client, extra_config="default_reviewer = 'codex'\n")
+    _configure_api(tmp_path, monkeypatch, client)
     server = create_server(tmp_path)
 
-    review = _call(server, "next_review", {})
+    review = _call(server, "next_review", {"reviewer": "codex"})
 
     assert review["id"] == 1
+
+
+def test_next_review_rejects_unknown_reviewer(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = FakeIssuekitClient()
+    _configure_api(tmp_path, monkeypatch, client)
+    server = create_server(tmp_path)
+
+    with pytest.raises(Exception, match="Unknown assignee: nobody"):
+        _call(server, "next_review", {"reviewer": "nobody"})
+
+
+def test_next_review_without_reviewer_uses_open_pool_for_cli_and_mcp(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    client = FakeIssuekitClient(
+        [api_issue(1, "First", status="in_progress", assignee="", stage="review")]
+    )
+    _configure_api(tmp_path, monkeypatch, client)
+    monkeypatch.chdir(tmp_path)
+    server = create_server(tmp_path)
+
+    mcp_review = _call(server, "next_review", {})
+    assert cli.main(["next-review", "--json"]) == 0
+    cli_review = json.loads(capsys.readouterr().out)
+
+    assert mcp_review["id"] == 1
+    assert cli_review["id"] == 1
+    assert cli_review["assignee"] == ""
 
 
 def test_read_only_cli_payloads_match_mcp_tools(
@@ -1527,7 +1563,7 @@ def test_read_only_cli_empty_payloads_match_mcp_tools(
     assert cli_issue == mcp_issue == {"status": "none", "id": 99}
     assert cli_review == mcp_review == {
         "status": "none",
-        "assignee": "auto",
+        "assignee": None,
         "stage": "review",
     }
 
@@ -1888,7 +1924,7 @@ def test_mcp_update_issue_requires_force_for_in_flight_issue(
     assert forced["title"] == "Forced"
 
 
-def test_auto_default_reviewer_opens_review_pool(
+def test_omitted_reviewer_opens_review_pool(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1904,7 +1940,7 @@ def test_auto_default_reviewer_opens_review_pool(
             )
         ]
     )
-    _configure_api(tmp_path, monkeypatch, client, extra_config="default_reviewer = 'auto'\n")
+    _configure_api(tmp_path, monkeypatch, client)
     server = create_server(tmp_path)
 
     submitted = _call(server, "submit_for_review", {"id": 1, "summary": "Implemented."})
@@ -1920,7 +1956,7 @@ def test_auto_default_reviewer_opens_review_pool(
     assert approved["status"] == "completed"
 
 
-def test_auto_default_reviewer_opens_review_even_when_guard_is_required(
+def test_open_pool_submission_omits_reviewer(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1936,12 +1972,7 @@ def test_auto_default_reviewer_opens_review_even_when_guard_is_required(
             )
         ]
     )
-    _configure_api(
-        tmp_path,
-        monkeypatch,
-        client,
-        extra_config="default_reviewer = 'auto'\nrequire_distinct_reviewer = true\n",
-    )
+    _configure_api(tmp_path, monkeypatch, client)
     server = create_server(tmp_path)
 
     submitted = _call(server, "submit_for_review", {"id": 1, "summary": "Implemented."})
@@ -1967,7 +1998,7 @@ def test_open_review_allows_any_agent_to_approve(
             )
         ]
     )
-    _configure_api(tmp_path, monkeypatch, client, extra_config="default_reviewer = 'auto'\n")
+    _configure_api(tmp_path, monkeypatch, client)
     server = create_server(tmp_path)
 
     submitted = _call(server, "submit_for_review", {"id": 1, "summary": "Implemented."})
@@ -1977,7 +2008,7 @@ def test_open_review_allows_any_agent_to_approve(
     assert approved["status"] == "completed"
 
 
-def test_open_review_rejects_self_review_when_guard_is_required(
+def test_open_review_always_rejects_self_review(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1993,12 +2024,7 @@ def test_open_review_rejects_self_review_when_guard_is_required(
             )
         ]
     )
-    _configure_api(
-        tmp_path,
-        monkeypatch,
-        client,
-        extra_config="default_reviewer = 'auto'\nrequire_distinct_reviewer = true\n",
-    )
+    _configure_api(tmp_path, monkeypatch, client)
     server = create_server(tmp_path)
 
     _call(server, "submit_for_review", {"id": 1, "summary": "Implemented."})
@@ -2035,7 +2061,7 @@ def test_approve_allows_different_reviewer(
     assert approved["status"] == "completed"
 
 
-def test_approve_rejects_self_review_when_guard_is_required(
+def test_approve_always_rejects_self_review(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2051,7 +2077,7 @@ def test_approve_rejects_self_review_when_guard_is_required(
             )
         ]
     )
-    _configure_api(tmp_path, monkeypatch, client, extra_config="require_distinct_reviewer = true\n")
+    _configure_api(tmp_path, monkeypatch, client)
     server = create_server(tmp_path)
 
     with pytest.raises(Exception, match="self-review is not allowed"):
@@ -2074,7 +2100,7 @@ def test_approve_rejects_unassigned_reviewer_with_clear_message(
             )
         ]
     )
-    _configure_api(tmp_path, monkeypatch, client, extra_config="default_reviewer = 'auto'\n")
+    _configure_api(tmp_path, monkeypatch, client)
     server = create_server(tmp_path)
 
     with pytest.raises(Exception) as excinfo:
@@ -2083,7 +2109,7 @@ def test_approve_rejects_unassigned_reviewer_with_clear_message(
     message = str(excinfo.value)
     assert "review is assigned to reviewer 'codex'" in message
     assert "You passed reviewer='claude'" in message
-    assert "Omit `reviewer` to use default_reviewer" in message
+    assert "Omit `reviewer` to use the open review pool" in message
 
 
 def test_api_proposal_tools_send_list_adopt_and_discard(

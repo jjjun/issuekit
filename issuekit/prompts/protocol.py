@@ -15,8 +15,8 @@ The canonical delegation cycle is:
    required, so any idle configured agent can claim the issue.
 3. Implementer: claim the issue with `claim_next_task`, run the work, then call
    `submit_for_review`.
-4. Open review pool: omit `reviewer` when `default_reviewer = "auto"` so any
-   eligible reviewer can decide the issue.
+4. Open review pool: omit `reviewer` when submitting the issue so any eligible
+   reviewer can decide it.
 5. Reviewer: approve to complete the issue, or request changes to return it to
    implementation.
 6. Changes loop: the implementer reclaims or continues the issue, addresses only
@@ -313,7 +313,8 @@ call `claim_next_task` or `submit_for_review`.
 
 The implementer handles issuekit tasks from the API-backed project queue. Any
 configured agent can be the implementer or the reviewer. The reviewer is the
-agent assigned at stage=review and defaults to `auto` in API mode.
+agent assigned at stage=review, or any eligible reviewer when the issue is in
+the open review pool.
 
 Cross-project proposals are API inbox entries.
 Before claiming normal work, inspect `issuekit incoming` when cross-repo
@@ -383,10 +384,9 @@ commands. Run this protocol end to end:
    a command in the background and ending the turn is a failed run, not a
    completed one.
 5. Call `submit_for_review(id, summary, branch, commit, reviewer=None)` with an
-   ASCII summary and optional branch/commit metadata. Omit reviewer to use
-   `default_reviewer`, or pass another configured assignee. If
-   `default_reviewer` is `auto`, the issue enters the open review pool so any
-   eligible reviewer may review it.
+   ASCII summary and optional branch/commit metadata. Omit `reviewer` to send
+   the issue to the open review pool, or pass a configured assignee to assign
+   it directly. The reviewer at stage=review is whoever decides the issue.
 6. If a reviewer returns the issue with stage=changes_requested, call
    `claim_next_task()` again, or use `claim_next_task(assignee="<agent>")` for
    an explicit implementer, read the Review Feedback note, re-plan for just
@@ -472,7 +472,8 @@ REVIEWER_PROTOCOL = """# Handoff protocol (reviewer)
 
 The reviewer handles issuekit tasks after an implementer submits them for
 review. Any configured reviewer can use this flow. The reviewer is the agent
-assigned at stage=review and defaults to `auto` in API mode.
+assigned at stage=review, or any eligible reviewer when the issue is in the
+open review pool.
 
 When review reveals that a needed change belongs to another project, originate
 a proposal instead of only reporting it. Use `issuekit propose --to <project>
@@ -485,9 +486,8 @@ For multi-project dependencies found during review, follow the dependency-first
 rule in the delegation cycle overview above.
 
 1. Call the issuekit MCP tool `next_review(reviewer=None)`. Omit reviewer to
-   use `default_reviewer`, or pass the reviewer assignee to inspect. With
-   `default_reviewer = "auto"`, omitted reviewer means the next issue at
-   stage=review, whether assigned or in the open review pool. If MCP is
+   inspect the open review pool, or pass a reviewer assignee to inspect that
+   reviewer's assigned issues. If MCP is
    unavailable, use the read-only CLI
    fallback `issuekit next-review [--reviewer <name>] --json`, then use
    `issuekit show <id> --json` to reread a specific issue.

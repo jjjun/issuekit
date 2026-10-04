@@ -24,8 +24,6 @@ from issuekit.guards.branch import enforce_work_branch
 from issuekit.guards.claim_sync import enforce_claim_sync
 from issuekit.issues.session import current_session_token, validate_session_token
 
-AUTO_REVIEWER = "auto"
-
 
 @dataclass(frozen=True)
 class ReclaimResult:
@@ -288,6 +286,9 @@ def submit_for_review(
 ) -> Issue:
     config = config or IssuekitConfig()
     _validate_stage("review", config)
+    if reviewer is not None:
+        reviewer = reviewer.strip()
+        _validate_assignee(reviewer, config)
     if branch is None:
         branch = git_current_branch(cwd)
     _validate_ascii_text(summary, "--summary")
@@ -335,6 +336,9 @@ def request_changes(
     agent_reasoning_effort: str | None = None,
 ) -> Issue:
     config = config or IssuekitConfig()
+    if reviewer is not None:
+        reviewer = reviewer.strip()
+        _validate_assignee(reviewer, config)
     if assignee is not None:
         _validate_assignee(assignee, config)
     _validate_stage("changes_requested", config)
@@ -365,7 +369,7 @@ def next_review(
     """Return the next issue waiting for a reviewer."""
     config = config or IssuekitConfig()
     with _managed_store(config, store) as active_store:
-        if reviewer is None and config.default_reviewer == AUTO_REVIEWER:
+        if reviewer is None:
             issues = active_store.find_for(None, "review")  # type: ignore[attr-defined]
         else:
             resolved = resolve_reviewer(reviewer, config)
@@ -428,14 +432,13 @@ def ensure_assigned_reviewer(
     if reviewer_arg is None:
         raise WorkflowError(
             f"Issue #{issue.id} review is assigned to reviewer "
-            f"'{issue.assignee or 'no one'}'. default_reviewer resolved to "
-            f"reviewer='{resolved_reviewer}'. Pass reviewer='{issue.assignee}' "
-            "or update default_reviewer to match the assigned reviewer."
+            f"'{issue.assignee or 'no one'}', but the resolved reviewer is "
+            f"'{resolved_reviewer}'. Pass reviewer='{issue.assignee}' to review it."
         )
     raise WorkflowError(
         f"Issue #{issue.id} review is assigned to reviewer "
         f"'{issue.assignee or 'no one'}'. You passed reviewer='{reviewer_arg}'. "
-        "Omit `reviewer` to use default_reviewer, or pass the assigned reviewer."
+        "Omit `reviewer` to use the open review pool, or pass the assigned reviewer."
     )
 
 
@@ -445,14 +448,10 @@ def resolve_reviewer(
     *,
     issue: Issue | None = None,
 ) -> str:
-    configured = (reviewer or config.default_reviewer).strip()
-    resolved = (
-        _resolve_auto_reviewer(config, issue=issue)
-        if configured == AUTO_REVIEWER
-        else configured
-    )
-    if resolved:
-        _validate_assignee(resolved, config)
+    if reviewer is None:
+        return _resolve_auto_reviewer(config, issue=issue)
+    resolved = reviewer.strip()
+    _validate_assignee(resolved, config)
     return resolved
 
 
@@ -470,24 +469,16 @@ def resolve_implementer(
 
 
 def _resolve_auto_reviewer(config: IssuekitConfig, *, issue: Issue | None) -> str:
-    if config.require_distinct_reviewer:
-        implementer = issue.implementer if issue is not None else ""
-        for assignee in config.assignees:
-            if assignee != implementer:
-                return assignee
-        raise WorkflowError(
-            "Distinct-reviewer guard (require_distinct_reviewer) blocks auto reviewer "
-            "resolution: no configured reviewer is distinct from the issue implementer. "
-            "Recovery: configure an assignee distinct from issue.implementer; "
-            "API-backed mode always enforces this guard.",
-            code="distinct_reviewer_guard",
-        )
-
-    if issue is not None and issue.assignee:
-        return issue.assignee
-    if config.assignees:
-        return config.assignees[0]
-    raise WorkflowError("No assignees are configured for auto reviewer.")
+    implementer = issue.implementer if issue is not None else ""
+    for assignee in config.assignees:
+        if assignee != implementer:
+            return assignee
+    raise WorkflowError(
+        "Distinct-reviewer guard blocks auto reviewer resolution: no configured "
+        "reviewer is distinct from the issue implementer. Recovery: configure an "
+        "assignee distinct from issue.implementer.",
+        code="distinct_reviewer_guard",
+    )
 
 
 def _validate_assignee(value: str, config: IssuekitConfig) -> None:

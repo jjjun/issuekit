@@ -66,7 +66,6 @@ def run(args) -> int:
         "workerPresent": config.worker is not None,
         "enabledAgents": enabled_agents,
         "disabledAgents": list(config.disabled_agents),
-        "defaultReviewer": config.default_reviewer,
         "configuredDefaultImplementer": config.default_implementer or None,
         "defaultImplementer": resolve_implementer(None, config),
         "agentRoles": effective_agent_roles(config.agent_roles, enabled_agents),
@@ -138,7 +137,6 @@ def run(args) -> int:
     )
     if api_error:
         print(f"- API error: {api_error}")
-    print(f"- Default reviewer: {summary['defaultReviewer'] or '-'}")
     print(f"- Default implementer: {summary['defaultImplementer'] or '-'}")
     print(
         "- Configured default implementer: "

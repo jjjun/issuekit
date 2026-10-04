@@ -427,7 +427,7 @@ def test_setup_diagnostics_surface_machine_config_path(
 
 def test_setup_diagnostics_report_invalid_agent_config(tmp_path: Path) -> None:
     (tmp_path / "issuekit.toml").write_text(
-        "disabled_agents = ['claude']\ndefault_reviewer = 'claude'\n",
+        "disabled_agents = ['claude']\ndefault_implementer = 'claude'\n",
         encoding="utf-8",
         newline="\n",
     )
@@ -438,7 +438,7 @@ def test_setup_diagnostics_report_invalid_agent_config(tmp_path: Path) -> None:
     )
 
     assert diagnostic.status == "ACTION"
-    assert diagnostic.details == ("default_reviewer references disabled agent: claude",)
+    assert diagnostic.details == ("default_implementer references disabled agent: claude",)
 
 
 def test_setup_check_json_blocked_repo_reports_manual_action_without_writing(

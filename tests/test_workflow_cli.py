@@ -561,8 +561,6 @@ def test_api_approval_and_completion_pass_structured_params(
     config = IssuekitConfig(
         api_url="https://mine.example",
         project="demo",
-        default_reviewer="auto",
-        require_distinct_reviewer=True,
     )
 
     approved = approve_issue(

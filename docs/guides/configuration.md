@@ -11,8 +11,6 @@ project = "issuekit"
 assignees = ["codex", "claude"]
 disabled_agents = ["kimi"]
 stages = ["planned", "todo", "implementing", "review", "changes_requested", "done"]
-default_reviewer = "auto"
-require_distinct_reviewer = true
 work_branch = "main"
 gate_halfwidth_kana = true
 check_encoding_exclude = ["packages/*/src/generated/**"]
@@ -28,8 +26,6 @@ project = "issuekit"
 assignees = ["codex", "claude"]
 disabled_agents = ["kimi"]
 stages = ["planned", "todo", "implementing", "review", "changes_requested", "done"]
-default_reviewer = "auto"
-require_distinct_reviewer = true
 work_branch = "main"
 gate_halfwidth_kana = true
 check_encoding_exclude = ["packages/*/src/generated/**"]
@@ -177,31 +173,15 @@ the LAN must set one of those two machine-controlled opt-outs there.
 
 ## Reviewer and implementer policy
 
-The mine-py server owns issue ids and reviewer policy. When `api_url` is set,
-issuekit always treats review handoff as `default_reviewer = "auto"` and
-`require_distinct_reviewer = true` for local decisions, regardless of local
-reviewer-policy keys:
+The mine-py server owns issue ids and reviewer policy. When review is submitted
+without a reviewer, the issue enters the open review pool. `next-review` and
+MCP `next_review` also inspect that pool when no reviewer is given. Pass a
+configured assignee to assign or inspect reviews for that reviewer.
 
-```toml
-[tool.issuekit]
-api_url = "https://mine.example"
-project = "issuekit"
-default_reviewer = "auto"
-require_distinct_reviewer = true
-```
-
-`default_reviewer` controls where MCP and CLI review handoffs go when no
-reviewer is specified. It must be one of the configured `assignees`, or `auto`.
-With `auto`, issuekit chooses the first configured assignee that differs from
-the issue implementer. In API mode, `require_distinct_reviewer` is always true
-for local decisions, so same-name review is rejected.
-
-Without `api_url`, the local defaults are `default_reviewer = "claude"` and
-`require_distinct_reviewer = false`. Because `default_reviewer` must name an
-enabled assignee, a local config that disables Claude or leaves it out of
-`assignees` must also set `default_reviewer`; otherwise config loading fails
-with `default_reviewer references disabled agent: claude` or
-`Unknown default_reviewer: claude`.
+When issuekit automatically selects a reviewer to approve an open-pool issue,
+it chooses the first configured assignee who differs from the issue
+implementer. If no such assignee exists, the distinct-reviewer guard rejects
+the approval.
 
 `default_implementer` controls which configured assignee MCP and CLI
 implementation commands use when no implementer is specified. It must be one
@@ -219,9 +199,9 @@ repo policy. When `assignees` is omitted, issuekit defaults it to the enabled
 agent names; an explicit `assignees` list still defines the assignment pool.
 
 A setting that names a disabled agent fails config loading with
-`<key> references disabled agent: <name>`. This applies to `default_reviewer`,
-`default_implementer`, `[router] agent`, and `[triage] author_agent`, so
-update those settings when you disable the agent they name.
+`<key> references disabled agent: <name>`. This applies to
+`default_implementer`, `[router] agent`, and `[triage] author_agent`, so update
+those settings when you disable the agent they name.
 
 ## Agent overlays
 

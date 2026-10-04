@@ -187,7 +187,7 @@ def _configure_registered_api(
     assignees: str | None = None,
     triage: str = "",
 ) -> None:
-    config = "api_url = 'https://mine.example'\nproject = 'demo'\ndefault_reviewer = 'auto'\n"
+    config = "api_url = 'https://mine.example'\nproject = 'demo'\n"
     if assignees is not None:
         config += f"assignees = [{assignees}]\n"
     config += triage
@@ -1531,7 +1531,7 @@ def test_serve_requires_api_url_for_registered_worker(
     capsys,
 ) -> None:
     (tmp_path / "issuekit.toml").write_text(
-        "project = 'demo'\nassignees = ['codex']\ndefault_reviewer = 'codex'\n",
+        "project = 'demo'\nassignees = ['codex']\n",
         encoding="utf-8",
         newline="\n",
     )

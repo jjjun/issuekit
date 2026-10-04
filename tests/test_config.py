@@ -447,7 +447,8 @@ def test_machine_config_ignores_unknown_top_level_and_agent_settings(
 ) -> None:
     machine_path = tmp_path / "machine.toml"
     machine_path.write_text(
-        "unknown = 'value'\n[agents.claude]\nunknown = 'value'\n",
+        "unknown = 'value'\ndefault_reviewer = 'claude'\n"
+        "[agents.claude]\nunknown = 'value'\n",
         encoding="utf-8",
         newline="\n",
     )
@@ -458,6 +459,7 @@ def test_machine_config_ignores_unknown_top_level_and_agent_settings(
 
     assert [str(warning.message) for warning in warnings_record] == [
         f"Ignoring unsupported machine config setting unknown in {machine_path}.",
+        f"Ignoring unsupported machine config setting default_reviewer in {machine_path}.",
         f"Ignoring unsupported machine config setting agents.claude.unknown in {machine_path}.",
     ]
     assert dict(config.agents)["claude"] == dict(IssuekitConfig.agents)["claude"]
@@ -800,8 +802,6 @@ def test_load_config_reads_api_fields_from_pyproject(
     assert config.api_url == "https://mine.example"
     assert config.project == "demo_project"
     assert config.api_timeout == 12.5
-    assert config.default_reviewer == "auto"
-    assert config.require_distinct_reviewer is True
 
 
 def test_load_config_reads_work_branch(tmp_path: Path) -> None:
@@ -1313,7 +1313,7 @@ def test_load_config_refuses_git_tracked_dotenv(tmp_path: Path) -> None:
     assert "git rm --cached .env" in str(excinfo.value)
 
 
-def test_load_config_api_mode_uses_server_reviewer_policy(
+def test_load_config_ignores_stale_reviewer_policy_keys(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     (tmp_path / "issuekit.toml").write_text(
@@ -1335,8 +1335,7 @@ def test_load_config_api_mode_uses_server_reviewer_policy(
 
     config = load_config(tmp_path)
 
-    assert config.default_reviewer == "auto"
-    assert config.require_distinct_reviewer is True
+    assert config.api_url == "https://mine.example"
 
 
 def test_load_config_rejects_invalid_project_token(tmp_path: Path) -> None:
@@ -1446,7 +1445,6 @@ def test_load_config_explicit_assignees_override_enabled_agent_names(
         (
             "disabled_agents = ['kimi']\n"
             "assignees = ['human', 'kimi', 'codex']\n"
-            "default_reviewer = 'human'\n"
         ),
         encoding="utf-8",
         newline="\n",
@@ -1497,10 +1495,6 @@ def test_load_config_rejects_invalid_agent_roles(
 @pytest.mark.parametrize(
     ("body", "message"),
     [
-        (
-            "disabled_agents = ['claude']\ndefault_reviewer = 'claude'\n",
-            "default_reviewer references disabled agent: claude",
-        ),
         (
             "disabled_agents = ['codex']\n[router]\nagent = 'codex'\n",
             "router.agent references disabled agent: codex",
@@ -1567,8 +1561,6 @@ def test_load_config_reads_workflow_sets_from_issuekit_toml(tmp_path: Path) -> N
         (
             "assignees = ['alice', 'bob']\n"
             "stages = ['draft', 'review']\n"
-            "default_reviewer = 'bob'\n"
-            "require_distinct_reviewer = true\n"
         ),
         encoding="utf-8",
         newline="\n",
@@ -1577,54 +1569,55 @@ def test_load_config_reads_workflow_sets_from_issuekit_toml(tmp_path: Path) -> N
     assert load_config(tmp_path) == IssuekitConfig(
         assignees=("alice", "bob"),
         stages=("draft", "review"),
-        default_reviewer="bob",
-        require_distinct_reviewer=True,
     )
 
 
-def test_load_config_accepts_auto_default_reviewer(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("filename", "body"),
+    [
+        (
+            "issuekit.toml",
+            "assignees = ['alice', 'bob']\ndefault_reviewer = 'nobody'\n"
+            "require_distinct_reviewer = false\n",
+        ),
+        (
+            "pyproject.toml",
+            "[tool.issuekit]\nassignees = ['alice', 'bob']\n"
+            "default_reviewer = 'nobody'\nrequire_distinct_reviewer = false\n",
+        ),
+    ],
+)
+def test_load_config_ignores_stale_reviewer_settings(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    filename: str,
+    body: str,
+) -> None:
+    monkeypatch.setenv("ISSUEKIT_CONFIG", "")
+    (tmp_path / filename).write_text(body, encoding="utf-8", newline="\n")
+
+    config = load_config(tmp_path)
+
+    assert config.assignees == ("alice", "bob")
+    assert not hasattr(config, "default_reviewer")
+    assert not hasattr(config, "require_distinct_reviewer")
+
+
+def test_load_config_allows_disabling_claude_without_api_url(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ISSUEKIT_CONFIG", "")
     (tmp_path / "issuekit.toml").write_text(
-        "assignees = ['alice', 'bob']\ndefault_reviewer = 'auto'\n",
+        "disabled_agents = ['claude']\n",
         encoding="utf-8",
         newline="\n",
     )
 
-    assert load_config(tmp_path) == IssuekitConfig(
-        assignees=("alice", "bob"),
-        default_reviewer="auto",
-    )
+    config = load_config(tmp_path)
 
-
-def test_load_config_coerces_string_distinct_reviewer_flag(tmp_path: Path) -> None:
-    (tmp_path / "issuekit.toml").write_text(
-        "require_distinct_reviewer = 'yes'\n",
-        encoding="utf-8",
-        newline="\n",
-    )
-
-    assert load_config(tmp_path).require_distinct_reviewer is True
-
-
-def test_load_config_rejects_invalid_default_reviewer_token(tmp_path: Path) -> None:
-    (tmp_path / "issuekit.toml").write_text(
-        "default_reviewer = 'bad value'\n",
-        encoding="utf-8",
-        newline="\n",
-    )
-
-    with pytest.raises(ValueError, match="Invalid default_reviewer token"):
-        load_config(tmp_path)
-
-
-def test_load_config_rejects_unknown_default_reviewer(tmp_path: Path) -> None:
-    (tmp_path / "issuekit.toml").write_text(
-        "assignees = ['alice', 'bob']\ndefault_reviewer = 'claude'\n",
-        encoding="utf-8",
-        newline="\n",
-    )
-
-    with pytest.raises(ValueError, match="Unknown default_reviewer"):
-        load_config(tmp_path)
+    assert config.api_url == ""
+    assert "claude" not in config.assignees
 
 
 @pytest.mark.parametrize(
@@ -1632,8 +1625,7 @@ def test_load_config_rejects_unknown_default_reviewer(tmp_path: Path) -> None:
     [
         ("default_implementer = 'bad value'\n", "Invalid default_implementer token"),
         (
-            "assignees = ['codex']\ndefault_reviewer = 'codex'\n"
-            "default_implementer = 'claude'\n",
+            "assignees = ['codex']\ndefault_implementer = 'claude'\n",
             "Unknown default_implementer",
         ),
         (

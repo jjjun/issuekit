@@ -22,8 +22,8 @@ agent for proposal triage.
   API.
 - An agent resolves: `--agent`, then `default_implementer`, then exactly one
   enabled assignee. Every mode uses this order, including `--review` and
-  `--proposal-checks`; `default_reviewer` is never consulted, so a reviewer
-  worker should pass `--agent`. See [Configuration](configuration.md).
+  `--proposal-checks`; a reviewer worker should pass `--agent`. See
+  [Configuration](configuration.md).
 - The checkout sits on the configured `work_branch` (or the run passes
   `--allow-any-branch`), and the tree is clean enough to pass the claim-time
   sync guard (or the run passes `--no-sync`).

@@ -149,9 +149,7 @@ class IssuekitConfig:
         "changes_requested",
         "done",
     )
-    default_reviewer: str = "claude"
     default_implementer: str = ""
-    require_distinct_reviewer: bool = False
     work_branch: str = ""
     gate_halfwidth_kana: bool = True
     check_encoding_exclude: tuple[str, ...] = ()
@@ -332,13 +330,6 @@ def load_config(cwd: Path | str = ".") -> IssuekitConfig:
         agent_role_overlays, disabled_agents
     )
     assignees = _load_assignees(raw_config, agents, disabled_agents)
-    default_reviewer = (
-        "auto"
-        if api_url
-        else str(raw_config.get("default_reviewer", IssuekitConfig.default_reviewer)).strip()
-    )
-    _validate_not_disabled("default_reviewer", default_reviewer, disabled_agents)
-    _validate_default_reviewer(default_reviewer, assignees)
     default_implementer = str(
         raw_config.get("default_implementer", IssuekitConfig.default_implementer)
     ).strip()
@@ -405,16 +396,7 @@ def load_config(cwd: Path | str = ".") -> IssuekitConfig:
         issues_dir=str(raw_config.get("issues_dir", IssuekitConfig.issues_dir)),
         assignees=assignees,
         stages=_string_tuple(raw_config.get("stages", IssuekitConfig.stages)),
-        default_reviewer=default_reviewer,
         default_implementer=default_implementer,
-        require_distinct_reviewer=_bool_value(
-            True
-            if api_url
-            else raw_config.get(
-                "require_distinct_reviewer",
-                IssuekitConfig.require_distinct_reviewer,
-            )
-        ),
         work_branch=work_branch,
         gate_halfwidth_kana=_bool_value(
             raw_config.get("gate_halfwidth_kana", IssuekitConfig.gate_halfwidth_kana)
@@ -1059,15 +1041,6 @@ def _validate_not_disabled(
 ) -> None:
     if value and value in set(disabled_agents):
         raise ValueError(f"{field} references disabled agent: {value}")
-
-
-def _validate_default_reviewer(default_reviewer: str, assignees: tuple[str, ...]) -> None:
-    if not is_valid_workflow_token(default_reviewer):
-        raise ValueError(f"Invalid default_reviewer token: {default_reviewer}")
-    if default_reviewer == "auto":
-        return
-    if default_reviewer not in assignees:
-        raise ValueError(f"Unknown default_reviewer: {default_reviewer}")
 
 
 def _validate_default_implementer(

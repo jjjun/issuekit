@@ -270,7 +270,6 @@ def _configure_api(
         (
             "api_url = 'https://mine.example'\n"
             "project = 'demo'\n"
-            "default_reviewer = 'auto'\n"
             f"{extra_config}"
         ),
         encoding="utf-8",
