@@ -17,7 +17,7 @@ from issuekit.agents.app_server_runtime import AppServerAttemptRunner
 from issuekit.agents.run_claimed import implementation_prompt
 from issuekit.config import IssuekitConfig, WorkerIdentity
 from issuekit.core import Issue
-from issuekit.workflow import WorkflowError
+from issuekit.errors import WorkflowError
 
 
 class FakeAdapter:

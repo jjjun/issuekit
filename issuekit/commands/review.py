@@ -16,8 +16,8 @@ from issuekit.agents.review import (
 from issuekit.commands._common import run_agent_command
 from issuekit.config import load_config
 from issuekit.core import Issue, parse_issue_id_arg
+from issuekit.errors import WorkflowError
 from issuekit.store import get_store
-from issuekit.workflow import WorkflowError
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:

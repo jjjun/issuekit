@@ -5,9 +5,9 @@ from pathlib import Path
 import pytest
 
 from issuekit.config import IssuekitConfig
+from issuekit.errors import WorkflowError
 from issuekit.gitutil import GitResult
 from issuekit.guards.claim_sync import enforce_claim_sync
-from issuekit.workflow import WorkflowError
 
 
 def test_claim_sync_noops_without_work_branch(

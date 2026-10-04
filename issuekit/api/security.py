@@ -12,7 +12,7 @@ from collections.abc import Mapping
 from typing import Any
 from urllib.parse import urlparse
 
-from issuekit.workflow import WorkflowError
+from issuekit.errors import WorkflowError
 
 _ALLOW_INSECURE_ENV = "ISSUEKIT_ALLOW_INSECURE"
 _WARNED_INSECURE_API_URLS: set[str] = set()

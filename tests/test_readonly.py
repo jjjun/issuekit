@@ -13,8 +13,8 @@ from issuekit.agents.readonly import (
     require_clean_run,
     run_readonly_evaluation,
 )
+from issuekit.errors import WorkflowError
 from issuekit.prompts import TRIAGE_PROMPT
-from issuekit.workflow import WorkflowError
 
 
 def test_prompt_from_spec_rejects_unknown_keyword(tmp_path: Path) -> None:

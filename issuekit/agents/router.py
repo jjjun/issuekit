@@ -13,6 +13,7 @@ from issuekit.agentrun import AgentRunner
 from issuekit.agents.readonly import prompt_from_spec, require_clean_run, run_readonly_evaluation
 from issuekit.agents.registry import resolve_adapter
 from issuekit.config import IssuekitConfig
+from issuekit.errors import WorkflowError
 from issuekit.issues.dependencies import DEPENDENCY_REF_EXPECTED, DEPENDENCY_REF_PATTERN
 from issuekit.prompts import (
     ROUTER_PROMPT,
@@ -21,7 +22,6 @@ from issuekit.prompts import (
     fence_untrusted,
 )
 from issuekit.proposals.api import api_client
-from issuekit.workflow import WorkflowError
 
 _DECISIONS = {"route", "clarify", "reject"}
 _TARGET_PLACEHOLDER_PATTERN = re.compile(r"^target:(?P<index>[0-9]+)$")

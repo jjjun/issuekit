@@ -16,8 +16,8 @@ from issuekit.core import (
     Issue,
     parse_issue_id_arg,
 )
+from issuekit.errors import WorkflowError
 from issuekit.store import managed_issue_store
-from issuekit.workflow import WorkflowError
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:

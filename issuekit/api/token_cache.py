@@ -11,8 +11,8 @@ from pathlib import Path
 from typing import Any
 
 from issuekit.config.settings import api_url_origin
+from issuekit.errors import WorkflowError
 from issuekit.file_permissions import chmod_600, ensure_owner_only_directory
-from issuekit.workflow import WorkflowError
 
 from .security import is_expired, jwt_expiry
 

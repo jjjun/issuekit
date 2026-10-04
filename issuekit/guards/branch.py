@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from issuekit.config import IssuekitConfig
+from issuekit.errors import WorkflowError
 from issuekit.gitutil import git_current_branch
 
 
@@ -22,8 +23,6 @@ def enforce_work_branch(
 
     current = git_current_branch(cwd)
     if current is None:
-        from issuekit.workflow import WorkflowError
-
         raise WorkflowError(
             "Work-branch guard blocks "
             f"{action}: checkout branch could not be determined, but work_branch "
@@ -32,8 +31,6 @@ def enforce_work_branch(
         )
     if current == config.work_branch:
         return
-
-    from issuekit.workflow import WorkflowError
 
     raise WorkflowError(
         "Work-branch guard blocks "

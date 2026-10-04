@@ -559,7 +559,7 @@ def test_api_cli_propose_surfaces_worker_catalog_error(
     monkeypatch,
     capsys,
 ) -> None:
-    from issuekit.workflow import WorkflowError
+    from issuekit.errors import WorkflowError
 
     class EmptyProfileCatalogClient(FakeIssuekitClient):
         def list_project_profiles(self):
@@ -601,7 +601,7 @@ def test_api_cli_propose_surfaces_profile_catalog_error(
     monkeypatch,
     capsys,
 ) -> None:
-    from issuekit.workflow import WorkflowError
+    from issuekit.errors import WorkflowError
 
     class EmptyWorkerCatalogClient(FakeIssuekitClient):
         def list_project_profiles(self):

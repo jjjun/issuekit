@@ -38,6 +38,7 @@ from issuekit.agents.triage_state import (
 )
 from issuekit.config import IssuekitConfig
 from issuekit.encoding import has_non_ascii
+from issuekit.errors import WorkflowError
 from issuekit.prompts import (
     TRIAGE_PROMPT,
     TriageAuthorParseError,
@@ -55,7 +56,6 @@ from issuekit.proposals.api import (
     matches_triage_policy,
     send_proposal,
 )
-from issuekit.workflow import WorkflowError
 
 _DECISIONS = {"adopt", "adopt_and_reply", "reply", "discard"}
 _DECISION_FIELD = {

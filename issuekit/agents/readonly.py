@@ -9,9 +9,9 @@ from pathlib import Path
 from typing import TextIO
 
 from issuekit.agentrun import AgentPrompt, AgentResult
+from issuekit.errors import WorkflowError
 from issuekit.gitutil import git_root, git_status_entries, run_git
 from issuekit.prompts import PromptSpec
-from issuekit.workflow import WorkflowError
 
 
 @dataclass(frozen=True)

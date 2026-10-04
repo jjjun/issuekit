@@ -23,8 +23,8 @@ from issuekit.agents.triage_author import (
     run_triage_author_cycle,
 )
 from issuekit.config import load_config
+from issuekit.errors import WorkflowError
 from issuekit.testing import FakeIssuekitClient
-from issuekit.workflow import WorkflowError
 
 
 def _write_config(tmp_path: Path, *, author_agent: str = "codex", extra: str = "") -> None:

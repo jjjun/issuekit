@@ -586,8 +586,8 @@ def test_post_worker_registration_propagates_missing_repo_endpoint(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    from issuekit.errors import WorkflowError
     from issuekit.workers import registry as worker_registry
-    from issuekit.workflow import WorkflowError
 
     monkeypatch.setattr(
         worker_registry,
@@ -636,8 +636,8 @@ def test_worker_heartbeat_tracks_consecutive_failures_and_resets(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    from issuekit.errors import WorkflowError
     from issuekit.workers import registry as worker_registry
-    from issuekit.workflow import WorkflowError
 
     outcomes = iter((False, False, True, False))
     errors: list[tuple[int, object]] = []
@@ -958,7 +958,7 @@ class FakeRegistryClient:
 
 class ProfileRejectingRegistryClient(FakeRegistryClient):
     def put_project_profile(self, **kwargs):
-        from issuekit.workflow import WorkflowError
+        from issuekit.errors import WorkflowError
 
         self.profile_calls.append(kwargs)
         raise WorkflowError("profile endpoint not found", code="http_404")
@@ -975,7 +975,7 @@ class RepoConflictRegistryClient(FakeRegistryClient):
         super().__init__()
 
     def upsert_repo(self, **kwargs):
-        from issuekit.workflow import WorkflowError
+        from issuekit.errors import WorkflowError
 
         raise WorkflowError(
             "repo key conflict",
@@ -992,7 +992,7 @@ class WorkerConflictRegistryClient(FakeRegistryClient):
         super().__init__()
 
     def upsert_worker(self, **kwargs):
-        from issuekit.workflow import WorkflowError
+        from issuekit.errors import WorkflowError
 
         raise WorkflowError(
             "duplicate worker",
@@ -1006,7 +1006,7 @@ class RepoEndpointNotFoundRegistryClient(FakeRegistryClient):
         super().__init__()
 
     def upsert_repo(self, **kwargs):
-        from issuekit.workflow import WorkflowError
+        from issuekit.errors import WorkflowError
 
         raise WorkflowError("repo endpoint not found", code="http_404")
 
@@ -1022,12 +1022,12 @@ class FailingRegistryClient:
         return None
 
     def upsert_repo(self, **kwargs):
-        from issuekit.workflow import WorkflowError
+        from issuekit.errors import WorkflowError
 
         raise WorkflowError("registry offline", code="request_failed")
 
     def upsert_worker(self, **kwargs):
-        from issuekit.workflow import WorkflowError
+        from issuekit.errors import WorkflowError
 
         raise WorkflowError("registry offline", code="request_failed")
 

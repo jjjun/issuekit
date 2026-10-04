@@ -32,6 +32,7 @@ from issuekit.config import (
 )
 from issuekit.config.local import LocalConfigError, load_toml, read_local_config
 from issuekit.core import issue_dict, worker_display_from_row
+from issuekit.errors import WorkflowError
 from issuekit.gitutil import git_root
 from issuekit.guards.author import (
     create_author_guard,
@@ -58,7 +59,6 @@ from issuekit.proposals.api import (
 from issuekit.store import get_store
 from issuekit.workers.registry import list_api_workers, remove_api_repo, remove_api_worker
 from issuekit.workflow import (
-    WorkflowError,
     claim_next,
     find_for,
     resolve_implementer,

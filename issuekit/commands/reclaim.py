@@ -8,9 +8,10 @@ from pathlib import Path
 from issuekit.commands._common import print_json, run_command
 from issuekit.config import load_config
 from issuekit.core import issue_dict, parse_issue_id_arg
+from issuekit.errors import WorkflowError
 from issuekit.issues.orphans import DEFAULT_STALE_AFTER_SEC
 from issuekit.workers.registry import WorkerListingError
-from issuekit.workflow import ReclaimResult, WorkflowError, reclaim_issue
+from issuekit.workflow import ReclaimResult, reclaim_issue
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:

@@ -25,9 +25,9 @@ from issuekit.agents.run_claimed import (
 )
 from issuekit.config import IssuekitConfig
 from issuekit.core import Issue
+from issuekit.errors import WorkflowError
 from issuekit.file_permissions import open_owner_only_new
 from issuekit.store import get_store
-from issuekit.workflow import WorkflowError
 
 BACKOFF_INITIAL_SEC = 1.0
 BACKOFF_MAX_SEC = 60.0

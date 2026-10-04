@@ -8,8 +8,9 @@ from pathlib import Path
 from issuekit.commands._common import print_json, run_command
 from issuekit.config import load_config
 from issuekit.core import issue_dict
+from issuekit.errors import WorkflowError
 from issuekit.issues.display import dependency_marker
-from issuekit.workflow import WorkflowError, find_for, validate_queue_stage
+from issuekit.workflow import find_for, validate_queue_stage
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:

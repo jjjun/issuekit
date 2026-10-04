@@ -15,9 +15,9 @@ from issuekit.agents import run_claimed as run_claimed_agent
 from issuekit.agents.run_claimed import review_feedback_prompt
 from issuekit.config import IssuekitConfig
 from issuekit.core import Issue
+from issuekit.errors import WorkflowError
 from issuekit.gitutil import GitStatusEntry
 from issuekit.testing import FakeIssuekitClient
-from issuekit.workflow import WorkflowError
 from tests.issue_helpers import api_issue
 
 

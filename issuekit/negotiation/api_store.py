@@ -8,6 +8,7 @@ from typing import Any
 from issuekit.api import IssuekitClient
 from issuekit.config import IssuekitConfig
 from issuekit.core import optional_int
+from issuekit.errors import WorkflowError
 from issuekit.negotiation.model import (
     NegotiationEntry,
     NegotiationIssueRefs,
@@ -20,7 +21,6 @@ from issuekit.negotiation.model import (
     validate_contract,
     validate_entry_input,
 )
-from issuekit.workflow import WorkflowError
 
 
 class ApiNegotiationStore:

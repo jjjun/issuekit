@@ -1,6 +1,7 @@
 import pytest
 
 from issuekit.config import IssuekitConfig
+from issuekit.errors import WorkflowError
 from issuekit.negotiation import (
     ApiNegotiationStore,
     MockNegotiationStore,
@@ -8,7 +9,6 @@ from issuekit.negotiation import (
     Verdict,
 )
 from issuekit.testing import FakeIssuekitClient
-from issuekit.workflow import WorkflowError
 
 
 def test_mock_store_rejects_cancelling_blocked_thread(tmp_path) -> None:

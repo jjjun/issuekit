@@ -7,6 +7,7 @@ from pathlib import Path
 
 from issuekit.commands._common import print_json, run_command
 from issuekit.config import load_config
+from issuekit.errors import WorkflowError
 from issuekit.workers.registry import (
     ACTIVE_CLAIM_STAGES,
     WorkerClaim,
@@ -14,7 +15,6 @@ from issuekit.workers.registry import (
     list_worker_claims,
     worker_claim_dict,
 )
-from issuekit.workflow import WorkflowError
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:

@@ -6,7 +6,7 @@ from collections.abc import Mapping, Sequence
 
 from issuekit.config import IssuekitConfig
 from issuekit.core import worker_key_matches_row, worker_keys_from_row
-from issuekit.workflow import WorkflowError
+from issuekit.errors import WorkflowError
 
 
 def validate_target_worker(

@@ -10,7 +10,7 @@ import httpx
 
 from issuekit.config.settings import api_url_origin
 from issuekit.core import drop_none
-from issuekit.workflow import WorkflowError
+from issuekit.errors import WorkflowError
 
 from .security import (
     is_expired,

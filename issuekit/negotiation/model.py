@@ -8,8 +8,8 @@ from pathlib import Path
 from typing import Protocol
 
 from issuekit.core import is_valid_workflow_token
+from issuekit.errors import WorkflowError
 from issuekit.prompts import canonical_contract_token
-from issuekit.workflow import WorkflowError
 
 DEFAULT_NEGOTIATION_PATH = Path(".agent-runs") / "negotiations" / "mock.json"
 MAX_CONTRACT_LENGTH = 100000

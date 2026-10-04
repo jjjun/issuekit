@@ -49,6 +49,7 @@ from issuekit.commands.serve_loop import (
 )
 from issuekit.config import IssuekitConfig, load_config
 from issuekit.core import Issue
+from issuekit.errors import WorkflowError
 from issuekit.issues.orphans import DEFAULT_STALE_AFTER_SEC
 from issuekit.proposals import ProposalError
 from issuekit.proposals.api import (
@@ -58,7 +59,7 @@ from issuekit.proposals.api import (
 )
 from issuekit.store import get_store
 from issuekit.workers.registry import WorkerHeartbeat
-from issuekit.workflow import WorkflowError, claim_next, next_review, resolve_implementer
+from issuekit.workflow import claim_next, next_review, resolve_implementer
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:

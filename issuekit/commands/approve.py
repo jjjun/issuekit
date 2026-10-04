@@ -18,11 +18,11 @@ from issuekit.core import (
     is_valid_workflow_token,
     parse_issue_id_arg,
 )
+from issuekit.errors import WorkflowError
 from issuekit.gitutil import git_status_short
 from issuekit.issues.session import current_session_token, validate_session_token
 from issuekit.store import managed_issue_store
 from issuekit.workflow import (
-    WorkflowError,
     ensure_assigned_reviewer,
     resolve_reviewer,
 )

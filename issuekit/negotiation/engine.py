@@ -14,6 +14,7 @@ from issuekit.agents.readonly import require_clean_run, run_readonly_evaluation
 from issuekit.agents.registry import resolve_adapter
 from issuekit.config import IssuekitConfig
 from issuekit.core import Issue, last_nonempty_line
+from issuekit.errors import WorkflowError
 from issuekit.negotiation.model import (
     NegotiationEntry,
     NegotiationIssueRefs,
@@ -31,7 +32,6 @@ from issuekit.negotiation.prompts import (
 )
 from issuekit.prompts import render_negotiation_round_pointer
 from issuekit.store import get_store
-from issuekit.workflow import WorkflowError
 
 PROVIDER_SIDE = "provider"
 CONSUMER_SIDE = "consumer"

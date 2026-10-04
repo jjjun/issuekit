@@ -10,6 +10,7 @@ from pathlib import Path
 
 from issuekit.commands._common import print_json, run_command
 from issuekit.config import IssuekitConfig, load_config
+from issuekit.errors import WorkflowError
 from issuekit.proposals import ProposalError
 from issuekit.proposals.api import api_client
 from issuekit.timestamps import parse_timestamp, utcnow
@@ -17,7 +18,6 @@ from issuekit.workers.addressing import (
     registered_worker_row,
     resolve_registered_worker_address,
 )
-from issuekit.workflow import WorkflowError
 
 PROPOSAL_CHECK_WORKER_STALE_AFTER_SEC = 300.0
 

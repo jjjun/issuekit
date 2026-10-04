@@ -18,10 +18,11 @@ from issuekit.commands._common import run_agent_command
 from issuekit.config import load_config
 from issuekit.core import Issue, parse_issue_id_arg
 from issuekit.encoding import sanitize_to_ascii
+from issuekit.errors import WorkflowError
 from issuekit.guards.author import AuthorOrchestrationContext, read_author_guards
 from issuekit.issues.session import new_session_token
 from issuekit.store import get_store
-from issuekit.workflow import WorkflowError, claim_issue, resolve_implementer
+from issuekit.workflow import claim_issue, resolve_implementer
 
 _MAPPED_ERRORS = (FileNotFoundError, RuntimeError, ValueError, TimeoutError, WorkflowError)
 

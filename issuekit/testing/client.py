@@ -6,9 +6,9 @@ from copy import deepcopy
 from threading import Lock
 from typing import Any
 
+from issuekit.errors import WorkflowError
 from issuekit.testing.issues import FakeIssueSurface
 from issuekit.testing.proposals import FakeProposalSurface
-from issuekit.workflow import WorkflowError
 
 JsonDict = dict[str, Any]
 
@@ -81,8 +81,6 @@ class FakeIssuekitClient(FakeIssueSurface, FakeProposalSurface):
         with self._lock:
             profile = self._profiles.get(target)
             if profile is None:
-                from issuekit.workflow import WorkflowError
-
                 raise WorkflowError(
                     f"Project profile for {target} was not found.", code="http_404"
                 )

@@ -7,8 +7,8 @@ import sys
 from pathlib import Path
 
 from issuekit.config import load_config
+from issuekit.errors import WorkflowError
 from issuekit.store import ApiStore, get_store
-from issuekit.workflow import WorkflowError
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:

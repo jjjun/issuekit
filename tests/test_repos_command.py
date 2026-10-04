@@ -4,9 +4,9 @@ from pathlib import Path
 import pytest
 
 from issuekit import cli
+from issuekit.errors import WorkflowError
 from issuekit.testing import FakeIssuekitClient
 from issuekit.workers import registry as worker_registry
-from issuekit.workflow import WorkflowError
 
 
 def _configure_api(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, client) -> None:

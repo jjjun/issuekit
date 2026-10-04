@@ -22,8 +22,8 @@ from issuekit.agents.proposal_check import (
 )
 from issuekit.agents.registry import resolve_adapter
 from issuekit.config import AgentRunConfig, RoleOverlay, load_config
+from issuekit.errors import WorkflowError
 from issuekit.testing import FakeIssuekitClient
-from issuekit.workflow import WorkflowError
 
 
 class FakeRunner:

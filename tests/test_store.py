@@ -2,9 +2,9 @@ import pytest
 
 from issuekit.config import IssuekitConfig
 from issuekit.core import issue_dict
+from issuekit.errors import WorkflowError
 from issuekit.store import ApiStore, get_store, managed_issue_store
 from issuekit.testing import FakeIssuekitClient
-from issuekit.workflow import WorkflowError
 from tests.issue_helpers import api_issue
 
 

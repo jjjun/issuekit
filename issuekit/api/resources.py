@@ -7,8 +7,8 @@ from typing import Any
 from urllib.parse import quote
 
 from issuekit.core import drop_none, is_valid_workflow_token
+from issuekit.errors import WorkflowError
 from issuekit.issues.session import validate_session_token
-from issuekit.workflow import WorkflowError
 
 from .base import JsonDict, ensure_dict, profile_rows, worker_rows
 

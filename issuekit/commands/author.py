@@ -23,6 +23,7 @@ from issuekit.core import (
     is_valid_workflow_token,
     issue_dict,
 )
+from issuekit.errors import WorkflowError
 from issuekit.guards.author import (
     STOP_SENTINEL,
     create_author_guard,
@@ -32,7 +33,6 @@ from issuekit.guards.author import (
 from issuekit.issues.dependencies import bare_ref_collision_warnings, dependency_refs
 from issuekit.issues.session import resolved_or_new_session_token
 from issuekit.workers.addressing import target_worker_repo_id, validate_target_worker
-from issuekit.workflow import WorkflowError
 
 _MIN_BARE_REF_NAME_LENGTH = 4
 _INVOCATION_PREFIX_PATTERN = re.compile(

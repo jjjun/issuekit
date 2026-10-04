@@ -5,6 +5,7 @@ from issuekit.commands.approve import approve_issue
 from issuekit.commands.complete import complete_issue
 from issuekit.config import IssuekitConfig, WorkerIdentity
 from issuekit.core import Issue
+from issuekit.errors import WorkflowError
 from issuekit.guards.author import (
     ENFORCE_AUTHOR_HANDOFF_ENV,
     AuthorOrchestrationContext,
@@ -13,7 +14,6 @@ from issuekit.guards.author import (
 )
 from issuekit.testing import FakeIssuekitClient
 from issuekit.workflow import (
-    WorkflowError,
     claim_issue,
     claim_next,
     find_for,

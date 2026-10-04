@@ -16,8 +16,8 @@ import issuekit.api.token_cache as token_cache_module
 import issuekit.file_permissions as file_permissions_module
 from issuekit.api import IssuekitClient
 from issuekit.api.client import DEFAULT_HTTP_LIMITS
+from issuekit.errors import WorkflowError
 from issuekit.testing import FakeIssuekitClient
-from issuekit.workflow import WorkflowError
 
 
 @pytest.fixture(autouse=True)

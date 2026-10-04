@@ -15,8 +15,9 @@ from issuekit.agents.proposal_check import (
 )
 from issuekit.commands._common import print_json, run_agent_command, run_command
 from issuekit.config import IssuekitConfig, load_config
+from issuekit.errors import WorkflowError
 from issuekit.proposals import ProposalError
-from issuekit.workflow import WorkflowError, resolve_implementer
+from issuekit.workflow import resolve_implementer
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:

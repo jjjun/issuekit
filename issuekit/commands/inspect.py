@@ -9,8 +9,9 @@ from issuekit.agentrun.status import is_dead, list_statuses
 from issuekit.commands._common import print_json, run_command
 from issuekit.config import load_config
 from issuekit.core import Issue, issue_dict, parse_issue_id_arg
+from issuekit.errors import WorkflowError
 from issuekit.store import get_store
-from issuekit.workflow import WorkflowError, next_review
+from issuekit.workflow import next_review
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:

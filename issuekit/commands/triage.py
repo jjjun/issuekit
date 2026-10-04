@@ -14,8 +14,8 @@ from issuekit.agents.triage_author import (
 )
 from issuekit.commands._common import print_json, run_agent_command
 from issuekit.config import load_config
+from issuekit.errors import WorkflowError
 from issuekit.proposals import ProposalError
-from issuekit.workflow import WorkflowError
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:

@@ -12,7 +12,7 @@ from pathlib import Path
 from issuekit.api import IssuekitClient
 from issuekit.api.security import warn_insecure_api_url
 from issuekit.config import api_url_origin, load_config
-from issuekit.workflow import WorkflowError
+from issuekit.errors import WorkflowError
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:

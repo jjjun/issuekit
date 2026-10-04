@@ -26,8 +26,8 @@ from issuekit.commands.request.state import (
     target_state,
 )
 from issuekit.config import IssuekitConfig
+from issuekit.errors import WorkflowError
 from issuekit.proposals import ProposalError
-from issuekit.workflow import WorkflowError
 
 
 def run_link(

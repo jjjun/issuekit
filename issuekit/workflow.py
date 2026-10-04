@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any
 
 from issuekit.config import IssuekitConfig
 from issuekit.core import (
@@ -14,6 +12,7 @@ from issuekit.core import (
     worker_keys_match,
 )
 from issuekit.encoding import ASCII_ONLY_HINT, has_non_ascii
+from issuekit.errors import WorkflowError
 from issuekit.gitutil import git_current_branch
 from issuekit.guards.author import (
     AuthorOrchestrationContext,
@@ -23,6 +22,7 @@ from issuekit.guards.author import (
 from issuekit.guards.branch import enforce_work_branch
 from issuekit.guards.claim_sync import enforce_claim_sync
 from issuekit.issues.session import current_session_token, validate_session_token
+from issuekit.store import managed_issue_store
 
 
 @dataclass(frozen=True)
@@ -42,30 +42,6 @@ class ReaddressResult:
     expected_target_worker: str
     actor: str
     audit_reason: str | None
-
-
-class WorkflowError(RuntimeError):
-    """Raised when a workflow transition cannot be completed."""
-
-    def __init__(
-        self,
-        message: str,
-        *,
-        code: str | None = None,
-        details: Mapping[str, Any] | None = None,
-    ) -> None:
-        super().__init__(message)
-        self.code = code
-        self.details = dict(details or {})
-
-    def __str__(self) -> str:
-        message = super().__str__()
-        from issuekit.guards.separation import separation_guard_note
-
-        note = separation_guard_note(message, code=self.code)
-        if note is None or note in message:
-            return message
-        return f"{message}\n{note}"
 
 
 def claim_next(
@@ -104,7 +80,7 @@ def claim_next(
         no_sync=no_sync,
     )
 
-    with _managed_store(config, store) as active_store:
+    with managed_issue_store(config, store) as active_store:
         worker = config.qualified_worker_key()
         resolved_session = _resolve_session(session)
         return active_store.claim_next(  # type: ignore[attr-defined]
@@ -147,7 +123,7 @@ def claim_issue(
         allow_any_branch=allow_any_branch,
     )
 
-    with _managed_store(config, store) as active_store:
+    with managed_issue_store(config, store) as active_store:
         previous_issue = active_store.get_issue(issue_id)
         if not _is_same_worker_changes_continuation(previous_issue, config):
             enforce_claim_sync(
@@ -182,7 +158,7 @@ def reclaim_issue(
     if reason is not None:
         _validate_ascii_text(reason, "--reason")
 
-    with _managed_store(config, store) as active_store:
+    with managed_issue_store(config, store) as active_store:
         previous = active_store.get_issue(issue_id)
         if previous is None:
             raise WorkflowError(f"Issue #{issue_id} was not found.", code="not_found")
@@ -241,7 +217,7 @@ def readdress_issue(
     if reason is not None:
         _validate_ascii_text(reason, "--reason")
 
-    with _managed_store(config, store) as active_store:
+    with managed_issue_store(config, store) as active_store:
         previous = active_store.get_issue(issue_id)
         if previous is None:
             raise WorkflowError(f"Issue #{issue_id} was not found.", code="not_found")
@@ -308,7 +284,7 @@ def submit_for_review(
         action=f"submit issue #{issue_id} for review",
         allow_any_branch=allow_any_branch,
     )
-    with _managed_store(config, store) as active_store:
+    with managed_issue_store(config, store) as active_store:
         resolved_session = _resolve_session(session)
         _ensure_orchestration_session(orchestration, resolved_session)
         return active_store.submit_for_review(  # type: ignore[attr-defined]
@@ -343,7 +319,7 @@ def request_changes(
         _validate_assignee(assignee, config)
     _validate_stage("changes_requested", config)
     _validate_ascii_text(notes, "--notes")
-    with _managed_store(config, store) as active_store:
+    with managed_issue_store(config, store) as active_store:
         worker = config.worker_key()
         resolved_session = _resolve_session(session)
         return active_store.request_changes(  # type: ignore[attr-defined]
@@ -368,7 +344,7 @@ def next_review(
 ) -> Issue | None:
     """Return the next issue waiting for a reviewer."""
     config = config or IssuekitConfig()
-    with _managed_store(config, store) as active_store:
+    with managed_issue_store(config, store) as active_store:
         if reviewer is None:
             issues = active_store.find_for(None, "review")  # type: ignore[attr-defined]
         else:
@@ -401,7 +377,7 @@ def find_for(
     if stage:
         _validate_stage(stage, config)
 
-    with _managed_store(config, store) as active_store:
+    with managed_issue_store(config, store) as active_store:
         return active_store.find_for(assignee, stage)
 
 
@@ -502,13 +478,6 @@ def _validate_ascii_text(value: str, label: str) -> None:
 
 def _reclaim_actor(config: IssuekitConfig) -> str:
     return config.worker_key() or "issuekit"
-
-
-def _managed_store(config: IssuekitConfig, store):
-    # Local import: issuekit.store imports WorkflowError from this module.
-    from issuekit.store import managed_issue_store
-
-    return managed_issue_store(config, store)
 
 
 def _is_same_worker_changes_continuation(

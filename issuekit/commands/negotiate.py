@@ -13,6 +13,7 @@ from issuekit.commands._common import print_json, run_agent_command, run_command
 from issuekit.config import load_config
 from issuekit.config.refs import RefError, list_effective_refs
 from issuekit.core import parse_issue_id_arg
+from issuekit.errors import WorkflowError
 from issuekit.gitutil import git_status_short
 from issuekit.negotiation import (
     NegotiationThreadSummary,
@@ -36,7 +37,7 @@ from issuekit.negotiation.prompts import NegotiationParseError
 from issuekit.proposals import ProposalError
 from issuekit.proposals.api import validate_target_project
 from issuekit.store import get_store
-from issuekit.workflow import WorkflowError, resolve_implementer
+from issuekit.workflow import resolve_implementer
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:

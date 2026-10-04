@@ -7,8 +7,8 @@ from datetime import date
 from typing import Any
 
 from issuekit.core import drop_none
+from issuekit.errors import WorkflowError
 from issuekit.negotiation.model import validate_contract as validate_negotiation_contract
-from issuekit.workflow import WorkflowError
 
 JsonDict = dict[str, Any]
 

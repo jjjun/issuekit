@@ -10,6 +10,7 @@ from pathlib import Path
 
 from issuekit.config import IssuekitConfig, parse_bool_value
 from issuekit.config.local import LocalConfigError, read_local_config, write_local_config
+from issuekit.errors import WorkflowError
 
 STOP_SENTINEL = "STOP_NOW"
 REQUIRED_NEXT_ACTION = "STOP"
@@ -88,8 +89,6 @@ def read_author_guards(cwd: Path | str = ".") -> tuple[AuthorGuard, ...]:
     try:
         raw_guards = read_local_config(cwd).author_guards
     except LocalConfigError as exc:
-        from issuekit.workflow import WorkflowError
-
         raise WorkflowError(str(exc)) from exc
     return tuple(
         guard
@@ -165,8 +164,6 @@ def enforce_no_author_guard(
     )
     if guard is None:
         return
-    from issuekit.workflow import WorkflowError
-
     detail = _orchestration_rejection_detail(guard, orchestration)
     suffix = f" {detail}" if detail else ""
     raise WorkflowError(

@@ -8,6 +8,7 @@ from pathlib import Path
 from issuekit.commands._common import print_json
 from issuekit.config import api_url_origin, load_config, resolve_repository_root
 from issuekit.core import issue_dict
+from issuekit.errors import WorkflowError
 from issuekit.guards.author import (
     STOP_SENTINEL,
     guards_dict,
@@ -19,7 +20,7 @@ from issuekit.prompts.protocol import effective_agent_roles
 from issuekit.proposals.api import api_client
 from issuekit.proposals.model import ProposalError
 from issuekit.store import get_store
-from issuekit.workflow import WorkflowError, resolve_implementer
+from issuekit.workflow import resolve_implementer
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:

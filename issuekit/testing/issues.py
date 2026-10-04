@@ -6,7 +6,7 @@ from copy import deepcopy
 from typing import Any
 
 from issuekit.core import drop_none, worker_keys_match
-from issuekit.workflow import WorkflowError
+from issuekit.errors import WorkflowError
 
 JsonDict = dict[str, Any]
 READY_STAGES = {"", "todo", "changes_requested"}

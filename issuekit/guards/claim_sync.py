@@ -7,6 +7,7 @@ import time
 from pathlib import Path
 
 from issuekit.config import IssuekitConfig
+from issuekit.errors import WorkflowError
 from issuekit.gitutil import git_current_branch, git_origin_url, git_status_short, run_git
 
 FETCH_TIMEOUT_SEC = 120.0
@@ -115,6 +116,4 @@ def _git_failure_message(
 
 
 def _raise(message: str) -> None:
-    from issuekit.workflow import WorkflowError
-
     raise WorkflowError(message, code="claim_sync_guard")

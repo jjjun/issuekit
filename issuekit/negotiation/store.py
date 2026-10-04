@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from issuekit.config import IssuekitConfig
+from issuekit.errors import WorkflowError
 from issuekit.negotiation.api_store import ApiNegotiationStore
 from issuekit.negotiation.mock_store import MockNegotiationStore
 from issuekit.negotiation.model import NegotiationStore
-from issuekit.workflow import WorkflowError
 
 
 def get_negotiation_store(

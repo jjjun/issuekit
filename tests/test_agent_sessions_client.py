@@ -6,7 +6,7 @@ import httpx
 import pytest
 
 from issuekit.api import IssuekitClient
-from issuekit.workflow import WorkflowError
+from issuekit.errors import WorkflowError
 
 
 def test_agent_session_client_uses_contract_paths_bodies_and_fencing_headers() -> None:

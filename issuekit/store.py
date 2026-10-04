@@ -13,7 +13,7 @@ from issuekit.core import (
     drop_none,
     get_issue_heading,
 )
-from issuekit.workflow import WorkflowError
+from issuekit.errors import WorkflowError
 
 REQUIRED_API_FIELDS = {
     "id",

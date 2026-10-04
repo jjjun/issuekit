@@ -19,6 +19,7 @@ from issuekit.agents.readonly import prompt_from_spec
 from issuekit.agents.registry import resolve_adapter
 from issuekit.config import IssuekitConfig
 from issuekit.encoding import has_non_ascii
+from issuekit.errors import WorkflowError
 from issuekit.prompts import (
     PROPOSAL_CHECK_PROMPT,
     ProposalCheckParseError,
@@ -32,7 +33,6 @@ from issuekit.proposals.api import (
     api_client,
     hold_adopted_issue,
 )
-from issuekit.workflow import WorkflowError
 
 PROPOSAL_CHECK_VERDICTS = {"approve", "reject", "revise"}
 PROPOSAL_CHECK_COMMENT_MAX = 100000

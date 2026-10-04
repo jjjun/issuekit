@@ -11,8 +11,8 @@ from issuekit.commands.request.answers import run_answer
 from issuekit.commands.request.inbox import run_inbox, run_status
 from issuekit.commands.request.routing import run_link, run_new_request
 from issuekit.config import load_config
+from issuekit.errors import WorkflowError
 from issuekit.proposals import ProposalError
-from issuekit.workflow import WorkflowError
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:

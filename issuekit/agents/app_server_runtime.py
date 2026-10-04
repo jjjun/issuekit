@@ -29,8 +29,8 @@ from issuekit.agentrun.runner import (
 from issuekit.api import IssuekitClient
 from issuekit.config import IssuekitConfig
 from issuekit.core import Issue
+from issuekit.errors import WorkflowError
 from issuekit.file_permissions import open_owner_only_new, write_owner_only_text
-from issuekit.workflow import WorkflowError
 
 LEASE_STOP_CODES = frozenset(
     {

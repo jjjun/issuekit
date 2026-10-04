@@ -5,8 +5,8 @@ import pytest
 from issuekit import cli
 from issuekit import store as store_module
 from issuekit.commands import validate
+from issuekit.errors import WorkflowError
 from issuekit.testing import FakeIssuekitClient
-from issuekit.workflow import WorkflowError
 from tests.issue_helpers import api_issue
 
 

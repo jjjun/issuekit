@@ -3,12 +3,12 @@
 import pytest
 
 from issuekit.config import IssuekitConfig
+from issuekit.errors import WorkflowError
 from issuekit.workers.addressing import (
     resolve_registered_worker_address,
     target_worker_repo_id,
     validate_target_worker,
 )
-from issuekit.workflow import WorkflowError
 
 CONFIG = IssuekitConfig(project="demo")
 REGISTERED_WORKER = {

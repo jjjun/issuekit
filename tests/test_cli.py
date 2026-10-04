@@ -8,9 +8,9 @@ import pytest
 from issuekit import cli
 from issuekit.commands._common import run_agent_command
 from issuekit.config import IssuekitConfig
+from issuekit.errors import WorkflowError
 from issuekit.guards.author import create_author_guard
 from issuekit.proposals.model import ProposalError
-from issuekit.workflow import WorkflowError
 
 EXPECTED_COMMANDS = {
     "info",

@@ -8,8 +8,8 @@ from pathlib import Path
 from issuekit.commands._common import print_json, run_command
 from issuekit.config import load_config
 from issuekit.core import Issue, issue_dict, parse_issue_id_arg
+from issuekit.errors import WorkflowError
 from issuekit.store import managed_issue_store
-from issuekit.workflow import WorkflowError
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:

@@ -19,9 +19,9 @@ from issuekit import store as store_module
 from issuekit.agentrun import AgentPrompt
 from issuekit.commands import serve, serve_loop
 from issuekit.config import TriagePolicy
+from issuekit.errors import WorkflowError
 from issuekit.testing import FakeIssuekitClient
 from issuekit.workers import registry as worker_registry
-from issuekit.workflow import WorkflowError
 from tests.issue_helpers import api_issue
 
 

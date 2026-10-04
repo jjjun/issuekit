@@ -15,6 +15,7 @@ from issuekit.config.refs import (
     list_effective_refs,
 )
 from issuekit.core import VALID_ISSUE_PRIORITIES
+from issuekit.errors import WorkflowError
 from issuekit.guards.author import create_author_guard, guard_dict, stop_message
 from issuekit.issues.session import resolved_or_new_session_token
 from issuekit.proposals import ProposalError
@@ -29,7 +30,6 @@ from issuekit.proposals.api import (
     proposal_id_arg,
     send_proposal,
 )
-from issuekit.workflow import WorkflowError
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:

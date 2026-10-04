@@ -16,7 +16,7 @@ from typing import TypeVar
 from issuekit.config import IssuekitConfig, has_local_project_context, load_config
 from issuekit.core import is_valid_workflow_token
 from issuekit.encoding import ASCII_ONLY_HINT, has_non_ascii
-from issuekit.workflow import WorkflowError
+from issuekit.errors import WorkflowError
 
 T = TypeVar("T")
 CommandError = type[BaseException]

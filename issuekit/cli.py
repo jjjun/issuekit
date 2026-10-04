@@ -46,8 +46,8 @@ from issuekit.commands import (
     workers,
 )
 from issuekit.config.local import LocalConfigError
+from issuekit.errors import WorkflowError
 from issuekit.proposals.model import ProposalError
-from issuekit.workflow import WorkflowError
 
 COMMAND_MODULES = (
     info,

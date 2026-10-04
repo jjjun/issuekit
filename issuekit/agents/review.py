@@ -22,6 +22,7 @@ from issuekit.commands.approve import approve_issue
 from issuekit.config import IssuekitConfig
 from issuekit.core import Issue, worker_keys_match
 from issuekit.encoding import ASCII_ONLY_HINT, has_non_ascii, sanitize_to_ascii
+from issuekit.errors import WorkflowError
 from issuekit.gitutil import GitStatusEntry, git_status_entries, git_status_short, run_git
 from issuekit.prompts import (
     REVIEW_PROMPT,
@@ -30,7 +31,7 @@ from issuekit.prompts import (
     fence_untrusted,
 )
 from issuekit.store import managed_issue_store
-from issuekit.workflow import WorkflowError, ensure_assigned_reviewer, request_changes
+from issuekit.workflow import ensure_assigned_reviewer, request_changes
 
 REVIEW_OUTPUT_KEYS = REVIEW_PROMPT.required_keys
 _REVIEW_VERDICTS = {"approve", "request-changes"}

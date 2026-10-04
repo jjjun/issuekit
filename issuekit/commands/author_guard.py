@@ -7,9 +7,9 @@ import sys
 from pathlib import Path
 
 from issuekit.commands._common import print_json, run_command
+from issuekit.errors import WorkflowError
 from issuekit.guards.author import clear_author_guard, guards_dict, read_author_guards, stop_message
 from issuekit.guards.separation import AUTHOR_GUARD_HELP
-from issuekit.workflow import WorkflowError
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:

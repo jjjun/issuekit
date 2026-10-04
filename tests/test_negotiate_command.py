@@ -17,6 +17,7 @@ from issuekit.commands.negotiate import (
 from issuekit.config import IssuekitConfig
 from issuekit.config.refs import add_ref
 from issuekit.core import Issue
+from issuekit.errors import WorkflowError
 from issuekit.negotiation import (
     ApiNegotiationStore,
     MockNegotiationStore,
@@ -30,7 +31,6 @@ from issuekit.negotiation.engine import (
     origin_issue_ref_from_thread,
 )
 from issuekit.testing import FakeIssuekitClient
-from issuekit.workflow import WorkflowError
 from tests.issue_helpers import api_issue
 
 

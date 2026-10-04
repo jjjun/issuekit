@@ -8,6 +8,7 @@ from pathlib import Path
 from issuekit.commands._common import print_json, run_command
 from issuekit.commands._heartbeat import warn_if_staleness_not_wider
 from issuekit.config import load_config
+from issuekit.errors import WorkflowError
 from issuekit.issues.orphans import (
     DEFAULT_STALE_AFTER_SEC,
     DIRECTED_EXPIRED_HEARTBEAT,
@@ -18,7 +19,6 @@ from issuekit.issues.orphans import (
     stale_claim_dict,
 )
 from issuekit.workers.registry import WorkerListingError
-from issuekit.workflow import WorkflowError
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:

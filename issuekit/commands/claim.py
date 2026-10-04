@@ -9,7 +9,8 @@ from pathlib import Path
 from issuekit.commands._common import run_command
 from issuekit.config import load_config
 from issuekit.core import parse_issue_id_arg
-from issuekit.workflow import WorkflowError, claim_issue, claim_next, resolve_implementer
+from issuekit.errors import WorkflowError
+from issuekit.workflow import claim_issue, claim_next, resolve_implementer
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:

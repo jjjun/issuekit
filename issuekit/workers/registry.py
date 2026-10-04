@@ -19,11 +19,11 @@ from issuekit.core import (
     worker_keys_from_row,
     worker_keys_match,
 )
+from issuekit.errors import WorkflowError
 from issuekit.store import get_store
 from issuekit.timestamps import parse_timestamp
 from issuekit.worker_constants import WORKER_HEARTBEAT_INTERVAL_SEC
 from issuekit.workers.identity import canonical_git_origin_url
-from issuekit.workflow import WorkflowError
 
 LOGGER = logging.getLogger(__name__)
 

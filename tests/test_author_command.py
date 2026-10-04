@@ -13,9 +13,9 @@ from issuekit.commands.author import (
 )
 from issuekit.config import IssuekitConfig
 from issuekit.config.refs import RefError
+from issuekit.errors import WorkflowError
 from issuekit.guards.author import read_author_guards
 from issuekit.testing import FakeIssuekitClient
-from issuekit.workflow import WorkflowError
 
 
 class CloseTrackingClient(FakeIssuekitClient):

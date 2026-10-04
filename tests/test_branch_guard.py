@@ -3,8 +3,8 @@ from pathlib import Path
 import pytest
 
 from issuekit.config import IssuekitConfig
+from issuekit.errors import WorkflowError
 from issuekit.guards.branch import enforce_work_branch
-from issuekit.workflow import WorkflowError
 
 
 def test_work_branch_guard_is_disabled_when_unset(

@@ -15,6 +15,7 @@ from issuekit.config import IssuekitConfig, load_config
 from issuekit.config.refs import RefError, list_effective_refs
 from issuekit.core import Issue, parse_issue_id_arg, parse_target_address
 from issuekit.encoding import ASCII_ONLY_HINT, has_non_ascii
+from issuekit.errors import WorkflowError
 from issuekit.gitutil import git_short_head
 from issuekit.issues.dependencies import (
     bare_ref_collision_warnings,
@@ -22,7 +23,6 @@ from issuekit.issues.dependencies import (
 )
 from issuekit.store import get_store
 from issuekit.timestamps import parse_timestamp
-from issuekit.workflow import WorkflowError
 
 from .model import Proposal, ProposalError, origin_destination
 
