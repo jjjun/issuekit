@@ -540,11 +540,11 @@ def test_implement_command_does_not_commit_or_push(
     def reject_commit_or_push(argv, *args, **kwargs):
         if list(argv[:2]) in (["git", "commit"], ["git", "push"]):
             raise AssertionError(f"unexpected git write command: {argv}")
-        if list(argv[:2]) == ["git", "rev-parse"]:
+        if argv[0] == "git" and "rev-parse" in argv:
             return subprocess.CompletedProcess(argv, 1, "", "")
-        if list(argv[:3]) == ["git", "--no-pager", "diff"]:
+        if argv[0] == "git" and "diff" in argv:
             return subprocess.CompletedProcess(argv, 1, "", "")
-        if list(argv[:4]) == ["git", "--no-optional-locks", "--no-pager", "status"]:
+        if list(argv[:2]) == ["git", "-c"] and "status" in argv:
             return subprocess.CompletedProcess(argv, 1, "", "")
         raise AssertionError(f"unexpected subprocess call: {argv}")
 

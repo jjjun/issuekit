@@ -190,6 +190,8 @@ def changed_line_numbers(
             "core.quotepath=false",
             "--no-pager",
             "diff",
+            "--no-ext-diff",
+            "--no-textconv",
             "--unified=0",
             "HEAD",
             "--",

@@ -40,7 +40,7 @@ def run_git(
     """
     try:
         result = subprocess.run(
-            ["git", *args],
+            ["git", "-c", "core.fsmonitor=false", *args],
             cwd=str(cwd),
             capture_output=True,
             text=True,

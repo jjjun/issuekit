@@ -1,14 +1,17 @@
+import os
 import subprocess
 from pathlib import Path
 
 import pytest
 
+from issuekit.agents.readonly import repository_fingerprint
 from issuekit.gitutil import (
     changed_file_count,
     git_current_branch,
     git_origin_url,
     git_root,
     git_short_head,
+    git_status_entries,
     git_status_short,
     parse_git_status_z,
     run_git,
@@ -34,7 +37,7 @@ def test_run_git_redirects_stdin_and_normalizes_result(
     assert result.returncode == 0
     assert result.stdout == "out\n"
     assert result.stderr == "err\n"
-    assert captured["args"] == ["git", "status", "--short"]
+    assert captured["args"] == ["git", "-c", "core.fsmonitor=false", "status", "--short"]
     assert captured["cwd"] == str(tmp_path)
     assert captured["capture_output"] is True
     assert captured["text"] is True
@@ -134,6 +137,8 @@ def test_git_wrappers_normalize_success_and_failure(
 ) -> None:
     responses = {
         (
+            "-c",
+            "core.fsmonitor=false",
             "--no-optional-locks",
             "-c",
             "core.quotepath=false",
@@ -141,16 +146,16 @@ def test_git_wrappers_normalize_success_and_failure(
             "status",
             "--short",
         ): subprocess.CompletedProcess(["git"], 0, stdout=" M a.py\n?? b.py\n", stderr=""),
-        ("rev-parse", "--abbrev-ref", "HEAD"): subprocess.CompletedProcess(
+        ("-c", "core.fsmonitor=false", "rev-parse", "--abbrev-ref", "HEAD"): subprocess.CompletedProcess(
             ["git"], 0, stdout="main\n", stderr=""
         ),
-        ("rev-parse", "--short", "HEAD"): subprocess.CompletedProcess(
+        ("-c", "core.fsmonitor=false", "rev-parse", "--short", "HEAD"): subprocess.CompletedProcess(
             ["git"], 0, stdout="abc123\n", stderr=""
         ),
-        ("rev-parse", "--show-toplevel"): subprocess.CompletedProcess(
+        ("-c", "core.fsmonitor=false", "rev-parse", "--show-toplevel"): subprocess.CompletedProcess(
             ["git"], 0, stdout=f"{tmp_path}\n", stderr=""
         ),
-        ("config", "--get", "remote.origin.url"): subprocess.CompletedProcess(
+        ("-c", "core.fsmonitor=false", "config", "--get", "remote.origin.url"): subprocess.CompletedProcess(
             ["git"], 1, stdout="", stderr=""
         ),
     }
@@ -212,3 +217,36 @@ def test_git_current_branch_returns_none_outside_repo(tmp_path: Path) -> None:
     _require_git()
 
     assert git_current_branch(tmp_path) is None
+
+
+@pytest.mark.skipif(os.name == "nt", reason="requires a POSIX fsmonitor script")
+def test_git_status_and_readonly_fingerprint_disable_repo_fsmonitor(
+    tmp_path: Path,
+) -> None:
+    _require_git()
+    _git(tmp_path, "init", "-b", "main")
+    _commit_file(tmp_path)
+
+    marker = tmp_path.parent / f"{tmp_path.name}-fsmonitor-marker"
+    script = tmp_path.parent / f"{tmp_path.name}-fsmonitor.sh"
+    script.write_text(
+        f"#!/bin/sh\nprintf invoked >> '{marker}'\nprintf 'token\\n\\n'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    script.chmod(0o755)
+    _git(tmp_path, "config", "core.fsmonitor", str(script))
+
+    subprocess.run(
+        ["git", "status", "--short"],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+    )
+    assert marker.exists()
+    marker.unlink()
+
+    assert git_status_short(tmp_path) == ""
+    assert git_status_entries(tmp_path) == ()
+    assert repository_fingerprint(tmp_path).worktree == ()
+    assert not marker.exists()

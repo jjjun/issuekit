@@ -1,3 +1,5 @@
+import os
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -84,9 +86,21 @@ def test_claim_sync_fetches_and_fast_forwards_configured_branch(
     )
 
     checkout = tmp_path.resolve()
+    assert len(calls) == 2
+    hooks_option = calls[0][0][:2]
+    assert hooks_option[0] == "-c"
+    assert hooks_option[1].startswith("core.hooksPath=")
     assert calls == [
-        (["fetch", "origin", "main"], checkout, 120.0),
-        (["merge", "--ff-only", "origin/main"], checkout, 120.0),
+        (
+            [*hooks_option, "fetch", "--end-of-options", "origin", "main"],
+            checkout,
+            120.0,
+        ),
+        (
+            [*hooks_option, "merge", "--ff-only", "--end-of-options", "origin/main"],
+            checkout,
+            120.0,
+        ),
     ]
 
 
@@ -109,9 +123,15 @@ def test_claim_sync_throttles_successful_fetch(
     enforce_claim_sync(tmp_path, config=config, action="claim-next")
     enforce_claim_sync(tmp_path, config=config, action="claim-next")
 
-    assert calls == [
-        ["fetch", "origin", "main"],
-        ["merge", "--ff-only", "origin/main"],
+    assert len(calls) == 2
+    hooks_option = calls[0][:2]
+    assert calls[0] == [*hooks_option, "fetch", "--end-of-options", "origin", "main"]
+    assert calls[1] == [
+        *hooks_option,
+        "merge",
+        "--ff-only",
+        "--end-of-options",
+        "origin/main",
     ]
 
 
@@ -203,3 +223,72 @@ def test_claim_sync_allows_explicit_no_sync(
         action="claim-next",
         no_sync=True,
     )
+
+
+@pytest.mark.skipif(os.name == "nt", reason="requires a POSIX post-merge hook")
+def test_claim_sync_fast_forward_does_not_run_post_merge_hook(tmp_path: Path) -> None:
+    origin = tmp_path / "origin.git"
+    seed = tmp_path / "seed"
+    checkout = tmp_path / "checkout"
+    hooks = tmp_path / "hooks"
+    marker = tmp_path / "post-merge-marker"
+    hooks.mkdir()
+
+    subprocess.run(
+        ["git", "init", "--bare", "-b", "main", str(origin)],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+    )
+    seed.mkdir()
+    subprocess.run(["git", "init", "-b", "main"], cwd=seed, check=True)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=seed, check=True)
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=seed, check=True)
+    (seed / "tracked.txt").write_text("before\n", encoding="utf-8", newline="\n")
+    subprocess.run(["git", "add", "tracked.txt"], cwd=seed, check=True)
+    subprocess.run(
+        ["git", "commit", "-m", "baseline"],
+        cwd=seed,
+        check=True,
+        stdout=subprocess.DEVNULL,
+    )
+    subprocess.run(["git", "remote", "add", "origin", str(origin)], cwd=seed, check=True)
+    subprocess.run(["git", "push", "-u", "origin", "main"], cwd=seed, check=True)
+    subprocess.run(
+        ["git", "clone", str(origin), str(checkout)],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+    )
+
+    post_merge = hooks / "post-merge"
+    post_merge.write_text(
+        f"#!/bin/sh\nprintf invoked >> '{marker}'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    post_merge.chmod(0o755)
+    subprocess.run(
+        ["git", "config", "core.hooksPath", str(hooks)],
+        cwd=checkout,
+        check=True,
+    )
+
+    (seed / "tracked.txt").write_text("after\n", encoding="utf-8", newline="\n")
+    subprocess.run(["git", "add", "tracked.txt"], cwd=seed, check=True)
+    subprocess.run(
+        ["git", "commit", "-m", "advance"],
+        cwd=seed,
+        check=True,
+        stdout=subprocess.DEVNULL,
+    )
+    subprocess.run(["git", "push", "origin", "main"], cwd=seed, check=True)
+
+    enforce_claim_sync(
+        checkout,
+        config=IssuekitConfig(work_branch="main", claim_sync_interval_sec=0),
+        action="claim-next",
+    )
+
+    assert (checkout / "tracked.txt").read_text(encoding="utf-8") == "after\n"
+    assert not marker.exists()

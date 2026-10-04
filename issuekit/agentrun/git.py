@@ -3,15 +3,31 @@
 from __future__ import annotations
 
 import subprocess
+from collections.abc import Sequence
 from pathlib import Path
+
+
+def run_git(
+    args: Sequence[str], cwd: Path, *, timeout: float = 30
+) -> subprocess.CompletedProcess:
+    """Run git with repo-configured fsmonitor commands disabled."""
+    return subprocess.run(
+        ["git", "-c", "core.fsmonitor=false", *args],
+        cwd=str(cwd),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="surrogateescape",
+        timeout=timeout,
+        stdin=subprocess.DEVNULL,
+    )
 
 
 def git_status_short(cwd: Path, *, timeout: float = 30) -> str | None:
     """Return stripped ``git status --short`` output, or None on failure."""
     try:
-        result = subprocess.run(
+        result = run_git(
             [
-                "git",
                 "--no-optional-locks",
                 "-c",
                 "core.quotepath=false",
@@ -19,13 +35,8 @@ def git_status_short(cwd: Path, *, timeout: float = 30) -> str | None:
                 "status",
                 "--short",
             ],
-            cwd=str(cwd),
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="surrogateescape",
+            cwd,
             timeout=timeout,
-            stdin=subprocess.DEVNULL,
         )
     except (OSError, subprocess.SubprocessError, UnicodeError):
         return None

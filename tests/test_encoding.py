@@ -93,6 +93,8 @@ def test_mojibake_gate_batches_changed_line_and_tracked_path_queries(
             "core.quotepath=false",
             "--no-pager",
             "diff",
+            "--no-ext-diff",
+            "--no-textconv",
             "--unified=0",
             "HEAD",
             "--",

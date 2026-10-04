@@ -88,6 +88,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     )
     check_encoding_parser.add_argument(
         "--base",
+        type=_validate_base_revision,
         help=(
             "With --changed, scan files that differ from this git ref (e.g. "
             "origin/main) instead of only uncommitted working-tree changes."
@@ -374,10 +375,34 @@ def list_changed_files(cwd: Path, base: str | None = None) -> list[str]:
     """
     changed: set[str] = set()
     if base:
-        changed |= _git_name_only(["diff", "--name-only", "-z", base], cwd)
+        changed |= _git_name_only(
+            [
+                "diff",
+                "--name-only",
+                "-z",
+                "--no-ext-diff",
+                "--no-textconv",
+                "--end-of-options",
+                base,
+            ],
+            cwd,
+        )
     else:
-        changed |= _git_name_only(["diff", "--name-only", "-z"], cwd)
-        changed |= _git_name_only(["diff", "--name-only", "-z", "--cached"], cwd)
+        changed |= _git_name_only(
+            ["diff", "--name-only", "-z", "--no-ext-diff", "--no-textconv"],
+            cwd,
+        )
+        changed |= _git_name_only(
+            [
+                "diff",
+                "--name-only",
+                "-z",
+                "--cached",
+                "--no-ext-diff",
+                "--no-textconv",
+            ],
+            cwd,
+        )
     changed |= _git_name_only(["ls-files", "--others", "--exclude-standard", "-z"], cwd)
     return sorted(changed)
 
@@ -385,6 +410,14 @@ def list_changed_files(cwd: Path, base: str | None = None) -> list[str]:
 def _git_name_only(args: list[str], cwd: Path) -> set[str]:
     output = _git_stdout(args, cwd)
     return {item for item in output.split("\0") if item}
+
+
+def _validate_base_revision(value: str) -> str:
+    if value.startswith("-"):
+        raise argparse.ArgumentTypeError(
+            "--base must be a git revision, not an option"
+        )
+    return value
 
 
 def list_crlf_files(cwd: Path, paths: list[str] | None = None) -> list[str]:

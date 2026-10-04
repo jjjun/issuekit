@@ -644,7 +644,19 @@ def _warn_heavy_deletions(
     implementation_entries = _implementation_entries(snapshot, repo, issues_dir)
     if not implementation_entries:
         return
-    result = run_git(["--no-pager", "diff", "--numstat", "-z", "HEAD", "--"], repo)
+    result = run_git(
+        [
+            "--no-pager",
+            "diff",
+            "--numstat",
+            "-z",
+            "--no-ext-diff",
+            "--no-textconv",
+            "HEAD",
+            "--",
+        ],
+        repo,
+    )
     if result is None:
         return
     if result.returncode != 0:

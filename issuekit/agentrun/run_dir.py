@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import os
 import stat
+import tempfile
 from pathlib import Path
-from subprocess import run as run_subprocess
 
+from issuekit.agentrun.git import run_git
 from issuekit.file_permissions import ensure_owner_only_directory
 
 
@@ -26,15 +27,22 @@ def prepare_run_dir(repo: Path, run_dir: Path | None = None) -> Path:
         )
 
     if _has_git_metadata(repo):
-        result = run_subprocess(
-            ["git", "ls-files", "-z", "--", ".agent-runs"],
-            cwd=repo,
-            check=False,
-            capture_output=True,
-        )
+        with tempfile.TemporaryDirectory(prefix="issuekit-no-git-hooks-") as hooks_path:
+            result = run_git(
+                [
+                    "-c",
+                    f"core.hooksPath={hooks_path}",
+                    "ls-files",
+                    "-z",
+                    "--",
+                    ".agent-runs",
+                ],
+                repo,
+            )
         if result.returncode != 0:
             raise RuntimeError("Could not check whether git tracks files under .agent-runs.")
-        tracked = [path for path in result.stdout.split(b"\0") if path]
+        tracked_output = result.stdout.encode("utf-8", errors="surrogateescape")
+        tracked = [path for path in tracked_output.split(b"\0") if path]
         if tracked:
             first_path = os.fsdecode(tracked[0])
             raise RuntimeError(

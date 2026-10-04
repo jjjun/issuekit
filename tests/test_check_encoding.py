@@ -573,6 +573,20 @@ def test_check_encoding_changed_base_diffs_against_ref(
     assert "bad.md" in capsys.readouterr().err
 
 
+def test_check_encoding_rejects_base_that_looks_like_git_option(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = cli.main(["check-encoding", "--changed", "--base=--output=x"])
+
+    assert exit_code == 2
+    assert "--base must be a git revision, not an option" in capsys.readouterr().err
+    assert not (tmp_path / "x").exists()
+
+
 def test_check_encoding_fix_exits_nonzero_when_mojibake_remains(
     tmp_path: Path,
     monkeypatch,

@@ -1093,8 +1093,34 @@ def _validate_project(project: str) -> None:
 def _validate_work_branch(work_branch: str) -> None:
     if not work_branch:
         return
-    if has_non_ascii(work_branch) or any(char.isspace() for char in work_branch):
-        raise ValueError(f"Invalid work_branch token: {work_branch}")
+    components = work_branch.split("/")
+    invalid = (
+        has_non_ascii(work_branch)
+        or work_branch.startswith("-")
+        or work_branch == "@"
+        or ".." in work_branch
+        or "@{" in work_branch
+        or "//" in work_branch
+        or work_branch.startswith("/")
+        or work_branch.endswith("/")
+        or any(
+            char.isspace()
+            or ord(char) < 32
+            or ord(char) == 127
+            or char in "~^:?*[\\"
+            for char in work_branch
+        )
+        or any(
+            component.startswith(".")
+            or component.endswith(".")
+            or component.endswith(".lock")
+            for component in components
+        )
+    )
+    if invalid:
+        raise ValueError(
+            f"Invalid work_branch: {work_branch} is not a valid git branch name."
+        )
 
 
 def _validate_claim_sync_interval(value: float) -> None:

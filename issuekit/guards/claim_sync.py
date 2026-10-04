@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import tempfile
 import time
 from pathlib import Path
 
@@ -53,28 +54,44 @@ def enforce_claim_sync(
     if previous is not None and now - previous < config.claim_sync_interval_sec:
         return
 
-    fetch = run_git(["fetch", remote, branch], checkout, timeout=FETCH_TIMEOUT_SEC)
-    if fetch is None or fetch.returncode != 0:
-        _raise(
-            _git_failure_message(
-                action,
-                checkout,
-                ["git", "fetch", remote, branch],
-                fetch,
-            )
+    with tempfile.TemporaryDirectory(prefix="issuekit-no-git-hooks-") as hooks_path:
+        hooks_option = ["-c", f"core.hooksPath={hooks_path}"]
+        fetch = run_git(
+            [*hooks_option, "fetch", "--end-of-options", remote, branch],
+            checkout,
+            timeout=FETCH_TIMEOUT_SEC,
         )
+        if fetch is None or fetch.returncode != 0:
+            _raise(
+                _git_failure_message(
+                    action,
+                    checkout,
+                    ["git", "fetch", remote, branch],
+                    fetch,
+                )
+            )
 
-    merge_ref = f"{remote}/{branch}"
-    merge = run_git(["merge", "--ff-only", merge_ref], checkout, timeout=FETCH_TIMEOUT_SEC)
-    if merge is None or merge.returncode != 0:
-        _raise(
-            _git_failure_message(
-                action,
-                checkout,
-                ["git", "merge", "--ff-only", merge_ref],
-                merge,
-            )
+        merge_ref = f"{remote}/{branch}"
+        merge = run_git(
+            [
+                *hooks_option,
+                "merge",
+                "--ff-only",
+                "--end-of-options",
+                merge_ref,
+            ],
+            checkout,
+            timeout=FETCH_TIMEOUT_SEC,
         )
+        if merge is None or merge.returncode != 0:
+            _raise(
+                _git_failure_message(
+                    action,
+                    checkout,
+                    ["git", "merge", "--ff-only", merge_ref],
+                    merge,
+                )
+            )
 
     _last_successful_fetch[key] = time.monotonic()
 

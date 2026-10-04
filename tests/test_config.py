@@ -890,7 +890,10 @@ def test_load_config_rejects_negative_claim_sync_interval(tmp_path: Path) -> Non
         load_config(tmp_path)
 
 
-@pytest.mark.parametrize("value", ["feature branch", "main\u3042"])
+@pytest.mark.parametrize(
+    "value",
+    ["feature branch", "main\u3042", "--upload-pack=x", "a..b", "x.lock", "-x"],
+)
 def test_load_config_rejects_invalid_work_branch(tmp_path: Path, value: str) -> None:
     (tmp_path / "issuekit.toml").write_text(
         f"work_branch = '{value}'\n",
@@ -898,8 +901,19 @@ def test_load_config_rejects_invalid_work_branch(tmp_path: Path, value: str) -> 
         newline="\n",
     )
 
-    with pytest.raises(ValueError, match="Invalid work_branch token"):
+    with pytest.raises(ValueError, match="Invalid work_branch:"):
         load_config(tmp_path)
+
+
+@pytest.mark.parametrize("value", ["main", "release/1.2", "feat/abc-1"])
+def test_load_config_accepts_valid_work_branch(tmp_path: Path, value: str) -> None:
+    (tmp_path / "issuekit.toml").write_text(
+        f"work_branch = '{value}'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    assert load_config(tmp_path).work_branch == value
 
 
 def test_load_config_reads_triage_policy(tmp_path: Path) -> None:

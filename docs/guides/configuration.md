@@ -560,6 +560,9 @@ and branch. The throttle is kept in process memory, so it only takes effect in
 long-lived processes such as `issuekit serve` or the MCP server; each one-shot
 `claim` or `implement` command fetches again.
 
+Issuekit's claim-sync fetch and fast-forward merge use an empty hooks directory,
+so they do not run repository-configured Git hooks.
+
 The guard does not run without `work_branch`. It blocks a dirty checkout, a
 failed `git status`, or a failed fetch or fast-forward so the operator can fix
 the checkout and retry. After inspecting a known-safe situation, such as

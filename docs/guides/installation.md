@@ -1,6 +1,6 @@
 # Installation
 
-The project requires Python 3.12 or newer, `uv`, and `git`.
+The project requires Python 3.12 or newer, `uv`, and Git 2.24 or newer.
 
 ## Global tool
 
