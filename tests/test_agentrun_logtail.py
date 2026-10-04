@@ -18,6 +18,13 @@ from issuekit.coerce import last_nonempty_line
         ("last line longer than window", b"first\n" + b"x" * 70_000),
         ("invalid UTF-8", b"first\nbad-\xff\n"),
     ],
+    ids=[
+        "empty",
+        "no trailing newline",
+        "trailing blank",
+        "long final line",
+        "invalid UTF-8",
+    ],
 )
 def test_last_nonempty_line_matches_whole_file_semantics(
     tmp_path: Path, name: str, content: bytes

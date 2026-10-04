@@ -1873,7 +1873,10 @@ def test_serve_rejects_lock_already_owned_by_this_process(
     lock_path = tmp_path / ".agent-runs" / "serve.lock"
 
     with runtime.serve_lock(lock_path):
-        with pytest.raises(runtime.ServeLockError, match="already running"):
+        with pytest.raises(
+            runtime.ServeLockError,
+            match=f"already running.*pid {os.getpid()}",
+        ):
             with runtime.serve_lock(lock_path):
                 pass
 
@@ -1902,7 +1905,7 @@ def test_serve_lock_uses_windows_msvcrt_path(monkeypatch, tmp_path: Path) -> Non
             self.calls += 1
             assert mode == self.LK_NBLCK
             assert count == 1
-            assert os.lseek(fd, 0, os.SEEK_CUR) == 0
+            assert os.lseek(fd, 0, os.SEEK_CUR) == run_dir_module.WINDOWS_LOCK_OFFSET
             if self.calls == 2:
                 raise OSError(errno.EACCES, "lock is held")
 
@@ -1922,21 +1925,25 @@ def test_serve_lock_uses_windows_msvcrt_path(monkeypatch, tmp_path: Path) -> Non
     with runtime.serve_lock(lock_path):
         pass
 
-    with pytest.raises(runtime.ServeLockError, match="already running"):
+    with pytest.raises(
+        runtime.ServeLockError,
+        match=f"already running.*pid {os.getpid()}",
+    ):
         with runtime.serve_lock(lock_path):
             pass
     assert fake_msvcrt.calls == 2
 
 
-@pytest.mark.skipif(os.name == "nt", reason="POSIX flock is not available on Windows")
-def test_serve_lock_releases_after_holder_process_exits(tmp_path: Path) -> None:
+def test_serve_second_lock_reports_holder_pid_and_releases_after_holder_exits(
+    tmp_path: Path,
+) -> None:
     lock_path = tmp_path / ".agent-runs" / "serve.lock"
     script = (
-        "import sys, time\n"
+        "import os, sys, time\n"
         "from pathlib import Path\n"
         "from issuekit.agentrun.run_dir import serve_lock\n"
         "with serve_lock(Path(sys.argv[1])):\n"
-        "    print('locked', flush=True)\n"
+        "    print(f'locked {os.getpid()}', flush=True)\n"
         "    time.sleep(60)\n"
     )
     process = subprocess.Popen(
@@ -1947,8 +1954,13 @@ def test_serve_lock_releases_after_holder_process_exits(tmp_path: Path) -> None:
     )
     try:
         assert process.stdout is not None
-        assert process.stdout.readline().strip() == "locked"
-        with pytest.raises(runtime.ServeLockError, match="already running"):
+        lock_message = process.stdout.readline().split()
+        assert lock_message[0] == "locked"
+        holder_pid = int(lock_message[1])
+        with pytest.raises(
+            runtime.ServeLockError,
+            match=f"already running.*pid {holder_pid}",
+        ):
             with runtime.serve_lock(lock_path):
                 pass
     finally:

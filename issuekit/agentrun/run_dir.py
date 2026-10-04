@@ -22,6 +22,8 @@ else:
 from issuekit.file_permissions import ensure_owner_only_directory, open_owner_only
 from issuekit.gitutil import run_git
 
+WINDOWS_LOCK_OFFSET = 4096
+
 
 def prepare_run_dir(repo: Path, run_dir: Path | None = None) -> Path:
     """Refuse unsafe run directories and create the configured directory."""
@@ -70,7 +72,7 @@ def serve_lock(lock_path: Path) -> Iterator[None]:
             if _is_windows():
                 if msvcrt is None:
                     raise RuntimeError("Windows file locking is unavailable.")
-                os.lseek(fd, 0, os.SEEK_SET)
+                os.lseek(fd, WINDOWS_LOCK_OFFSET, os.SEEK_SET)
                 msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
             else:
                 if fcntl is None:

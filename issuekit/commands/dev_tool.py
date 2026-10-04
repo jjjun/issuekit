@@ -80,7 +80,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     install_editable_parser.add_argument(
         "--no-stop",
         action="store_true",
-        help=f"Do not stop running {_mcp_process_name()} processes before installing.",
+        help="Do not stop running issuekit-mcp processes before installing.",
     )
     add_json_flag(install_editable_parser)
     install_editable_parser.set_defaults(func=run)
@@ -96,7 +96,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     reinstall_parser.add_argument(
         "--no-stop",
         action="store_true",
-        help=f"Do not stop running {_mcp_process_name()} processes before reinstalling.",
+        help="Do not stop running issuekit-mcp processes before reinstalling.",
     )
     add_json_flag(reinstall_parser)
     reinstall_parser.set_defaults(func=run)

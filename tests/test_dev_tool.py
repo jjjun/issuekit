@@ -329,7 +329,7 @@ def test_reload_mcp_platform_names_in_output_and_no_stop_help(
 
     monkeypatch.setattr(dev_tool, "_is_windows", lambda: True)
     assert cli.main(["dev-tool", "install-editable", "--help"]) == 0
-    assert "Do not stop running issuekit-mcp.exe processes" in capsys.readouterr().out
+    assert "Do not stop running issuekit-mcp processes" in capsys.readouterr().out
 
 
 def test_filter_issuekit_mcp_processes_matches_name_or_executable() -> None:

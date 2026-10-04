@@ -22,11 +22,15 @@ def test_scan_mojibake_preserves_hits_for_ascii_mojibake_and_japanese_files(
     tmp_path: Path,
 ) -> None:
     paths = (Path("plain.py"), Path("bad.txt"), Path("japanese.md"))
-    (tmp_path / paths[0]).write_text("value = 'hello'\n", encoding="utf-8")
-    (tmp_path / paths[1]).write_text(
-        "corrupt \u7e67\uff62\u7e5d\u4e5d\u0393\n", encoding="utf-8"
+    (tmp_path / paths[0]).write_text(
+        "value = 'hello'\n", encoding="utf-8", newline="\n"
     )
-    (tmp_path / paths[2]).write_text("日本語の文章です\n", encoding="utf-8")
+    (tmp_path / paths[1]).write_text(
+        "corrupt \u7e67\uff62\u7e5d\u4e5d\u0393\n", encoding="utf-8", newline="\n"
+    )
+    (tmp_path / paths[2]).write_text(
+        "日本語の文章です\n", encoding="utf-8", newline="\n"
+    )
 
     result = encoding.scan_mojibake(
         tmp_path,

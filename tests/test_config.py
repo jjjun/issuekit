@@ -40,13 +40,14 @@ _REPO_CONFIG_SOURCES = (
         "[tool.issuekit.agents.codex]",
     ),
 )
+_MACHINE_ONLY_AGENT_KNOWN_PATH = str(Path.cwd() / "opt" / "codex")
 _MACHINE_ONLY_AGENT_SETTINGS = (
     ("binary", "binary = 'codex'\n"),
     ("adapter", "adapter = 'codex'\n"),
     ("runtime", "runtime = 'exec'\n"),
     ("app_server_argv", "app_server_argv = ['app-server']\n"),
     ("lease_ttl_seconds", "lease_ttl_seconds = 60\n"),
-    ("known_paths", "known_paths = ['/opt/codex']\n"),
+    ("known_paths", f"known_paths = ['{_MACHINE_ONLY_AGENT_KNOWN_PATH}']\n"),
     ("headless_argv", "headless_argv = ['exec']\n"),
     ("resumable", "resumable = true\n"),
     ("session_flag", "session_flag = '--session-id'\n"),
@@ -632,7 +633,7 @@ def test_machine_config_loads_agent_launch_settings(tmp_path: Path, monkeypatch)
     assert codex.runtime == "exec"
     assert codex.app_server_argv == ("app-server",)
     assert codex.lease_ttl_seconds == 60
-    assert codex.known_paths == ("/opt/codex",)
+    assert codex.known_paths == (_MACHINE_ONLY_AGENT_KNOWN_PATH,)
     assert codex.headless_argv == ("exec",)
     assert codex.resumable is True
     assert codex.session_flag == "--session-id"
@@ -678,10 +679,15 @@ def test_machine_config_rejects_relative_known_agent_paths(
         load_config(tmp_path)
 
 
-@pytest.mark.parametrize("binary", ["codex", "/opt/codex/bin/codex"])
+@pytest.mark.parametrize("absolute", [False, True], ids=["bare", "absolute"])
 def test_machine_config_accepts_bare_or_absolute_agent_binary(
-    tmp_path: Path, monkeypatch, binary: str
+    tmp_path: Path, monkeypatch, absolute: bool
 ) -> None:
+    binary = (
+        str(tmp_path / "opt" / "codex" / "bin" / "codex")
+        if absolute
+        else "codex"
+    )
     machine_path = tmp_path / "machine.toml"
     machine_path.write_text(
         f"[agents.codex]\nbinary = '{binary}'\n",

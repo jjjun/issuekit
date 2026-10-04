@@ -387,12 +387,13 @@ def test_config_agent_adapter_resolve_binary_uses_path(monkeypatch, tmp_path: Pa
 
 def test_load_config_reads_agents(tmp_path: Path, monkeypatch) -> None:
     machine_path = tmp_path / "machine.toml"
+    known_path = tmp_path / "opt" / "my-agent"
     machine_path.write_text(
         (
             "[agents.custom]\n"
             "binary = 'my-agent'\n"
             "adapter = 'kimi'\n"
-            "known_paths = ['/opt/my-agent']\n"
+            f"known_paths = ['{known_path}']\n"
             "headless_argv = ['run']\n"
             "approval_flag = '--approve'\n"
             "approval_value = 'always'\n"
@@ -408,7 +409,7 @@ def test_load_config_reads_agents(tmp_path: Path, monkeypatch) -> None:
     assert "custom" in agents_dict
     assert agents_dict["custom"].binary == "my-agent"
     assert agents_dict["custom"].adapter == "kimi"
-    assert agents_dict["custom"].known_paths == ("/opt/my-agent",)
+    assert agents_dict["custom"].known_paths == (str(known_path),)
     assert agents_dict["custom"].headless_argv == ("run",)
     assert agents_dict["custom"].approval_flag == "--approve"
     assert agents_dict["custom"].approval_value == "always"

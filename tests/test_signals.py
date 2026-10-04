@@ -6,7 +6,7 @@ from issuekit.signals import installed_signal_handlers
 
 
 def test_installed_signal_handlers_restore_previous_handlers_after_exception() -> None:
-    signum = signal.SIGUSR1
+    signum = signal.SIGTERM
     previous = signal.getsignal(signum)
 
     def handler(_signum: int, _frame: object) -> None:
