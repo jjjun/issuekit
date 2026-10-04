@@ -15,6 +15,7 @@ from pathlib import Path
 
 from issuekit.agentrun import AgentRunner
 from issuekit.agentrun.adapter import AgentAdapter
+from issuekit.agentrun.run_dir import prepare_run_dir
 from issuekit.agents.proposal_check import (
     ProposalCheckParseError,
     run_proposal_check_cycle,
@@ -51,6 +52,7 @@ from issuekit.commands.serve_loop import (
 )
 from issuekit.config import IssuekitConfig, load_config
 from issuekit.core import Issue
+from issuekit.file_permissions import open_owner_only_new
 from issuekit.issues.orphans import DEFAULT_STALE_AFTER_SEC
 from issuekit.proposals import ProposalError
 from issuekit.proposals.api import (
@@ -266,8 +268,11 @@ def run(args) -> int:
         return 1
 
     issues_dir = config.issues_path(cwd)
-    run_dir = cwd / ".agent-runs"
-    run_dir.mkdir(exist_ok=True)
+    try:
+        run_dir = prepare_run_dir(cwd)
+    except RuntimeError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
     lock_path = run_dir / "serve.lock"
     log_path = run_dir / "serve.log"
     controller = ShutdownController.create()
@@ -956,7 +961,7 @@ def _serve_lock(lock_path: Path) -> Iterator[None]:
     active_lock_path = lock_path.resolve()
     while True:
         try:
-            fd = os.open(str(lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            fd = open_owner_only_new(lock_path)
         except FileExistsError:
             existing_pid = _read_lock_pid(lock_path)
             if existing_pid is not None and (

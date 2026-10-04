@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -13,6 +12,7 @@ from .local import (
     LocalConfigError,
     load_toml,
     read_local_config,
+    toml_basic_string,
     write_local_config,
 )
 
@@ -123,7 +123,7 @@ def save_workspace_refs(refs: dict[str, str], workspace_file: Path | str) -> Non
     path = Path(workspace_file)
     lines = ["[projects]"]
     for name in sorted(refs):
-        lines.append(f"{name} = {json.dumps(refs[name])}")
+        lines.append(f"{name} = {toml_basic_string(refs[name])}")
     content = "\n".join(lines) + "\n"
     path.write_text(content, encoding="utf-8", newline="\n")
 

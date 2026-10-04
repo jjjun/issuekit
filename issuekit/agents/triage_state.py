@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import json
-import os
-import tempfile
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
+
+from issuekit.agentrun.run_dir import prepare_run_dir
+from issuekit.file_permissions import write_owner_only_text
 
 STATE_FILENAME = "triage-author-state.json"
 
@@ -21,7 +22,10 @@ def state_path(cwd: Path) -> Path:
 
 
 def load_state(cwd: Path) -> dict[str, dict[str, str]]:
+    prepare_run_dir(cwd)
     path = state_path(cwd)
+    if path.is_symlink():
+        return {}
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -49,30 +53,11 @@ def load_state(cwd: Path) -> dict[str, dict[str, str]]:
 
 def save_state(cwd: Path, state: Mapping[str, Mapping[str, str]]) -> None:
     path = state_path(cwd)
-    path.parent.mkdir(exist_ok=True)
+    prepare_run_dir(cwd)
     serialized = json.dumps(dict(state), indent=2, sort_keys=True)
     try:
-        if path.read_text(encoding="utf-8") == serialized:
+        if not path.is_symlink() and path.read_text(encoding="utf-8") == serialized:
             return
     except OSError:
         pass
-    temporary_path: Path | None = None
-    try:
-        with tempfile.NamedTemporaryFile(
-            mode="w",
-            encoding="utf-8",
-            newline="\n",
-            dir=path.parent,
-            prefix=f".{path.name}.",
-            suffix=".tmp",
-            delete=False,
-        ) as temporary:
-            temporary.write(serialized)
-            temporary_path = Path(temporary.name)
-        os.replace(temporary_path, path)
-    finally:
-        if temporary_path is not None:
-            try:
-                temporary_path.unlink(missing_ok=True)
-            except OSError:
-                pass
+    write_owner_only_text(path, serialized)

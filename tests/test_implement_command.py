@@ -1035,9 +1035,9 @@ def test_implement_command_warns_before_run_when_resuming_over_stale_prior_run(
         microsecond=0
     ).isoformat()
     write_status(
-        status_path(tmp_path / ".agent-runs", "previous"),
+        status_path(tmp_path / ".agent-runs", "20261004-100000"),
         RunStatus(
-            run_id="previous",
+            run_id="20261004-100000",
             agent="codex",
             issue=1,
             status="running",
@@ -1047,8 +1047,8 @@ def test_implement_command_warns_before_run_when_resuming_over_stale_prior_run(
             elapsed_sec=None,
             exit_code=None,
             plan="docs/issues/active/001_first.md",
-            stdout_log=".agent-runs/previous.out.log",
-            agent_log=".agent-runs/previous.agent.log",
+            stdout_log=".agent-runs/20261004-100000.out.log",
+            agent_log=".agent-runs/20261004-100000.agent.log",
             heartbeat_at=old,
         ),
     )
@@ -1065,7 +1065,7 @@ def test_implement_command_warns_before_run_when_resuming_over_stale_prior_run(
     assert exit_code == 1
     assert (
         "WARNING: the worktree already holds uncommitted changes, and this "
-        "issue's most recent local run (run=previous) looks dead" in captured.out
+        "issue's most recent local run (run=20261004-100000) looks dead" in captured.out
     )
     assert "HINT: the changes present in the worktree were made" in captured.out
 
@@ -1089,9 +1089,9 @@ def test_implement_command_does_not_warn_when_prior_run_is_fresh(
 
     fresh = datetime.now().replace(microsecond=0).isoformat()
     write_status(
-        status_path(tmp_path / ".agent-runs", "previous"),
+        status_path(tmp_path / ".agent-runs", "20261004-100001"),
         RunStatus(
-            run_id="previous",
+            run_id="20261004-100001",
             agent="codex",
             issue=1,
             status="running",
@@ -1101,8 +1101,8 @@ def test_implement_command_does_not_warn_when_prior_run_is_fresh(
             elapsed_sec=None,
             exit_code=None,
             plan="docs/issues/active/001_first.md",
-            stdout_log=".agent-runs/previous.out.log",
-            agent_log=".agent-runs/previous.agent.log",
+            stdout_log=".agent-runs/20261004-100001.out.log",
+            agent_log=".agent-runs/20261004-100001.agent.log",
             heartbeat_at=fresh,
         ),
     )
@@ -1140,9 +1140,9 @@ def test_implement_command_warns_when_prior_run_already_reconciled_to_abandoned(
         microsecond=0
     ).isoformat()
     write_status(
-        status_path(tmp_path / ".agent-runs", "previous"),
+        status_path(tmp_path / ".agent-runs", "20261004-100002"),
         RunStatus(
-            run_id="previous",
+            run_id="20261004-100002",
             agent="codex",
             issue=1,
             status="abandoned",
@@ -1152,8 +1152,8 @@ def test_implement_command_warns_when_prior_run_already_reconciled_to_abandoned(
             elapsed_sec=None,
             exit_code=None,
             plan="docs/issues/active/001_first.md",
-            stdout_log=".agent-runs/previous.out.log",
-            agent_log=".agent-runs/previous.agent.log",
+            stdout_log=".agent-runs/20261004-100002.out.log",
+            agent_log=".agent-runs/20261004-100002.agent.log",
             heartbeat_at=old,
             terminal_reason="heartbeat_lost",
         ),
@@ -1171,7 +1171,7 @@ def test_implement_command_warns_when_prior_run_already_reconciled_to_abandoned(
     assert exit_code == 1
     assert (
         "WARNING: the worktree already holds uncommitted changes, and this "
-        "issue's most recent local run (run=previous) looks dead" in captured.out
+        "issue's most recent local run (run=20261004-100002) looks dead" in captured.out
     )
     assert "HINT: the changes present in the worktree were made" in captured.out
 

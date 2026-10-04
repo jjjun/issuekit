@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import tomllib
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -29,6 +28,23 @@ class LocalConfig:
 
 
 _PRESERVE = object()
+
+
+def toml_basic_string(value: str) -> str:
+    """Quote a TOML basic string while keeping Unicode scalar values literal."""
+
+    escaped: list[str] = []
+    for character in value:
+        codepoint = ord(character)
+        if character == "\\":
+            escaped.append("\\\\")
+        elif character == '"':
+            escaped.append('\\"')
+        elif codepoint < 0x20 or codepoint == 0x7F:
+            escaped.append(f"\\u{codepoint:04X}")
+        else:
+            escaped.append(character)
+    return '"' + "".join(escaped) + '"'
 
 
 def load_toml(path: Path) -> dict[str, object]:
@@ -141,7 +157,8 @@ def _local_config_text(
 ) -> str:
     lines: list[str] = []
     if disabled_agents is not None:
-        lines.append(f"disabled_agents = {json.dumps(list(disabled_agents))}")
+        values = ", ".join(toml_basic_string(agent) for agent in disabled_agents)
+        lines.append(f"disabled_agents = [{values}]")
         lines.append("")
     if worker:
         lines.append("[worker]")
@@ -150,7 +167,7 @@ def _local_config_text(
             if key == "worker_name" and value is None:
                 value = worker.get("worker_id")
             if value is not None:
-                lines.append(f"{key} = {json.dumps(str(value))}")
+                lines.append(f"{key} = {toml_basic_string(str(value))}")
         lines.append("")
     for author_guard in author_guards:
         lines.append("[[author_guards]]")
@@ -167,11 +184,11 @@ def _local_config_text(
             "required_next_action",
         ):
             if key in author_guard:
-                lines.append(f"{key} = {json.dumps(str(author_guard[key]))}")
+                lines.append(f"{key} = {toml_basic_string(str(author_guard[key]))}")
         lines.append("")
     lines.append("[refs]")
     for name in sorted(refs):
-        lines.append(f"{name} = {json.dumps(str(refs[name]))}")
+        lines.append(f"{name} = {toml_basic_string(str(refs[name]))}")
     return "\n".join(lines) + "\n"
 
 

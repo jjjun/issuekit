@@ -680,25 +680,48 @@ def test_windows_token_cache_acl_tightening_is_best_effort(
 
     payload = json.loads(cache_path.read_text(encoding="utf-8"))
     assert payload == {"https://mine.example": {"token": "cached-token"}}
-    assert calls == [
-        ["whoami", "/user", "/fo", "csv"],
-        [
-            "icacls",
-            str(cache_path.with_name(f".{cache_path.name}.{os.getpid()}.tmp")),
-            "/inheritance:r",
-            "/grant:r",
-            "*S-1-5-21-123:F",
-        ],
-        ["whoami", "/user", "/fo", "csv"],
-        [
-            "icacls",
-            str(cache_path),
-            "/inheritance:r",
-            "/grant:r",
-            "*S-1-5-21-123:F",
-        ],
+    assert calls[0] == ["whoami", "/user", "/fo", "csv"]
+    temp_acl_call = calls[1]
+    assert temp_acl_call[0] == "icacls"
+    temp_path = cache_path.__class__(temp_acl_call[1])
+    assert temp_path.parent == cache_path.parent
+    assert temp_path.name.startswith(f".{cache_path.name}.")
+    assert temp_path != cache_path.with_name(
+        f".{cache_path.name}.{os.getpid()}.tmp"
+    )
+    assert not temp_path.exists()
+    assert temp_acl_call[2:] == [
+        "/inheritance:r",
+        "/grant:r",
+        "*S-1-5-21-123:F",
+    ]
+    assert calls[2] == ["whoami", "/user", "/fo", "csv"]
+    assert calls[3] == [
+        "icacls",
+        str(cache_path),
+        "/inheritance:r",
+        "/grant:r",
+        "*S-1-5-21-123:F",
     ]
     assert "could not restrict API token cache permissions" in capsys.readouterr().err
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX chmod is not used on Windows")
+def test_token_cache_chmod_failure_raises_token_cache_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cache_path = tmp_path / "token.json"
+
+    def fail_chmod(*args: object, **kwargs: object) -> None:
+        raise PermissionError("permission denied")
+
+    monkeypatch.setattr(token_cache_module, "_token_cache_path", lambda: cache_path)
+    monkeypatch.setattr(file_permissions_module.os, "chmod", fail_chmod)
+
+    with pytest.raises(WorkflowError) as exc_info:
+        token_cache_module._write_token_cache({"https://mine.example": {"token": "x"}})
+
+    assert exc_info.value.code == "token_cache_error"
 
 
 def test_windows_acl_tightening_is_opt_in(

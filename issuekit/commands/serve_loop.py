@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 import threading
 from collections.abc import Callable
@@ -21,6 +22,7 @@ from issuekit.agents.review import (
 from issuekit.agents.run_claimed import review_feedback_prompt, run_and_submit
 from issuekit.config import IssuekitConfig
 from issuekit.core import Issue
+from issuekit.file_permissions import open_owner_only_new
 from issuekit.store import get_store
 from issuekit.workflow import WorkflowError
 
@@ -364,5 +366,10 @@ def log_event(stream, log_path: Path | None, event: str, **fields: object) -> No
     line = " ".join(parts)
     print(line, file=stream)
     if log_path is not None:
-        with log_path.open("a", encoding="utf-8", newline="\n") as fh:
+        with os.fdopen(
+            open_owner_only_new(log_path, append=True),
+            "a",
+            encoding="utf-8",
+            newline="\n",
+        ) as fh:
             fh.write(line + "\n")

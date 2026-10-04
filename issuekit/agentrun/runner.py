@@ -18,6 +18,7 @@ from typing import Any
 from issuekit.agentrun._coerce import last_nonempty_line
 from issuekit.agentrun.adapter import AgentAdapter, ConfigAgentAdapter
 from issuekit.agentrun.git import changed_file_count, git_status_short
+from issuekit.agentrun.run_dir import prepare_run_dir
 from issuekit.agentrun.status import (
     HEARTBEAT_INTERVAL_SEC,
     RunStatus,
@@ -26,7 +27,7 @@ from issuekit.agentrun.status import (
     status_path,
     write_status,
 )
-from issuekit.file_permissions import ensure_owner_only_directory, open_owner_only
+from issuekit.file_permissions import open_owner_only_new, write_owner_only_text
 
 MAX_PROMPT_CHARS = 24_000
 
@@ -224,7 +225,7 @@ class AgentRunner:
         implementer_report: bool = False,
         drop_env: Sequence[str] = (),
     ) -> AgentResult:
-        plan_path = prompt.path.resolve()
+        plan_path = prompt.path.absolute()
         repo = repo.resolve()
         if not repo.exists():
             raise FileNotFoundError(f"Repo directory not found: {repo}")
@@ -248,16 +249,15 @@ class AgentRunner:
             resume=resume_session,
         )
 
-        run_dir = (run_dir or repo / ".agent-runs").resolve()
-        run_dir_existed = run_dir.exists()
-        ensure_owner_only_directory(run_dir)
+        run_dir_existed = (run_dir or repo / ".agent-runs").exists()
+        run_dir = prepare_run_dir(repo, run_dir)
         if not run_dir_existed:
             print(
                 ".agent-runs/ is gitignored run-log storage and is not normally committed.",
                 file=sys.stderr,
             )
         plan_path.parent.mkdir(parents=True, exist_ok=True)
-        plan_path.write_text(prompt.body, encoding="utf-8", newline="\n")
+        write_owner_only_text(plan_path, prompt.body)
         run_id, reservation_path = self._reserve_run_id(run_dir)
         stdout_path = run_dir / f"{run_id}.out.log"
         agent_log_path = run_dir / f"{run_id}.agent.log"
@@ -284,11 +284,11 @@ class AgentRunner:
         enable_heartbeat = sys.stderr.isatty() or follow
         start = time.monotonic()
         with os.fdopen(
-            open_owner_only(stdout_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC),
+            open_owner_only_new(stdout_path),
             "w",
             encoding="utf-8",
         ) as out_f, os.fdopen(
-            open_owner_only(agent_log_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC),
+            open_owner_only_new(agent_log_path),
             "w",
             encoding="utf-8",
         ) as log_f:
@@ -425,19 +425,14 @@ class AgentRunner:
         while True:
             reservation_path = run_dir / f"{run_id}.lock"
             if (
-                (run_dir / f"{run_id}.out.log").exists()
-                or (run_dir / f"{run_id}.agent.log").exists()
-                or status_path(run_dir, run_id).exists()
+                status_path(run_dir, run_id).exists()
                 or reservation_path.exists()
             ):
                 run_id = f"{base}-{counter:02d}"
                 counter += 1
                 continue
             try:
-                fd = open_owner_only(
-                    reservation_path,
-                    os.O_CREAT | os.O_EXCL | os.O_WRONLY,
-                )
+                fd = open_owner_only_new(reservation_path)
             except FileExistsError:
                 run_id = f"{base}-{counter:02d}"
                 counter += 1

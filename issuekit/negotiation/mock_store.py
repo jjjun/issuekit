@@ -8,7 +8,9 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
+from issuekit.agentrun.run_dir import prepare_run_dir
 from issuekit.core import optional_int
+from issuekit.file_permissions import write_owner_only_text
 from issuekit.negotiation.model import (
     DEFAULT_NEGOTIATION_PATH,
     NegotiationEntry,
@@ -37,6 +39,7 @@ class MockNegotiationStore:
         self._issue_refs: dict[str, NegotiationIssueRefs] = {}
         self._next_thread_id = 1
         self._next_entry_id = 1
+        self._prepare_run_directory()
         self._load()
 
     def close(self) -> None:
@@ -322,6 +325,8 @@ class MockNegotiationStore:
     def _load(self) -> None:
         if self.persistence_path is None or not self.persistence_path.exists():
             return
+        if self.persistence_path.is_symlink():
+            return
         raw = json.loads(self.persistence_path.read_text(encoding="utf-8"))
         if not isinstance(raw, dict):
             raise WorkflowError("Negotiation persistence file was not a JSON object.")
@@ -367,6 +372,7 @@ class MockNegotiationStore:
     def _persist(self) -> None:
         if self.persistence_path is None:
             return
+        self._prepare_run_directory()
         self.persistence_path.parent.mkdir(parents=True, exist_ok=True)
         data = {
             "next_thread_id": self._next_thread_id,
@@ -381,10 +387,25 @@ class MockNegotiationStore:
                 for thread_id, entries in self._threads.items()
             },
         }
-        self.persistence_path.write_text(
+        write_owner_only_text(
+            self.persistence_path,
             json.dumps(data, indent=2, sort_keys=True) + "\n",
-            encoding="utf-8",
         )
+
+    def _prepare_run_directory(self) -> None:
+        if self.persistence_path is None:
+            return
+        path = self.persistence_path.absolute()
+        run_dir = next(
+            (
+                parent
+                for parent in (path.parent, *path.parents)
+                if parent.name == ".agent-runs"
+            ),
+            None,
+        )
+        if run_dir is not None:
+            prepare_run_dir(run_dir.parent, run_dir)
 
 
 def _entry_to_json(entry: NegotiationEntry) -> dict[str, Any]:

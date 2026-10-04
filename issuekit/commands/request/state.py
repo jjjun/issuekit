@@ -9,8 +9,10 @@ from pathlib import Path
 from typing import Any
 
 import issuekit.proposals.api as proposals_api
+from issuekit.agentrun.run_dir import prepare_run_dir
 from issuekit.agents.router import RouteTarget
 from issuekit.config import IssuekitConfig
+from issuekit.file_permissions import write_owner_only_text
 from issuekit.gitutil import git_short_head
 from issuekit.proposals import ProposalError
 
@@ -26,7 +28,10 @@ def state_path(cwd: Path) -> Path:
 
 
 def load_state(cwd: Path) -> dict[str, dict[str, Any]]:
+    prepare_run_dir(cwd)
     path = state_path(cwd)
+    if path.is_symlink():
+        return {}
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -43,12 +48,8 @@ def load_state(cwd: Path) -> dict[str, dict[str, Any]]:
 
 def save_state(cwd: Path, state: dict[str, dict[str, Any]]) -> None:
     path = state_path(cwd)
-    path.parent.mkdir(exist_ok=True)
-    path.write_text(
-        json.dumps(state, indent=2, sort_keys=True),
-        encoding="utf-8",
-        newline="\n",
-    )
+    prepare_run_dir(cwd)
+    write_owner_only_text(path, json.dumps(state, indent=2, sort_keys=True))
 
 
 def now() -> str:

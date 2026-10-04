@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import os
 import platform
 import re
@@ -18,6 +17,7 @@ from issuekit.config.local import (
     load_toml,
     local_config_text,
     read_local_config,
+    toml_basic_string,
     write_local_config,
 )
 from issuekit.core import is_valid_workflow_token
@@ -325,7 +325,9 @@ def _record_worker(
     path.parent.mkdir(parents=True, exist_ok=True)
     lines = ["[workers]"]
     for key in sorted(registry):
-        lines.append(f"{json.dumps(key)} = {json.dumps(registry[key])}")
+        lines.append(
+            f"{toml_basic_string(key)} = {toml_basic_string(registry[key])}"
+        )
     path.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
 
 

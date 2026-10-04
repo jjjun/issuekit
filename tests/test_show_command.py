@@ -50,13 +50,13 @@ def test_show_flags_stale_run_when_issue_stuck_implementing(
     old_heartbeat = (
         datetime.now() - timedelta(seconds=STALE_AFTER_SEC + 30)
     ).replace(microsecond=0).isoformat()
-    _write_run(tmp_path / ".agent-runs", "stale-run", issue=1, heartbeat_at=old_heartbeat)
+    _write_run(tmp_path / ".agent-runs", "20261004-100003", issue=1, heartbeat_at=old_heartbeat)
 
     assert cli.main(["show", "1", "--json"]) == 0
 
     payload = json.loads(capsys.readouterr().out)
     assert "stale_run" in payload
-    assert "stale-run" in payload["stale_run"]
+    assert "20261004-100003" in payload["stale_run"]
 
 
 def test_show_flags_already_reconciled_abandoned_run(
@@ -70,9 +70,9 @@ def test_show_flags_already_reconciled_abandoned_run(
         datetime.now() - timedelta(seconds=STALE_AFTER_SEC + 30)
     ).replace(microsecond=0).isoformat()
     write_status(
-        status_path(tmp_path / ".agent-runs", "stale-run"),
+        status_path(tmp_path / ".agent-runs", "20261004-100003"),
         RunStatus(
-            run_id="stale-run",
+            run_id="20261004-100003",
             agent="codex",
             issue=1,
             status="abandoned",
@@ -82,8 +82,8 @@ def test_show_flags_already_reconciled_abandoned_run(
             elapsed_sec=None,
             exit_code=None,
             plan="docs/issues/active/001_first.md",
-            stdout_log=".agent-runs/stale-run.out.log",
-            agent_log=".agent-runs/stale-run.agent.log",
+            stdout_log=".agent-runs/20261004-100003.out.log",
+            agent_log=".agent-runs/20261004-100003.agent.log",
             heartbeat_at=old_heartbeat,
             terminal_reason="heartbeat_lost",
         ),
@@ -93,7 +93,7 @@ def test_show_flags_already_reconciled_abandoned_run(
 
     payload = json.loads(capsys.readouterr().out)
     assert "stale_run" in payload
-    assert "stale-run" in payload["stale_run"]
+    assert "20261004-100003" in payload["stale_run"]
 
 
 def test_show_does_not_flag_fresh_run(tmp_path: Path, monkeypatch, capsys) -> None:
@@ -102,7 +102,7 @@ def test_show_does_not_flag_fresh_run(tmp_path: Path, monkeypatch, capsys) -> No
     )
     _configure_api(tmp_path, monkeypatch, client)
     fresh_heartbeat = datetime.now().replace(microsecond=0).isoformat()
-    _write_run(tmp_path / ".agent-runs", "live-run", issue=1, heartbeat_at=fresh_heartbeat)
+    _write_run(tmp_path / ".agent-runs", "20261004-100004", issue=1, heartbeat_at=fresh_heartbeat)
 
     assert cli.main(["show", "1", "--json"]) == 0
 
@@ -130,7 +130,7 @@ def test_show_ignores_stale_run_when_issue_not_implementing(
     old_heartbeat = (
         datetime.now() - timedelta(seconds=STALE_AFTER_SEC + 30)
     ).replace(microsecond=0).isoformat()
-    _write_run(tmp_path / ".agent-runs", "stale-run", issue=1, heartbeat_at=old_heartbeat)
+    _write_run(tmp_path / ".agent-runs", "20261004-100005", issue=1, heartbeat_at=old_heartbeat)
 
     assert cli.main(["show", "1", "--json"]) == 0
 

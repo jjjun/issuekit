@@ -6,6 +6,7 @@ import csv
 import io
 import os
 import subprocess
+import tempfile
 from collections.abc import Callable
 from pathlib import Path
 
@@ -28,9 +29,54 @@ def open_owner_only(
 
     if hasattr(os, "O_BINARY"):
         flags |= os.O_BINARY
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
     fd = os.open(path, flags, 0o600)
     chmod_600(path, warn=warn, windows_acl=windows_acl)
     return fd
+
+
+def open_owner_only_new(path: Path, *, append: bool = False) -> int:
+    """Open a new owner-only file, or safely open one for owner-only append."""
+
+    flags = os.O_WRONLY | os.O_CREAT
+    if append:
+        flags |= os.O_APPEND
+    else:
+        flags |= os.O_EXCL
+    if hasattr(os, "O_BINARY"):
+        flags |= os.O_BINARY
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    fd = os.open(path, flags, 0o600)
+    try:
+        if os.name != "nt":
+            if os.fstat(fd).st_uid != os.getuid():
+                raise PermissionError(f"Refusing file not owned by current user: {path}")
+            os.fchmod(fd, 0o600)
+        return fd
+    except BaseException:
+        os.close(fd)
+        raise
+
+
+def write_owner_only_text(path: Path, text: str) -> None:
+    """Atomically replace a UTF-8 text file without following a final symlink."""
+
+    fd, temp_name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.")
+    temp_path = path.with_name(os.path.basename(temp_name))
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_path, path)
+    except BaseException:
+        try:
+            temp_path.unlink()
+        except OSError:
+            pass
+        raise
 
 
 def chmod_600(
@@ -38,6 +84,7 @@ def chmod_600(
     *,
     warn: Callable[[Path, str], None] | None = None,
     windows_acl: bool = False,
+    strict: bool = False,
 ) -> None:
     """Best-effort restriction of a file to its owner."""
 
@@ -51,7 +98,8 @@ def chmod_600(
     try:
         os.chmod(path, 0o600)
     except OSError:
-        pass
+        if strict:
+            raise
 
 
 def chmod_700(path: Path) -> None:

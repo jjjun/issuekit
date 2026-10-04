@@ -33,6 +33,23 @@ def test_local_config_round_trips_worker_and_refs(tmp_path: Path) -> None:
     )
 
 
+def test_local_config_round_trips_non_bmp_and_del_in_worker_metadata(
+    tmp_path: Path,
+) -> None:
+    worker = {
+        "machine_id": "machine-😀",
+        "repo_id": "repo",
+        "worker_name": "checkout-\x7f",
+    }
+
+    write_local_config(tmp_path, worker=worker, refs={})
+
+    content = (tmp_path / LOCAL_CONFIG_NAME).read_text(encoding="utf-8")
+    assert "😀" in content
+    assert "\\u007F" in content
+    assert read_local_config(tmp_path).worker == worker
+
+
 def test_local_config_reads_legacy_worker_id(tmp_path: Path) -> None:
     (tmp_path / LOCAL_CONFIG_NAME).write_text(
         (

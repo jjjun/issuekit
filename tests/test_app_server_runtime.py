@@ -318,6 +318,66 @@ def test_app_server_runner_returns_result_for_successful_attempt(
     ]
 
 
+@pytest.mark.skipif(os.name == "nt", reason="POSIX symlink behavior is required")
+def test_app_server_runner_replaces_prompt_symlink_without_writing_through_it(
+    tmp_path: Path, monkeypatch
+) -> None:
+    FakeAgentSessionClient.instances.clear()
+    FakeAgentSessionClient.create_error = None
+    monkeypatch.setattr(app_server_runtime, "IssuekitClient", FakeAgentSessionClient)
+    run_dir = tmp_path / "runs"
+    run_dir.mkdir()
+    prompt_path = run_dir / "issue-322.md"
+    target = tmp_path / "outside.md"
+    target.write_text("leave this prompt alone\n", encoding="utf-8")
+    prompt_path.symlink_to(target)
+    prompt = AgentPrompt(prompt_path, "safe prompt", "Implement the plan.")
+
+    result = AppServerAttemptRunner(
+        make_config(),
+        make_issue(),
+        transport_factory=lambda *args, **kwargs: FakeTransport(
+            *args, complete_on_start=True, **kwargs
+        ),
+    ).run(
+        FakeAdapter(),
+        prompt,
+        tmp_path,
+        issue_id=322,
+        agent_name="codex",
+        run_dir=run_dir,
+    )
+
+    assert result.exit_code == 0
+    assert target.read_text(encoding="utf-8") == "leave this prompt alone\n"
+    assert not prompt_path.is_symlink()
+    assert prompt_path.read_text(encoding="utf-8") == "safe prompt"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX symlink behavior is required")
+def test_app_server_runner_refuses_a_symlinked_run_directory_before_writing(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (repo / ".agent-runs").symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(RuntimeError, match=r"Refusing \.agent-runs: it is a symlink"):
+        AppServerAttemptRunner(make_config(), make_issue()).run(
+            FakeAdapter(),
+            AgentPrompt(
+                repo / ".agent-runs" / "issue-322.md", "safe prompt", "pointer"
+            ),
+            repo,
+            issue_id=322,
+            agent_name="codex",
+        )
+
+    assert list(outside.iterdir()) == []
+
+
 @pytest.mark.skipif(os.name == "nt", reason="POSIX mode bits are not used on Windows")
 def test_app_server_runner_creates_owner_only_artifacts(
     tmp_path: Path, monkeypatch

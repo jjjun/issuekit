@@ -20,6 +20,7 @@ from issuekit.agentrun.app_server import (
     CommandJournal,
     normalize_notification,
 )
+from issuekit.agentrun.run_dir import prepare_run_dir
 from issuekit.agentrun.runner import (
     AgentPrompt,
     AgentResult,
@@ -29,7 +30,7 @@ from issuekit.api import IssuekitClient
 from issuekit.api.features import is_feature_unavailable
 from issuekit.config import IssuekitConfig
 from issuekit.core import Issue
-from issuekit.file_permissions import ensure_owner_only_directory, open_owner_only
+from issuekit.file_permissions import open_owner_only_new, write_owner_only_text
 from issuekit.workflow import WorkflowError
 
 LEASE_STOP_CODES = frozenset(
@@ -107,10 +108,9 @@ class AppServerAttemptRunner:
         if worker_id is None:
             raise ValueError("codex_app_server runtime requires a registered worker.")
 
-        run_dir = (run_dir or repo / ".agent-runs").resolve()
-        ensure_owner_only_directory(run_dir)
+        run_dir = prepare_run_dir(repo, run_dir)
         prompt.path.parent.mkdir(parents=True, exist_ok=True)
-        prompt.path.write_text(prompt.body, encoding="utf-8", newline="\n")
+        write_owner_only_text(prompt.path, prompt.body)
         run_id = f"app-server-{issue_id}-{uuid.uuid4().hex[:8]}"
         stdout_path = run_dir / f"{run_id}.out.log"
         agent_log_path = run_dir / f"{run_id}.agent.log"
@@ -212,7 +212,7 @@ class AppServerAttemptRunner:
             transport: AppServerTransport | None = None
             try:
                 with os.fdopen(
-                    open_owner_only(agent_log_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC),
+                    open_owner_only_new(agent_log_path),
                     "w",
                     encoding="utf-8",
                     newline="\n",
@@ -459,7 +459,7 @@ class AppServerAttemptRunner:
                     pass
 
         with os.fdopen(
-            open_owner_only(stdout_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC),
+            open_owner_only_new(stdout_path),
             "w",
             encoding="utf-8",
             newline="\n",

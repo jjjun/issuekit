@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 
+import issuekit.file_permissions as file_permissions
 import issuekit.proposals.api as proposals_api
 from issuekit import cli
 from issuekit import store as store_module
@@ -974,13 +975,13 @@ def test_triage_state_save_is_atomic_and_skips_unchanged_write(
     monkeypatch,
 ) -> None:
     replacements: list[tuple[Path, Path]] = []
-    original_replace = triage_state.os.replace
+    original_replace = file_permissions.os.replace
 
     def record_replace(source, destination):
         replacements.append((Path(source), Path(destination)))
         original_replace(source, destination)
 
-    monkeypatch.setattr(triage_state.os, "replace", record_replace)
+    monkeypatch.setattr(file_permissions.os, "replace", record_replace)
     state = {"8": {"fingerprint": "abc", "replied_at": "now"}}
 
     triage_state.save_state(tmp_path, state)
@@ -988,7 +989,7 @@ def test_triage_state_save_is_atomic_and_skips_unchanged_write(
 
     assert len(replacements) == 1
     assert replacements[0][0].parent == replacements[0][1].parent
-    assert not list(replacements[0][1].parent.glob("*.tmp"))
+    assert not list(replacements[0][1].parent.glob(".triage-author-state.json.*"))
 
 
 def test_triage_author_parse_failure_leaves_pending(monkeypatch, tmp_path) -> None:

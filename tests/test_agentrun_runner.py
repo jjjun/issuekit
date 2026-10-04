@@ -5,10 +5,12 @@ import sys
 import threading
 import time
 from dataclasses import replace
+from datetime import datetime
 from pathlib import Path
 
 import pytest
 
+import issuekit.agentrun.runner as runner_module
 from issuekit.agentrun import (
     AgentAdapter,
     AgentPrompt,
@@ -306,6 +308,120 @@ def test_runner_tightens_an_existing_run_directory(tmp_path: Path) -> None:
     )
 
     assert run_dir.stat().st_mode & 0o777 == 0o700
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX symlink behavior is required")
+@pytest.mark.parametrize(
+    "prompt_name",
+    [
+        "issue-7.md",
+        "review-issue-7.md",
+        "negotiate-issue-7-round-1-initiator.md",
+    ],
+)
+def test_runner_replaces_prompt_symlinks_without_writing_through_them(
+    tmp_path: Path,
+    prompt_name: str,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / ".git").mkdir()
+    run_dir = repo / ".agent-runs"
+    run_dir.mkdir()
+    prompt_path = run_dir / prompt_name
+    target = tmp_path / f"{prompt_name}.target"
+    target.write_text("leave this file alone\n", encoding="utf-8")
+    prompt_path.symlink_to(target)
+
+    result = AgentRunner().run(
+        FakeAdapter([sys.executable, "-c", "pass"]),
+        AgentPrompt(prompt_path, "safe prompt", ""),
+        repo,
+        timeout=10.0,
+    )
+
+    assert result.exit_code == 0
+    assert target.read_text(encoding="utf-8") == "leave this file alone\n"
+    assert not prompt_path.is_symlink()
+    assert prompt_path.read_text(encoding="utf-8") == "safe prompt"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX symlink behavior is required")
+def test_runner_refuses_a_symlinked_run_directory_before_writing(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / ".git").mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (repo / ".agent-runs").symlink_to(outside, target_is_directory=True)
+    prompt_path = repo / ".agent-runs" / "issue-7.md"
+
+    with pytest.raises(RuntimeError, match=r"Refusing \.agent-runs: it is a symlink"):
+        AgentRunner().run(
+            FakeAdapter([sys.executable, "-c", "pass"]),
+            AgentPrompt(prompt_path, "safe prompt", ""),
+            repo,
+            timeout=10.0,
+        )
+
+    assert list(outside.iterdir()) == []
+
+
+def test_runner_refuses_tracked_files_under_run_directory_before_writing(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    tracked = repo / ".agent-runs" / "tracked.txt"
+    tracked.parent.mkdir()
+    tracked.write_text("tracked\n", encoding="utf-8")
+    subprocess.run(["git", "add", ".agent-runs/tracked.txt"], cwd=repo, check=True)
+    prompt_path = repo / ".agent-runs" / "issue-7.md"
+
+    with pytest.raises(RuntimeError, match="git tracks 1 files under it"):
+        AgentRunner().run(
+            FakeAdapter([sys.executable, "-c", "pass"]),
+            AgentPrompt(prompt_path, "safe prompt", ""),
+            repo,
+            timeout=10.0,
+        )
+
+    assert not prompt_path.exists()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX symlink behavior is required")
+def test_runner_refuses_a_symlink_at_a_new_stdout_log_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FixedDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2026, 10, 4, 12, 0, 0, tzinfo=tz)
+
+    monkeypatch.setattr(runner_module, "datetime", FixedDateTime)
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / ".git").mkdir()
+    run_dir = repo / ".agent-runs"
+    run_dir.mkdir()
+    run_id = "20261004-120000"
+    target = tmp_path / "outside.log"
+    target.write_text("leave this log alone\n", encoding="utf-8")
+    (run_dir / f"{run_id}.out.log").symlink_to(target)
+
+    with pytest.raises(FileExistsError):
+        AgentRunner().run(
+            FakeAdapter([sys.executable, "-c", "pass"]),
+            agent_prompt(tmp_path / "plan.md"),
+            repo,
+            timeout=10.0,
+        )
+
+    assert target.read_text(encoding="utf-8") == "leave this log alone\n"
 
 
 def test_runner_uses_explicit_run_directory(tmp_path: Path) -> None:

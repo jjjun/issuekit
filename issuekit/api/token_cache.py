@@ -5,12 +5,13 @@ from __future__ import annotations
 import json
 import os
 import sys
+import tempfile
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
 from issuekit.config.settings import api_url_origin
-from issuekit.file_permissions import chmod_600, ensure_owner_only_directory, open_owner_only
+from issuekit.file_permissions import chmod_600, ensure_owner_only_directory
 from issuekit.workflow import WorkflowError
 
 from .security import is_expired, jwt_expiry
@@ -107,25 +108,34 @@ def _write_token_cache(cache: Mapping[str, Any]) -> None:
     except OSError as exc:
         raise WorkflowError(f"Failed to create API token cache directory: {exc}", code="token_cache_error") from exc
 
-    temp_path = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    temp_path: Path | None = None
     data = json.dumps(dict(cache), sort_keys=True, separators=(",", ":")) + "\n"
-    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
     try:
-        fd = open_owner_only(
-            temp_path,
-            flags,
+        fd, temp_name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.")
+        temp_path = path.with_name(os.path.basename(temp_name))
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
+            chmod_600(
+                temp_path,
+                warn=_warn_token_cache_permissions,
+                windows_acl=True,
+                strict=True,
+            )
+            handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_path, path)
+        chmod_600(
+            path,
             warn=_warn_token_cache_permissions,
             windows_acl=True,
+            strict=True,
         )
-        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
-            handle.write(data)
-        os.replace(temp_path, path)
-        chmod_600(path, warn=_warn_token_cache_permissions, windows_acl=True)
     except OSError as exc:
-        try:
-            temp_path.unlink()
-        except OSError:
-            pass
+        if temp_path is not None:
+            try:
+                temp_path.unlink()
+            except OSError:
+                pass
         raise WorkflowError(f"Failed to write API token cache: {exc}", code="token_cache_error") from exc
 
 

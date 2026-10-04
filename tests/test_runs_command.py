@@ -43,26 +43,26 @@ def test_runs_lists_newest_first(tmp_path: Path, monkeypatch, capsys) -> None:
 
 def test_runs_active_filters_to_running(tmp_path: Path, monkeypatch, capsys) -> None:
     run_dir = tmp_path / ".agent-runs"
-    _write_run(run_dir, "done", status="completed", exit_code=0, elapsed_sec=1.0)
-    _write_run(run_dir, "live", status="running")
+    _write_run(run_dir, "20260608-111300", status="completed", exit_code=0, elapsed_sec=1.0)
+    _write_run(run_dir, "20260608-111400", status="running")
     monkeypatch.chdir(tmp_path)
 
     assert cli.main(["runs", "--active"]) == 0
 
     output = capsys.readouterr().out
-    assert "live" in output
-    assert "done" not in output
+    assert "20260608-111400" in output
+    assert "20260608-111300" not in output
 
 
 def test_runs_json_outputs_records(tmp_path: Path, monkeypatch, capsys) -> None:
     run_dir = tmp_path / ".agent-runs"
-    _write_run(run_dir, "run-a", status="completed", issue=None, exit_code=0)
+    _write_run(run_dir, "20260608-111500", status="completed", issue=None, exit_code=0)
     monkeypatch.chdir(tmp_path)
 
     assert cli.main(["runs", "--json"]) == 0
 
     records = json.loads(capsys.readouterr().out)
-    assert records[0]["run_id"] == "run-a"
+    assert records[0]["run_id"] == "20260608-111500"
     assert records[0]["issue"] is None
 
 
@@ -70,7 +70,7 @@ def test_runs_skips_unreadable_records_and_warns(
     tmp_path: Path, monkeypatch, capsys
 ) -> None:
     run_dir = tmp_path / ".agent-runs"
-    _write_run(run_dir, "good", status="completed", exit_code=0)
+    _write_run(run_dir, "20260608-111600", status="completed", exit_code=0)
     (run_dir / "nul.status.json").write_bytes(b"\0" * 470)
     (run_dir / "missing.status.json").write_text(
         '{"run_id": "missing"}\n', encoding="utf-8", newline="\n"
@@ -83,7 +83,7 @@ def test_runs_skips_unreadable_records_and_warns(
     assert cli.main(["runs"]) == 0
 
     captured = capsys.readouterr()
-    assert "good" in captured.out
+    assert "20260608-111600" in captured.out
     assert "nul.status.json" in captured.err
     assert "missing.status.json" in captured.err
     assert "array.status.json" in captured.err
@@ -93,7 +93,7 @@ def test_runs_json_skips_unreadable_records_and_stays_parseable(
     tmp_path: Path, monkeypatch, capsys
 ) -> None:
     run_dir = tmp_path / ".agent-runs"
-    _write_run(run_dir, "good", status="completed", exit_code=0)
+    _write_run(run_dir, "20260608-111700", status="completed", exit_code=0)
     (run_dir / "bad.status.json").write_bytes(b"\0")
     monkeypatch.chdir(tmp_path)
 
@@ -101,15 +101,16 @@ def test_runs_json_skips_unreadable_records_and_stays_parseable(
 
     captured = capsys.readouterr()
     records = json.loads(captured.out)
-    assert [record["run_id"] for record in records] == ["good"]
+    assert [record["run_id"] for record in records] == ["20260608-111700"]
     assert "bad.status.json" in captured.err
 
 
 def test_runs_detail_prints_record_and_log_tails(tmp_path: Path, monkeypatch, capsys) -> None:
     run_dir = tmp_path / ".agent-runs"
     run_dir.mkdir()
-    stdout_log = run_dir / "detail.out.log"
-    agent_log = run_dir / "detail.agent.log"
+    run_id = "20260608-111800"
+    stdout_log = run_dir / f"{run_id}.out.log"
+    agent_log = run_dir / f"{run_id}.agent.log"
     stdout_log.write_text(
         "\n".join(f"out-{index}" for index in range(45)) + "\n",
         encoding="utf-8",
@@ -118,20 +119,20 @@ def test_runs_detail_prints_record_and_log_tails(tmp_path: Path, monkeypatch, ca
     agent_log.write_text("err-one\nerr-two\n", encoding="utf-8", newline="\n")
     _write_run(
         run_dir,
-        "detail",
+        run_id,
         status="failed",
-        stdout_log=".agent-runs/detail.out.log",
-        agent_log=".agent-runs/detail.agent.log",
+        stdout_log=f".agent-runs/{run_id}.out.log",
+        agent_log=f".agent-runs/{run_id}.agent.log",
         exit_code=1,
         elapsed_sec=3.0,
     )
     monkeypatch.chdir(tmp_path)
 
-    assert cli.main(["runs", "detail"]) == 0
+    assert cli.main(["runs", run_id]) == 0
 
     output = capsys.readouterr().out
     output_lines = output.splitlines()
-    assert '"run_id": "detail"' in output
+    assert f'"run_id": "{run_id}"' in output
     assert "--- stdout tail" in output
     assert "out-5" in output
     assert "out-44" in output
@@ -146,9 +147,9 @@ def test_runs_detail_prints_claude_envelope_metadata(
 ) -> None:
     run_dir = tmp_path / ".agent-runs"
     write_status(
-        status_path(run_dir, "metadata"),
+        status_path(run_dir, "20261004-000001"),
         RunStatus(
-            run_id="metadata",
+            run_id="20261004-000001",
             agent="claude",
             issue=391,
             status="completed",
@@ -158,8 +159,8 @@ def test_runs_detail_prints_claude_envelope_metadata(
             elapsed_sec=1.0,
             exit_code=0,
             plan=".agent-runs/issue-391.md",
-            stdout_log=".agent-runs/metadata.out.log",
-            agent_log=".agent-runs/metadata.agent.log",
+            stdout_log=".agent-runs/20261004-000001.out.log",
+            agent_log=".agent-runs/20261004-000001.agent.log",
             permission_denials=2,
             permission_denied_tools="Bash, Read",
             api_error_status="401",
@@ -169,7 +170,7 @@ def test_runs_detail_prints_claude_envelope_metadata(
     )
     monkeypatch.chdir(tmp_path)
 
-    assert cli.main(["runs", "metadata"]) == 0
+    assert cli.main(["runs", "20261004-000001"]) == 0
 
     output = capsys.readouterr().out
     assert '"permission_denials": 2' in output
@@ -182,9 +183,69 @@ def test_runs_detail_prints_claude_envelope_metadata(
 def test_runs_detail_missing_returns_error(tmp_path: Path, monkeypatch, capsys) -> None:
     monkeypatch.chdir(tmp_path)
 
-    assert cli.main(["runs", "missing"]) == 1
+    assert cli.main(["runs", "20260608-111900"]) == 1
 
-    assert "Run not found: missing" in capsys.readouterr().err
+    assert "Run not found: 20260608-111900" in capsys.readouterr().err
+
+
+def test_runs_rejects_invalid_run_id(tmp_path: Path, monkeypatch, capsys) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["runs", "../x"]) == 1
+
+    assert "Invalid run id" in capsys.readouterr().err
+
+
+def test_runs_skips_status_with_traversal_run_id_without_writing_outside(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    run_dir = tmp_path / ".agent-runs"
+    run_id = "20260608-112600"
+    _write_run(run_dir, run_id, status="running")
+    path = status_path(run_dir, run_id)
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    outside_name = f"{tmp_path.name}-outside"
+    payload["run_id"] = f"../../{outside_name}"
+    path.write_text(json.dumps(payload), encoding="utf-8", newline="\n")
+    outside_path = tmp_path.parent / f"{outside_name}.status.json"
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["runs"]) == 0
+
+    captured = capsys.readouterr()
+    assert "No runs." in captured.out
+    assert "run id does not match status file name" in captured.err
+    assert not outside_path.exists()
+
+
+def test_runs_hides_absolute_and_escaping_log_paths(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    run_dir = tmp_path / ".agent-runs"
+    run_id = "20260608-112700"
+    secret = tmp_path / "outside.log"
+    secret.write_text("outside secret marker\n", encoding="utf-8")
+    _write_run(
+        run_dir,
+        run_id,
+        status="completed",
+        stdout_log=str(secret),
+        agent_log="../../outside.log",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["runs", "--json"]) == 0
+    listed = json.loads(capsys.readouterr().out)[0]
+    assert str(secret) not in json.dumps(listed)
+    assert listed["stdout_log"] == "log path outside .agent-runs; not shown"
+    assert listed["agent_log"] == "log path outside .agent-runs; not shown"
+
+    assert cli.main(["runs", run_id]) == 0
+
+    output = capsys.readouterr().out
+    assert str(secret) not in output
+    assert "outside secret marker" not in output
+    assert output.count("log path outside .agent-runs; not shown") == 4
 
 
 def test_runs_detail_unreadable_returns_error(
@@ -192,11 +253,12 @@ def test_runs_detail_unreadable_returns_error(
 ) -> None:
     run_dir = tmp_path / ".agent-runs"
     run_dir.mkdir()
-    path = run_dir / "broken.status.json"
+    run_id = "20260608-112000"
+    path = run_dir / f"{run_id}.status.json"
     path.write_bytes(b"\0")
     monkeypatch.chdir(tmp_path)
 
-    assert cli.main(["runs", "broken"]) == 1
+    assert cli.main(["runs", run_id]) == 1
 
     error = capsys.readouterr().err
     assert "Run status file is unreadable" in error
@@ -207,10 +269,11 @@ def test_runs_detail_unreadable_returns_error(
 def test_runs_detail_reads_agent_log(tmp_path: Path, monkeypatch, capsys) -> None:
     run_dir = tmp_path / ".agent-runs"
     run_dir.mkdir()
-    agent_log = run_dir / "legacy.agent.log"
+    run_id = "20260608-112100"
+    agent_log = run_dir / f"{run_id}.agent.log"
     agent_log.write_text("legacy-agent-line\n", encoding="utf-8", newline="\n")
     status_json = {
-        "run_id": "legacy",
+        "run_id": run_id,
         "agent": "codex",
         "issue": 1,
         "status": "completed",
@@ -220,18 +283,18 @@ def test_runs_detail_reads_agent_log(tmp_path: Path, monkeypatch, capsys) -> Non
         "elapsed_sec": 1.0,
         "exit_code": 0,
         "plan": "docs/issues/active/001_first.md",
-        "stdout_log": ".agent-runs/legacy.out.log",
-        "agent_log": ".agent-runs/legacy.agent.log",
+        "stdout_log": f".agent-runs/{run_id}.out.log",
+        "agent_log": f".agent-runs/{run_id}.agent.log",
     }
-    (run_dir / "legacy.status.json").write_text(
+    (run_dir / f"{run_id}.status.json").write_text(
         json.dumps(status_json, indent=2) + "\n", encoding="utf-8", newline="\n"
     )
     monkeypatch.chdir(tmp_path)
 
-    assert cli.main(["runs", "legacy"]) == 0
+    assert cli.main(["runs", run_id]) == 0
 
     output = capsys.readouterr().out
-    assert '"run_id": "legacy"' in output
+    assert f'"run_id": "{run_id}"' in output
     assert "legacy-agent-line" in output
 
 
@@ -286,9 +349,9 @@ def test_runs_reconciles_stale_running_to_abandoned_everywhere(
         microsecond=0
     ).isoformat()
     write_status(
-        status_path(run_dir, "frozen"),
+        status_path(run_dir, "20260608-112200"),
         RunStatus(
-            run_id="frozen",
+            run_id="20260608-112200",
             agent="codex",
             issue=61,
             status="running",
@@ -298,8 +361,8 @@ def test_runs_reconciles_stale_running_to_abandoned_everywhere(
             elapsed_sec=None,
             exit_code=None,
             plan="docs/issues/active/061_x.md",
-            stdout_log=".agent-runs/frozen.out.log",
-            agent_log=".agent-runs/frozen.agent.log",
+            stdout_log=".agent-runs/20260608-112200.out.log",
+            agent_log=".agent-runs/20260608-112200.agent.log",
             heartbeat_at=old,
         ),
     )
@@ -315,12 +378,14 @@ def test_runs_reconciles_stale_running_to_abandoned_everywhere(
     assert records[0]["terminal_reason"] == "heartbeat_lost"
     assert records[0]["ended_at"] == old
 
-    assert cli.main(["runs", "frozen", "--json"]) == 0
+    assert cli.main(["runs", "20260608-112200", "--json"]) == 0
     detail = json.loads(capsys.readouterr().out)
     assert detail["status"] == "abandoned"
     assert detail["terminal_reason"] == "heartbeat_lost"
 
-    on_disk = json.loads(status_path(run_dir, "frozen").read_text(encoding="utf-8"))
+    on_disk = json.loads(
+        status_path(run_dir, "20260608-112200").read_text(encoding="utf-8")
+    )
     assert on_disk["status"] == "abandoned"
 
 
@@ -330,9 +395,9 @@ def test_runs_leaves_fresh_running_record_untouched(
     run_dir = tmp_path / ".agent-runs"
     fresh_heartbeat = datetime.now().replace(microsecond=0).isoformat()
     write_status(
-        status_path(run_dir, "live"),
+        status_path(run_dir, "20260608-112300"),
         RunStatus(
-            run_id="live",
+            run_id="20260608-112300",
             agent="codex",
             issue=61,
             status="running",
@@ -342,8 +407,8 @@ def test_runs_leaves_fresh_running_record_untouched(
             elapsed_sec=None,
             exit_code=None,
             plan="docs/issues/active/061_x.md",
-            stdout_log=".agent-runs/live.out.log",
-            agent_log=".agent-runs/live.agent.log",
+            stdout_log=".agent-runs/20260608-112300.out.log",
+            agent_log=".agent-runs/20260608-112300.agent.log",
             heartbeat_at=fresh_heartbeat,
         ),
     )
@@ -353,16 +418,18 @@ def test_runs_leaves_fresh_running_record_untouched(
     records = json.loads(capsys.readouterr().out)
     assert records[0]["status"] == "running"
 
-    on_disk = json.loads(status_path(run_dir, "live").read_text(encoding="utf-8"))
+    on_disk = json.loads(
+        status_path(run_dir, "20260608-112300").read_text(encoding="utf-8")
+    )
     assert on_disk["status"] == "running"
 
 
 def test_runs_list_shows_last_log_line(tmp_path: Path, monkeypatch, capsys) -> None:
     run_dir = tmp_path / ".agent-runs"
     write_status(
-        status_path(run_dir, "run-a"),
+        status_path(run_dir, "20260608-112400"),
         RunStatus(
-            run_id="run-a",
+            run_id="20260608-112400",
             agent="kimi",
             issue=1,
             status="running",
@@ -372,8 +439,8 @@ def test_runs_list_shows_last_log_line(tmp_path: Path, monkeypatch, capsys) -> N
             elapsed_sec=None,
             exit_code=None,
             plan="docs/issues/active/001_first.md",
-            stdout_log=".agent-runs/run-a.out.log",
-            agent_log=".agent-runs/run-a.agent.log",
+            stdout_log=".agent-runs/20260608-112400.out.log",
+            agent_log=".agent-runs/20260608-112400.agent.log",
             last_log_line=" agent is processing...",
             last_log_at="2026-06-08T11:00:05",
             heartbeat_at="2026-06-08T11:00:05",
@@ -394,9 +461,9 @@ def test_runs_output_escapes_characters_unsupported_by_console_encoding(
 ) -> None:
     run_dir = tmp_path / ".agent-runs"
     write_status(
-        status_path(run_dir, "run-a"),
+        status_path(run_dir, "20260608-112500"),
         RunStatus(
-            run_id="run-a",
+            run_id="20260608-112500",
             agent="codex",
             issue=1,
             status="running",
@@ -406,8 +473,8 @@ def test_runs_output_escapes_characters_unsupported_by_console_encoding(
             elapsed_sec=None,
             exit_code=None,
             plan="docs/issues/active/001_first.md",
-            stdout_log=".agent-runs/run-a.out.log",
-            agent_log=".agent-runs/run-a.agent.log",
+            stdout_log=".agent-runs/20260608-112500.out.log",
+            agent_log=".agent-runs/20260608-112500.agent.log",
             last_log_line="\u8f7d log",
             last_log_at="2026-06-08T11:00:05",
             heartbeat_at="2026-06-08T11:00:05",

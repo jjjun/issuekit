@@ -285,6 +285,47 @@ def test_serve_once_empty_queue_exits_without_agent(
     assert "event=idle" in capsys.readouterr().err
 
 
+@pytest.mark.skipif(os.name == "nt", reason="POSIX symlink behavior is required")
+def test_serve_refuses_symlinked_run_directory_before_writing(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient()
+    _configure_registered_api(tmp_path, monkeypatch, client)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (tmp_path / ".agent-runs").symlink_to(outside, target_is_directory=True)
+
+    exit_code = cli.main(["serve", "--agent", "codex", "--once"])
+
+    assert exit_code == 1
+    assert "Refusing .agent-runs: it is a symlink" in capsys.readouterr().err
+    assert list(outside.iterdir()) == []
+    assert client.calls == []
+
+
+def test_serve_refuses_tracked_run_directory_before_writing(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeIssuekitClient()
+    _configure_registered_api(tmp_path, monkeypatch, client)
+    tracked = tmp_path / ".agent-runs" / "tracked.txt"
+    tracked.parent.mkdir()
+    tracked.write_text("tracked\n", encoding="utf-8")
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "add", ".agent-runs/tracked.txt"], cwd=tmp_path, check=True)
+
+    exit_code = cli.main(["serve", "--agent", "codex", "--once"])
+
+    assert exit_code == 1
+    assert "git tracks 1 files under it" in capsys.readouterr().err
+    assert not (tmp_path / ".agent-runs" / "serve.lock").exists()
+    assert client.calls == []
+
+
 def test_serve_once_claims_runs_and_submits(
     tmp_path: Path,
     monkeypatch,

@@ -13,7 +13,7 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any, TextIO
 
-from issuekit.file_permissions import chmod_600, open_owner_only
+from issuekit.file_permissions import open_owner_only_new
 
 MAX_TEXT_CHARS = 1_048_576
 MAX_EVENT_BYTES = 64 * 1024
@@ -54,10 +54,8 @@ class CommandJournal:
     def __init__(self, path: Path) -> None:
         self.path = path
         path.parent.mkdir(parents=True, exist_ok=True)
-        if not path.exists():
-            fd = open_owner_only(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL)
-            os.close(fd)
-        chmod_600(path)
+        fd = open_owner_only_new(path)
+        os.close(fd)
 
     def record(self, command: Mapping[str, Any]) -> None:
         entry = {
@@ -68,7 +66,12 @@ class CommandJournal:
             "payload": redact_payload(command.get("payload")),
         }
         encoded = json.dumps(entry, ensure_ascii=True, separators=(",", ":"))
-        with self.path.open("a", encoding="utf-8", newline="\n") as stream:
+        with os.fdopen(
+            open_owner_only_new(self.path, append=True),
+            "a",
+            encoding="utf-8",
+            newline="\n",
+        ) as stream:
             stream.write(encoded + "\n")
             stream.flush()
             os.fsync(stream.fileno())

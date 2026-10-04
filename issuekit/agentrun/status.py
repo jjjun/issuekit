@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
+import tempfile
 import time
 from dataclasses import dataclass, field, replace
 from datetime import datetime
@@ -18,6 +20,7 @@ RunStatusValue = Literal["running", "completed", "failed", "timed_out", "abandon
 
 # Cadence of the background status writer loop (seconds).
 HEARTBEAT_INTERVAL_SEC = 1.0
+RUN_ID_PATTERN = re.compile(r"\d{8}-\d{6}(-\d{2,})?|app-server-\d+-[0-9a-f]{8}")
 # A running record whose heartbeat is older than this is considered stale.
 STALE_AFTER_SEC = 60.0
 # Atomic-replace retry budget for write_status (Windows tolerates rename poorly).
@@ -168,15 +171,20 @@ def write_status(path: Path, status: RunStatus) -> None:
     a failed status write must not be allowed to kill the heartbeat writer.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
-    temp_path = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    fd, temp_name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.")
+    temp_path = path.with_name(os.path.basename(temp_name))
     content = json.dumps(status.to_dict(), indent=2) + "\n"
-    with os.fdopen(
-        open_owner_only(temp_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC),
-        "w",
-        encoding="utf-8",
-        newline="\n",
-    ) as handle:
-        handle.write(content)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+    except BaseException:
+        try:
+            temp_path.unlink()
+        except OSError:
+            pass
+        raise
 
     for attempt in range(_REPLACE_MAX_ATTEMPTS):
         try:
@@ -218,7 +226,15 @@ def list_statuses(run_dir: Path) -> list[RunStatus]:
     unreadable = []
     for path in run_dir.glob("*.status.json"):
         try:
-            statuses.append(read_status(path))
+            if path.is_symlink():
+                raise ValueError("status file is a symlink")
+            status = read_status(path)
+            if (
+                RUN_ID_PATTERN.fullmatch(status.run_id) is None
+                or path.name != status_path(run_dir, status.run_id).name
+            ):
+                raise ValueError("run id does not match status file name")
+            statuses.append(status)
         except (OSError, ValueError) as exc:
             unreadable.append((path, exc))
     if unreadable:
@@ -240,10 +256,17 @@ def list_statuses(run_dir: Path) -> list[RunStatus]:
 
 
 def find_status(run_dir: Path, run_id: str) -> RunStatus | None:
+    if RUN_ID_PATTERN.fullmatch(run_id) is None:
+        raise ValueError(f"Invalid run id: {run_id}")
     path = status_path(run_dir, run_id)
     if not path.exists():
         return None
-    return read_status(path)
+    if path.is_symlink():
+        raise ValueError("status file is a symlink")
+    status = read_status(path)
+    if status.run_id != run_id:
+        raise ValueError("run id does not match status file name")
+    return status
 
 
 def is_stale(status: RunStatus, *, now: datetime | None = None) -> bool:
@@ -286,7 +309,13 @@ def is_dead(status: RunStatus, *, now: datetime | None = None) -> bool:
     return is_stale(status, now=now) or status.status == "abandoned"
 
 
-def reconcile_stale(run_dir: Path, status: RunStatus, *, now: datetime | None = None) -> RunStatus:
+def reconcile_stale(
+    run_dir: Path,
+    status: RunStatus,
+    *,
+    status_file: Path | None = None,
+    now: datetime | None = None,
+) -> RunStatus:
     """Reconcile a stale ``running`` record to a terminal ``abandoned`` state.
 
     When the process that owned ``status`` was killed before it could write its
@@ -300,13 +329,18 @@ def reconcile_stale(run_dir: Path, status: RunStatus, *, now: datetime | None = 
     """
     if not is_stale(status, now=now):
         return status
+    destination = status_file or status_path(run_dir, status.run_id)
+    try:
+        destination.absolute().relative_to(run_dir.absolute())
+    except ValueError as exc:
+        raise ValueError("Status file path is outside the run directory") from exc
     reconciled = replace(
         status,
         status="abandoned",
         ended_at=status.heartbeat_at or status.started_at,
         terminal_reason="heartbeat_lost",
     )
-    write_status(status_path(run_dir, status.run_id), reconciled)
+    write_status(destination, reconciled)
     return reconciled
 
 
