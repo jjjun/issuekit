@@ -8,14 +8,12 @@ from pathlib import Path
 
 from issuekit.agentrun import AgentRunner
 from issuekit.agents.triage_author import (
-    TriageAuthorParseError,
     TriageDecision,
     run_triage_author_cycle,
 )
 from issuekit.commands._common import print_json, run_agent_command
 from issuekit.config import load_config
-from issuekit.errors import WorkflowError
-from issuekit.proposals import ProposalError
+from issuekit.errors import AGENT_RUN_ERRORS
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:
@@ -87,15 +85,7 @@ def run(args) -> int:
 
     return run_agent_command(
         action,
-        errors=(
-            FileNotFoundError,
-            RuntimeError,
-            ValueError,
-            TimeoutError,
-            WorkflowError,
-            ProposalError,
-            TriageAuthorParseError,
-        ),
+        errors=AGENT_RUN_ERRORS,
     )
 
 

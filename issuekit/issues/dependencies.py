@@ -5,6 +5,8 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping, Sequence
 
+from issuekit.errors import WorkflowError
+
 DEPENDENCY_REF_PATTERN = re.compile(
     r"^[A-Za-z0-9_.-]+#(?:(?:issue|proposal):)?[0-9]+$"
 )
@@ -21,6 +23,15 @@ def dependency_refs(value: str | Sequence[str] | None) -> tuple[str, ...]:
         for item in value:
             raw_items.extend(_split_dependency_refs(str(item)))
     return _dedupe_refs(raw_items)
+
+
+def dependency_refs_or_workflow_error(
+    value: str | Sequence[str] | None,
+) -> tuple[str, ...]:
+    try:
+        return dependency_refs(value)
+    except ValueError as exc:
+        raise WorkflowError(str(exc)) from exc
 
 
 def _split_dependency_refs(value: str) -> list[str]:

@@ -11,7 +11,6 @@ from issuekit.core import (
     is_valid_workflow_token,
     worker_keys_match,
 )
-from issuekit.encoding import ASCII_ONLY_HINT, has_non_ascii
 from issuekit.errors import WorkflowError
 from issuekit.gitutil import git_current_branch
 from issuekit.guards.author import (
@@ -21,6 +20,7 @@ from issuekit.guards.author import (
 )
 from issuekit.guards.branch import enforce_work_branch
 from issuekit.guards.claim_sync import enforce_claim_sync
+from issuekit.inputs import require_ascii
 from issuekit.issues.session import current_session_token, validate_session_token
 from issuekit.store import managed_issue_store
 
@@ -57,7 +57,7 @@ def claim_next(
     session: str | None = None,
 ) -> Issue | None:
     config = config or IssuekitConfig()
-    _validate_assignee(assignee, config)
+    validate_assignee(assignee, config)
     _validate_stage("implementing", config)
     if priority is not None and priority not in VALID_ISSUE_PRIORITIES:
         raise WorkflowError(f"Invalid priority: {priority}")
@@ -82,7 +82,7 @@ def claim_next(
 
     with managed_issue_store(config, store) as active_store:
         worker = config.qualified_worker_key()
-        resolved_session = _resolve_session(session)
+        resolved_session = resolve_session(session)
         return active_store.claim_next(  # type: ignore[attr-defined]
             assignee=assignee,
             priority=priority,
@@ -106,7 +106,7 @@ def claim_issue(
     orchestration: AuthorOrchestrationContext | None = None,
 ) -> Issue:
     config = config or IssuekitConfig()
-    _validate_assignee(assignee, config)
+    validate_assignee(assignee, config)
     _validate_stage("implementing", config)
     enforce_no_author_guard(
         cwd=cwd,
@@ -133,7 +133,7 @@ def claim_issue(
                 no_sync=no_sync,
             )
         worker = config.qualified_worker_key()
-        resolved_session = _resolve_session(session)
+        resolved_session = resolve_session(session)
         _ensure_orchestration_session(orchestration, resolved_session)
         return active_store.claim_issue(  # type: ignore[attr-defined]
             issue_id,
@@ -156,7 +156,7 @@ def reclaim_issue(
     config = config or IssuekitConfig()
     _validate_stage("implementing", config)
     if reason is not None:
-        _validate_ascii_text(reason, "--reason")
+        require_ascii(reason, message="--reason must be ASCII-only.", error=WorkflowError)
 
     with managed_issue_store(config, store) as active_store:
         previous = active_store.get_issue(issue_id)
@@ -215,7 +215,7 @@ def readdress_issue(
 ) -> ReaddressResult:
     config = config or IssuekitConfig()
     if reason is not None:
-        _validate_ascii_text(reason, "--reason")
+        require_ascii(reason, message="--reason must be ASCII-only.", error=WorkflowError)
 
     with managed_issue_store(config, store) as active_store:
         previous = active_store.get_issue(issue_id)
@@ -264,12 +264,12 @@ def submit_for_review(
     _validate_stage("review", config)
     if reviewer is not None:
         reviewer = reviewer.strip()
-        _validate_assignee(reviewer, config)
+        validate_assignee(reviewer, config)
     if branch is None:
         branch = git_current_branch(cwd)
-    _validate_ascii_text(summary, "--summary")
-    _validate_ascii_text(branch or "", "--branch")
-    _validate_ascii_text(commit or "", "--commit")
+    require_ascii(summary, message="--summary must be ASCII-only.", error=WorkflowError)
+    require_ascii(branch or "", message="--branch must be ASCII-only.", error=WorkflowError)
+    require_ascii(commit or "", message="--commit must be ASCII-only.", error=WorkflowError)
     enforce_no_author_guard(
         cwd=cwd,
         config=config,
@@ -285,7 +285,7 @@ def submit_for_review(
         allow_any_branch=allow_any_branch,
     )
     with managed_issue_store(config, store) as active_store:
-        resolved_session = _resolve_session(session)
+        resolved_session = resolve_session(session)
         _ensure_orchestration_session(orchestration, resolved_session)
         return active_store.submit_for_review(  # type: ignore[attr-defined]
             issue_id,
@@ -314,14 +314,14 @@ def request_changes(
     config = config or IssuekitConfig()
     if reviewer is not None:
         reviewer = reviewer.strip()
-        _validate_assignee(reviewer, config)
+        validate_assignee(reviewer, config)
     if assignee is not None:
-        _validate_assignee(assignee, config)
+        validate_assignee(assignee, config)
     _validate_stage("changes_requested", config)
-    _validate_ascii_text(notes, "--notes")
+    require_ascii(notes, message="--notes must be ASCII-only.", error=WorkflowError)
     with managed_issue_store(config, store) as active_store:
         worker = config.worker_key()
-        resolved_session = _resolve_session(session)
+        resolved_session = resolve_session(session)
         return active_store.request_changes(  # type: ignore[attr-defined]
             issue_id,
             notes=notes,
@@ -373,7 +373,7 @@ def find_for(
 ) -> list[Issue]:
     config = config or IssuekitConfig()
     if assignee:
-        _validate_assignee(assignee, config)
+        validate_assignee(assignee, config)
     if stage:
         _validate_stage(stage, config)
 
@@ -427,7 +427,7 @@ def resolve_reviewer(
     if reviewer is None:
         return _resolve_auto_reviewer(config, issue=issue)
     resolved = reviewer.strip()
-    _validate_assignee(resolved, config)
+    validate_assignee(resolved, config)
     return resolved
 
 
@@ -437,11 +437,26 @@ def resolve_implementer(
 ) -> str | None:
     resolved = (implementer or config.default_implementer).strip()
     if resolved:
-        _validate_assignee(resolved, config)
+        validate_assignee(resolved, config)
         return resolved
     if len(config.assignees) == 1:
         return config.assignees[0]
     return None
+
+
+def require_implementer(
+    value: str | None,
+    config: IssuekitConfig,
+    *,
+    flag: str,
+) -> str:
+    resolved = resolve_implementer(value, config)
+    if resolved is None:
+        raise WorkflowError(
+            f"No implementer is configured. Pass {flag}, set default_implementer, "
+            "or configure exactly one enabled assignee."
+        )
+    return resolved
 
 
 def _resolve_auto_reviewer(config: IssuekitConfig, *, issue: Issue | None) -> str:
@@ -457,11 +472,16 @@ def _resolve_auto_reviewer(config: IssuekitConfig, *, issue: Issue | None) -> st
     )
 
 
-def _validate_assignee(value: str, config: IssuekitConfig) -> None:
+def validate_assignee(
+    value: str,
+    config: IssuekitConfig,
+    *,
+    label: str = "assignee",
+) -> None:
     if not is_valid_workflow_token(value):
-        raise WorkflowError(f"Invalid assignee token: {value}")
+        raise WorkflowError(f"Invalid {label} token: {value}")
     if value not in config.assignees:
-        raise WorkflowError(f"Unknown assignee: {value}")
+        raise WorkflowError(f"Unknown {label}: {value}")
 
 
 def _validate_stage(value: str, config: IssuekitConfig) -> None:
@@ -469,11 +489,6 @@ def _validate_stage(value: str, config: IssuekitConfig) -> None:
         raise WorkflowError(f"Invalid stage token: {value}")
     if value not in config.stages:
         raise WorkflowError(f"Unknown stage: {value}")
-
-
-def _validate_ascii_text(value: str, label: str) -> None:
-    if has_non_ascii(value):
-        raise WorkflowError(f"{label} must be ASCII-only. {ASCII_ONLY_HINT}")
 
 
 def _reclaim_actor(config: IssuekitConfig) -> str:
@@ -498,7 +513,7 @@ def _is_same_worker_changes_continuation(
     )
 
 
-def _resolve_session(explicit: str | None) -> str | None:
+def resolve_session(explicit: str | None) -> str | None:
     try:
         if explicit is not None:
             return validate_session_token(explicit)

@@ -14,26 +14,31 @@ from typing import TypeVar
 
 from issuekit.encoding import has_non_ascii
 
-ParseErrorT = TypeVar("ParseErrorT", bound=RuntimeError)
+
+class AgentOutputParseError(RuntimeError):
+    """Raised when an agent response cannot satisfy its output contract."""
 
 
-class TriageAuthorParseError(RuntimeError):
+ParseErrorT = TypeVar("ParseErrorT", bound=AgentOutputParseError)
+
+
+class TriageAuthorParseError(AgentOutputParseError):
     """Raised when a triage-author agent response cannot be parsed."""
 
 
-class ProposalCheckParseError(RuntimeError):
+class ProposalCheckParseError(AgentOutputParseError):
     """Raised when a proposal-check agent response cannot be parsed."""
 
 
-class ReviewParseError(RuntimeError):
+class ReviewParseError(AgentOutputParseError):
     """Raised when a reviewer response cannot be parsed."""
 
 
-class RouterParseError(RuntimeError):
+class RouterParseError(AgentOutputParseError):
     """Raised when a router agent response cannot be parsed or validated."""
 
 
-class NegotiationParseError(RuntimeError):
+class NegotiationParseError(AgentOutputParseError):
     """Raised when an agent negotiation response cannot be parsed."""
 
 
@@ -71,7 +76,7 @@ class PromptSpec:
 
     template_name: str
     block_language: str
-    parse_error_type: type[RuntimeError]
+    parse_error_type: type[AgentOutputParseError]
     block_label: str
     required_keys: tuple[str, ...] = ()
     branch_key: str | None = None

@@ -15,7 +15,6 @@ from typing import Literal
 
 from issuekit.agentrun.adapter import AgentAdapter
 from issuekit.agents.review import (
-    ReviewParseError,
     ReviewRunParseError,
     run_review_and_decide,
 )
@@ -25,7 +24,7 @@ from issuekit.agents.run_claimed import (
 )
 from issuekit.config import IssuekitConfig
 from issuekit.core import Issue
-from issuekit.errors import WorkflowError
+from issuekit.errors import AGENT_RUN_ERRORS, WorkflowError
 from issuekit.file_permissions import open_owner_only_new
 from issuekit.store import get_store
 
@@ -214,7 +213,7 @@ def run_claimed_issue(
             err=sys.stderr,
             allow_any_branch=getattr(args, "allow_any_branch", False),
         )
-    except (FileNotFoundError, RuntimeError, ValueError, TimeoutError, WorkflowError) as exc:
+    except AGENT_RUN_ERRORS as exc:
         log_event(
             sys.stderr, log_path, "run_error", issue=issue.id, error=str(exc), backoff=backoff
         )
@@ -271,14 +270,7 @@ def run_review_issue(
             backoff=backoff,
         )
         return IssueRunResult("error", 1)
-    except (
-        FileNotFoundError,
-        RuntimeError,
-        ValueError,
-        TimeoutError,
-        WorkflowError,
-        ReviewParseError,
-    ) as exc:
+    except AGENT_RUN_ERRORS as exc:
         log_event(
             sys.stderr,
             log_path,

@@ -19,7 +19,7 @@ from issuekit.agents.readonly import prompt_from_spec
 from issuekit.agents.registry import resolve_adapter
 from issuekit.config import IssuekitConfig
 from issuekit.encoding import has_non_ascii
-from issuekit.errors import WorkflowError
+from issuekit.errors import AGENT_RUN_ERRORS, WorkflowError
 from issuekit.prompts import (
     PROPOSAL_CHECK_PROMPT,
     ProposalCheckParseError,
@@ -28,7 +28,6 @@ from issuekit.prompts import (
 )
 from issuekit.proposals.api import (
     AdoptedIssueHoldError,
-    ProposalError,
     adopt_proposal_with_append,
     api_client,
     hold_adopted_issue,
@@ -171,15 +170,7 @@ def run_proposal_check_cycle(
                     proposal=decision.proposal_id,
                     reason="proposal-check approve",
                 )
-        except (
-            FileNotFoundError,
-            RuntimeError,
-            ValueError,
-            TimeoutError,
-            ProposalError,
-            ProposalCheckParseError,
-            WorkflowError,
-        ) as exc:
+        except AGENT_RUN_ERRORS as exc:
             emit("proposal_check_error", check=check_id, error=str(exc))
             decision = _error_decision(check, exc)
             if decision.hold_error:

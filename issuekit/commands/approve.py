@@ -6,25 +6,21 @@ import argparse
 import sys
 from pathlib import Path
 
-from issuekit.commands._common import (
-    active_issue_not_found,
-    read_text_file,
-    require_ascii,
-    run_command,
-)
+from issuekit.commands._common import run_command
 from issuekit.config import IssuekitConfig, load_config
 from issuekit.core import (
     Issue,
-    is_valid_workflow_token,
     parse_issue_id_arg,
 )
 from issuekit.errors import WorkflowError
 from issuekit.gitutil import git_status_short
-from issuekit.issues.session import current_session_token, validate_session_token
+from issuekit.inputs import active_issue_not_found, require_ascii, resolve_text
 from issuekit.store import managed_issue_store
 from issuekit.workflow import (
     ensure_assigned_reviewer,
     resolve_reviewer,
+    resolve_session,
+    validate_assignee,
 )
 
 
@@ -58,13 +54,16 @@ def run(args) -> int:
                 "WARNING: approval is being recorded with uncommitted changes in this checkout.",
                 file=sys.stderr,
             )
-        if args.verification is not None:
-            verification = args.verification
-        else:
-            verification = read_text_file(args.verification_file)
-        summary = args.summary
-        if summary is None and args.summary_file:
-            summary = read_text_file(args.summary_file)
+        verification = resolve_text(
+            args.verification,
+            args.verification_file,
+            strip_inline=False,
+        ) or ""
+        summary = resolve_text(
+            args.summary,
+            args.summary_file,
+            strip_inline=False,
+        )
         completed_issue = approve_issue(
             issue_id,
             summary=summary,
@@ -110,7 +109,7 @@ def approve_issue(
             active_store, issue_id, reviewer, config
         )
         worker = config.worker_key()
-        resolved_session = _resolve_session(session)
+        resolved_session = resolve_session(session)
         return active_store.approve_issue(  # type: ignore[attr-defined]
             issue_id,
             summary=summary if summary is not None else "Approved.",
@@ -135,7 +134,7 @@ def _resolve_api_approval_reviewer(
             raise WorkflowError(
                 "API approval requires a concrete reviewer; omit --reviewer to use auto resolution."
             )
-        _validate_api_approval_reviewer(resolved, config)
+        validate_assignee(resolved, config)
         issue = store.get_issue(issue_id)  # type: ignore[attr-defined]
         if issue is None:
             raise LookupError(issue_id)
@@ -146,20 +145,6 @@ def _resolve_api_approval_reviewer(
     if issue is None:
         raise LookupError(issue_id)
     if issue.assignee:
-        _validate_api_approval_reviewer(issue.assignee, config)
+        validate_assignee(issue.assignee, config)
         return issue.assignee
     return resolve_reviewer(None, config, issue=issue)
-
-
-def _validate_api_approval_reviewer(reviewer: str, config: IssuekitConfig) -> None:
-    if not is_valid_workflow_token(reviewer):
-        raise WorkflowError(f"Invalid assignee token: {reviewer}")
-    if reviewer not in config.assignees:
-        raise WorkflowError(f"Unknown assignee: {reviewer}")
-
-
-def _resolve_session(explicit: str | None) -> str | None:
-    try:
-        return validate_session_token(explicit) if explicit is not None else current_session_token()
-    except ValueError as exc:
-        raise WorkflowError(str(exc), code="invalid_session") from exc

@@ -5,10 +5,11 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from issuekit.commands._common import read_text_file, run_command
+from issuekit.commands._common import run_command
 from issuekit.config import load_config
 from issuekit.core import parse_issue_id_arg
 from issuekit.errors import WorkflowError
+from issuekit.inputs import resolve_text
 from issuekit.workflow import request_changes, submit_for_review
 
 
@@ -53,7 +54,11 @@ def run_submit_review(args) -> int:
     def action() -> int:
         issue_id = parse_issue_id_arg(args.id)
         config = load_config(Path.cwd())
-        summary = args.summary if args.summary is not None else read_text_file(args.summary_file)
+        summary = resolve_text(
+            args.summary,
+            args.summary_file,
+            strip_inline=False,
+        ) or ""
         issue = submit_for_review(
             issue_id,
             summary=summary,
@@ -82,7 +87,11 @@ def run_request_changes(args) -> int:
     def action() -> int:
         issue_id = parse_issue_id_arg(args.id)
         config = load_config(Path.cwd())
-        notes = args.notes if args.notes is not None else read_text_file(args.notes_file)
+        notes = resolve_text(
+            args.notes,
+            args.notes_file,
+            strip_inline=False,
+        ) or ""
         issue = request_changes(
             issue_id,
             notes=notes,

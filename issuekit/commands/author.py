@@ -11,8 +11,6 @@ from pathlib import Path
 from issuekit.commands._common import (
     load_config_for_project_mutation,
     print_json,
-    read_text_file,
-    require_ascii,
     run_command,
 )
 from issuekit.config import IssuekitConfig
@@ -20,7 +18,6 @@ from issuekit.config.refs import RefError, current_repo_ref, list_effective_refs
 from issuekit.core import (
     VALID_ISSUE_PRIORITIES,
     Issue,
-    is_valid_workflow_token,
     issue_dict,
 )
 from issuekit.errors import WorkflowError
@@ -30,9 +27,14 @@ from issuekit.guards.author import (
     guard_dict,
     stop_message,
 )
-from issuekit.issues.dependencies import bare_ref_collision_warnings, dependency_refs
+from issuekit.inputs import require_ascii, resolve_text
+from issuekit.issues.dependencies import (
+    bare_ref_collision_warnings,
+    dependency_refs_or_workflow_error,
+)
 from issuekit.issues.session import resolved_or_new_session_token
 from issuekit.workers.addressing import target_worker_repo_id, validate_target_worker
+from issuekit.workflow import validate_assignee
 
 _MIN_BARE_REF_NAME_LENGTH = 4
 _INVOCATION_PREFIX_PATTERN = re.compile(
@@ -183,7 +185,7 @@ def author_issue(
         config=config,
     )
     issue_body = _read_body(body=body, body_file=body_file)
-    dependency_refs = _depends_on(depends_on)
+    dependency_refs = dependency_refs_or_workflow_error(depends_on)
     require_ascii(issue_body, message="--body and --body-file must be ASCII-only.")
     _require_local_author_context(
         title=title,
@@ -237,31 +239,16 @@ def _validate_author_input(
     require_ascii(title, message="--title must be ASCII-only.")
     if priority not in VALID_ISSUE_PRIORITIES:
         raise ValueError(f"Invalid priority: {priority}")
-    _validate_agent_token(agent, "--agent", config)
+    validate_assignee(agent, config, label="--agent")
     if assign:
-        _validate_agent_token(assign, "--assign", config)
-
-
-def _validate_agent_token(value: str, label: str, config: IssuekitConfig) -> None:
-    if not is_valid_workflow_token(value):
-        raise WorkflowError(f"Invalid {label} token: {value}")
-    if value not in config.assignees:
-        raise WorkflowError(f"Unknown {label}: {value}")
+        validate_assignee(assign, config, label="--assign")
 
 
 def _read_body(*, body: str | None, body_file: str | None) -> str:
-    if body is not None:
-        return body.strip()
-    if body_file:
-        return read_text_file(body_file)
-    raise ValueError("--body or --body-file is required.")
-
-
-def _depends_on(value: list[str] | None) -> tuple[str, ...]:
-    try:
-        return dependency_refs(value)
-    except ValueError as exc:
-        raise WorkflowError(str(exc)) from exc
+    resolved = resolve_text(body, body_file)
+    if resolved is None:
+        raise ValueError("--body or --body-file is required.")
+    return resolved
 
 
 def _author_warnings(authored: Issue) -> tuple[str, ...]:

@@ -126,6 +126,40 @@ def test_approve_accepts_explicit_summary_and_reviewer(
     assert client.calls[0]["body"]["reviewer"] == "codex"
 
 
+def test_approve_preserves_whitespace_in_inline_text(
+    fake_api,
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                1,
+                "First",
+                status="in_progress",
+                assignee="claude",
+                stage="review",
+                implementer="codex",
+            )
+        ]
+    )
+    configure_api(tmp_path, monkeypatch, fake_api, client)
+
+    assert cli.main(
+        [
+            "approve",
+            "1",
+            "--verification",
+            "  uv run pytest  ",
+            "--summary",
+            "  Reviewed.  ",
+        ]
+    ) == 0
+
+    assert client.calls[0]["body"]["summary"] == "  Reviewed.  "
+    assert client.calls[0]["body"]["verification"] == "  uv run pytest  "
+
+
 def test_approve_respects_self_review_guard(fake_api, tmp_path: Path, monkeypatch, capsys) -> None:
     client = FakeIssuekitClient(
         [

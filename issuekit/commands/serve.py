@@ -16,7 +16,6 @@ from issuekit.agentrun.adapter import AgentAdapter
 from issuekit.agentrun.run_dir import ServeLockError, prepare_run_dir
 from issuekit.agentrun.run_dir import serve_lock as _serve_lock
 from issuekit.agents.proposal_check import (
-    ProposalCheckParseError,
     run_proposal_check_cycle,
 )
 from issuekit.agents.run_claimed import _release_claim_after_run_error, preflight_agent
@@ -49,7 +48,7 @@ from issuekit.commands.serve_loop import (
 )
 from issuekit.config import IssuekitConfig, load_config
 from issuekit.core import Issue
-from issuekit.errors import WorkflowError
+from issuekit.errors import AGENT_RUN_ERRORS, WorkflowError
 from issuekit.issues.orphans import DEFAULT_STALE_AFTER_SEC
 from issuekit.proposals import ProposalError
 from issuekit.proposals.api import (
@@ -59,7 +58,7 @@ from issuekit.proposals.api import (
 )
 from issuekit.store import get_store
 from issuekit.workers.registry import WorkerHeartbeat
-from issuekit.workflow import claim_next, next_review, resolve_implementer
+from issuekit.workflow import claim_next, next_review, require_implementer
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:
@@ -195,16 +194,9 @@ def run(args) -> int:
         return 1
 
     try:
-        agent = resolve_implementer(args.agent, config)
+        agent = require_implementer(args.agent, config, flag="--agent")
     except WorkflowError as exc:
         print(str(exc), file=sys.stderr)
-        return 1
-    if agent is None:
-        print(
-            "No implementer is configured. Pass --agent, set default_implementer, "
-            "or configure exactly one enabled assignee.",
-            file=sys.stderr,
-        )
         return 1
     if config.worker is None:
         print(
@@ -521,7 +513,7 @@ def _serve_loop(
                     )
             try:
                 implementing_issues = _find_implementing_issues(config, store=store)
-            except (RuntimeError, TimeoutError, WorkflowError, ValueError) as exc:
+            except (RuntimeError, TimeoutError, ValueError) as exc:
                 _log(sys.stderr, log_path, "recovery_error", error=str(exc))
                 return PollResult(
                     status="error",
@@ -710,15 +702,7 @@ def _serve_proposal_checks_loop(
                 err=sys.stderr,
                 abort_event=controller.abort_event,
             )
-        except (
-            FileNotFoundError,
-            RuntimeError,
-            ValueError,
-            TimeoutError,
-            WorkflowError,
-            ProposalError,
-            ProposalCheckParseError,
-        ) as exc:
+        except AGENT_RUN_ERRORS as exc:
             _log(
                 sys.stderr,
                 log_path,

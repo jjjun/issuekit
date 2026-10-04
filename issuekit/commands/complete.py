@@ -5,18 +5,14 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from issuekit.commands._common import (
-    active_issue_not_found,
-    read_text_file,
-    require_ascii,
-    run_command,
-)
+from issuekit.commands._common import run_command
 from issuekit.config import IssuekitConfig, load_config
 from issuekit.core import (
     Issue,
     parse_issue_id_arg,
 )
 from issuekit.errors import WorkflowError
+from issuekit.inputs import active_issue_not_found, require_ascii, resolve_text
 from issuekit.store import managed_issue_store
 
 
@@ -48,14 +44,18 @@ def run(args) -> int:
     def action() -> int:
         nonlocal issue_id
         issue_id = parse_issue_id_arg(args.id)
-        if args.summary_file:
-            summary = read_text_file(args.summary_file)
-        else:
-            summary = args.summary or ""
-        if args.verification_file:
-            verification = read_text_file(args.verification_file)
-        else:
-            verification = args.verification or ""
+        summary = resolve_text(
+            args.summary,
+            args.summary_file,
+            strip_inline=False,
+            prefer="file",
+        ) or ""
+        verification = resolve_text(
+            args.verification,
+            args.verification_file,
+            strip_inline=False,
+            prefer="file",
+        ) or ""
         config = load_config(Path.cwd())
         completed_issue = complete_issue(
             issue_id,

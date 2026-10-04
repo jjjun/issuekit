@@ -11,13 +11,12 @@ from typing import Any
 
 from issuekit.api import IssuekitClient
 from issuekit.api.factory import client_for, require_api_url
-from issuekit.commands._common import active_issue_not_found, read_text_file, require_ascii
 from issuekit.config import IssuekitConfig, load_config
 from issuekit.config.refs import RefError, list_effective_refs
 from issuekit.core import Issue, parse_issue_id_arg, parse_target_address
-from issuekit.encoding import ASCII_ONLY_HINT, has_non_ascii
 from issuekit.errors import WorkflowError
 from issuekit.gitutil import git_short_head
+from issuekit.inputs import active_issue_not_found, read_text_file, require_ascii, resolve_text
 from issuekit.issues.dependencies import (
     bare_ref_collision_warnings,
     dependency_refs,
@@ -653,10 +652,12 @@ def build_proposal(
         raise ProposalError("--title is required unless --from-issue or --reply provides one.")
 
     proposal_body = _proposal_body(body, body_file, source_issue)
-    if has_non_ascii(title) or has_non_ascii(proposal_body):
-        raise ProposalError(
-            f"--title/--body must be ASCII-only. {ASCII_ONLY_HINT}"
-        )
+    require_ascii(
+        title,
+        proposal_body,
+        message="--title/--body must be ASCII-only.",
+        error=ProposalError,
+    )
     dependency_refs = _proposal_dependency_refs(depends_on, proposal_body)
     origin_id = str(source_issue.id) if source_issue is not None and source_issue.id is not None else "0"
     origin_project = config.project
@@ -729,10 +730,9 @@ def _get_issue(config: IssuekitConfig, raw_id: str) -> Issue:
 
 
 def _proposal_body(body: str | None, body_file: str | None, source_issue: Issue | None) -> str:
-    if body is not None:
-        return body.strip()
-    if body_file:
-        return Path(body_file).read_text(encoding="utf-8-sig").strip()
+    resolved = resolve_text(body, body_file)
+    if resolved is not None:
+        return resolved
     if source_issue is not None:
         return source_issue.body.strip()
     return "## Context\n\n## Suggested Change\n\n## Rationale"

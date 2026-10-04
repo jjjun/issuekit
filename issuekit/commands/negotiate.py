@@ -11,10 +11,11 @@ from pathlib import Path
 from issuekit.agentrun import AgentRunner
 from issuekit.commands._common import print_json, run_agent_command, run_command
 from issuekit.config import load_config
-from issuekit.config.refs import RefError, list_effective_refs
+from issuekit.config.refs import list_effective_refs
 from issuekit.core import parse_issue_id_arg
-from issuekit.errors import WorkflowError
+from issuekit.errors import AGENT_RUN_ERRORS, WorkflowError
 from issuekit.gitutil import git_status_short
+from issuekit.inputs import active_issue_not_found
 from issuekit.negotiation import (
     NegotiationThreadSummary,
     ThreadStatus,
@@ -33,11 +34,9 @@ from issuekit.negotiation.engine import (
     inspect_thread,
     run_negotiation,
 )
-from issuekit.negotiation.prompts import NegotiationParseError
-from issuekit.proposals import ProposalError
 from issuekit.proposals.api import validate_target_project
 from issuekit.store import get_store
-from issuekit.workflow import resolve_implementer
+from issuekit.workflow import require_implementer
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:
@@ -146,12 +145,11 @@ def run(args) -> int:
             return 0
         if args.finalize:
             _require_finalize_args(args)
-            author_agent = resolve_implementer(args.author_agent, config)
-            if author_agent is None:
-                raise WorkflowError(
-                    "No implementer is configured. Pass --author-agent, set "
-                    "default_implementer, or configure exactly one enabled assignee."
-                )
+            author_agent = require_implementer(
+                args.author_agent,
+                config,
+                flag="--author-agent",
+            )
             if not args.mock:
                 validate_target_project(config, args.to)
             creator: IssueCreator = MockIssueCreator() if args.mock else ApiIssueCreator(config)
@@ -183,7 +181,7 @@ def run(args) -> int:
         with get_store(config) as issue_store:
             issue = issue_store.get_issue(issue_id)
             if issue is None:
-                print(f"Active issue #{issue_id} was not found.", file=sys.stderr)
+                print(active_issue_not_found(issue_id), file=sys.stderr)
                 return 1
 
         with get_negotiation_store(config, use_mock=bool(args.mock)) as store:
@@ -211,16 +209,7 @@ def run(args) -> int:
 
     return run_agent_command(
         action,
-        errors=(
-            FileNotFoundError,
-            RuntimeError,
-            ValueError,
-            TimeoutError,
-            ProposalError,
-            RefError,
-            WorkflowError,
-            NegotiationParseError,
-        ),
+        errors=AGENT_RUN_ERRORS,
     )
 
 
@@ -250,7 +239,6 @@ def run_threads(args) -> int:
             FileNotFoundError,
             RuntimeError,
             ValueError,
-            WorkflowError,
         ),
     )
 

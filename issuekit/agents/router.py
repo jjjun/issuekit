@@ -230,7 +230,7 @@ def _decision_from_json(
         blocking = raw_target.get("blocking", False)
         if not isinstance(blocking, bool):
             raise RouterParseError("Route target blocking must be a JSON boolean.")
-        depends_on = _depends_on_tuple(raw_target.get("depends_on"), target_index=index)
+        depends_on = _parse_dependency_tuple(raw_target.get("depends_on"), target_index=index)
         targets.append(
             RouteTarget(
                 project=project,
@@ -252,7 +252,7 @@ def _required_text(raw: Mapping[str, object], field: str, decision: str) -> str:
     return value.strip()
 
 
-def _depends_on_tuple(value: object, *, target_index: int) -> tuple[str, ...]:
+def _parse_dependency_tuple(value: object, *, target_index: int) -> tuple[str, ...]:
     if value is None:
         return ()
     if isinstance(value, str):

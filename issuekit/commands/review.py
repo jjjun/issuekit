@@ -9,14 +9,14 @@ from pathlib import Path
 from issuekit.agentrun import AgentResult, AgentRunner
 from issuekit.agents.review import (
     ReviewOutcome,
-    ReviewParseError,
     ReviewRunParseError,
     run_review_and_decide,
 )
 from issuekit.commands._common import run_agent_command
 from issuekit.config import load_config
 from issuekit.core import Issue, parse_issue_id_arg
-from issuekit.errors import WorkflowError
+from issuekit.errors import AGENT_RUN_ERRORS
+from issuekit.inputs import active_issue_not_found
 from issuekit.store import get_store
 
 
@@ -63,7 +63,7 @@ def run(args) -> int:
         with get_store(config) as store:
             issue = store.get_issue(issue_id)
         if issue is None:
-            print(f"Active issue #{issue_id} was not found.", file=sys.stderr)
+            print(active_issue_not_found(issue_id), file=sys.stderr)
             return 1
 
         try:
@@ -102,14 +102,7 @@ def run(args) -> int:
 
     return run_agent_command(
         action,
-        errors=(
-            FileNotFoundError,
-            RuntimeError,
-            ValueError,
-            TimeoutError,
-            WorkflowError,
-            ReviewParseError,
-        ),
+        errors=AGENT_RUN_ERRORS,
     )
 
 

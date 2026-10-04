@@ -10,7 +10,7 @@ from issuekit.commands._common import run_command
 from issuekit.config import load_config
 from issuekit.core import parse_issue_id_arg
 from issuekit.errors import WorkflowError
-from issuekit.workflow import claim_issue, claim_next, resolve_implementer
+from issuekit.workflow import claim_issue, claim_next, require_implementer
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:
@@ -47,12 +47,7 @@ def run(args) -> int:
     def action() -> int:
         issue_id = parse_issue_id_arg(args.id) if args.id else None
         config = load_config(Path.cwd())
-        assignee = resolve_implementer(args.assignee, config)
-        if assignee is None:
-            raise WorkflowError(
-                "No implementer is configured. Pass --assignee, set default_implementer, "
-                "or configure exactly one enabled assignee."
-            )
+        assignee = require_implementer(args.assignee, config, flag="--assignee")
         if issue_id is None:
             issue = claim_next(
                 assignee,

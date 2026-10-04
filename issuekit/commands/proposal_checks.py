@@ -9,15 +9,14 @@ from pathlib import Path
 from issuekit.agentrun import AgentRunner
 from issuekit.agents.proposal_check import (
     ProposalCheckDecision,
-    ProposalCheckParseError,
     list_worker_proposal_checks,
     run_proposal_check_cycle,
 )
 from issuekit.commands._common import print_json, run_agent_command, run_command
 from issuekit.config import IssuekitConfig, load_config
-from issuekit.errors import WorkflowError
+from issuekit.errors import AGENT_RUN_ERRORS, WorkflowError
 from issuekit.proposals import ProposalError
-from issuekit.workflow import resolve_implementer
+from issuekit.workflow import require_implementer
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:
@@ -97,16 +96,9 @@ def run(args) -> int:
         )
         return 1
     try:
-        agent = resolve_implementer(args.agent, config)
+        agent = require_implementer(args.agent, config, flag="--agent")
     except WorkflowError as exc:
         print(str(exc), file=sys.stderr)
-        return 1
-    if agent is None:
-        print(
-            "No implementer is configured. Pass --agent, set default_implementer, "
-            "or configure exactly one enabled assignee.",
-            file=sys.stderr,
-        )
         return 1
 
     def action() -> int:
@@ -130,15 +122,7 @@ def run(args) -> int:
 
     return run_agent_command(
         action,
-        errors=(
-            FileNotFoundError,
-            RuntimeError,
-            ValueError,
-            TimeoutError,
-            WorkflowError,
-            ProposalError,
-            ProposalCheckParseError,
-        ),
+        errors=AGENT_RUN_ERRORS,
     )
 
 

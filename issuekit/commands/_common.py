@@ -15,7 +15,6 @@ from typing import TypeVar
 
 from issuekit.config import IssuekitConfig, has_local_project_context, load_config
 from issuekit.core import is_valid_workflow_token
-from issuekit.encoding import ASCII_ONLY_HINT, has_non_ascii
 from issuekit.errors import WorkflowError
 
 T = TypeVar("T")
@@ -88,21 +87,6 @@ def _interrupt_on_sigterm():
 
 def _handle_sigterm(_signum: int, _frame: FrameType | None) -> None:
     raise KeyboardInterrupt
-
-
-def active_issue_not_found(issue_id: int) -> str:
-    return f"Active issue #{issue_id} was not found."
-
-
-def read_text_file(path: str) -> str:
-    """Read a prose file using the shared file-flag convention."""
-
-    return Path(path).read_text(encoding="utf-8-sig").strip()
-
-
-def require_ascii(*values: str, message: str) -> None:
-    if any(has_non_ascii(value) for value in values):
-        raise ValueError(f"{message} {ASCII_ONLY_HINT}")
 
 
 def load_config_for_project_mutation(

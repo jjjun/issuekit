@@ -18,13 +18,14 @@ from issuekit.commands._common import run_agent_command
 from issuekit.config import load_config
 from issuekit.core import Issue, parse_issue_id_arg
 from issuekit.encoding import sanitize_to_ascii
-from issuekit.errors import WorkflowError
+from issuekit.errors import AGENT_RUN_ERRORS
 from issuekit.guards.author import AuthorOrchestrationContext, read_author_guards
+from issuekit.inputs import active_issue_not_found
 from issuekit.issues.session import new_session_token
 from issuekit.store import get_store
-from issuekit.workflow import claim_issue, resolve_implementer
+from issuekit.workflow import claim_issue, require_implementer
 
-_MAPPED_ERRORS = (FileNotFoundError, RuntimeError, ValueError, TimeoutError, WorkflowError)
+_MAPPED_ERRORS = AGENT_RUN_ERRORS
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:
@@ -89,16 +90,11 @@ def run(args) -> int:
 
         cwd = Path.cwd()
         config = load_config(cwd)
-        agent = resolve_implementer(args.agent, config)
-        if agent is None:
-            raise WorkflowError(
-                "No implementer is configured. Pass --agent, set default_implementer, "
-                "or configure exactly one enabled assignee."
-            )
+        agent = require_implementer(args.agent, config, flag="--agent")
         with get_store(config) as store:
             issue = store.get_issue(issue_id)
         if issue is None:
-            print(f"Active issue #{issue_id} was not found.", file=sys.stderr)
+            print(active_issue_not_found(issue_id), file=sys.stderr)
             return 1
 
         reviewer_prompt = (

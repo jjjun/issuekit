@@ -114,3 +114,57 @@ def test_agentrun_does_not_import_application_layers() -> None:
                     violations.append(f"{path.relative_to(agentrun_dir)}: {module}")
 
     assert violations == []
+
+
+def test_exception_tuples_do_not_repeat_runtime_error_subclasses() -> None:
+    package_dir = Path(__file__).parents[1] / "issuekit"
+    class_bases: dict[str, tuple[str, ...]] = {}
+    parsed_files: list[tuple[Path, ast.Module]] = []
+
+    for path in sorted(package_dir.rglob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        parsed_files.append((path, tree))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ClassDef):
+                class_bases[node.name] = tuple(
+                    base.id for base in node.bases if isinstance(base, ast.Name)
+                )
+
+    def is_runtime_error_subclass(name: str, seen: frozenset[str] = frozenset()) -> bool:
+        if name == "RuntimeError":
+            return True
+        if name in seen or name not in class_bases:
+            return False
+        return any(
+            is_runtime_error_subclass(base, seen | {name})
+            for base in class_bases[name]
+        )
+
+    subclasses = {
+        name for name in class_bases if name != "RuntimeError" and is_runtime_error_subclass(name)
+    }
+    violations: list[str] = []
+
+    for path, tree in parsed_files:
+        aliases = {
+            alias.asname or alias.name: alias.name
+            for node in ast.walk(tree)
+            if isinstance(node, ast.ImportFrom) and node.module is not None
+            for alias in node.names
+        }
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Tuple):
+                continue
+            names = {
+                aliases.get(value.id, value.id)
+                for value in node.elts
+                if isinstance(value, ast.Name)
+            }
+            duplicates = names & subclasses
+            if "RuntimeError" in names and duplicates:
+                violations.append(
+                    f"{path.relative_to(package_dir)}:{node.lineno}: "
+                    f"RuntimeError with {', '.join(sorted(duplicates))}"
+                )
+
+    assert violations == []

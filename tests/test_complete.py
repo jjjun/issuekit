@@ -1,6 +1,8 @@
+from argparse import Namespace
 from pathlib import Path
 
 from issuekit import cli
+from issuekit.commands.complete import run as run_complete
 from issuekit.testing import FakeIssuekitClient
 from tests.api_helpers import configure_api
 from tests.issue_helpers import api_issue
@@ -82,6 +84,37 @@ def test_complete_force_closes_todo_issue(fake_api, tmp_path: Path, monkeypatch,
     assert client.get_issue(1)["status"] == "completed"
     assert client.calls[0]["method"] == "complete"
     assert client.calls[0]["body"]["force"] is True
+
+
+def test_complete_prefers_summary_and_verification_files_over_inline_text(
+    fake_api,
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    client = FakeIssuekitClient([api_issue(1, "First", stage="todo")])
+    configure_api(tmp_path, monkeypatch, fake_api, client)
+    summary_file = tmp_path / "summary.md"
+    summary_file.write_text("File summary.\n", encoding="utf-8", newline="\n")
+    verification_file = tmp_path / "verification.md"
+    verification_file.write_text("File verification.\n", encoding="utf-8", newline="\n")
+
+    exit_code = run_complete(
+        Namespace(
+            id="1",
+            summary="Inline summary.",
+            summary_file=str(summary_file),
+            verification="Inline verification.",
+            verification_file=str(verification_file),
+            force=True,
+        )
+    )
+
+    assert exit_code == 0
+    assert client.calls[0]["body"] == {
+        "summary": "File summary.",
+        "verification": "File verification.",
+        "force": True,
+    }
 
 
 def test_complete_rejects_invalid_issue_id(fake_api, tmp_path: Path, monkeypatch, capsys) -> None:

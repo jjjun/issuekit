@@ -64,6 +64,57 @@ def test_lifecycle_commands_allow_unlaunchable_agent_effort_config(
     assert capsys.readouterr().err == ""
 
 
+def test_handoff_commands_preserve_whitespace_in_inline_text(
+    fake_api,
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    client = FakeIssuekitClient(
+        [
+            api_issue(
+                1,
+                "Implementation",
+                status="in_progress",
+                assignee="codex",
+                stage="implementing",
+                implementer="codex",
+            ),
+            api_issue(
+                2,
+                "Review",
+                status="in_progress",
+                assignee="claude",
+                stage="review",
+                implementer="codex",
+            ),
+        ]
+    )
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'demo'\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    fake_api.install_client(client)
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["submit-review", "1", "--summary", "  Implemented.  "]) == 0
+    assert cli.main(
+        [
+            "request-changes",
+            "2",
+            "--notes",
+            "  Add focused tests.  ",
+            "--assignee",
+            "codex",
+            "--reviewer",
+            "claude",
+        ]
+    ) == 0
+
+    assert client.calls[0]["body"]["summary"] == "  Implemented.  "
+    assert client.calls[1]["body"]["notes"] == "  Add focused tests.  "
+
+
 def test_queue_command_uses_api_store_when_configured(
     fake_api,
     tmp_path: Path,

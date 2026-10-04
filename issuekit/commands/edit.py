@@ -7,16 +7,14 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from issuekit.commands._common import (
-    active_issue_not_found,
     print_json,
-    read_text_file,
-    require_ascii,
     run_command,
 )
 from issuekit.config import IssuekitConfig, load_config
 from issuekit.core import VALID_ISSUE_PRIORITIES, Issue, issue_dict, parse_issue_id_arg
 from issuekit.errors import WorkflowError
-from issuekit.issues.dependencies import dependency_refs
+from issuekit.inputs import active_issue_not_found, require_ascii, resolve_text
+from issuekit.issues.dependencies import dependency_refs_or_workflow_error
 from issuekit.store import managed_issue_store
 
 
@@ -129,7 +127,11 @@ def edit_issue(
             title=title.strip() if title is not None else None,
             body=update_body,
             priority=priority,
-            depends_on=_depends_on(depends_on) if depends_on is not None else None,
+            depends_on=(
+                dependency_refs_or_workflow_error(depends_on)
+                if depends_on is not None
+                else None
+            ),
         )
 
 
@@ -158,7 +160,7 @@ def _validate_edit_input(
     if priority is not None and priority not in VALID_ISSUE_PRIORITIES:
         raise ValueError(f"Invalid priority: {priority}")
     if depends_on is not None:
-        _depends_on(depends_on)
+        dependency_refs_or_workflow_error(depends_on)
 
 
 def _body_update(
@@ -169,27 +171,12 @@ def _body_update(
     append: str | None,
     append_file: str | None,
 ) -> str | None:
-    if body is not None:
-        update_body = body.strip()
+    update_body = resolve_text(body, body_file)
+    if update_body is not None:
         require_ascii(update_body, message="--body and --body-file must be ASCII-only.")
         return update_body
-    if body_file is not None:
-        update_body = read_text_file(body_file)
-        require_ascii(update_body, message="--body and --body-file must be ASCII-only.")
-        return update_body
-    if append is not None:
-        append_body = append.strip()
-        require_ascii(append_body, message="--append and --append-file must be ASCII-only.")
-        return f"{stored_body()}\n\n{append_body}"
-    if append_file is not None:
-        append_body = read_text_file(append_file)
+    append_body = resolve_text(append, append_file)
+    if append_body is not None:
         require_ascii(append_body, message="--append and --append-file must be ASCII-only.")
         return f"{stored_body()}\n\n{append_body}"
     return None
-
-
-def _depends_on(value: str | Sequence[str]) -> tuple[str, ...]:
-    try:
-        return dependency_refs(value)
-    except ValueError as exc:
-        raise WorkflowError(str(exc)) from exc

@@ -26,3 +26,6 @@ class WorkflowError(RuntimeError):
         if note is None or note in message:
             return message
         return f"{message}\n{note}"
+
+
+AGENT_RUN_ERRORS = (FileNotFoundError, RuntimeError, TimeoutError, ValueError)

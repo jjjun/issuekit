@@ -38,7 +38,7 @@ from issuekit.agents.triage_state import (
 )
 from issuekit.config import IssuekitConfig
 from issuekit.encoding import has_non_ascii
-from issuekit.errors import WorkflowError
+from issuekit.errors import AGENT_RUN_ERRORS, WorkflowError
 from issuekit.prompts import (
     TRIAGE_PROMPT,
     TriageAuthorParseError,
@@ -208,14 +208,7 @@ def run_triage_author_cycle(
                 err=err,
                 abort_event=abort_event,
             )
-        except (
-            FileNotFoundError,
-            RuntimeError,
-            ValueError,
-            TimeoutError,
-            WorkflowError,
-            TriageAuthorParseError,
-        ) as exc:
+        except AGENT_RUN_ERRORS as exc:
             emit("triage_author_error", proposal=proposal_id, error=str(exc))
             decisions.append(
                 TriageDecision(

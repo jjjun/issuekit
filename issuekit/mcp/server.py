@@ -61,7 +61,7 @@ from issuekit.workers.registry import list_api_workers, remove_api_repo, remove_
 from issuekit.workflow import (
     claim_next,
     find_for,
-    resolve_implementer,
+    require_implementer,
     validate_queue_stage,
 )
 from issuekit.workflow import (
@@ -136,12 +136,11 @@ def create_server(
         ctx: Context | None = None,
     ) -> dict[str, Any]:
         async with _api_store(root, ctx) as (config, config_root, store):
-            resolved_assignee = resolve_implementer(assignee, config)
-            if resolved_assignee is None:
-                raise WorkflowError(
-                    "No implementer is configured. Pass assignee, set default_implementer, "
-                    "or configure exactly one enabled assignee."
-                )
+            resolved_assignee = require_implementer(
+                assignee,
+                config,
+                flag="assignee",
+            )
             issue = claim_next(
                 resolved_assignee,
                 priority=priority,

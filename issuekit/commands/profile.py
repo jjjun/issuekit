@@ -43,7 +43,7 @@ def run(args) -> int:
 
     return run_command(
         action,
-        errors=(FileNotFoundError, RuntimeError, ValueError, WorkflowError),
+        errors=(FileNotFoundError, RuntimeError, ValueError),
     )
 
 
