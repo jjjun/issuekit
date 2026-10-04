@@ -30,8 +30,8 @@ def test_mock_store_rejects_cancelling_blocked_thread(tmp_path) -> None:
     assert store.get_status(entry.thread_id) is ThreadStatus.blocked
 
 
-def test_cancel_reports_when_api_rejects_cancelled_status() -> None:
-    class RejectingClient(FakeIssuekitClient):
+def test_cancel_propagates_already_decided_api_error() -> None:
+    class AlreadyDecidedClient(FakeIssuekitClient):
         def patch_thread(self, thread_id: int, *, status: str | None = None, **kwargs):
             self.calls.append(
                 {
@@ -40,21 +40,21 @@ def test_cancel_reports_when_api_rejects_cancelled_status() -> None:
                     "body": {"status": status},
                 }
             )
-            raise WorkflowError("Unprocessable Entity", code="http_422")
+            raise WorkflowError(
+                "This proposal thread has already been decided.",
+                code="already_decided",
+            )
 
-    client = RejectingClient()
+    client = AlreadyDecidedClient()
     store = ApiNegotiationStore(
         IssuekitConfig(api_url="https://mine.example", project="provider"),
         client=client,
     )
 
-    with pytest.raises(
-        WorkflowError,
-        match="API project does not accept the cancelled status yet",
-    ) as exc_info:
+    with pytest.raises(WorkflowError, match="already been decided") as exc_info:
         store.cancel_thread("7")
 
-    assert exc_info.value.code == "unsupported_feature"
+    assert exc_info.value.code == "already_decided"
     assert client.calls == [
         {
             "method": "patch_thread",

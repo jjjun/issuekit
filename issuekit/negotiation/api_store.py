@@ -237,18 +237,10 @@ class ApiNegotiationStore(OwnedApiClient):
             )
 
     def cancel_thread(self, thread_id: str) -> None:
-        try:
-            payload = self.client.patch_thread(
-                _api_thread_id(thread_id),
-                status=ThreadStatus.cancelled.value,
-            )
-        except WorkflowError as exc:
-            if exc.code != "http_422":
-                raise
-            raise WorkflowError(
-                "The API project does not accept the cancelled status yet.",
-                code="unsupported_feature",
-            ) from exc
+        payload = self.client.patch_thread(
+            _api_thread_id(thread_id),
+            status=ThreadStatus.cancelled.value,
+        )
         if payload.get("status") != ThreadStatus.cancelled.value:
             raise WorkflowError(
                 "Proposal thread response did not confirm cancellation.",

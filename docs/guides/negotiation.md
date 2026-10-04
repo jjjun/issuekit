@@ -67,10 +67,11 @@ Each entry has one of these verdicts:
 
 A thread's status is `negotiating`, `agreed`, `blocked`, or `cancelled`. Any
 `blocked` entry makes the thread blocked. `--cancel` requires `--to <project>`
-and sends the `cancelled` status to that project's API. For an issue-seeded
-thread, use the initiating project. The API must accept the `cancelled` status;
-if it returns HTTP 422, issuekit reports that the API project does not accept
-the cancelled status yet.
+and sends the `cancelled` status to that project's API. It works for
+`negotiating` and `blocked` threads. For an issue-seeded thread, use the
+initiating project. The API refuses `agreed` and already-cancelled threads with
+`already_decided`. Cancelling changes only the thread row; pending turn
+proposals remain pending, so issuekit discards them separately.
 
 ```powershell
 issuekit negotiate --cancel <thread_id> --to <initiating-project>
