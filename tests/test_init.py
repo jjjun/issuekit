@@ -14,7 +14,7 @@ def test_init_fresh_dir_gets_full_scaffold(tmp_path: Path, monkeypatch, capsys) 
     assert (tmp_path / ".gitattributes").exists()
     assert (tmp_path / ".editorconfig").exists()
     assert (tmp_path / ".gitignore").read_text(encoding="utf-8") == (
-        "issuekit.local.toml\n.agent-runs/\n"
+        "issuekit.local.toml\n.agent-runs/\n.env\n"
     )
     assert (tmp_path / ".pre-commit-config.yaml").exists()
     assert (tmp_path / "docs" / "issues" / "README.md").exists()
@@ -46,7 +46,7 @@ def test_init_adds_missing_agent_runs_gitignore_entry(
 
     assert exit_code == 0
     assert (tmp_path / ".gitignore").read_text(encoding="utf-8") == (
-        "issuekit.local.toml\n.agent-runs/\n"
+        "issuekit.local.toml\n.agent-runs/\n.env\n"
     )
 
 

@@ -73,6 +73,7 @@ def test_setup_empty_repo_scaffolds_mcp_and_prints_checklist(
     assert "[OK] .codex/config.toml contains [mcp_servers.issuekit]." in captured.out
     assert (tmp_path / ".mcp.json").exists()
     assert (tmp_path / ".codex" / "config.toml").exists()
+    assert ".env\n" in (tmp_path / ".gitignore").read_text(encoding="utf-8")
     assert (tmp_path / "AGENTS.md").exists()
     assert (tmp_path / "CLAUDE.md").exists()
     assert "## Handoff protocol" in (tmp_path / "AGENTS.md").read_text(encoding="utf-8")

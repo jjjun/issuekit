@@ -127,8 +127,9 @@ server resolves repo configuration.
 When the MCP transport is live, the MCP `health` tool reports configuration
 status without calling the tracker or mutating issue lifecycle state. Its
 object has `ok`, `version`, `cwd`, `project`, `api_url_configured`,
-`api_url_source`, `api_url_origin`, `repo_config_source`, `machine_config_path`,
-`machine_config_status`, `env_present`, `token_cached`, `token_expires_at`,
+`api_url_source`, `api_url_trusted_by`, `api_url_origin`,
+`repo_config_source`, `machine_config_path`, `machine_config_status`,
+`env_present`, `token_cached`, `token_expires_at`,
 `worker_present`, `worker`, `author_guard_active`, `author_guard`, and `errors`.
 `api_url_origin` includes only the URL scheme, host, and port.
 `machine_config_status` is `missing`, `readable`, or
@@ -157,13 +158,19 @@ Alternatively, set `api_url` in the machine config at
 `$XDG_CONFIG_HOME/issuekit/config.toml` when `XDG_CONFIG_HOME` is set. Set
 `ISSUEKIT_CONFIG` to choose another file; an empty value disables machine
 config. The MCP server re-reads TOML config and the repository `.env` file on
-each tool call. `.env` fills only variables that are not already in the server
-process environment: new keys can be picked up on the next call, but values for
-keys already present in the server environment are not replaced or removed.
-Restart the MCP server to apply changes to those keys.
+each tool call. `.env` can set only `ISSUEKIT_API_URL`, `ISSUEKIT_API_USER`,
+`ISSUEKIT_API_PASSWORD`, `ISSUEKIT_API_TOKEN`, `ISSUEKIT_PROJECT`, and
+`ISSUEKIT_API_TIMEOUT`; other `ISSUEKIT_*` keys are ignored with a stderr
+notice. A `.env` tracked by Git makes config loading fail. `.env` fills only
+variables that are not already in the server process environment: new allowed
+keys can be picked up on the next call, but values for keys already present in
+the server environment are not replaced or removed. Loaded `.env` values stay
+in the long-lived process environment. Restart the MCP server to apply changes
+to keys already present there.
 
-Compare `issuekit info --json` fields `apiUrlSource` and `apiUrlOrigin` with
-MCP `health` fields `api_url_source` and `api_url_origin`. A client config `env`
+Compare `issuekit info --json` fields `apiUrlSource`, `apiUrlTrustedBy`, and
+`apiUrlOrigin` with MCP `health` fields `api_url_source`,
+`api_url_trusted_by`, and `api_url_origin`. A client config `env`
 block (`.mcp.json` `env` or Codex `env`) overrides a value inherited from the
 shell, while `api_url_source` still reports `env` for either case. Tokens are
 cached by `api_url` after trailing `/` characters are removed, so URLs that
@@ -194,9 +201,14 @@ issuekit incoming --json
 issuekit info --json
 ```
 
-Repo-local `.env` files are treated as trusted repository input only for
-`ISSUEKIT_*` keys. Sensitive API settings loaded from `.env` are announced on
-stderr so credential redirection is visible.
+Repo-local `.env` files accept only `ISSUEKIT_API_URL`, `ISSUEKIT_API_USER`,
+`ISSUEKIT_API_PASSWORD`, `ISSUEKIT_API_TOKEN`, `ISSUEKIT_PROJECT`, and
+`ISSUEKIT_API_TIMEOUT`. Sensitive API settings loaded from `.env` are
+announced on stderr; ignored keys also produce a notice. A tracked `.env` is
+refused. Repository `api_url` values need a trusted machine-config origin, and
+non-loopback HTTP requires `ISSUEKIT_ALLOW_INSECURE=1` in the process
+environment or `allow_insecure_api_url = true` in machine config. `.env` cannot
+set either machine-only control.
 
 For local development, install the optional MCP group and start the stdio server
 from a checkout with:

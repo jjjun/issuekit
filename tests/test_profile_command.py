@@ -10,10 +10,17 @@ from issuekit import cli
 from issuekit.testing import FakeIssuekitClient
 
 
-def _write_config(tmp_path: Path, *, api_url: bool = True) -> None:
+def _write_config(tmp_path: Path, monkeypatch, *, api_url: bool = True) -> None:
     lines = ["project = 'issuekit'\n"]
     if api_url:
         lines.insert(0, "api_url = 'https://mine.example'\n")
+        machine_path = tmp_path / "machine.toml"
+        machine_path.write_text(
+            "trusted_api_origins = ['https://mine.example']\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        monkeypatch.setenv("ISSUEKIT_CONFIG", str(machine_path))
     (tmp_path / "issuekit.toml").write_text("".join(lines), encoding="utf-8", newline="\n")
 
 
@@ -27,7 +34,7 @@ def _seed_profiles(monkeypatch, client: FakeIssuekitClient) -> None:
 
 
 def test_profile_local_only_without_api(monkeypatch, tmp_path, capsys) -> None:
-    _write_config(tmp_path, api_url=False)
+    _write_config(tmp_path, monkeypatch, api_url=False)
     (tmp_path / "ISSUEKIT.md").write_text(
         "# issuekit\n\nProfile body.\n", encoding="utf-8", newline="\n"
     )
@@ -40,7 +47,7 @@ def test_profile_local_only_without_api(monkeypatch, tmp_path, capsys) -> None:
 
 
 def test_profile_local_absent_message(monkeypatch, tmp_path, capsys) -> None:
-    _write_config(tmp_path, api_url=False)
+    _write_config(tmp_path, monkeypatch, api_url=False)
     monkeypatch.chdir(tmp_path)
 
     assert cli.main(["profile"]) == 0
@@ -48,7 +55,7 @@ def test_profile_local_absent_message(monkeypatch, tmp_path, capsys) -> None:
 
 
 def test_profile_local_json_includes_local_and_remote(monkeypatch, tmp_path, capsys) -> None:
-    _write_config(tmp_path)
+    _write_config(tmp_path, monkeypatch)
     (tmp_path / "ISSUEKIT.md").write_text("# issuekit\n", encoding="utf-8", newline="\n")
     client = FakeIssuekitClient()
     _seed_profiles(monkeypatch, client)
@@ -61,7 +68,7 @@ def test_profile_local_json_includes_local_and_remote(monkeypatch, tmp_path, cap
 
 
 def test_profile_project_fetches_remote(monkeypatch, tmp_path, capsys) -> None:
-    _write_config(tmp_path)
+    _write_config(tmp_path, monkeypatch)
     client = FakeIssuekitClient()
     _seed_profiles(monkeypatch, client)
     monkeypatch.chdir(tmp_path)
@@ -73,7 +80,7 @@ def test_profile_project_fetches_remote(monkeypatch, tmp_path, capsys) -> None:
 
 
 def test_profile_all_lists_every_profile(monkeypatch, tmp_path, capsys) -> None:
-    _write_config(tmp_path)
+    _write_config(tmp_path, monkeypatch)
     client = FakeIssuekitClient()
     _seed_profiles(monkeypatch, client)
     monkeypatch.chdir(tmp_path)
@@ -85,7 +92,7 @@ def test_profile_all_lists_every_profile(monkeypatch, tmp_path, capsys) -> None:
 
 def test_profile_local_tolerates_remote_unsupported(monkeypatch, tmp_path, capsys) -> None:
     # Backend without mine-py#172: remote GET 404s, local profile still shown.
-    _write_config(tmp_path)
+    _write_config(tmp_path, monkeypatch)
     (tmp_path / "ISSUEKIT.md").write_text("# issuekit\n", encoding="utf-8", newline="\n")
     client = FakeIssuekitClient()  # no profiles seeded -> get raises http_404
     monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *a, **k: client)

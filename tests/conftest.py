@@ -12,6 +12,7 @@ _ISSUEKIT_ENV_KEYS = (
     "ISSUEKIT_API_TOKEN",
     "ISSUEKIT_API_URL",
     "ISSUEKIT_API_USER",
+    "ISSUEKIT_ALLOW_INSECURE",
     "ISSUEKIT_ENFORCE_AUTHOR_HANDOFF",
     "ISSUEKIT_PROJECT",
     "ISSUEKIT_SESSION",
@@ -20,14 +21,31 @@ _ISSUEKIT_ENV_KEYS = (
 )
 
 
+@pytest.fixture(scope="session")
+def trusted_test_machine_config(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    path = tmp_path_factory.mktemp("issuekit-machine") / "config.toml"
+    path.write_text(
+        "trusted_api_origins = ["
+        "'https://mine.example', 'https://other.example', "
+        "'https://first.example', 'https://second.example']\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    return path
+
+
 @pytest.fixture(autouse=True)
-def isolated_issuekit_env(monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest) -> None:
+def isolated_issuekit_env(
+    monkeypatch: pytest.MonkeyPatch,
+    request: pytest.FixtureRequest,
+    trusted_test_machine_config: Path,
+) -> None:
     if request.node.get_closest_marker("live_contract"):
         return
 
     for key in _ISSUEKIT_ENV_KEYS:
         monkeypatch.delenv(key, raising=False)
-    monkeypatch.setenv("ISSUEKIT_CONFIG", "")
+    monkeypatch.setenv("ISSUEKIT_CONFIG", str(trusted_test_machine_config))
 
 
 @pytest.fixture(autouse=True)

@@ -138,6 +138,7 @@ class ApiStore:
             config.api_url,
             project=config.project,
             timeout=config.api_timeout,
+            allow_insecure_api_url=config.allow_insecure_api_url,
         )
 
     def close(self) -> None:

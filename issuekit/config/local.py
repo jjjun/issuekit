@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 LOCAL_CONFIG_NAME = "issuekit.local.toml"
-LOCAL_GITIGNORE_ENTRIES = (LOCAL_CONFIG_NAME, ".agent-runs/")
+LOCAL_GITIGNORE_ENTRIES = (LOCAL_CONFIG_NAME, ".agent-runs/", ".env")
 
 
 class LocalConfigError(RuntimeError):

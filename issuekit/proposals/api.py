@@ -157,6 +157,7 @@ def api_client(config: IssuekitConfig, *, project: str | None = None) -> Issueki
         config.api_url,
         project=project or config.project,
         timeout=config.api_timeout,
+        allow_insecure_api_url=config.allow_insecure_api_url,
     )
 
 

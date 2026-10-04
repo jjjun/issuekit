@@ -485,8 +485,10 @@ def test_token_cache_read_warns_once_when_file_is_group_or_other_readable(
 
 
 def test_insecure_api_url_warning_goes_to_stderr_once(
+    monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    monkeypatch.setenv("ISSUEKIT_ALLOW_INSECURE", "1")
     login_count = 0
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -509,7 +511,7 @@ def test_insecure_api_url_warning_goes_to_stderr_once(
     assert captured.out == ""
     assert captured.err.count("non-HTTPS transport") == 1
     assert "cleartext" in captured.err
-    assert "ISSUEKIT_ALLOW_INSECURE=1" in captured.err
+    assert "opt-out is enabled" in captured.err
     assert login_count == 2
 
 
@@ -545,7 +547,7 @@ def test_insecure_api_url_warning_is_suppressed_for_https_and_loopback(
     assert captured.err == ""
 
 
-def test_insecure_api_url_warning_can_be_suppressed_by_env(
+def test_insecure_api_url_env_opt_out_warns_once(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -566,12 +568,73 @@ def test_insecure_api_url_warning_can_be_suppressed_by_env(
 
     captured = capsys.readouterr()
     assert captured.out == ""
-    assert captured.err == ""
+    assert captured.err.count("non-HTTPS transport") == 1
+    assert "opt-out is enabled" in captured.err
+
+
+def test_non_loopback_http_is_refused_before_first_request() -> None:
+    requests: list[httpx.Request] = []
+    client = IssuekitClient(
+        "http://mine.example",
+        token="static-token",
+        http_client=httpx.Client(
+            transport=httpx.MockTransport(
+                lambda request: requests.append(request) or httpx.Response(200, json=[])
+            )
+        ),
+    )
+
+    with pytest.raises(WorkflowError) as excinfo:
+        client.list_issues()
+
+    assert excinfo.value.code == "insecure_api_url"
+    assert requests == []
+
+
+def test_logout_refuses_non_loopback_http_before_sending_bearer_token() -> None:
+    requests: list[httpx.Request] = []
+    client = IssuekitClient(
+        "http://mine.example",
+        token="static-token",
+        http_client=httpx.Client(
+            transport=httpx.MockTransport(
+                lambda request: requests.append(request)
+                or httpx.Response(204)
+            )
+        ),
+    )
+
+    with pytest.raises(WorkflowError) as excinfo:
+        client.logout()
+
+    assert excinfo.value.code == "insecure_api_url"
+    assert requests == []
+
+
+def test_insecure_api_url_machine_opt_out_warns_once(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/auth/login"
+        return httpx.Response(200, json={"access_token": _jwt(exp=time.time() + 3600)})
+
+    client = IssuekitClient(
+        "http://mine.example",
+        username="svc",
+        password="secret",
+        allow_insecure_api_url=True,
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    assert client.login(force=True)
+    assert capsys.readouterr().err.count("non-HTTPS transport") == 1
 
 
 def test_bearer_request_warns_for_insecure_api_url_without_corrupting_stdout(
+    monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    monkeypatch.setenv("ISSUEKIT_ALLOW_INSECURE", "1")
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.headers["authorization"] == "Bearer static-token"
         return httpx.Response(200, json=[])
@@ -846,7 +909,14 @@ def test_token_cache_miss_message_lists_other_cached_urls(
     cache_path.write_text(
         json.dumps(
             {
-                "https://alpha.example": {"token": "alpha", "expires_at": time.time() + 3600},
+                "https://alpha.example/private/path?token=secret": {
+                    "token": "alpha",
+                    "expires_at": time.time() + 3600,
+                },
+                "https://alpha.example/other": {
+                    "token": "alpha-duplicate",
+                    "expires_at": time.time() + 3600,
+                },
                 "https://beta.example": {"token": "beta", "expires_at": time.time() + 3600},
             }
         ),
@@ -859,6 +929,79 @@ def test_token_cache_miss_message_lists_other_cached_urls(
         "(cached: https://alpha.example, https://beta.example); "
         "re-run `issuekit login` with ISSUEKIT_API_URL set to the URL this client uses"
     )
+
+
+def test_auth_login_redirect_does_not_forward_credentials() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            307,
+            headers={"Location": "https://evil.example/auth/login"},
+        )
+
+    client = IssuekitClient(
+        "https://mine.example",
+        username="svc",
+        password="secret",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    with pytest.raises(WorkflowError) as excinfo:
+        client.login(force=True)
+
+    assert excinfo.value.code == "auth_redirect"
+    assert str(excinfo.value) == (
+        "Login endpoint redirected to https://evil.example; set api_url to the final API origin."
+    )
+    assert len(requests) == 1
+    assert requests[0].url.host == "mine.example"
+    assert b"secret" in requests[0].content
+
+
+def test_auth_logout_redirect_is_not_followed() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            307,
+            headers={"Location": "https://evil.example/auth/logout"},
+        )
+
+    client = IssuekitClient(
+        "https://mine.example",
+        token="static-token",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    with pytest.raises(WorkflowError) as excinfo:
+        client.logout()
+
+    assert excinfo.value.code == "auth_redirect"
+    assert len(requests) == 1
+    assert requests[0].url.host == "mine.example"
+
+
+def test_get_project_profile_rejects_invalid_path_segment() -> None:
+    requests: list[httpx.Request] = []
+    client = IssuekitClient(
+        "https://mine.example",
+        project="demo",
+        token="static-token",
+        http_client=httpx.Client(
+            transport=httpx.MockTransport(
+                lambda request: requests.append(request)
+                or httpx.Response(200, json={})
+            )
+        ),
+    )
+
+    with pytest.raises(ValueError, match="Invalid project token: ../x"):
+        client.get_project_profile("../x")
+
+    assert requests == []
 
 
 def test_issuekit_api_token_is_not_written_to_cache(
@@ -1255,6 +1398,27 @@ def test_client_delete_repo_uses_top_level_repo_endpoint() -> None:
     )
 
     assert client.delete_repo("mine-py") == {"repo_key": "mine-py", "deleted": True}
+
+
+def test_client_rejects_path_traversal_in_encoded_path_segments() -> None:
+    requests: list[httpx.Request] = []
+    client = IssuekitClient(
+        "https://mine.example",
+        token="static-token",
+        http_client=httpx.Client(
+            transport=httpx.MockTransport(
+                lambda request: requests.append(request)
+                or httpx.Response(204)
+            )
+        ),
+    )
+
+    with pytest.raises(ValueError, match="Invalid worker id path segment"):
+        client.delete_worker("machine/../checkout")
+    with pytest.raises(ValueError, match="Invalid repo key path segment"):
+        client.delete_repo("..")
+
+    assert requests == []
 
 def test_client_create_proposal_accepts_dedup_200_response() -> None:
     response = {

@@ -41,7 +41,13 @@ def _configure_project_api(
     }
     errors = project_errors or {}
 
-    def issue_client(api_url: str, *, project: str, timeout: float):
+    def issue_client(
+        api_url: str,
+        *,
+        project: str,
+        timeout: float,
+        allow_insecure_api_url: bool = False,
+    ):
         if project in errors:
             raise errors[project]
         return issue_clients.setdefault(project, FakeIssuekitClient())

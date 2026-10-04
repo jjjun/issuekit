@@ -184,7 +184,10 @@ def test_register_worker_refuses_local_collision(tmp_path: Path) -> None:
         register_worker(second, **kwargs)
 
 
-def test_config_reads_local_worker_without_unrelated_local_overrides(tmp_path: Path) -> None:
+def test_config_reads_local_worker_without_unrelated_local_overrides(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ISSUEKIT_CONFIG", "")
     (tmp_path / "pyproject.toml").write_text(
         (
             "[tool.issuekit]\n"
@@ -282,7 +285,7 @@ def test_add_cli_writes_worker_and_gitignore(
     assert "repo_id     = project" in captured.out
     assert (tmp_path / "issuekit.local.toml").exists()
     assert (tmp_path / ".gitignore").read_text(encoding="utf-8") == (
-        "issuekit.local.toml\n.agent-runs/\n"
+        "issuekit.local.toml\n.agent-runs/\n.env\n"
     )
 
 

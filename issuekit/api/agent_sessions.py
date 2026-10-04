@@ -7,6 +7,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from issuekit.core import drop_none
+from issuekit.issues.session import validate_session_token
 from issuekit.workflow import WorkflowError
 
 from .base import JsonDict, ensure_dict
@@ -42,6 +43,7 @@ class AgentSessionResourceMixin:
         )
 
     def get_agent_session(self, number: int, session_id: str) -> JsonDict:
+        session_id = validate_session_token(session_id, label="agent session")
         return self._agent_session_request(
             "GET", number, f"/{session_id}", label="Agent session response"
         )
@@ -49,6 +51,7 @@ class AgentSessionResourceMixin:
     def acquire_agent_session_lease(
         self, number: int, session_id: str, request: Mapping[str, Any]
     ) -> JsonDict:
+        session_id = validate_session_token(session_id, label="agent session")
         return self._agent_session_request(
             "POST",
             number,
@@ -65,6 +68,7 @@ class AgentSessionResourceMixin:
         headers: Mapping[str, str],
         ttl_seconds: int | None = None,
     ) -> JsonDict:
+        session_id = validate_session_token(session_id, label="agent session")
         return self._agent_session_request(
             "POST",
             number,
@@ -77,6 +81,7 @@ class AgentSessionResourceMixin:
     def release_agent_session_lease(
         self, number: int, session_id: str, *, headers: Mapping[str, str]
     ) -> None:
+        session_id = validate_session_token(session_id, label="agent session")
         self._authorized_request(
             "POST",
             self._agent_session_path(number, f"/{session_id}/lease/release"),
@@ -93,6 +98,7 @@ class AgentSessionResourceMixin:
         headers: Mapping[str, str],
         resume_from_session_id: str | None = None,
     ) -> JsonDict:
+        session_id = validate_session_token(session_id, label="agent session")
         return self._agent_session_request(
             "POST",
             number,
@@ -113,6 +119,7 @@ class AgentSessionResourceMixin:
         session_id: str,
         request: Mapping[str, Any],
     ) -> JsonDict:
+        session_id = validate_session_token(session_id, label="agent session")
         _validate_json_size(request, 64 * 1024, "Command payload")
         _validate_text_fields(request.get("payload"), 32 * 1024)
         return self._agent_session_request(
@@ -132,6 +139,7 @@ class AgentSessionResourceMixin:
         state: str | None = None,
         limit: int = 100,
     ) -> JsonDict:
+        session_id = validate_session_token(session_id, label="agent session")
         return self._agent_session_request(
             "GET",
             number,
@@ -143,6 +151,7 @@ class AgentSessionResourceMixin:
     def claim_agent_command(
         self, number: int, session_id: str, *, headers: Mapping[str, str]
     ) -> JsonDict:
+        session_id = validate_session_token(session_id, label="agent session")
         return self._agent_session_request(
             "POST",
             number,
@@ -161,6 +170,8 @@ class AgentSessionResourceMixin:
         *,
         headers: Mapping[str, str],
     ) -> JsonDict:
+        session_id = validate_session_token(session_id, label="agent session")
+        command_id = validate_session_token(command_id, label="agent command")
         return self._agent_session_request(
             "POST",
             number,
@@ -178,6 +189,7 @@ class AgentSessionResourceMixin:
         *,
         headers: Mapping[str, str],
     ) -> JsonDict:
+        session_id = validate_session_token(session_id, label="agent session")
         if not 1 <= len(events) <= 100:
             raise ValueError("Agent event batches require 1 to 100 events.")
         for event in events:
@@ -201,6 +213,7 @@ class AgentSessionResourceMixin:
         event_type: str | None = None,
         limit: int = 100,
     ) -> JsonDict:
+        session_id = validate_session_token(session_id, label="agent session")
         return self._agent_session_request(
             "GET",
             number,
@@ -219,6 +232,7 @@ class AgentSessionResourceMixin:
         *,
         headers: Mapping[str, str],
     ) -> JsonDict:
+        session_id = validate_session_token(session_id, label="agent session")
         return self._agent_session_request(
             "POST",
             number,
@@ -236,6 +250,7 @@ class AgentSessionResourceMixin:
         *,
         headers: Mapping[str, str],
     ) -> JsonDict:
+        session_id = validate_session_token(session_id, label="agent session")
         return self._agent_session_request(
             "POST",
             number,
@@ -267,7 +282,7 @@ class AgentSessionResourceMixin:
 
     def _agent_session_path(self, number: int, suffix: str) -> str:
         return (
-            f"/api/issues/{self.project}/issues/{number}/agent-sessions{suffix}"
+            f"/api/issues/{self.project}/issues/{int(number)}/agent-sessions{suffix}"
         )
 
 

@@ -3,7 +3,7 @@
 The client uses httpx as the transport so tests and later phases can inject a
 MockTransport-backed client without requiring a live API server. Injected
 clients should be configured with follow_redirects=True to match the default
-client created here.
+client created here; auth requests disable redirects per request.
 """
 
 from __future__ import annotations
@@ -55,6 +55,7 @@ class IssuekitClient(
         password: str | None = None,
         token: str | None = None,
         use_env_token: bool = True,
+        allow_insecure_api_url: bool = False,
         http_client: httpx.Client | None = None,
         http_limits: httpx.Limits | None = None,
         headers: Mapping[str, str] | None = None,
@@ -66,6 +67,7 @@ class IssuekitClient(
         self.api_url = api_url.rstrip("/")
         self.project = project
         self.timeout = timeout
+        self.allow_insecure_api_url = allow_insecure_api_url
         self.username = username if username is not None else os.getenv("ISSUEKIT_API_USER")
         self.password = password if password is not None else os.getenv("ISSUEKIT_API_PASSWORD")
         env_token = os.getenv("ISSUEKIT_API_TOKEN") if use_env_token else None

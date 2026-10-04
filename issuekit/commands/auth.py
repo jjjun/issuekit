@@ -10,7 +10,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from issuekit.api import IssuekitClient
-from issuekit.config import load_config
+from issuekit.api.security import warn_insecure_api_url
+from issuekit.config import api_url_origin, load_config
 from issuekit.workflow import WorkflowError
 
 
@@ -32,6 +33,21 @@ def register(subparsers: argparse._SubParsersAction) -> None:
 def run_login(args) -> int:
     try:
         config = load_config(Path.cwd())
+        if not config.api_url:
+            print("Error: API URL is required; set api_url or ISSUEKIT_API_URL.", file=sys.stderr)
+            return 1
+        origin = api_url_origin(config.api_url)
+        if origin is None:
+            print("Error: API URL must include a scheme and hostname.", file=sys.stderr)
+            return 1
+        print(
+            f"Logging in to {origin} (api_url from {config.api_url_source}).",
+            file=sys.stderr,
+        )
+        warn_insecure_api_url(
+            config.api_url,
+            allow_insecure_api_url=config.allow_insecure_api_url,
+        )
         username = args.user or os.getenv("ISSUEKIT_API_USER")
         password = os.getenv("ISSUEKIT_API_PASSWORD")
         if not username and sys.stdin.isatty():
@@ -47,9 +63,6 @@ def run_login(args) -> int:
                 file=sys.stderr,
             )
             return 1
-        if not config.api_url:
-            print("Error: API URL is required; set api_url or ISSUEKIT_API_URL.", file=sys.stderr)
-            return 1
         with IssuekitClient(
             config.api_url,
             project=config.project,
@@ -57,6 +70,7 @@ def run_login(args) -> int:
             username=username,
             password=password,
             use_env_token=False,
+            allow_insecure_api_url=config.allow_insecure_api_url,
         ) as client:
             client.login(force=True)
             expiry = _format_expiry(client.token_expiry)
@@ -79,6 +93,7 @@ def run_logout(_args) -> int:
             project=config.project,
             timeout=config.api_timeout,
             use_env_token=False,
+            allow_insecure_api_url=config.allow_insecure_api_url,
         ) as client:
             client.logout()
     except (WorkflowError, ValueError) as exc:

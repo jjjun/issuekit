@@ -76,6 +76,7 @@ def run(args) -> int:
         ),
         "repoConfigSource": config.repo_config_source,
         "apiUrlSource": config.api_url_source,
+        "apiUrlTrustedBy": config.api_url_trusted_by,
         "apiUrlOrigin": api_url_origin(config.api_url),
         "apiError": api_error,
         "agentConfigs": {
@@ -133,6 +134,10 @@ def run(args) -> int:
     print(f"- Worker: {summary['worker'] or '-'}")
     print(f"- Machine config: {summary['machineConfigPath'] or '-'}")
     print(f"- Repository config: {summary['repoConfigSource']}")
+    print(
+        f"- API URL: {summary['apiUrlOrigin'] or '-'} "
+        f"(from {summary['apiUrlSource']}; trusted by {summary['apiUrlTrustedBy']})"
+    )
     if api_error:
         print(f"- API error: {api_error}")
     print(f"- Default reviewer: {summary['defaultReviewer'] or '-'}")

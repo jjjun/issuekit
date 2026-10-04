@@ -91,6 +91,17 @@ Set `default_implementer` in machine config when one agent is the usual worker
 on that machine. Commands and MCP tools that omit an implementer use it before
 falling back to a single enabled assignee; repository config can override it.
 
+Machine config also accepts `trusted_api_origins`, a list of API origins that
+repository `api_url` values may use, and `allow_insecure_api_url`, a boolean
+that permits non-loopback `http://` API URLs on this machine. These two keys
+are machine-only; repository config cannot set them. Origins are normalized to
+`scheme://host[:port]`.
+
+```toml
+trusted_api_origins = ["https://mine.example"]
+allow_insecure_api_url = false
+```
+
 Use `[agent_roles]` in machine config to select the protocol each agent sees.
 For example, when Claude is the implementer on that machine:
 
@@ -120,21 +131,22 @@ and effort selection is unaffected by `[agent_roles]`.
 
 ## Environment and precedence
 
-At startup, issuekit also reads a repo-local `.env` file from the git repository
-root, regardless of the current directory, and loads values such as
-`ISSUEKIT_API_URL`, `ISSUEKIT_API_USER`,
-`ISSUEKIT_API_PASSWORD`, `ISSUEKIT_API_TOKEN`, `ISSUEKIT_TOKEN_CACHE`, and
-`ISSUEKIT_PROJECT`. Only keys that start with `ISSUEKIT_` are loaded; other
-entries are ignored. Existing process environment variables are not
-overwritten.
+At startup, issuekit also reads a repo-local `.env` file from the repository's
+config root, regardless of the current directory. It accepts only
+`ISSUEKIT_API_URL`, `ISSUEKIT_API_USER`, `ISSUEKIT_API_PASSWORD`,
+`ISSUEKIT_API_TOKEN`, `ISSUEKIT_PROJECT`, and `ISSUEKIT_API_TIMEOUT`.
+Other `ISSUEKIT_*` keys are ignored with a stderr notice that they must be set
+in the process environment. Existing process environment variables are not
+overwritten. Issuekit refuses to load `.env` when Git tracks it; untrack the
+file with `git rm --cached .env` and keep it local.
 
 Overall precedence, highest first:
 
 1. Per-run CLI flags.
-2. Process environment, then `.env`. Only three variables override config
-   keys: `ISSUEKIT_API_URL` (`api_url`), `ISSUEKIT_PROJECT` (`project`), and
-   `ISSUEKIT_API_TIMEOUT` (`api_timeout`). The other `ISSUEKIT_*` variables
-   are credentials, paths, or switches with no config-file key.
+2. Process environment, then `.env`. `ISSUEKIT_API_URL` (`api_url`),
+   `ISSUEKIT_PROJECT` (`project`), and `ISSUEKIT_API_TIMEOUT` (`api_timeout`)
+   override config keys. `.env` can also set `ISSUEKIT_API_USER`,
+   `ISSUEKIT_API_PASSWORD`, and `ISSUEKIT_API_TOKEN`.
 3. `issuekit.local.toml`, for `worker` and `disabled_agents` only. Its
    `disabled_agents` list replaces the repository list rather than adding to
    it.
@@ -142,18 +154,26 @@ Overall precedence, highest first:
 5. Machine config.
 6. Built-in defaults.
 
-Set `ISSUEKIT_ENFORCE_AUTHOR_HANDOFF=0` to skip the local author-session STOP
-guard enforcement across checkouts. The same switch makes claims send
-`allow_self_implement`, so the server author-implementer guard is relaxed too;
+Set `ISSUEKIT_ENFORCE_AUTHOR_HANDOFF=0` in the process environment to skip the
+local author-session STOP guard enforcement across checkouts. The same switch
+makes claims send `allow_self_implement`, so the server author-implementer
+guard is relaxed too;
 the two guards cannot be relaxed separately. Unset or truthy values keep the
 default enforcement behavior.
 
-When the effective `api_url`, whether it comes from config, `.env`, or
-`ISSUEKIT_API_URL`, uses plain `http://` for a non-loopback host, issuekit
-prints a stderr warning because credentials and bearer tokens are sent without
-transport encryption. For a temporary trusted endpoint, set
-`ISSUEKIT_ALLOW_INSECURE=1` in the process environment or repo-local `.env` to
-suppress that warning.
+Repository config may name an API URL only when its origin matches the API URL
+from machine config or appears in machine config's `trusted_api_origins` list.
+Otherwise `load_config` fails and names the origins and sources. An API URL
+from process environment or an untracked `.env` is accepted directly. The
+resolved trust source is shown by `issuekit info` and MCP `health`.
+
+Issuekit refuses to send credentials or bearer tokens to a non-loopback
+`http://` URL. Loopback HTTP remains available for local development. To opt in
+to a trusted plain-HTTP endpoint, set `ISSUEKIT_ALLOW_INSECURE=1` in the
+process environment or set `allow_insecure_api_url = true` in machine config;
+both opt-outs print a one-time stderr warning. `.env` and repository config
+cannot enable this setting. Workers on a second machine using an HTTP API over
+the LAN must set one of those two machine-controlled opt-outs there.
 
 ## Reviewer and implementer policy
 

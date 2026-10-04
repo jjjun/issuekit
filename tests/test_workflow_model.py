@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from issuekit import core
 from issuekit.config import IssuekitConfig, load_config
 
@@ -13,7 +15,10 @@ def test_workflow_token_shape_rejects_frontmatter_injection() -> None:
     assert not core.is_valid_workflow_token("-codex")
 
 
-def test_load_config_reads_workflow_sets(tmp_path: Path) -> None:
+def test_load_config_reads_workflow_sets(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ISSUEKIT_CONFIG", "")
     (tmp_path / "pyproject.toml").write_text(
         "[tool.issuekit]\nassignees = ['alice']\nstages = ['draft']\ndefault_reviewer = 'alice'\n",
         encoding="utf-8",

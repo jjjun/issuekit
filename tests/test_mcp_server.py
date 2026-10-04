@@ -28,6 +28,27 @@ from issuekit.workers import registry as worker_registry
 from tests.issue_helpers import api_issue
 
 
+@pytest.fixture(scope="session")
+def trusted_api_machine_config(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    machine_path = tmp_path_factory.mktemp("issuekit-machine") / "config.toml"
+    machine_path.write_text(
+        "trusted_api_origins = ["
+        "'https://mine.example', 'https://other.example', "
+        "'https://first.example', 'https://second.example']\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    return machine_path
+
+
+@pytest.fixture(autouse=True)
+def configure_test_machine_api_origins(
+    trusted_api_machine_config: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ISSUEKIT_CONFIG", str(trusted_api_machine_config))
+
+
 def _call(server, name: str, arguments: dict[str, Any]) -> Any:
     async def run() -> Any:
         result = await server.call_tool(name, arguments)
@@ -242,7 +263,11 @@ def test_health_tool_reports_config_and_local_state(
 ) -> None:
     monkeypatch.setenv("ISSUEKIT_TOKEN_CACHE", str(tmp_path / "token.json"))
     machine_path = tmp_path / "machine.toml"
-    machine_path.write_text("issues_dir = 'machine/issues'\n", encoding="utf-8")
+    machine_path.write_text(
+        "issues_dir = 'machine/issues'\n"
+        "trusted_api_origins = ['https://mine.example']\n",
+        encoding="utf-8",
+    )
     monkeypatch.setenv("ISSUEKIT_CONFIG", str(machine_path))
     expires_at = time.time() + 3600
     token_cache_module.write_cached_token("https://mine.example", "cached-token", expires_at)
@@ -281,6 +306,7 @@ def test_health_tool_reports_config_and_local_state(
     assert status["project"] == "demo"
     assert status["api_url_configured"] is True
     assert status["api_url_source"] == "repo_config"
+    assert status["api_url_trusted_by"] == "trusted_api_origins"
     assert status["api_url_origin"] == "https://mine.example"
     assert status["repo_config_source"] == "issuekit.toml"
     assert status["machine_config_path"] == str(machine_path)
@@ -326,7 +352,13 @@ def test_health_tool_reports_token_cache_miss_for_resolved_url(
 def test_health_reloads_toml_config_after_server_creation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("ISSUEKIT_CONFIG", "")
+    machine_path = tmp_path / "machine.toml"
+    machine_path.write_text(
+        "trusted_api_origins = ['https://first.example', 'https://second.example']\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setenv("ISSUEKIT_CONFIG", str(machine_path))
     config_path = tmp_path / "issuekit.toml"
     config_path.write_text(
         "api_url = 'https://first.example'\nproject = 'first'\n",
@@ -367,6 +399,7 @@ def test_health_reports_redacted_api_url_origin_and_environment_presence(
     rendered = json.dumps(status)
 
     assert status["api_url_source"] == "env"
+    assert status["api_url_trusted_by"] == "env"
     assert status["api_url_origin"] == "https://mine.example:8443"
     assert status["env_present"]["ISSUEKIT_API_TOKEN"] is True
     assert status["machine_config_path"] is None

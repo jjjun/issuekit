@@ -12,6 +12,8 @@ from collections.abc import Mapping
 from typing import Any
 from urllib.parse import urlparse
 
+from issuekit.workflow import WorkflowError
+
 _ALLOW_INSECURE_ENV = "ISSUEKIT_ALLOW_INSECURE"
 _WARNED_INSECURE_API_URLS: set[str] = set()
 
@@ -20,18 +22,26 @@ def is_expired(expiry: float | None) -> bool:
     return expiry is not None and expiry <= time.time() + 30
 
 
-def warn_insecure_api_url(api_url: str) -> None:
-    if _env_flag_enabled(_ALLOW_INSECURE_ENV):
-        return
+def warn_insecure_api_url(
+    api_url: str, *, allow_insecure_api_url: bool = False
+) -> None:
     if not _is_insecure_remote_url(api_url):
         return
+    if not _env_flag_enabled(_ALLOW_INSECURE_ENV) and not allow_insecure_api_url:
+        raise WorkflowError(
+            "API URL uses non-HTTPS transport; credentials and bearer tokens "
+            "will not be sent. Use HTTPS, set ISSUEKIT_ALLOW_INSECURE=1 in the "
+            "process environment, or set allow_insecure_api_url = true in "
+            "machine config.",
+            code="insecure_api_url",
+        )
     if api_url in _WARNED_INSECURE_API_URLS:
         return
     _WARNED_INSECURE_API_URLS.add(api_url)
     print(
-        "Warning: ISSUEKIT API URL uses non-HTTPS transport; service-account "
-        "credentials and bearer tokens will be sent in cleartext. Use HTTPS or "
-        f"set {_ALLOW_INSECURE_ENV}=1 to suppress this warning for a trusted endpoint.",
+        "Warning: ISSUEKIT API URL uses non-HTTPS transport; credentials and "
+        "bearer tokens will be sent in cleartext because an insecure transport "
+        "opt-out is enabled.",
         file=sys.stderr,
     )
 

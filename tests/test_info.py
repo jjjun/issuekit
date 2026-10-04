@@ -19,6 +19,13 @@ def _configure_api(
     *,
     project: str = "demo",
 ) -> None:
+    machine_path = tmp_path / "machine.toml"
+    machine_path.write_text(
+        "trusted_api_origins = ['https://mine.example']\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setenv("ISSUEKIT_CONFIG", str(machine_path))
     (tmp_path / "issuekit.toml").write_text(
         f"api_url = 'https://mine.example'\nproject = '{project}'\n",
         encoding="utf-8",
@@ -115,6 +122,7 @@ def test_info_unreachable_api_prints_local_config_and_error(
         encoding="utf-8",
         newline="\n",
     )
+    monkeypatch.setenv("ISSUEKIT_API_URL", "https://mine.example")
     monkeypatch.chdir(tmp_path)
 
     def unavailable(_config):
@@ -144,6 +152,8 @@ def test_info_json_output(tmp_path: Path, monkeypatch, capsys) -> None:
 
     assert payload["counts"] == {"active": 1, "completed": 1, "total": 2}
     assert payload["apiUrlSource"] == "repo_config"
+    assert payload["apiUrlTrustedBy"] == "trusted_api_origins"
+    assert payload["apiUrlTrustedBy"] == "trusted_api_origins"
     assert payload["apiUrlOrigin"] == "https://mine.example"
     assert "nextIssueId" not in payload
     assert "duplicateIds" not in payload
@@ -217,6 +227,7 @@ def test_info_surfaces_effective_agent_config_and_sources(
     _configure_api(tmp_path, monkeypatch, _issue_client())
     machine_path = tmp_path / "machine.toml"
     machine_path.write_text(
+        "trusted_api_origins = ['https://mine.example']\n"
         "[agents.codex]\nmodel = 'machine-model'\n",
         encoding="utf-8",
         newline="\n",
@@ -280,6 +291,7 @@ def test_info_text_surfaces_effective_agent_config_and_sources(
     _configure_api(tmp_path, monkeypatch, _issue_client())
     machine_path = tmp_path / "machine.toml"
     machine_path.write_text(
+        "trusted_api_origins = ['https://mine.example']\n"
         "[agents.codex]\nmodel = 'machine-model'\n",
         encoding="utf-8",
         newline="\n",
@@ -307,7 +319,11 @@ def test_info_json_surfaces_machine_config_path(
 ) -> None:
     _configure_api(tmp_path, monkeypatch, _issue_client())
     machine_path = tmp_path / "machine.toml"
-    machine_path.write_text("issues_dir = 'machine/issues'\n", encoding="utf-8")
+    machine_path.write_text(
+        "issues_dir = 'machine/issues'\n"
+        "trusted_api_origins = ['https://mine.example']\n",
+        encoding="utf-8",
+    )
     monkeypatch.setenv("ISSUEKIT_CONFIG", str(machine_path))
 
     cli.main(["info", "--json"])
@@ -330,6 +346,7 @@ def test_info_json_api_url_origin_strips_credentials_and_path(
     payload = json.loads(output)
 
     assert payload["apiUrlSource"] == "env"
+    assert payload["apiUrlTrustedBy"] == "env"
     assert payload["apiUrlOrigin"] == "https://mine.example:8443"
     assert "secret" not in output
     assert "private/path" not in output

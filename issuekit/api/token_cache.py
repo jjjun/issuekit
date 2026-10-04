@@ -9,6 +9,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+from issuekit.config.settings import api_url_origin
 from issuekit.file_permissions import chmod_600, ensure_owner_only_directory, open_owner_only
 from issuekit.workflow import WorkflowError
 
@@ -42,15 +43,20 @@ def read_cached_token(api_url: str) -> dict[str, Any] | None:
 
 
 def cached_token_miss_message(api_url: str) -> str | None:
-    cached_urls = sorted(
-        url
-        for url in _read_token_cache()
-        if isinstance(url, str) and url != api_url
+    current_origin = api_url_origin(api_url)
+    cached_origins = sorted(
+        {
+            origin
+            for url in _read_token_cache()
+            if isinstance(url, str) and url != api_url
+            if (origin := api_url_origin(url)) is not None and origin != current_origin
+        }
     )
-    if not cached_urls:
+    if not cached_origins:
         return None
+    current_display = current_origin or "unknown API origin"
     return (
-        f"no cached token for {api_url} (cached: {', '.join(cached_urls)}); "
+        f"no cached token for {current_display} (cached: {', '.join(cached_origins)}); "
         "re-run `issuekit login` with ISSUEKIT_API_URL set to the URL this client uses"
     )
 

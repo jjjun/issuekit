@@ -178,5 +178,5 @@ def test_local_config_reads_legacy_author_guard(tmp_path: Path) -> None:
 
 
 def test_missing_gitignore_entries_accepts_agent_runs_without_slash() -> None:
-    assert missing_gitignore_entries("issuekit.local.toml\n.agent-runs\n") == []
-    assert missing_gitignore_entries("issuekit.local.toml\n") == [".agent-runs/"]
+    assert missing_gitignore_entries("issuekit.local.toml\n.agent-runs\n.env\n") == []
+    assert missing_gitignore_entries("issuekit.local.toml\n") == [".agent-runs/", ".env"]

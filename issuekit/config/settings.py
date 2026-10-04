@@ -22,6 +22,7 @@ from issuekit.core import (
     worker_key,
 )
 from issuekit.encoding import has_non_ascii
+from issuekit.gitutil import run_git
 from issuekit.worker_constants import WORKER_HEARTBEAT_INTERVAL_SEC
 
 from .dotenv import is_loaded_from_dotenv, load_dotenv
@@ -134,6 +135,8 @@ class RouterPolicy:
 @dataclass(frozen=True)
 class IssuekitConfig:
     api_url: str = ""
+    trusted_api_origins: tuple[str, ...] = ()
+    allow_insecure_api_url: bool = False
     project: str = "issuekit"
     api_timeout: float = 30.0
     issues_dir: str = "docs/issues"
@@ -174,6 +177,7 @@ class IssuekitConfig:
     machine_config_path: Path | None = None
     repo_config_source: str = field(default="none", compare=False)
     api_url_source: str = field(default="none", compare=False)
+    api_url_trusted_by: str = field(default="none", compare=False)
     agents: tuple[tuple[str, AgentRunConfig], ...] = (
         (
             "kimi",
@@ -262,12 +266,24 @@ class IssuekitConfig:
 
 def load_config(cwd: Path | str = ".") -> IssuekitConfig:
     config_cwd = resolve_repository_root(cwd)
+    _reject_tracked_dotenv(config_cwd)
     load_dotenv(config_cwd)
     machine_path = resolve_machine_config_path()
-    raw_config, repo_config_source, config_api_url_source = _load_raw_config(
-        config_cwd, machine_path
+    (
+        raw_config,
+        repo_config_source,
+        config_api_url_source,
+        machine_config,
+    ) = _load_raw_config(config_cwd, machine_path)
+    trusted_api_origins = _load_trusted_api_origins(
+        machine_config.get("trusted_api_origins", ())
     )
     api_url_env = _environment_value("ISSUEKIT_API_URL")
+    process_api_url_env = (
+        api_url_env
+        if api_url_env is not None and not is_loaded_from_dotenv("ISSUEKIT_API_URL")
+        else None
+    )
     if api_url_env is not None:
         api_url_source = (
             "dotenv" if is_loaded_from_dotenv("ISSUEKIT_API_URL") else "env"
@@ -279,6 +295,22 @@ def load_config(cwd: Path | str = ".") -> IssuekitConfig:
         if api_url_env is not None
         else raw_config.get("api_url", IssuekitConfig.api_url)
     ).strip()
+    api_url_origin_value = api_url_origin(api_url)
+    trusted_origins = _trusted_api_origin_sources(
+        process_api_url_env,
+        machine_config.get("api_url"),
+        trusted_api_origins,
+    )
+    api_url_trusted_by = _api_url_trusted_source(
+        api_url_source,
+        api_url_origin_value,
+        trusted_origins,
+        repo_config_source,
+        machine_path,
+    )
+    allow_insecure_api_url = _bool_value(
+        machine_config.get("allow_insecure_api_url", False)
+    )
     worker = _load_worker(raw_config.get("worker"))
     configured_project = raw_config.get("project", _SENTINEL)
     project_env = _environment_value("ISSUEKIT_PROJECT")
@@ -363,6 +395,8 @@ def load_config(cwd: Path | str = ".") -> IssuekitConfig:
     profile_tags = _load_profile_tags(raw_config.get("profile_tags"))
     return IssuekitConfig(
         api_url=api_url,
+        trusted_api_origins=trusted_api_origins,
+        allow_insecure_api_url=allow_insecure_api_url,
         project=project,
         api_timeout=_float_config_value(
             "api_timeout",
@@ -420,6 +454,7 @@ def load_config(cwd: Path | str = ".") -> IssuekitConfig:
         machine_config_path=machine_path if machine_path is not None and machine_path.is_file() else None,
         repo_config_source=repo_config_source,
         api_url_source=api_url_source,
+        api_url_trusted_by=api_url_trusted_by,
         agents=agents,
         agent_policies=agent_policies,
     )
@@ -457,8 +492,9 @@ def resolve_machine_config_path() -> Path | None:
 
 def _load_raw_config(
     cwd: Path, machine_path: Path | None
-) -> tuple[dict[str, object], str, str]:
-    raw_config = _load_machine_config(machine_path)
+) -> tuple[dict[str, object], str, str, dict[str, object]]:
+    machine_config = _load_machine_config(machine_path)
+    raw_config = dict(machine_config)
     api_url_source = "machine_config" if "api_url" in raw_config else "none"
     repo_config_source = "none"
     pyproject_path = cwd / "pyproject.toml"
@@ -467,6 +503,9 @@ def _load_raw_config(
         pyproject_config = data.get("tool", {}).get("issuekit")
         if pyproject_config is not None:
             repo_config_source = "pyproject [tool.issuekit]"
+            _reject_machine_only_repo_settings(
+                pyproject_config, machine_path
+            )
             if "api_url" in pyproject_config:
                 api_url_source = "repo_config"
             # pyproject's [tool.issuekit] wins when present so Python repos keep
@@ -477,11 +516,110 @@ def _load_raw_config(
     if repo_config_source == "none" and issuekit_path.exists():
         repo_config_source = "issuekit.toml"
         issuekit_config = _load_config_toml(issuekit_path)
+        _reject_machine_only_repo_settings(issuekit_config, machine_path)
         if "api_url" in issuekit_config:
             api_url_source = "repo_config"
         raw_config = _merge_config_layers(raw_config, issuekit_config)
 
-    return _merge_local_config(cwd, raw_config), repo_config_source, api_url_source
+    return (
+        _merge_local_config(cwd, raw_config),
+        repo_config_source,
+        api_url_source,
+        machine_config,
+    )
+
+
+def _reject_tracked_dotenv(cwd: Path) -> None:
+    if not (cwd / ".env").is_file():
+        return
+    result = run_git(["ls-files", "--error-unmatch", "--", ".env"], cwd)
+    if result is not None and result.returncode == 0:
+        raise ValueError(
+            "Repo-local .env is tracked by git; issuekit does not load committed "
+            "credentials or API settings. Untrack it (git rm --cached .env) and "
+            "keep it local."
+        )
+
+
+def _reject_machine_only_repo_settings(
+    config: dict[str, object], machine_path: Path | None
+) -> None:
+    path_label = str(machine_path) if machine_path is not None else "ISSUEKIT_CONFIG is empty"
+    if "trusted_api_origins" in config:
+        raise ValueError(
+            f"trusted_api_origins can only be set in machine config ({path_label})"
+        )
+    if "allow_insecure_api_url" in config:
+        raise ValueError(
+            "allow_insecure_api_url can only be set in machine config "
+            f"({path_label}); set ISSUEKIT_ALLOW_INSECURE=1 in the process "
+            "environment instead."
+        )
+
+
+def _load_trusted_api_origins(value: object) -> tuple[str, ...]:
+    if not isinstance(value, (list, tuple)):
+        raise ValueError("trusted_api_origins must be a list of API URL origins.")
+    origins: list[str] = []
+    for item in value:
+        if not isinstance(item, str):
+            raise ValueError("trusted_api_origins must contain only strings.")
+        origin = api_url_origin(item.strip())
+        if origin is None:
+            raise ValueError(
+                f"Invalid trusted_api_origins entry: {item}. Expected a URL with a scheme and host."
+            )
+        if origin not in origins:
+            origins.append(origin)
+    return tuple(origins)
+
+
+def _trusted_api_origin_sources(
+    process_api_url: str | None,
+    machine_api_url: object,
+    trusted_api_origins: tuple[str, ...],
+) -> tuple[tuple[str, str], ...]:
+    candidates: list[tuple[str, str]] = []
+    if process_api_url is not None:
+        origin = api_url_origin(process_api_url)
+        if origin is not None:
+            candidates.append((origin, "env"))
+    if machine_api_url is not None:
+        origin = api_url_origin(str(machine_api_url))
+        if origin is not None:
+            candidates.append((origin, "machine_config"))
+    candidates.extend((origin, "trusted_api_origins") for origin in trusted_api_origins)
+    return tuple(dict.fromkeys(candidates))
+
+
+def _api_url_trusted_source(
+    api_url_source: str,
+    api_origin: str | None,
+    trusted_origins: tuple[tuple[str, str], ...],
+    repo_config_source: str,
+    machine_path: Path | None,
+) -> str:
+    if api_url_source in {"env", "dotenv", "machine_config"}:
+        return api_url_source
+    if api_url_source != "repo_config":
+        return "none"
+    trusted_by = next(
+        (source for origin, source in trusted_origins if origin == api_origin),
+        None,
+    )
+    if trusted_by is not None:
+        return trusted_by
+    origin_display = api_origin or "(invalid origin)"
+    trusted_display = ", ".join(
+        f"{origin} ({source})" for origin, source in trusted_origins
+    ) or "none"
+    path_label = str(machine_path) if machine_path is not None else "ISSUEKIT_CONFIG is empty"
+    raise ValueError(
+        f"api_url {origin_display} comes from {repo_config_source}, but it is not a "
+        f"trusted API origin (trusted: {trusted_display}). Add it to "
+        f"trusted_api_origins in {path_label}, or set api_url in machine config "
+        "or ISSUEKIT_API_URL."
+    )
 
 
 def _load_machine_config(path: Path | None) -> dict[str, object]:
@@ -575,6 +713,7 @@ _MACHINE_CONFIG_EXCLUDED_KEYS = frozenset(
         "machine_config_path",
         "repo_config_source",
         "api_url_source",
+        "api_url_trusted_by",
     }
 )
 _MACHINE_CONFIG_KEYS = frozenset(

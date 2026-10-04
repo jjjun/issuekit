@@ -6,7 +6,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 from urllib.parse import quote
 
-from issuekit.core import drop_none
+from issuekit.core import drop_none, is_valid_workflow_token
 from issuekit.issues.session import validate_session_token
 from issuekit.workflow import WorkflowError
 
@@ -143,11 +143,11 @@ class IssueResourceMixin:
         return total
 
     def get_issue(self, number: int) -> JsonDict:
-        payload = self._request("GET", f"/{number}")
+        payload = self._request("GET", f"/{int(number)}")
         return ensure_dict(payload, "Issue response")
 
     def get_issue_edit(self, number: int) -> JsonDict:
-        payload = self._request("GET", f"/{number}/edit")
+        payload = self._request("GET", f"/{int(number)}/edit")
         return ensure_dict(payload, "Issue edit response")
 
     def create_issue(self, issue: Mapping[str, Any], *, session: str | None = None) -> JsonDict:
@@ -168,7 +168,7 @@ class IssueResourceMixin:
         )
         if not update:
             raise ValueError("Issue update requires at least one editable field.")
-        payload = self._request("PATCH", f"/{number}", json=update)
+        payload = self._request("PATCH", f"/{int(number)}", json=update)
         return ensure_dict(payload, "Update response")
 
     def claim(
@@ -191,7 +191,7 @@ class IssueResourceMixin:
             body["allow_self_implement"] = True
         payload = self._request(
             "POST",
-            f"/{number}/claim",
+            f"/{int(number)}/claim",
             json=body,
         )
         return ensure_dict(payload, "Claim response")
@@ -234,7 +234,7 @@ class IssueResourceMixin:
     ) -> JsonDict:
         payload = self._request(
             "POST",
-            f"/{number}/reclaim",
+            f"/{int(number)}/reclaim",
             json=drop_none(
                 {
                     "expected_worker": expected_worker,
@@ -255,7 +255,7 @@ class IssueResourceMixin:
     ) -> JsonDict:
         payload = self._request(
             "POST",
-            f"/{number}/readdress",
+            f"/{int(number)}/readdress",
             json=drop_none(
                 {
                     "expected_target_worker": expected_target_worker,
@@ -276,7 +276,7 @@ class IssueResourceMixin:
     ) -> JsonDict:
         payload = self._request(
             "POST",
-            f"/{number}/dispatch",
+            f"/{int(number)}/dispatch",
             json=drop_none(
                 {
                     "target_worker": target_worker,
@@ -297,7 +297,7 @@ class IssueResourceMixin:
     ) -> JsonDict:
         payload = self._request(
             "POST",
-            f"/{number}/plan",
+            f"/{int(number)}/plan",
             json=drop_none(
                 {
                     "stage": stage,
@@ -322,7 +322,7 @@ class IssueResourceMixin:
     ) -> JsonDict:
         payload = self._request(
             "POST",
-            f"/{number}/submit",
+            f"/{int(number)}/submit",
             json=drop_none(
                 {
                     "summary": summary,
@@ -351,7 +351,7 @@ class IssueResourceMixin:
     ) -> JsonDict:
         payload = self._request(
             "POST",
-            f"/{number}/request-changes",
+            f"/{int(number)}/request-changes",
             json=drop_none(
                 {
                     "notes": notes,
@@ -380,7 +380,7 @@ class IssueResourceMixin:
     ) -> JsonDict:
         payload = self._request(
             "POST",
-            f"/{number}/approve",
+            f"/{int(number)}/approve",
             json=drop_none(
                 {
                     "summary": summary,
@@ -407,7 +407,7 @@ class IssueResourceMixin:
     ) -> JsonDict:
         payload = self._request(
             "POST",
-            f"/{number}/complete",
+            f"/{int(number)}/complete",
             json=drop_none(
                 {
                     "summary": summary,
@@ -501,7 +501,7 @@ class WorkerResourceMixin:
     def delete_worker(self, worker_id: str) -> JsonDict:
         payload = self._authorized_request(
             "DELETE",
-            f"/api/workers/{quote(worker_id, safe='')}",
+            f"/api/workers/{_quoted_path_segment(worker_id, label='worker id')}",
         )
         if payload is None:
             return {"id": worker_id, "deleted": True}
@@ -510,7 +510,7 @@ class WorkerResourceMixin:
     def delete_repo(self, repo_key: str) -> JsonDict:
         payload = self._authorized_request(
             "DELETE",
-            f"/api/repos/{quote(repo_key, safe='')}",
+            f"/api/repos/{_quoted_path_segment(repo_key, label='repo key')}",
         )
         if payload is None:
             return {"repo_key": repo_key, "deleted": True}
@@ -546,7 +546,8 @@ class ProfileResourceMixin:
         return ensure_dict(payload, "Project profile response")
 
     def get_project_profile(self, project: str | None = None) -> JsonDict:
-        target = project or self.project
+        target = self.project if project is None else project
+        _validate_project_token(target)
         payload = self._authorized_request(
             "GET",
             f"/api/projects/{target}/profile",
@@ -573,10 +574,11 @@ class ProposalCheckResourceMixin:
         Issuekit normally polls checks created by the dashboard, but keeps this
         endpoint available for API clients that need to create checks directly.
         """
-        target_project = project or self.project
+        target_project = self.project if project is None else project
+        _validate_project_token(target_project)
         response = self._authorized_response(
             "POST",
-            f"/api/issues/{target_project}/proposals/{proposal_id}/checks",
+            f"/api/issues/{target_project}/proposals/{int(proposal_id)}/checks",
             json={"target_worker": target_worker},
         )
         payload = ensure_dict(
@@ -611,10 +613,11 @@ class ProposalCheckResourceMixin:
         project: str | None = None,
         page_size: int = 500,
     ) -> list[JsonDict]:
-        target_project = project or self.project
+        target_project = self.project if project is None else project
+        _validate_project_token(target_project)
         return list(
             self._paginate(
-                f"/api/issues/{target_project}/proposals/{proposal_id}/checks",
+                f"/api/issues/{target_project}/proposals/{int(proposal_id)}/checks",
                 collection=None,
                 params={},
                 page_label="Proposal check list response",
@@ -661,9 +664,10 @@ class ProposalCheckResourceMixin:
         comment: str | None = None,
         adopted_issue_ref: str | None = None,
     ) -> JsonDict:
+        _validate_project_token(project)
         payload = self._authorized_request(
             "POST",
-            f"/api/issues/{project}/proposal-checks/{check_id}/result",
+            f"/api/issues/{project}/proposal-checks/{int(check_id)}/result",
             json=drop_none(
                 {
                     "verdict": verdict,
@@ -685,7 +689,7 @@ class ProposalResourceMixin:
     ) -> JsonDict:
         payload = self._request(
             "POST",
-            f"/{proposal_id}/negotiate",
+            f"/{int(proposal_id)}/negotiate",
             collection="proposals",
             json={
                 "initiator_project": initiator_project,
@@ -766,7 +770,7 @@ class ProposalResourceMixin:
     ) -> JsonDict:
         payload = self._request(
             "POST",
-            f"/{proposal_id}/reply",
+            f"/{int(proposal_id)}/reply",
             collection="proposals",
             json=drop_none(
                 {
@@ -783,7 +787,7 @@ class ProposalResourceMixin:
         return ensure_dict(payload, "Proposal response")
 
     def get_thread(self, thread_id: int) -> JsonDict:
-        payload = self._request("GET", f"/thread/{thread_id}", collection="proposals")
+        payload = self._request("GET", f"/thread/{int(thread_id)}", collection="proposals")
         return ensure_dict(payload, "Proposal thread response")
 
     def list_threads(
@@ -814,7 +818,7 @@ class ProposalResourceMixin:
     ) -> JsonDict:
         payload = self._request(
             "PATCH",
-            f"/thread/{thread_id}",
+            f"/thread/{int(thread_id)}",
             collection="proposals",
             json=drop_none(
                 {
@@ -841,7 +845,7 @@ class ProposalResourceMixin:
     ) -> JsonDict:
         payload = self._request(
             "POST",
-            f"/thread/{thread_id}/finalize",
+            f"/thread/{int(thread_id)}/finalize",
             collection="proposals",
             json={
                 "consumer_project": consumer_project,
@@ -856,21 +860,34 @@ class ProposalResourceMixin:
         return ensure_dict(payload, "Finalize proposal negotiation response")
 
     def get_proposal(self, proposal_id: int) -> JsonDict:
-        payload = self._request("GET", f"/{proposal_id}", collection="proposals")
+        payload = self._request("GET", f"/{int(proposal_id)}", collection="proposals")
         return ensure_dict(payload, "Proposal response")
 
     def adopt_proposal(self, proposal_id: int, *, priority: str | None = None) -> JsonDict:
         payload = self._request(
             "POST",
-            f"/{proposal_id}/adopt",
+            f"/{int(proposal_id)}/adopt",
             collection="proposals",
             json=drop_none({"priority": priority}),
         )
         return ensure_dict(payload, "Adopt proposal response")
 
     def discard_proposal(self, proposal_id: int) -> JsonDict:
-        payload = self._request("POST", f"/{proposal_id}/discard", collection="proposals")
+        payload = self._request("POST", f"/{int(proposal_id)}/discard", collection="proposals")
         return ensure_dict(payload, "Discard proposal response")
 
 def _validated_session(session: str | None) -> str | None:
     return None if session is None else validate_session_token(session)
+
+
+def _validate_project_token(project: str) -> str:
+    if not project or not is_valid_workflow_token(project):
+        raise ValueError(f"Invalid project token: {project}")
+    return project
+
+
+def _quoted_path_segment(value: str, *, label: str) -> str:
+    parts = value.split("/")
+    if not value or "\\" in value or any(part in {"", ".", ".."} for part in parts):
+        raise ValueError(f"Invalid {label} path segment: {value}")
+    return quote(value, safe="")

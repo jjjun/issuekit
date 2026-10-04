@@ -838,6 +838,7 @@ async def _health_status(root: Path, ctx: Context | None = None) -> dict[str, An
         "project": None,
         "api_url_configured": False,
         "api_url_source": "none",
+        "api_url_trusted_by": "none",
         "api_url_origin": None,
         "repo_config_source": "none",
         "machine_config_path": None if machine_path is None else str(machine_path),
@@ -874,6 +875,7 @@ async def _health_status(root: Path, ctx: Context | None = None) -> dict[str, An
     payload["project"] = config.project
     payload["api_url_configured"] = bool(config.api_url)
     payload["api_url_source"] = config.api_url_source
+    payload["api_url_trusted_by"] = config.api_url_trusted_by
     payload["api_url_origin"] = api_url_origin(config.api_url)
     payload["repo_config_source"] = config.repo_config_source
     cached_token = read_cached_token(config.api_url.rstrip("/")) if config.api_url else None

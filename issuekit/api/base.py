@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from collections.abc import Iterator, Mapping, Sequence
 from typing import Any
+from urllib.parse import urljoin
 
 import httpx
 
+from issuekit.config.settings import api_url_origin
 from issuekit.core import drop_none
 from issuekit.workflow import WorkflowError
 
@@ -40,6 +42,7 @@ class ClientTransportMixin:
     _token: str | None
     _token_expiry: float | None
     _http: httpx.Client
+    allow_insecure_api_url: bool
 
     def login(self, *, force: bool = False) -> str:
         """Log in with service-account credentials and cache the JWT."""
@@ -50,12 +53,16 @@ class ClientTransportMixin:
                 return self._token
             raise WorkflowError(_login_guidance(self.api_url), code="unauthorized")
 
-        warn_insecure_api_url(self.api_url)
+        warn_insecure_api_url(
+            self.api_url,
+            allow_insecure_api_url=self.allow_insecure_api_url,
+        )
         response = self._send(
             "POST",
             "/auth/login",
             data={"username": self.username, "password": self.password},
             headers={"Accept": "application/json"},
+            follow_redirects=False,
         )
         payload = self._parse_response(response)
         if not isinstance(payload, dict):
@@ -74,6 +81,10 @@ class ClientTransportMixin:
         token = self._token
         if token and not is_expired(self._token_expiry):
             try:
+                warn_insecure_api_url(
+                    self.api_url,
+                    allow_insecure_api_url=self.allow_insecure_api_url,
+                )
                 response = self._send(
                     "POST",
                     "/auth/logout",
@@ -81,9 +92,12 @@ class ClientTransportMixin:
                         "Accept": "application/json",
                         "Authorization": f"Bearer {token}",
                     },
+                    follow_redirects=False,
                 )
                 self._parse_response(response)
-            except WorkflowError:
+            except WorkflowError as exc:
+                if exc.code in {"auth_redirect", "insecure_api_url"}:
+                    raise
                 pass
         delete_cached_token(self.api_url)
         self._token = None
@@ -138,7 +152,10 @@ class ClientTransportMixin:
         params: Mapping[str, Any] | None = None,
         headers: Mapping[str, str] | None = None,
     ) -> httpx.Response:
-        warn_insecure_api_url(self.api_url)
+        warn_insecure_api_url(
+            self.api_url,
+            allow_insecure_api_url=self.allow_insecure_api_url,
+        )
         token = self.login()
         request_headers = {
             "Accept": "application/json",
@@ -216,9 +233,23 @@ class ClientTransportMixin:
 
     def _send(self, method: str, path: str, **kwargs: Any) -> httpx.Response:
         try:
-            return self._http.request(method, self._url(path), timeout=self.timeout, **kwargs)
+            if path.startswith("/auth/"):
+                kwargs["follow_redirects"] = False
+            response = self._http.request(
+                method, self._url(path), timeout=self.timeout, **kwargs
+            )
         except httpx.HTTPError as exc:
             raise WorkflowError(f"API request failed: {exc}", code="request_failed") from exc
+        if path.startswith("/auth/") and 300 <= response.status_code < 400:
+            location = response.headers.get("location", "")
+            redirect_url = urljoin(f"{self.api_url}/", location)
+            redirect_origin = api_url_origin(redirect_url) or "unknown origin"
+            raise WorkflowError(
+                f"Login endpoint redirected to {redirect_origin}; set api_url to "
+                "the final API origin.",
+                code="auth_redirect",
+            )
+        return response
 
     def _parse_response(self, response: httpx.Response) -> Any:
         if response.status_code == 204:

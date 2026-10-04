@@ -97,6 +97,7 @@ def post_worker_registration(
         config.api_url,
         project=config.project,
         timeout=config.api_timeout,
+        allow_insecure_api_url=config.allow_insecure_api_url,
     ) as client:
         try:
             try:
@@ -178,6 +179,7 @@ def list_api_workers(
         config.api_url,
         project=config.project,
         timeout=config.api_timeout,
+        allow_insecure_api_url=config.allow_insecure_api_url,
     ) as client:
         return client.list_workers(repo_id=repo_id, project=project)
 
@@ -216,6 +218,7 @@ def remove_api_worker(
         config.api_url,
         project=config.project,
         timeout=config.api_timeout,
+        allow_insecure_api_url=config.allow_insecure_api_url,
     ) as client:
         deleted = client.delete_worker(worker_id)
     return WorkerRemovalResult(
@@ -292,6 +295,7 @@ def prune_api_workers(
         config.api_url,
         project=config.project,
         timeout=config.api_timeout,
+        allow_insecure_api_url=config.allow_insecure_api_url,
     ) as client:
         for candidate in candidates:
             deleted.append(client.delete_worker(_worker_delete_id(candidate.worker)))
@@ -349,6 +353,7 @@ def remove_api_repo(config: IssuekitConfig, repo_key: str) -> RepoRemovalResult:
         config.api_url,
         project=config.project,
         timeout=config.api_timeout,
+        allow_insecure_api_url=config.allow_insecure_api_url,
     ) as client:
         try:
             deleted = client.delete_repo(repo_key)

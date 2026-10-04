@@ -28,8 +28,10 @@ from the repo root so the MCP server resolves the repo configuration.
 - If the proposal-system MCP tools hang or error, use the equivalent CLI with
   `--json` (`issuekit propose/incoming/adopt`); they share one implementation.
 - This repo dogfoods its own issue tracker.
-- Repo-local `.env` is trusted input for `ISSUEKIT_*` keys only; sensitive API
-  settings loaded from `.env` print a stderr notice.
+- Repo-local `.env` accepts only `ISSUEKIT_API_URL`, `ISSUEKIT_API_USER`,
+  `ISSUEKIT_API_PASSWORD`, `ISSUEKIT_API_TOKEN`, `ISSUEKIT_PROJECT`, and
+  `ISSUEKIT_API_TIMEOUT`; sensitive API settings loaded from `.env` print a
+  stderr notice.
 - Write all files as UTF-8 without a BOM and with LF line endings.
 - Build and test with `uv sync`, `uv run ruff check`, `uv run pytest`, and
   `uv run issuekit check-encoding`. Before submit, also run

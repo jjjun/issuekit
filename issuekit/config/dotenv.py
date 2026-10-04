@@ -7,6 +7,14 @@ import sys
 from pathlib import Path
 
 _ISSUEKIT_PREFIX = "ISSUEKIT_"
+_ALLOWED_DOTENV_KEYS = {
+    "ISSUEKIT_API_URL",
+    "ISSUEKIT_API_USER",
+    "ISSUEKIT_API_PASSWORD",
+    "ISSUEKIT_API_TOKEN",
+    "ISSUEKIT_PROJECT",
+    "ISSUEKIT_API_TIMEOUT",
+}
 _SENSITIVE_DOTENV_KEYS = {
     "ISSUEKIT_API_URL",
     "ISSUEKIT_API_USER",
@@ -14,6 +22,7 @@ _SENSITIVE_DOTENV_KEYS = {
     "ISSUEKIT_API_TOKEN",
 }
 _LOADED_DOTENV_VALUES: dict[str, str] = {}
+_IGNORED_DOTENV_NOTICES: set[tuple[Path, str]] = set()
 
 
 def load_dotenv(cwd: Path | str = ".") -> None:
@@ -30,6 +39,16 @@ def load_dotenv(cwd: Path | str = ".") -> None:
             continue
         key, value = parsed
         if not key.startswith(_ISSUEKIT_PREFIX):
+            continue
+        if key not in _ALLOWED_DOTENV_KEYS:
+            notice_key = (dotenv_path.resolve(), key)
+            if notice_key not in _IGNORED_DOTENV_NOTICES:
+                _IGNORED_DOTENV_NOTICES.add(notice_key)
+                print(
+                    f"Notice: ignored {key} from repo-local dotenv file {dotenv_path}; "
+                    "set it in the process environment instead.",
+                    file=sys.stderr,
+                )
             continue
         if os.environ.get(key, ""):
             continue

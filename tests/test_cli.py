@@ -407,6 +407,7 @@ def test_proposal_cli_round_trip(tmp_path, monkeypatch, capsys) -> None:
     monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
 
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("ISSUEKIT_API_URL", "https://mine.example")
     assert cli.main(
         [
             "propose",
@@ -500,6 +501,7 @@ def test_login_command_uses_credentials_and_ignores_env_token(
         newline="\n",
     )
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("ISSUEKIT_API_URL", "https://mine.example")
     monkeypatch.setenv("ISSUEKIT_API_PASSWORD", "secret")
     monkeypatch.setenv("ISSUEKIT_API_TOKEN", "external")
     created = []
@@ -527,7 +529,9 @@ def test_login_command_uses_credentials_and_ignores_env_token(
     assert created[0][1]["username"] == "svc"
     assert created[0][1]["password"] == "secret"
     assert created[0][1]["use_env_token"] is False
-    assert "Logged in to https://mine.example as svc" in capsys.readouterr().out
+    captured = capsys.readouterr()
+    assert "Logged in to https://mine.example as svc" in captured.out
+    assert "Logging in to https://mine.example (api_url from env)." in captured.err
 
 
 def test_login_command_prompts_for_username_on_tty(
@@ -547,10 +551,17 @@ def test_login_command_prompts_for_username_on_tty(
         newline="\n",
     )
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("ISSUEKIT_API_URL", "https://mine.example")
     monkeypatch.delenv("ISSUEKIT_API_USER", raising=False)
     monkeypatch.delenv("ISSUEKIT_API_PASSWORD", raising=False)
     monkeypatch.setattr(auth.sys, "stdin", TtyStdin())
-    monkeypatch.setattr("builtins.input", lambda prompt: "  prompted-user  ")
+    prompted_notices = []
+
+    def prompt_for_user(prompt: str) -> str:
+        prompted_notices.append(capsys.readouterr().err)
+        return "  prompted-user  "
+
+    monkeypatch.setattr("builtins.input", prompt_for_user)
     monkeypatch.setattr(auth.getpass, "getpass", lambda prompt: "secret")
     created = []
 
@@ -575,6 +586,10 @@ def test_login_command_prompts_for_username_on_tty(
 
     assert created[0][1]["username"] == "prompted-user"
     assert created[0][1]["password"] == "secret"
+    assert any(
+        "Logging in to https://mine.example (api_url from env)." in notice
+        for notice in prompted_notices
+    )
     assert "Logged in to https://mine.example as prompted-user" in capsys.readouterr().out
 
 
@@ -595,6 +610,7 @@ def test_login_command_non_tty_missing_username_does_not_prompt(
         newline="\n",
     )
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("ISSUEKIT_API_URL", "https://mine.example")
     monkeypatch.delenv("ISSUEKIT_API_USER", raising=False)
     monkeypatch.setenv("ISSUEKIT_API_PASSWORD", "secret")
     monkeypatch.setattr(auth.sys, "stdin", NonTtyStdin())
@@ -609,6 +625,39 @@ def test_login_command_non_tty_missing_username_does_not_prompt(
         "Error: API username is required; pass --user or set ISSUEKIT_API_USER."
         in capsys.readouterr().err
     )
+
+
+def test_login_command_missing_api_url_fails_before_prompt(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    from issuekit.commands import auth
+
+    class TtyStdin:
+        def isatty(self):
+            return True
+
+    (tmp_path / "issuekit.toml").write_text(
+        "project = 'demo'\n", encoding="utf-8", newline="\n"
+    )
+    (tmp_path / ".env").write_text(
+        "ISSUEKIT_CONFIG=/tmp/untrusted.toml\n", encoding="utf-8", newline="\n"
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("ISSUEKIT_CONFIG", "")
+    monkeypatch.delenv("ISSUEKIT_API_URL", raising=False)
+    monkeypatch.setattr(auth.sys, "stdin", TtyStdin())
+    monkeypatch.setattr(
+        "builtins.input",
+        lambda prompt: pytest.fail("input should not be called without an API URL"),
+    )
+
+    assert cli.main(["login"]) == 1
+
+    captured = capsys.readouterr()
+    assert "API URL is required" in captured.err
+    assert "Logging in to" not in captured.err
 
 
 @pytest.mark.parametrize(
@@ -637,6 +686,7 @@ def test_login_command_existing_username_sources_bypass_prompt(
         newline="\n",
     )
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("ISSUEKIT_API_URL", "https://mine.example")
     if env_user is None:
         monkeypatch.delenv("ISSUEKIT_API_USER", raising=False)
     else:
@@ -684,6 +734,7 @@ def test_logout_command_ignores_env_token(
         newline="\n",
     )
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("ISSUEKIT_API_URL", "https://mine.example")
     monkeypatch.setenv("ISSUEKIT_API_TOKEN", "external")
     created = []
 
@@ -739,6 +790,7 @@ def test_workspace_refs_drive_propose_and_reply_round_trip(
     monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
 
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("ISSUEKIT_API_URL", "https://mine.example")
     assert cli.main(
         [
             "propose",

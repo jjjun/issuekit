@@ -149,6 +149,7 @@ class AppServerAttemptRunner:
             self.config.api_url,
             project=self.config.project,
             timeout=self.config.api_timeout,
+            allow_insecure_api_url=self.config.allow_insecure_api_url,
         ) as client:
             parent, resume = self._recovery_ancestry(client, issue_id, repo)
             context = self._create_and_acquire(

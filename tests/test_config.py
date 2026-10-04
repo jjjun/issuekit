@@ -22,9 +22,13 @@ _ENV_KEYS = (
     "ISSUEKIT_API_TOKEN",
     "ISSUEKIT_API_URL",
     "ISSUEKIT_API_USER",
+    "ISSUEKIT_ALLOW_INSECURE",
+    "ISSUEKIT_CONFIG",
     "ISSUEKIT_ENFORCE_AUTHOR_HANDOFF",
     "ISSUEKIT_PROJECT",
+    "ISSUEKIT_SESSION",
     "ISSUEKIT_TOKEN_CACHE",
+    "ISSUEKIT_WORKSPACE",
     "DOTENV_EXTRA",
     "MALFORMED_LINE",
 )
@@ -139,6 +143,13 @@ def test_empty_environment_values_fall_back_to_config(
     monkeypatch.setenv("ISSUEKIT_API_URL", "")
     monkeypatch.setenv("ISSUEKIT_PROJECT", "")
     monkeypatch.setenv("ISSUEKIT_API_TIMEOUT", "")
+    machine_path = tmp_path / "machine.toml"
+    machine_path.write_text(
+        "trusted_api_origins = ['https://mine.example']\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setenv("ISSUEKIT_CONFIG", str(machine_path))
 
     config = load_config(tmp_path)
 
@@ -222,14 +233,78 @@ def test_load_config_tracks_api_url_source_by_configuration_layer(
     monkeypatch.setenv("ISSUEKIT_CONFIG", str(machine_path))
 
     assert load_config(tmp_path).api_url_source == "machine_config"
+    assert load_config(tmp_path).api_url_trusted_by == "machine_config"
 
     (tmp_path / "issuekit.toml").write_text(
         "api_url = 'https://repo.example'\n", encoding="utf-8"
     )
-    assert load_config(tmp_path).api_url_source == "repo_config"
+    with pytest.raises(ValueError, match="https://repo.example.*https://machine.example"):
+        load_config(tmp_path)
+
+    machine_path.write_text(
+        "api_url = 'https://machine.example'\n"
+        "trusted_api_origins = ['https://repo.example/private/path']\n",
+        encoding="utf-8",
+    )
+    config = load_config(tmp_path)
+    assert config.api_url_source == "repo_config"
+    assert config.api_url_trusted_by == "trusted_api_origins"
+    assert config.trusted_api_origins == ("https://repo.example",)
+
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://repo.example'\ntrusted_api_origins = []\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="trusted_api_origins can only be set in machine config"):
+        load_config(tmp_path)
+
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://repo.example'\n", encoding="utf-8"
+    )
 
     monkeypatch.setenv("ISSUEKIT_API_URL", "https://environment.example")
-    assert load_config(tmp_path).api_url_source == "env"
+    config = load_config(tmp_path)
+    assert config.api_url_source == "env"
+    assert config.api_url_trusted_by == "env"
+
+
+def test_repo_api_url_requires_a_trusted_origin(tmp_path: Path, monkeypatch) -> None:
+    machine_path = tmp_path / "machine.toml"
+    monkeypatch.setenv("ISSUEKIT_CONFIG", str(machine_path))
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://repo.example'\n", encoding="utf-8"
+    )
+
+    with pytest.raises(ValueError) as excinfo:
+        load_config(tmp_path)
+
+    message = str(excinfo.value)
+    assert "https://repo.example" in message
+    assert "issuekit.toml" in message
+    assert "trusted: none" in message
+    assert str(machine_path) in message
+    assert "ISSUEKIT_API_URL" in message
+
+
+def test_repo_cannot_enable_insecure_api_url(tmp_path: Path, monkeypatch) -> None:
+    machine_path = tmp_path / "machine.toml"
+    monkeypatch.setenv("ISSUEKIT_CONFIG", str(machine_path))
+    (tmp_path / "issuekit.toml").write_text(
+        "allow_insecure_api_url = true\n", encoding="utf-8"
+    )
+
+    with pytest.raises(ValueError, match="allow_insecure_api_url can only be set in machine config"):
+        load_config(tmp_path)
+
+
+def test_load_config_reads_machine_insecure_api_opt_out(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    machine_path = tmp_path / "machine.toml"
+    machine_path.write_text("allow_insecure_api_url = true\n", encoding="utf-8")
+    monkeypatch.setenv("ISSUEKIT_CONFIG", str(machine_path))
+
+    assert load_config(tmp_path).allow_insecure_api_url is True
 
 
 def test_load_config_reports_unreadable_machine_config_clearly(
@@ -437,7 +512,9 @@ def test_load_config_prefers_pyproject_tool_issuekit(tmp_path: Path) -> None:
     )
 
 
-def test_load_config_reads_api_fields_from_pyproject(tmp_path: Path) -> None:
+def test_load_config_reads_api_fields_from_pyproject(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     (tmp_path / "pyproject.toml").write_text(
         (
             "[tool.issuekit]\n"
@@ -448,6 +525,13 @@ def test_load_config_reads_api_fields_from_pyproject(tmp_path: Path) -> None:
         encoding="utf-8",
         newline="\n",
     )
+    machine_path = tmp_path / "machine.toml"
+    machine_path.write_text(
+        "trusted_api_origins = ['https://mine.example']\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setenv("ISSUEKIT_CONFIG", str(machine_path))
 
     config = load_config(tmp_path)
 
@@ -786,6 +870,7 @@ def test_load_config_reads_api_url_from_dotenv(
     assert config.api_url == "https://mine.env"
     assert config.api_url == "https://mine.env"
     assert config.api_url_source == "dotenv"
+    assert config.api_url_trusted_by == "dotenv"
 
 
 def test_load_config_real_environment_overrides_dotenv(
@@ -842,6 +927,71 @@ def test_load_config_dotenv_parses_comments_quotes_export_and_skips_malformed(
     assert "MALFORMED_LINE" not in os.environ
 
 
+def test_load_config_dotenv_only_loads_allowlisted_issuekit_keys(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("ISSUEKIT_CONFIG", "")
+    for key in (
+        "ISSUEKIT_API_URL",
+        "ISSUEKIT_API_USER",
+        "ISSUEKIT_API_PASSWORD",
+        "ISSUEKIT_API_TOKEN",
+        "ISSUEKIT_PROJECT",
+        "ISSUEKIT_API_TIMEOUT",
+        "ISSUEKIT_TOKEN_CACHE",
+        "ISSUEKIT_ALLOW_INSECURE",
+        "ISSUEKIT_ENFORCE_AUTHOR_HANDOFF",
+        "ISSUEKIT_WORKSPACE",
+        "ISSUEKIT_SESSION",
+    ):
+        monkeypatch.delenv(key, raising=False)
+    dotenv_path = tmp_path / ".env"
+    dotenv_path.write_text(
+        "ISSUEKIT_API_URL=https://dotenv.example\n"
+        "ISSUEKIT_API_USER=dotenv-user\n"
+        "ISSUEKIT_API_PASSWORD=dotenv-password\n"
+        "ISSUEKIT_API_TOKEN=dotenv-token\n"
+        "ISSUEKIT_PROJECT=dotenv-project\n"
+        "ISSUEKIT_API_TIMEOUT=8.5\n"
+        "ISSUEKIT_CONFIG=/tmp/attacker.toml\n"
+        "ISSUEKIT_TOKEN_CACHE=/tmp/attacker-token.json\n"
+        "ISSUEKIT_ALLOW_INSECURE=1\n"
+        "ISSUEKIT_ENFORCE_AUTHOR_HANDOFF=0\n"
+        "ISSUEKIT_WORKSPACE=/tmp/attacker-workspace\n"
+        "ISSUEKIT_SESSION=attacker-session\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    config = load_config(tmp_path)
+    captured = capsys.readouterr()
+
+    assert config.api_url == "https://dotenv.example"
+    assert config.api_url_source == "dotenv"
+    assert config.project == "dotenv-project"
+    assert config.api_timeout == 8.5
+    assert os.environ["ISSUEKIT_API_USER"] == "dotenv-user"
+    assert os.environ["ISSUEKIT_API_PASSWORD"] == "dotenv-password"
+    assert os.environ["ISSUEKIT_API_TOKEN"] == "dotenv-token"
+    assert os.environ["ISSUEKIT_CONFIG"] == ""
+    assert "ISSUEKIT_TOKEN_CACHE" not in os.environ
+    assert "ISSUEKIT_ALLOW_INSECURE" not in os.environ
+    assert "ISSUEKIT_ENFORCE_AUTHOR_HANDOFF" not in os.environ
+    assert "ISSUEKIT_WORKSPACE" not in os.environ
+    assert "ISSUEKIT_SESSION" not in os.environ
+    for key in (
+        "ISSUEKIT_CONFIG",
+        "ISSUEKIT_TOKEN_CACHE",
+        "ISSUEKIT_ALLOW_INSECURE",
+        "ISSUEKIT_ENFORCE_AUTHOR_HANDOFF",
+        "ISSUEKIT_WORKSPACE",
+        "ISSUEKIT_SESSION",
+    ):
+        assert captured.err.count(f"ignored {key}") == 1
+
+
 def test_load_config_dotenv_warns_when_sensitive_api_key_is_loaded(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -874,7 +1024,22 @@ def test_load_config_missing_dotenv_is_noop(
     assert config == IssuekitConfig()
 
 
-def test_load_config_api_mode_uses_server_reviewer_policy(tmp_path: Path) -> None:
+def test_load_config_refuses_git_tracked_dotenv(tmp_path: Path) -> None:
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    (tmp_path / ".env").write_text(
+        "ISSUEKIT_API_URL=https://committed.example\n", encoding="utf-8"
+    )
+    subprocess.run(["git", "add", ".env"], cwd=tmp_path, check=True)
+
+    with pytest.raises(ValueError, match="Repo-local .env is tracked by git") as excinfo:
+        load_config(tmp_path)
+
+    assert "git rm --cached .env" in str(excinfo.value)
+
+
+def test_load_config_api_mode_uses_server_reviewer_policy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     (tmp_path / "issuekit.toml").write_text(
         (
             "api_url = 'https://mine.example'\n"
@@ -884,6 +1049,13 @@ def test_load_config_api_mode_uses_server_reviewer_policy(tmp_path: Path) -> Non
         encoding="utf-8",
         newline="\n",
     )
+    machine_path = tmp_path / "machine.toml"
+    machine_path.write_text(
+        "trusted_api_origins = ['https://mine.example']\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setenv("ISSUEKIT_CONFIG", str(machine_path))
 
     config = load_config(tmp_path)
 

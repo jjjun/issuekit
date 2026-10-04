@@ -6,7 +6,10 @@ from issuekit import core
 from issuekit.config import IssuekitConfig, load_config
 
 
-def test_load_config_reads_tool_issuekit(tmp_path: Path) -> None:
+def test_load_config_reads_tool_issuekit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ISSUEKIT_CONFIG", "")
     (tmp_path / "pyproject.toml").write_text(
         "[tool.issuekit]\nissues_dir = 'custom/issues'\n",
         encoding="utf-8",
