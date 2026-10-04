@@ -6,7 +6,12 @@ import argparse
 import sys
 from pathlib import Path
 
-from issuekit.commands._common import load_config_for_project_mutation, print_json
+from issuekit.commands._common import (
+    add_json_flag,
+    add_text_file_pair,
+    load_config_for_project_mutation,
+    print_json,
+)
 from issuekit.config import load_config
 from issuekit.config.refs import (
     RefError,
@@ -67,8 +72,12 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         help="Target API project, or worker.repo[@machine] to direct the proposal to a worker.",
     )
     propose_parser.add_argument("--title", help="Proposal title.")
-    propose_parser.add_argument("--body", help="Inline proposal body.")
-    propose_parser.add_argument("--body-file", help="File containing proposal body.")
+    add_text_file_pair(
+        propose_parser,
+        "body",
+        help="Inline proposal body.",
+        file_help="File containing proposal body.",
+    )
     propose_parser.add_argument("--from-issue", help="Local issue id to propose from.")
     propose_parser.add_argument("--reply", help="Local adopted issue id to reply from.")
     propose_parser.add_argument("--agent", help="Optional author agent for the local STOP guard.")
@@ -90,14 +99,14 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         dest="depends_on",
         help="Attach an upstream dependency reference such as project#proposal:123.",
     )
-    propose_parser.add_argument("--json", action="store_true", help="Print JSON output.")
+    add_json_flag(propose_parser)
     propose_parser.set_defaults(func=run_propose)
 
     incoming_parser = subparsers.add_parser(
         "incoming",
         help="List incoming cross-repository proposals.",
     )
-    incoming_parser.add_argument("--json", action="store_true", help="Print JSON output.")
+    add_json_flag(incoming_parser)
     incoming_parser.set_defaults(func=run_incoming)
 
     outgoing_parser = subparsers.add_parser(
@@ -114,7 +123,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         "--status",
         help="Filter by proposal status (pending, adopted, or discarded).",
     )
-    outgoing_parser.add_argument("--json", action="store_true", help="Print JSON output.")
+    add_json_flag(outgoing_parser)
     outgoing_parser.set_defaults(func=run_outgoing)
 
     adopt_parser = subparsers.add_parser(
@@ -132,7 +141,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         "--append-file",
         help="File containing text to append to the adopted issue body.",
     )
-    adopt_parser.add_argument("--json", action="store_true", help="Print JSON output.")
+    add_json_flag(adopt_parser)
     adopt_parser.set_defaults(func=run_adopt)
 
     discard_parser = subparsers.add_parser(
@@ -144,7 +153,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         "--to",
         help="Target project whose inbox holds the proposal, for discarding an outgoing proposal.",
     )
-    discard_parser.add_argument("--json", action="store_true", help="Print JSON output.")
+    add_json_flag(discard_parser)
     discard_parser.set_defaults(func=run_discard)
 
 

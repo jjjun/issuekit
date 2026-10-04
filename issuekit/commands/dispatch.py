@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from issuekit.commands._common import print_json, run_command
+from issuekit.commands._common import add_json_flag, print_json, run_command
 from issuekit.config import load_config
 from issuekit.core import issue_dict, parse_issue_id_arg
 from issuekit.errors import WorkflowError
@@ -34,7 +34,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         action="store_true",
         help="Allow directing to a worker that has not registered yet.",
     )
-    dispatch_parser.add_argument("--json", action="store_true", help="Print JSON output.")
+    add_json_flag(dispatch_parser)
     dispatch_parser.set_defaults(func=run)
 
 

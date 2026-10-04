@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from issuekit.commands._common import print_json
+from issuekit.commands._common import add_json_flag, print_json
 from issuekit.config import api_url_origin, load_config, resolve_repository_root
 from issuekit.core import issue_dict
 from issuekit.errors import WorkflowError
@@ -26,7 +26,7 @@ from issuekit.workflow import resolve_implementer
 
 def register(subparsers: argparse._SubParsersAction) -> None:
     info_parser = subparsers.add_parser("info", help="Show issue tracker status.")
-    info_parser.add_argument("--json", action="store_true", help="Print JSON output.")
+    add_json_flag(info_parser)
     info_parser.set_defaults(func=run)
 
 

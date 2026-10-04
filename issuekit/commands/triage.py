@@ -11,7 +11,13 @@ from issuekit.agents.triage_author import (
     TriageDecision,
     run_triage_author_cycle,
 )
-from issuekit.commands._common import print_json, run_agent_command
+from issuekit.commands._common import (
+    add_json_flag,
+    add_model_options,
+    add_timeout_option,
+    print_json,
+    run_agent_command,
+)
 from issuekit.config import load_config
 from issuekit.errors import AGENT_RUN_ERRORS
 
@@ -26,17 +32,17 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         action="store_true",
         help="Run a single evaluation cycle and exit (currently required).",
     )
-    triage_parser.add_argument("--model", help="Optional model name passed to the agent.")
-    triage_parser.add_argument(
-        "--reasoning-effort", help="Optional reasoning effort passed to the agent."
+    add_model_options(
+        triage_parser,
+        model_help="Optional model name passed to the agent.",
+        effort_help="Optional reasoning effort passed to the agent.",
     )
-    triage_parser.add_argument(
-        "--timeout-sec",
-        type=float,
+    add_timeout_option(
+        triage_parser,
         default=600.0,
         help="Hard timeout for each triage agent run in seconds.",
     )
-    triage_parser.add_argument("--json", action="store_true", help="Print JSON output.")
+    add_json_flag(triage_parser)
     triage_parser.set_defaults(func=run)
 
 

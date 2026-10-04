@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import signal
@@ -26,6 +27,138 @@ STANDARD_COMMAND_ERRORS: tuple[CommandError, ...] = (
     WorkflowError,
     UnicodeError,
 )
+
+
+def add_json_flag(
+    parser: argparse.ArgumentParser,
+    *,
+    suppress: bool = False,
+    help: str = "Print JSON output.",
+) -> None:
+    """Add the standard JSON output flag, optionally preserving a parent value."""
+
+    if suppress:
+        parser.add_argument(
+            "--json",
+            action="store_true",
+            default=argparse.SUPPRESS,
+            help=help,
+        )
+    else:
+        parser.add_argument("--json", action="store_true", help=help)
+
+
+def add_agent_option(
+    parser: argparse.ArgumentParser,
+    *,
+    help: str,
+    required: bool = False,
+) -> None:
+    """Add the configured agent selection option."""
+
+    parser.add_argument("--agent", required=required, help=help)
+
+
+def add_model_options(
+    parser: argparse.ArgumentParser,
+    *,
+    model_help: str,
+    effort_help: str,
+) -> None:
+    """Add model and reasoning-effort overrides."""
+
+    parser.add_argument("--model", help=model_help)
+    parser.add_argument("--reasoning-effort", help=effort_help)
+
+
+def add_timeout_option(
+    parser: argparse.ArgumentParser,
+    *,
+    default: float,
+    help: str,
+) -> None:
+    """Add the agent run timeout option."""
+
+    parser.add_argument("--timeout-sec", type=float, default=default, help=help)
+
+
+def add_agent_run_options(
+    parser: argparse.ArgumentParser,
+    *,
+    agent_help: str,
+    agent_required: bool = False,
+    model_help: str,
+    effort_help: str,
+    timeout_default: float,
+    timeout_help: str,
+) -> None:
+    """Add the standard agent, model, reasoning-effort, and timeout options."""
+
+    add_agent_option(parser, help=agent_help, required=agent_required)
+    add_model_options(parser, model_help=model_help, effort_help=effort_help)
+    add_timeout_option(parser, default=timeout_default, help=timeout_help)
+
+
+def add_guard_override_flags(
+    parser: argparse.ArgumentParser,
+    *,
+    author_session: bool = True,
+    any_branch: bool = True,
+    sync: bool = True,
+) -> None:
+    """Add the selected local guard recovery flags."""
+
+    if author_session:
+        parser.add_argument(
+            "--allow-author-session",
+            action="store_true",
+            help="Override a local author-session STOP guard for human recovery.",
+        )
+    if any_branch:
+        parser.add_argument(
+            "--allow-any-branch",
+            action="store_true",
+            help="Override the configured work_branch guard for human recovery.",
+        )
+    if sync:
+        parser.add_argument(
+            "--no-sync",
+            action="store_true",
+            help="Skip the claim-time clean checkout and fast-forward sync guard.",
+        )
+
+
+def add_follow_flag(parser: argparse.ArgumentParser, *, help: str) -> None:
+    """Add the live agent-run heartbeat flag."""
+
+    parser.add_argument("--follow", action="store_true", help=help)
+
+
+def add_text_file_pair(
+    target: argparse._ActionsContainer,
+    name: str,
+    *,
+    help: str,
+    file_help: str,
+) -> None:
+    """Add inline and file options for one text input."""
+
+    target.add_argument(f"--{name}", help=help)
+    target.add_argument(f"--{name}-file", help=file_help)
+
+
+def add_exclusive_text_file_pair(
+    parser: argparse.ArgumentParser,
+    name: str,
+    *,
+    help: str,
+    file_help: str,
+    required: bool = False,
+) -> None:
+    """Add mutually exclusive inline and file options for one text input."""
+
+    group = parser.add_mutually_exclusive_group(required=required)
+    add_text_file_pair(group, name, help=help, file_help=file_help)
 
 
 def print_json(payload: object) -> None:

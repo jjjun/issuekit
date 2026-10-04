@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from issuekit.commands._common import print_json, run_command
+from issuekit.commands._common import add_json_flag, print_json, run_command
 from issuekit.commands._heartbeat import warn_if_staleness_not_wider
 from issuekit.config import load_config
 from issuekit.errors import WorkflowError
@@ -35,7 +35,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
             f"this many seconds (default: {int(DEFAULT_STALE_AFTER_SEC)})."
         ),
     )
-    orphans_parser.add_argument("--json", action="store_true", help="Print JSON output.")
+    add_json_flag(orphans_parser)
     orphans_parser.set_defaults(func=run)
 
 

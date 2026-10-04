@@ -5,7 +5,12 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from issuekit.commands._common import run_agent_command
+from issuekit.commands._common import (
+    add_json_flag,
+    add_model_options,
+    add_timeout_option,
+    run_agent_command,
+)
 from issuekit.commands.request.answers import run_answer
 from issuekit.commands.request.inbox import run_inbox, run_status
 from issuekit.commands.request.routing import run_link, run_new_request
@@ -47,25 +52,21 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         metavar="REQUEST_ID",
         help="Link an existing proposal ref to an unsent routed request target.",
     )
-    request_parser.add_argument("--json", action="store_true", help="Print JSON output.")
+    add_json_flag(request_parser)
     request_parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Print the parsed router decision without sending proposals.",
     )
-    request_parser.add_argument(
-        "--timeout-sec",
-        type=float,
+    add_timeout_option(
+        request_parser,
         default=600.0,
         help="Hard timeout for the router agent run in seconds.",
     )
-    request_parser.add_argument(
-        "--model",
-        help="Override the router agent model for this run.",
-    )
-    request_parser.add_argument(
-        "--reasoning-effort",
-        help="Override the router agent reasoning effort for this run.",
+    add_model_options(
+        request_parser,
+        model_help="Override the router agent model for this run.",
+        effort_help="Override the router agent reasoning effort for this run.",
     )
     request_parser.set_defaults(func=run)
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from issuekit.commands._common import print_json, run_command
+from issuekit.commands._common import add_json_flag, print_json, run_command
 from issuekit.config import load_config
 from issuekit.config.project_profile import ProjectProfile, load_project_profile
 from issuekit.errors import WorkflowError
@@ -26,7 +26,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         action="store_true",
         help="List every stored remote project profile (the PM router's input).",
     )
-    profile_parser.add_argument("--json", action="store_true", help="Print JSON output.")
+    add_json_flag(profile_parser)
     profile_parser.set_defaults(func=run)
 
 

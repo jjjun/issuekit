@@ -6,7 +6,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from issuekit.commands._common import run_command
+from issuekit.commands._common import add_guard_override_flags, run_command
 from issuekit.config import load_config
 from issuekit.core import parse_issue_id_arg
 from issuekit.errors import WorkflowError
@@ -21,21 +21,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     claim_parser.add_argument("--id", help="Specific issue id to claim.")
     claim_parser.add_argument("--assignee", help="Assignee to claim for.")
     claim_parser.add_argument("--priority", choices=("high", "medium", "low"), help="Priority filter.")
-    claim_parser.add_argument(
-        "--allow-author-session",
-        action="store_true",
-        help="Override a local author-session STOP guard for human recovery.",
-    )
-    claim_parser.add_argument(
-        "--allow-any-branch",
-        action="store_true",
-        help="Override the configured work_branch guard for human recovery.",
-    )
-    claim_parser.add_argument(
-        "--no-sync",
-        action="store_true",
-        help="Skip the claim-time clean checkout and fast-forward sync guard.",
-    )
+    add_guard_override_flags(claim_parser)
     claim_parser.set_defaults(func=run)
 
 

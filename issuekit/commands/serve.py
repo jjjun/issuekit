@@ -20,6 +20,12 @@ from issuekit.agents.proposal_check import (
 )
 from issuekit.agents.run_claimed import _release_claim_after_run_error, preflight_agent
 from issuekit.agents.triage_author import TriageDecision, run_triage_author_cycle
+from issuekit.commands._common import (
+    add_agent_option,
+    add_guard_override_flags,
+    add_model_options,
+    add_timeout_option,
+)
 from issuekit.commands._heartbeat import warn_if_staleness_not_wider
 from issuekit.commands.serve_loop import (
     Backoff,
@@ -66,17 +72,14 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         "serve",
         help="Poll for eligible issues and run this checkout's worker agent.",
     )
-    serve_parser.add_argument("--agent", help="Configured agent name to run.")
-    serve_parser.add_argument(
-        "--model",
-        help=(
+    add_agent_option(serve_parser, help="Configured agent name to run.")
+    add_model_options(
+        serve_parser,
+        model_help=(
             "Optional model name applied to every agent launched by this serve loop; "
             "use per-agent config for mixed-agent model selection."
         ),
-    )
-    serve_parser.add_argument(
-        "--reasoning-effort",
-        help=(
+        effort_help=(
             "Optional reasoning effort applied to every agent launched by this serve "
             "loop; use per-agent config for mixed-agent effort selection."
         ),
@@ -144,21 +147,14 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         type=int,
         help="Exit after this many successful submissions.",
     )
-    serve_parser.add_argument(
-        "--timeout-sec",
-        type=float,
+    add_timeout_option(
+        serve_parser,
         default=1800.0,
         help="Hard timeout for each agent run in seconds.",
     )
-    serve_parser.add_argument(
-        "--allow-any-branch",
-        action="store_true",
-        help="Override the configured work_branch guard for human recovery.",
-    )
-    serve_parser.add_argument(
-        "--no-sync",
-        action="store_true",
-        help="Skip the claim-time clean checkout and fast-forward sync guard.",
+    add_guard_override_flags(
+        serve_parser,
+        author_session=False,
     )
     serve_parser.set_defaults(func=run)
 

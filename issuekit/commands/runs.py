@@ -16,7 +16,7 @@ from issuekit.agentrun.status import (
     reconcile_stale,
     status_path,
 )
-from issuekit.commands._common import print_json
+from issuekit.commands._common import add_json_flag, print_json
 
 TAIL_LINES = 40
 
@@ -32,7 +32,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         action="store_true",
         help="Show only running agent runs.",
     )
-    runs_parser.add_argument("--json", action="store_true", help="Print JSON output.")
+    add_json_flag(runs_parser)
     runs_parser.set_defaults(func=run)
 
 

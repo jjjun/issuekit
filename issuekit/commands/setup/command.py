@@ -7,7 +7,7 @@ import shutil
 from importlib import import_module
 from pathlib import Path
 
-from issuekit.commands._common import print_json
+from issuekit.commands._common import add_json_flag, print_json
 from issuekit.commands.init import InitResult, init_repo
 from issuekit.commands.setup.actions import collect_setup_actions
 from issuekit.commands.setup.diagnostics import Diagnostic
@@ -58,12 +58,7 @@ def _add_setup_check_options(
     *,
     suppress_default: bool = False,
 ) -> None:
-    parser.add_argument(
-        "--json",
-        action="store_true",
-        default=argparse.SUPPRESS if suppress_default else False,
-        help="Print JSON output.",
-    )
+    add_json_flag(parser, suppress=suppress_default)
 
 
 def _add_setup_apply_options(

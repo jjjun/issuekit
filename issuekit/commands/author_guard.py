@@ -6,7 +6,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from issuekit.commands._common import print_json, run_command
+from issuekit.commands._common import add_json_flag, print_json, run_command
 from issuekit.errors import WorkflowError
 from issuekit.guards.author import clear_author_guard, guards_dict, read_author_guards, stop_message
 from issuekit.guards.separation import AUTHOR_GUARD_HELP
@@ -20,28 +20,18 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         epilog=AUTHOR_GUARD_HELP,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument("--json", action="store_true", help="Print JSON output.")
+    add_json_flag(parser)
     actions = parser.add_subparsers(dest="author_guard_action", metavar="<action>")
 
     show_parser = actions.add_parser("show", help="Show the current local author guards.")
-    show_parser.add_argument(
-        "--json",
-        action="store_true",
-        default=argparse.SUPPRESS,
-        help="Print JSON output.",
-    )
+    add_json_flag(show_parser, suppress=True)
     show_parser.set_defaults(func=run_show)
 
     check_parser = actions.add_parser(
         "check",
         help="Fail when a local issue guard is present.",
     )
-    check_parser.add_argument(
-        "--json",
-        action="store_true",
-        default=argparse.SUPPRESS,
-        help="Print JSON output.",
-    )
+    add_json_flag(check_parser, suppress=True)
     check_parser.set_defaults(func=run_check)
 
     clear_parser = actions.add_parser(
@@ -49,12 +39,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         help="Clear local author guards after handoff or human recovery.",
     )
     clear_parser.add_argument("--ref", help="Clear only the guard with this issue or proposal ref.")
-    clear_parser.add_argument(
-        "--json",
-        action="store_true",
-        default=argparse.SUPPRESS,
-        help="Print JSON output.",
-    )
+    add_json_flag(clear_parser, suppress=True)
     clear_parser.set_defaults(func=run_clear)
 
     parser.set_defaults(func=run_show)

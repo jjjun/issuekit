@@ -6,7 +6,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from issuekit.commands._common import print_json, run_command
+from issuekit.commands._common import add_json_flag, print_json, run_command
 from issuekit.config import load_config
 from issuekit.errors import WorkflowError
 from issuekit.proposals import ProposalError
@@ -24,7 +24,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         "--worker",
         help="Registered worker.repo or worker.repo@machine address.",
     )
-    parser.add_argument("--json", action="store_true", help="Print JSON output.")
+    add_json_flag(parser)
     parser.set_defaults(func=run)
 
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from issuekit.commands._common import run_command
+from issuekit.commands._common import add_exclusive_text_file_pair, run_command
 from issuekit.config import load_config
 from issuekit.core import (
     parse_issue_id_arg,
@@ -21,13 +21,17 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         help="Complete an active issue.",
     )
     complete_parser.add_argument("id", help="Issue id to complete.")
-    summary_group = complete_parser.add_mutually_exclusive_group()
-    summary_group.add_argument("--summary", help="Completion summary.")
-    summary_group.add_argument("--summary-file", help="File containing the completion summary.")
-    verification_group = complete_parser.add_mutually_exclusive_group()
-    verification_group.add_argument("--verification", help="Verification notes.")
-    verification_group.add_argument(
-        "--verification-file", help="File containing verification notes."
+    add_exclusive_text_file_pair(
+        complete_parser,
+        "summary",
+        help="Completion summary.",
+        file_help="File containing the completion summary.",
+    )
+    add_exclusive_text_file_pair(
+        complete_parser,
+        "verification",
+        help="Verification notes.",
+        file_help="File containing verification notes.",
     )
     complete_parser.add_argument(
         "--force",

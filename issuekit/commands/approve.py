@@ -6,7 +6,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from issuekit.commands._common import run_command
+from issuekit.commands._common import add_exclusive_text_file_pair, run_command
 from issuekit.config import load_config
 from issuekit.core import (
     parse_issue_id_arg,
@@ -23,14 +23,19 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         help="Approve a review-stage issue.",
     )
     approve_parser.add_argument("id", help="Issue id to approve.")
-    verification_group = approve_parser.add_mutually_exclusive_group(required=True)
-    verification_group.add_argument("--verification", help="Verification notes.")
-    verification_group.add_argument(
-        "--verification-file", help="File containing verification notes."
+    add_exclusive_text_file_pair(
+        approve_parser,
+        "verification",
+        help="Verification notes.",
+        file_help="File containing verification notes.",
+        required=True,
     )
-    summary_group = approve_parser.add_mutually_exclusive_group()
-    summary_group.add_argument("--summary", help="Approval summary.")
-    summary_group.add_argument("--summary-file", help="File containing the approval summary.")
+    add_exclusive_text_file_pair(
+        approve_parser,
+        "summary",
+        help="Approval summary.",
+        file_help="File containing the approval summary.",
+    )
     approve_parser.add_argument("--reviewer", help="Reviewer approving this issue.")
     approve_parser.set_defaults(func=run)
 

@@ -9,6 +9,8 @@ import sys
 from pathlib import Path
 
 from issuekit.commands._common import (
+    add_exclusive_text_file_pair,
+    add_json_flag,
     load_config_for_project_mutation,
     print_json,
     run_command,
@@ -50,9 +52,13 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         help="Create an active issue authored by an agent.",
     )
     author_parser.add_argument("--title", required=True, help="Issue title.")
-    body_group = author_parser.add_mutually_exclusive_group(required=True)
-    body_group.add_argument("--body", help="Inline issue body.")
-    body_group.add_argument("--body-file", help="File containing the issue body.")
+    add_exclusive_text_file_pair(
+        author_parser,
+        "body",
+        help="Inline issue body.",
+        file_help="File containing the issue body.",
+        required=True,
+    )
     author_parser.add_argument(
         "--priority",
         choices=("high", "medium", "low"),
@@ -98,7 +104,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
             "the current project, use propose unless --direct-local-author is set."
         ),
     )
-    author_parser.add_argument("--json", action="store_true", help="Print JSON output.")
+    add_json_flag(author_parser)
     author_parser.set_defaults(func=run)
 
 

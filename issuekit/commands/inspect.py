@@ -6,7 +6,7 @@ import argparse
 from pathlib import Path
 
 from issuekit.agentrun.status import is_dead, list_statuses
-from issuekit.commands._common import print_json, run_command
+from issuekit.commands._common import add_json_flag, print_json, run_command
 from issuekit.config import load_config
 from issuekit.core import Issue, issue_dict, parse_issue_id_arg
 from issuekit.errors import WorkflowError
@@ -21,7 +21,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         description="Read one active or completed issue without changing it.",
     )
     show_parser.add_argument("id", help="Issue id to read.")
-    show_parser.add_argument("--json", action="store_true", help="Print JSON output.")
+    add_json_flag(show_parser)
     show_parser.set_defaults(func=run_show)
 
     next_review_parser = subparsers.add_parser(
@@ -33,11 +33,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         "--reviewer",
         help="Reviewer assignee to inspect; omit to use the open review pool.",
     )
-    next_review_parser.add_argument(
-        "--json",
-        action="store_true",
-        help="Print JSON output.",
-    )
+    add_json_flag(next_review_parser)
     next_review_parser.set_defaults(func=run_next_review)
 
 

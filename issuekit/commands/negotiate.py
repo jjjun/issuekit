@@ -9,7 +9,14 @@ from dataclasses import replace
 from pathlib import Path
 
 from issuekit.agentrun import AgentRunner
-from issuekit.commands._common import print_json, run_agent_command, run_command
+from issuekit.commands._common import (
+    add_json_flag,
+    add_model_options,
+    add_timeout_option,
+    print_json,
+    run_agent_command,
+    run_command,
+)
 from issuekit.config import load_config
 from issuekit.config.refs import list_effective_refs
 from issuekit.core import parse_issue_id_arg
@@ -84,13 +91,13 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         action="store_true",
         help="Use the local mock negotiation store.",
     )
-    negotiate_parser.add_argument("--model", help="Optional model name passed to both agents.")
-    negotiate_parser.add_argument(
-        "--reasoning-effort", help="Optional reasoning effort passed to both agents."
+    add_model_options(
+        negotiate_parser,
+        model_help="Optional model name passed to both agents.",
+        effort_help="Optional reasoning effort passed to both agents.",
     )
-    negotiate_parser.add_argument(
-        "--timeout-sec",
-        type=float,
+    add_timeout_option(
+        negotiate_parser,
         default=120.0,
         help="Hard timeout for each negotiation turn in seconds.",
     )
@@ -104,7 +111,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         default="medium",
         help="Priority for issues created by --finalize.",
     )
-    negotiate_parser.add_argument("--json", action="store_true", help="Print JSON output.")
+    add_json_flag(negotiate_parser)
     negotiate_parser.set_defaults(func=run)
 
     threads_parser = subparsers.add_parser(
@@ -122,7 +129,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         action="store_true",
         help="Use the local mock negotiation store.",
     )
-    threads_parser.add_argument("--json", action="store_true", help="Print JSON output.")
+    add_json_flag(threads_parser)
     threads_parser.set_defaults(func=run_threads)
 
 

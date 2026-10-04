@@ -1,0 +1,365 @@
+[
+  {
+    "path": [],
+    "stdout": "usage: issuekit [-h] <command> ...\n\nManage API-backed issuekit trackers.\n\noptions:\n  -h, --help            show this help message and exit\n\ncommands:\n  <command>\n    info                Show issue tracker status.\n    show                Read one active or completed issue without changing it.\n    next-review         Read the next review-stage issue without changing issue state.\n    add                 Register this checkout as a local worker.\n    login               Authenticate to the API and cache the access token.\n    logout              Log out of the API and remove the cached access token.\n    author-guard        Inspect or clear the local author-session STOP guard.\n    author              Create an active issue authored by an agent.\n    dispatch            Direct an issue to a worker; use readdress to return it to the repo pool.\n    edit                Edit an API-backed issue title, body, or priority.\n    implement           Drive an agent to implement an active issue.\n    negotiate           Drive a bounded cross-repository design negotiation.\n    threads             Inspect negotiation thread status.\n    proposal-check-request\n                        Request evaluation of a pending proposal by a registered target worker.\n    proposal-checks     Run one worker-side proposal-check polling cycle.\n    validate            Validate API connectivity and issue response shape.\n    complete            Complete an active issue.\n    approve             Approve a review-stage issue.\n    claim               Claim an issue for an assignee; defaults to the next eligible issue.\n    claims              List active worker claims for this project.\n    submit-review       Submit an issue for review.\n    request-changes     Return an issue to its implementer with requested changes.\n    queue               List active issues, optionally filtered by assignee.\n    orphans             List implementing issues whose claiming worker is gone or silent.\n    plan                Hold or release an issue in the implementation pool.\n    readdress           Return a directed issue to the repo pool.\n    reclaim             Return an orphaned implementing claim to the implement pool.\n    repos               Maintain registered repository catalog entries.\n    workers             List registered workers and their repo-level roles.\n    runs                List and inspect agent runs.\n    review              Drive an agent to review and record a decision on a review-stage issue.\n    serve               Poll for eligible issues and run this checkout's worker agent.\n    check-encoding      Check tracked files for encoding problems.\n    protocol            Print the current handoff protocol.\n    init                Install encoding and handoff scaffolding in the current repository.\n    setup               Initialize repo MCP handoff scaffolding and print setup diagnostics.\n    dev-tool            Maintain the global issuekit tool during local development.\n    profile             Show the local project profile and, when available, stored remote ones.\n    add-ref             Register a machine-local related repository ref.\n    list-refs           List effective related repository refs.\n    propose             Send a cross-repository proposal to a related repository.\n    incoming            List incoming cross-repository proposals.\n    outgoing            List proposals this project sent to a target project's inbox.\n    adopt               Adopt an incoming proposal as a local active issue.\n    discard             Discard a pending proposal: incoming by default, or sent when --to is\n                        given.\n    request             Route a PM request to owning project proposal inboxes.\n    triage              Run one agent-backed triage-author cycle over the proposal inbox.\n"
+  },
+  {
+    "path": [
+      "info"
+    ],
+    "stdout": "usage: issuekit info [-h] [--json]\n\noptions:\n  -h, --help  show this help message and exit\n  --json      Print JSON output.\n"
+  },
+  {
+    "path": [
+      "show"
+    ],
+    "stdout": "usage: issuekit show [-h] [--json] id\n\nRead one active or completed issue without changing it.\n\npositional arguments:\n  id          Issue id to read.\n\noptions:\n  -h, --help  show this help message and exit\n  --json      Print JSON output.\n"
+  },
+  {
+    "path": [
+      "next-review"
+    ],
+    "stdout": "usage: issuekit next-review [-h] [--reviewer REVIEWER] [--json]\n\nRead the next review-stage issue without changing issue state.\n\noptions:\n  -h, --help           show this help message and exit\n  --reviewer REVIEWER  Reviewer assignee to inspect; omit to use the open review pool.\n  --json               Print JSON output.\n"
+  },
+  {
+    "path": [
+      "add"
+    ],
+    "stdout": "usage: issuekit add [-h] [--machine-id MACHINE_ID] [--repo-id REPO_ID] [--worker-id WORKER_ID]\n                    [--repo-description REPO_DESCRIPTION] [--repo-metadata KEY=VALUE]\n                    [--worker-metadata KEY=VALUE] [--force]\n\noptions:\n  -h, --help            show this help message and exit\n  --machine-id MACHINE_ID\n                        Override the hostname-derived machine id.\n  --repo-id REPO_ID     Override the git-origin-derived repository id.\n  --worker-id WORKER_ID\n                        Override the checkout worker id.\n  --repo-description REPO_DESCRIPTION\n                        Repo description to publish.\n  --repo-metadata KEY=VALUE\n                        Repo metadata entry to publish; repeat for multiple entries.\n  --worker-metadata KEY=VALUE\n                        Worker metadata entry to publish; repeat for multiple entries.\n  --force               Overwrite an existing pinned worker id or local collision.\n"
+  },
+  {
+    "path": [
+      "login"
+    ],
+    "stdout": "usage: issuekit login [-h] [--user USER]\n\noptions:\n  -h, --help   show this help message and exit\n  --user USER  API username (defaults to ISSUEKIT_API_USER).\n"
+  },
+  {
+    "path": [
+      "logout"
+    ],
+    "stdout": "usage: issuekit logout [-h]\n\noptions:\n  -h, --help  show this help message and exit\n"
+  },
+  {
+    "path": [
+      "author-guard"
+    ],
+    "stdout": "usage: issuekit author-guard [-h] [--json] <action> ...\n\nInspect, check, or clear the local author-session STOP guard.\n\npositional arguments:\n  <action>\n    show      Show the current local author guards.\n    check     Fail when a local issue guard is present.\n    clear     Clear local author guards after handoff or human recovery.\n\noptions:\n  -h, --help  show this help message and exit\n  --json      Print JSON output.\n\nThis command only manages the author-session STOP guard. It does not bypass the\nmine-py server author-implementer guard, and it does not change\nreviewer selection.\n\nSeparation-of-duties guard reference:\n\n| Guard | Separates | Enforced by | Error string | Recovery |\n| --- | --- | --- | --- | --- |\n| Author-session STOP guard | The checkout/session that ran `author` -> the same checkout/session directly claiming, implementing, or submitting that authored issue. While an issue guard is recorded, pool claims from that checkout (`claim` without `--id`, `serve`) are blocked for every issue, because the next issue is unknown before the claim. Proposal guards record the handoff but do not block local issue lifecycle commands. | Client-side `issuekit.local.toml` `[[author_guards]]`, enforced by `enforce_no_author_guard`. `author-guard check` fails only for issue guards. Set `ISSUEKIT_ENFORCE_AUTHOR_HANDOFF=0` to skip this local enforcement while keeping the guard record visible; the same switch also relaxes the server author-implementer guard. | `Author-session guard blocks <action>: STOP_NOW: this checkout authored issue <ref>...` | Stop and hand off the authored issue, or use `issuekit implement <id> --agent <agent>` to orchestrate a distinct implementer session. After handoff, run `issuekit author-guard clear [--ref <ref>]`. Direct lifecycle commands can pass `--allow-author-session` only for human emergency recovery. |\n| Server author-implementer guard | Issue author identity/session -> issue implementer identity/session. | mine-py API server; issuekit sends optional `ISSUEKIT_SESSION` audit tokens. Claims send `allow_self_implement` only when `ISSUEKIT_ENFORCE_AUTHOR_HANDOFF=0`, and the server then skips this guard. | `Issue #<id> was authored by <agent>. Same-name implementation is allowed only when both the authoring and implementing requests supply distinct session identities.` (code `forbidden_self_implement`) | Use a different implementer. Same-name delegation requires both author and implementer sessions to be recorded and distinct. `--allow-author-session` does not bypass this guard. |\n| Distinct-reviewer guard | Issue implementer -> auto-selected reviewer. Author == reviewer is allowed by design. | Client-side reviewer resolution; the guard is always enforced. | `Distinct-reviewer guard blocks auto reviewer resolution: no configured reviewer is distinct from the issue implementer.` | Configure an assignee distinct from `issue.implementer`. |\n| Server distinct-reviewer guard | Issue implementer identity/session -> reviewer identity/session. | mine-py API server (code `forbidden_self_review`) and client self-review checks in issuekit review. | `Issue #<n> was implemented by <agent>. Same-name review is allowed only when both the implementing and reviewing requests supply distinct session identities.` (code `forbidden_self_review`) | Use a different reviewer, or omit `reviewer` to route through the open review pool. Same-name review is allowed there only with distinct implementer and reviewer sessions; an implementer cannot explicitly assign itself as reviewer at submit time. |\n| Work-branch guard | Shared checkout handoff work -> the configured branch for that repo. | Client-side `[tool.issuekit] work_branch` or top-level `issuekit.toml` `work_branch`, enforced by `enforce_work_branch` before claim and submit lifecycle mutations. | `Work-branch guard blocks <action>: checkout is on branch '<cur>' but work_branch is '<want>'. Switch to '<want>' or update config.` (a detached or unreadable HEAD reports `checkout branch could not be determined` instead) | Switch to the configured branch or update config. Lifecycle commands can pass `--allow-any-branch` only for human emergency recovery. |\n\nUse this table to identify which guard fired before choosing a recovery path.\n"
+  },
+  {
+    "path": [
+      "author-guard",
+      "show"
+    ],
+    "stdout": "usage: issuekit author-guard show [-h] [--json]\n\noptions:\n  -h, --help  show this help message and exit\n  --json      Print JSON output.\n"
+  },
+  {
+    "path": [
+      "author-guard",
+      "check"
+    ],
+    "stdout": "usage: issuekit author-guard check [-h] [--json]\n\noptions:\n  -h, --help  show this help message and exit\n  --json      Print JSON output.\n"
+  },
+  {
+    "path": [
+      "author-guard",
+      "clear"
+    ],
+    "stdout": "usage: issuekit author-guard clear [-h] [--ref REF] [--json]\n\noptions:\n  -h, --help  show this help message and exit\n  --ref REF   Clear only the guard with this issue or proposal ref.\n  --json      Print JSON output.\n"
+  },
+  {
+    "path": [
+      "author"
+    ],
+    "stdout": "usage: issuekit author [-h] --title TITLE (--body BODY | --body-file BODY_FILE)\n                       [--priority {high,medium,low}] --agent AGENT [--assign ASSIGN]\n                       [--target-worker TARGET_WORKER] [--allow-unregistered-worker]\n                       [--depends-on DEPENDS_ON] [--project PROJECT] [--direct-local-author]\n                       [--origin-project ORIGIN_PROJECT] [--json]\n\noptions:\n  -h, --help            show this help message and exit\n  --title TITLE         Issue title.\n  --body BODY           Inline issue body.\n  --body-file BODY_FILE\n                        File containing the issue body.\n  --priority {high,medium,low}\n                        Issue priority.\n  --agent AGENT         Configured author agent.\n  --assign ASSIGN       Optional implementer assignee.\n  --target-worker TARGET_WORKER\n                        Direct the issue to a registered worker.repo or worker.repo@machine.\n  --allow-unregistered-worker\n                        Allow directing to a worker that has not registered yet.\n  --depends-on DEPENDS_ON\n                        Attach an upstream dependency reference such as project#proposal:123.\n  --project PROJECT     Explicit API project to author into when running outside a local issuekit\n                        project root.\n  --direct-local-author\n                        Bypass the cross-project proposal preflight when deliberately creating a\n                        local issue.\n  --origin-project ORIGIN_PROJECT\n                        Optional project where this request originated. If it differs from the\n                        current project, use propose unless --direct-local-author is set.\n  --json                Print JSON output.\n"
+  },
+  {
+    "path": [
+      "dispatch"
+    ],
+    "stdout": "usage: issuekit dispatch [-h] --target-worker TARGET_WORKER [--assignee ASSIGNEE]\n                         [--stage {todo,planned}] [--allow-unregistered-worker] [--json]\n                         id\n\npositional arguments:\n  id                    Issue id to dispatch.\n\noptions:\n  -h, --help            show this help message and exit\n  --target-worker TARGET_WORKER\n                        Registered worker.repo or worker.repo@machine address.\n  --assignee ASSIGNEE   Optional implementer assignee.\n  --stage {todo,planned}\n                        Optional destination stage for the directed issue.\n  --allow-unregistered-worker\n                        Allow directing to a worker that has not registered yet.\n  --json                Print JSON output.\n"
+  },
+  {
+    "path": [
+      "edit"
+    ],
+    "stdout": "usage: issuekit edit [-h] [--title TITLE]\n                     [--body BODY | --body-file BODY_FILE | --append APPEND | --append-file APPEND_FILE]\n                     [--priority {high,medium,low}] [--depends-on DEPENDS_ON] [--force] [--json]\n                     id\n\npositional arguments:\n  id                    Issue id to edit.\n\noptions:\n  -h, --help            show this help message and exit\n  --title TITLE         Replacement issue title.\n  --body BODY           Replacement inline issue body.\n  --body-file BODY_FILE\n                        File containing replacement issue body.\n  --append APPEND       Inline text to append to the issue body.\n  --append-file APPEND_FILE\n                        File containing text to append to the issue body.\n  --priority {high,medium,low}\n                        Replacement issue priority.\n  --depends-on DEPENDS_ON\n                        Replace upstream dependency refs with one or more project#proposal:123\n                        values.\n  --force               Allow editing an issue that is already in flight.\n  --json                Print JSON output.\n"
+  },
+  {
+    "path": [
+      "implement"
+    ],
+    "stdout": "usage: issuekit implement [-h] [--agent AGENT] [--model MODEL]\n                          [--reasoning-effort REASONING_EFFORT] [--timeout-sec TIMEOUT_SEC]\n                          [--follow] [--allow-no-changes] [--allow-missing-report]\n                          [--allow-author-session] [--allow-any-branch] [--no-sync]\n                          id\n\npositional arguments:\n  id                    Issue id to implement.\n\noptions:\n  -h, --help            show this help message and exit\n  --agent AGENT         Configured agent name to run.\n  --model MODEL         Optional model name passed to the agent.\n  --reasoning-effort REASONING_EFFORT\n                        Optional reasoning effort passed to the agent.\n  --timeout-sec TIMEOUT_SEC\n                        Hard timeout for the agent run in seconds.\n  --follow              Emit a live heartbeat to stderr; it polls git status read-only without an\n                        index lock and is safe for issues that rewrite the checkout.\n  --allow-no-changes    Submit for review even when the agent produces no implementation diff.\n  --allow-missing-report\n                        Submit for review even when the agent wrote no implementer report.\n  --allow-author-session\n                        Override a local author-session STOP guard for human recovery.\n  --allow-any-branch    Override the configured work_branch guard for human recovery.\n  --no-sync             Skip the claim-time clean checkout and fast-forward sync guard.\n"
+  },
+  {
+    "path": [
+      "negotiate"
+    ],
+    "stdout": "usage: issuekit negotiate [-h] [--from-issue FROM_ISSUE] [--to TO] [--finalize THREAD_ID]\n                          [--cancel THREAD_ID] [--provider-agent PROVIDER_AGENT]\n                          [--consumer-agent CONSUMER_AGENT] [--counterpart-ref COUNTERPART_REF]\n                          [--initiator-side {provider,consumer}] [--max-rounds MAX_ROUNDS]\n                          [--mock] [--model MODEL] [--reasoning-effort REASONING_EFFORT]\n                          [--timeout-sec TIMEOUT_SEC] [--author-agent AUTHOR_AGENT]\n                          [--priority {high,medium,low}] [--json]\n\noptions:\n  -h, --help            show this help message and exit\n  --from-issue FROM_ISSUE\n                        Originating issue id.\n  --to TO               Target project name.\n  --finalize THREAD_ID  Create cross-linked implementation issues for an agreed thread.\n  --cancel THREAD_ID    Cancel a negotiation thread.\n  --provider-agent PROVIDER_AGENT\n                        Configured agent representing the provider side.\n  --consumer-agent CONSUMER_AGENT\n                        Configured agent representing the consumer side.\n  --counterpart-ref COUNTERPART_REF\n                        Effective ref whose checkout the counterpart agent inspects.\n  --initiator-side {provider,consumer}\n                        Role held by the initiating checkout.\n  --max-rounds MAX_ROUNDS\n                        Maximum total agent turns, including the opening turn.\n  --mock                Use the local mock negotiation store.\n  --model MODEL         Optional model name passed to both agents.\n  --reasoning-effort REASONING_EFFORT\n                        Optional reasoning effort passed to both agents.\n  --timeout-sec TIMEOUT_SEC\n                        Hard timeout for each negotiation turn in seconds.\n  --author-agent AUTHOR_AGENT\n                        Author agent for issues created by --finalize.\n  --priority {high,medium,low}\n                        Priority for issues created by --finalize.\n  --json                Print JSON output.\n"
+  },
+  {
+    "path": [
+      "threads"
+    ],
+    "stdout": "usage: issuekit threads [-h] [--status {negotiating,agreed,blocked,cancelled}] [--mock] [--json]\n                        [thread_id]\n\npositional arguments:\n  thread_id             Negotiation thread id to inspect.\n\noptions:\n  -h, --help            show this help message and exit\n  --status {negotiating,agreed,blocked,cancelled}\n                        Filter listed threads by status.\n  --mock                Use the local mock negotiation store.\n  --json                Print JSON output.\n"
+  },
+  {
+    "path": [
+      "proposal-check-request"
+    ],
+    "stdout": "usage: issuekit proposal-check-request [-h] --to TO --proposal PROPOSAL [--worker WORKER] [--json]\n\noptions:\n  -h, --help           show this help message and exit\n  --to TO              Target project name.\n  --proposal PROPOSAL  Proposal id to check.\n  --worker WORKER      Registered worker.repo or worker.repo@machine address.\n  --json               Print JSON output.\n"
+  },
+  {
+    "path": [
+      "proposal-checks"
+    ],
+    "stdout": "usage: issuekit proposal-checks [-h] [--agent AGENT] [--model MODEL]\n                                [--reasoning-effort REASONING_EFFORT] [--list | --once]\n                                [--status {pending,answered}] [--timeout-sec TIMEOUT_SEC]\n                                [--limit LIMIT] [--offset OFFSET] [--check CHECK] [--json]\n\noptions:\n  -h, --help            show this help message and exit\n  --agent AGENT         Configured agent name to run.\n  --model MODEL         Optional model name passed to the agent.\n  --reasoning-effort REASONING_EFFORT\n                        Optional reasoning effort passed to the agent.\n  --list                List proposal checks addressed to this worker without running an agent.\n  --once                Run a single proposal-check cycle and exit (currently required).\n  --status {pending,answered}\n                        Filter listed proposal checks by status.\n  --timeout-sec TIMEOUT_SEC\n                        Hard timeout for each proposal-check agent run in seconds.\n  --limit LIMIT         Maximum checks to list or evaluate.\n  --offset OFFSET       Checks to skip with --list; not valid with --once.\n  --check CHECK         Evaluate this proposal-check id with --once.\n  --json                Print JSON output.\n"
+  },
+  {
+    "path": [
+      "validate"
+    ],
+    "stdout": "usage: issuekit validate [-h]\n\noptions:\n  -h, --help  show this help message and exit\n"
+  },
+  {
+    "path": [
+      "complete"
+    ],
+    "stdout": "usage: issuekit complete [-h] [--summary SUMMARY | --summary-file SUMMARY_FILE]\n                         [--verification VERIFICATION | --verification-file VERIFICATION_FILE]\n                         [--force]\n                         id\n\npositional arguments:\n  id                    Issue id to complete.\n\noptions:\n  -h, --help            show this help message and exit\n  --summary SUMMARY     Completion summary.\n  --summary-file SUMMARY_FILE\n                        File containing the completion summary.\n  --verification VERIFICATION\n                        Verification notes.\n  --verification-file VERIFICATION_FILE\n                        File containing verification notes.\n  --force               Directly complete an active issue without requiring review stage.\n"
+  },
+  {
+    "path": [
+      "approve"
+    ],
+    "stdout": "usage: issuekit approve [-h] (--verification VERIFICATION | --verification-file VERIFICATION_FILE)\n                        [--summary SUMMARY | --summary-file SUMMARY_FILE] [--reviewer REVIEWER]\n                        id\n\npositional arguments:\n  id                    Issue id to approve.\n\noptions:\n  -h, --help            show this help message and exit\n  --verification VERIFICATION\n                        Verification notes.\n  --verification-file VERIFICATION_FILE\n                        File containing verification notes.\n  --summary SUMMARY     Approval summary.\n  --summary-file SUMMARY_FILE\n                        File containing the approval summary.\n  --reviewer REVIEWER   Reviewer approving this issue.\n"
+  },
+  {
+    "path": [
+      "claim"
+    ],
+    "stdout": "usage: issuekit claim [-h] [--id ID] [--assignee ASSIGNEE] [--priority {high,medium,low}]\n                      [--allow-author-session] [--allow-any-branch] [--no-sync]\n\noptions:\n  -h, --help            show this help message and exit\n  --id ID               Specific issue id to claim.\n  --assignee ASSIGNEE   Assignee to claim for.\n  --priority {high,medium,low}\n                        Priority filter.\n  --allow-author-session\n                        Override a local author-session STOP guard for human recovery.\n  --allow-any-branch    Override the configured work_branch guard for human recovery.\n  --no-sync             Skip the claim-time clean checkout and fast-forward sync guard.\n"
+  },
+  {
+    "path": [
+      "claims"
+    ],
+    "stdout": "usage: issuekit claims [-h] [--worker WORKER] [--stage {implementing,review,changes_requested}]\n                       [--json]\n\noptions:\n  -h, --help            show this help message and exit\n  --worker WORKER       Filter claims by worker key.\n  --stage {implementing,review,changes_requested}\n                        Filter claims by active workflow stage.\n  --json                Print JSON output.\n"
+  },
+  {
+    "path": [
+      "submit-review"
+    ],
+    "stdout": "usage: issuekit submit-review [-h] (--summary SUMMARY | --summary-file SUMMARY_FILE)\n                              [--branch BRANCH] [--commit COMMIT] [--reviewer REVIEWER]\n                              [--allow-author-session] [--allow-any-branch]\n                              id\n\npositional arguments:\n  id                    Issue id to submit.\n\noptions:\n  -h, --help            show this help message and exit\n  --summary SUMMARY     ASCII handoff summary.\n  --summary-file SUMMARY_FILE\n                        File containing the ASCII handoff summary.\n  --branch BRANCH       Branch containing the implementation.\n  --commit COMMIT       Commit containing the implementation.\n  --reviewer REVIEWER   Reviewer assignee for this handoff.\n  --allow-author-session\n                        Override a local author-session STOP guard for human recovery.\n  --allow-any-branch    Override the configured work_branch guard for human recovery.\n"
+  },
+  {
+    "path": [
+      "request-changes"
+    ],
+    "stdout": "usage: issuekit request-changes [-h] (--notes NOTES | --notes-file NOTES_FILE)\n                                [--assignee ASSIGNEE] [--reviewer REVIEWER]\n                                id\n\npositional arguments:\n  id                    Issue id to return.\n\noptions:\n  -h, --help            show this help message and exit\n  --notes NOTES         ASCII review feedback.\n  --notes-file NOTES_FILE\n                        File containing ASCII review feedback.\n  --assignee ASSIGNEE   Implementation assignee to return to.\n  --reviewer REVIEWER   Reviewer assignee returning the issue.\n"
+  },
+  {
+    "path": [
+      "queue"
+    ],
+    "stdout": "usage: issuekit queue [-h] [--assignee ASSIGNEE] [--stage STAGE] [--json] [--with-body]\n\noptions:\n  -h, --help           show this help message and exit\n  --assignee ASSIGNEE  Assignee to list.\n  --stage STAGE        Workflow stage filter (valid stages: planned, todo, implementing, review,\n                       changes_requested, done).\n  --json               Print JSON output.\n  --with-body          Include issue bodies in JSON output.\n"
+  },
+  {
+    "path": [
+      "orphans"
+    ],
+    "stdout": "usage: issuekit orphans [-h] [--stale-after-sec STALE_AFTER_SEC] [--json]\n\noptions:\n  -h, --help            show this help message and exit\n  --stale-after-sec STALE_AFTER_SEC\n                        Flag a claim whose worker has not sent a heartbeat for more than this many\n                        seconds (default: 300).\n  --json                Print JSON output.\n"
+  },
+  {
+    "path": [
+      "plan"
+    ],
+    "stdout": "usage: issuekit plan [-h] [--stage {planned,todo}] [--note NOTE] [--json] id\n\npositional arguments:\n  id                    Issue id to plan.\n\noptions:\n  -h, --help            show this help message and exit\n  --stage {planned,todo}\n                        Destination planning stage (default: planned).\n  --note NOTE           Optional note recorded with the planning transition.\n  --json                Print JSON output.\n"
+  },
+  {
+    "path": [
+      "readdress"
+    ],
+    "stdout": "usage: issuekit readdress [-h] [--reason REASON] [--json] id\n\npositional arguments:\n  id               Issue id to readdress.\n\noptions:\n  -h, --help       show this help message and exit\n  --reason REASON  Optional ASCII audit reason recorded with the readdress event.\n  --json           Print JSON output.\n"
+  },
+  {
+    "path": [
+      "reclaim"
+    ],
+    "stdout": "usage: issuekit reclaim [-h] [--force] [--stale-after-sec STALE_AFTER_SEC] [--reason REASON]\n                        [--json]\n                        id\n\npositional arguments:\n  id                    Issue id to reclaim.\n\noptions:\n  -h, --help            show this help message and exit\n  --force               Skip stale-claim detection for human emergency recovery.\n  --stale-after-sec STALE_AFTER_SEC\n                        Require the worker heartbeat to be older than this many seconds before\n                        reclaiming (default: 300).\n  --reason REASON       Optional ASCII audit reason recorded with the reclaim event.\n  --json                Print JSON output.\n"
+  },
+  {
+    "path": [
+      "repos"
+    ],
+    "stdout": "usage: issuekit repos [-h] <subcommand> ...\n\npositional arguments:\n  <subcommand>\n    remove      Remove a registered repo catalog entry.\n\noptions:\n  -h, --help    show this help message and exit\n"
+  },
+  {
+    "path": [
+      "repos",
+      "remove"
+    ],
+    "stdout": "usage: issuekit repos remove [-h] [--json] repo\n\npositional arguments:\n  repo        Repository key to remove.\n\noptions:\n  -h, --help  show this help message and exit\n  --json      Print JSON output.\n"
+  },
+  {
+    "path": [
+      "workers"
+    ],
+    "stdout": "usage: issuekit workers [-h] [--repo-id REPO_ID] [--project PROJECT] [--json] <subcommand> ...\n\npositional arguments:\n  <subcommand>\n    remove           Remove a registered worker by worker.repo or worker.repo@machine id.\n    prune            Remove stale registered workers that hold no active or directed work.\n\noptions:\n  -h, --help         show this help message and exit\n  --repo-id REPO_ID  Filter workers by repo id.\n  --project PROJECT  Filter workers by project.\n  --json             Print JSON output.\n"
+  },
+  {
+    "path": [
+      "workers",
+      "remove"
+    ],
+    "stdout": "usage: issuekit workers remove [-h] [--force] [--json] address\n\npositional arguments:\n  address     Worker address to remove.\n\noptions:\n  -h, --help  show this help message and exit\n  --force     Remove even if the worker currently holds an implementing issue.\n  --json      Print JSON output.\n"
+  },
+  {
+    "path": [
+      "workers",
+      "prune"
+    ],
+    "stdout": "usage: issuekit workers prune [-h] [--stale-after-sec STALE_AFTER_SEC] [--dry-run] [--yes]\n                              [--json]\n\noptions:\n  -h, --help            show this help message and exit\n  --stale-after-sec STALE_AFTER_SEC\n                        Require last_seen to be older than this many seconds (default: 300).\n  --dry-run             Print candidates without deleting them.\n  --yes                 Confirm deletion without an interactive prompt.\n  --json                Print JSON output.\n"
+  },
+  {
+    "path": [
+      "runs"
+    ],
+    "stdout": "usage: issuekit runs [-h] [--active] [--json] [run_id]\n\npositional arguments:\n  run_id      Run id to inspect.\n\noptions:\n  -h, --help  show this help message and exit\n  --active    Show only running agent runs.\n  --json      Print JSON output.\n"
+  },
+  {
+    "path": [
+      "review"
+    ],
+    "stdout": "usage: issuekit review [-h] --agent AGENT [--model MODEL] [--reasoning-effort REASONING_EFFORT]\n                       [--timeout-sec TIMEOUT_SEC] [--follow]\n                       id\n\nDrive an agent to review and record a decision on a review-stage issue.\n\npositional arguments:\n  id                    Issue id to review.\n\noptions:\n  -h, --help            show this help message and exit\n  --agent AGENT         Configured reviewer agent name to run.\n  --model MODEL         Optional model name passed to the agent.\n  --reasoning-effort REASONING_EFFORT\n                        Optional reasoning effort passed to the agent.\n  --timeout-sec TIMEOUT_SEC\n                        Hard timeout for the reviewer agent run in seconds.\n  --follow              Emit a live heartbeat to stderr; it polls git status read-only without an\n                        index lock and is safe for issues that rewrite the checkout.\n"
+  },
+  {
+    "path": [
+      "serve"
+    ],
+    "stdout": "usage: issuekit serve [-h] [--agent AGENT] [--model MODEL] [--reasoning-effort REASONING_EFFORT]\n                      [--interval INTERVAL] [--heartbeat-interval HEARTBEAT_INTERVAL]\n                      [--max-heartbeat-failures MAX_HEARTBEAT_FAILURES]\n                      [--max-run-failures MAX_RUN_FAILURES] [--priority {high,medium,low}]\n                      [--once] [--triage] [--review | --proposal-checks]\n                      [--proposal-check-limit PROPOSAL_CHECK_LIMIT] [--max-issues MAX_ISSUES]\n                      [--timeout-sec TIMEOUT_SEC] [--allow-any-branch] [--no-sync]\n\noptions:\n  -h, --help            show this help message and exit\n  --agent AGENT         Configured agent name to run.\n  --model MODEL         Optional model name applied to every agent launched by this serve loop;\n                        use per-agent config for mixed-agent model selection.\n  --reasoning-effort REASONING_EFFORT\n                        Optional reasoning effort applied to every agent launched by this serve\n                        loop; use per-agent config for mixed-agent effort selection.\n  --interval INTERVAL   Idle poll interval in seconds.\n  --heartbeat-interval HEARTBEAT_INTERVAL\n                        Worker heartbeat interval in seconds; overrides\n                        worker_heartbeat_interval_sec.\n  --max-heartbeat-failures MAX_HEARTBEAT_FAILURES\n                        Stop gracefully after this many consecutive heartbeat failures (default:\n                        0, unlimited).\n  --max-run-failures MAX_RUN_FAILURES\n                        Stop after this many consecutive failed runs (default: 3, 0: unlimited).\n  --priority {high,medium,low}\n                        Priority filter for claim-next.\n  --once                Attempt at most one claim and then exit.\n  --triage              Auto-adopt matching incoming proposals before each claim attempt.\n  --review              Poll the review pool and run this checkout's reviewer agent.\n  --proposal-checks     Poll pending proposal checks addressed to this worker.\n  --proposal-check-limit PROPOSAL_CHECK_LIMIT\n                        Maximum proposal checks to evaluate per polling cycle.\n  --max-issues MAX_ISSUES\n                        Exit after this many successful submissions.\n  --timeout-sec TIMEOUT_SEC\n                        Hard timeout for each agent run in seconds.\n  --allow-any-branch    Override the configured work_branch guard for human recovery.\n  --no-sync             Skip the claim-time clean checkout and fast-forward sync guard.\n"
+  },
+  {
+    "path": [
+      "check-encoding"
+    ],
+    "stdout": "usage: issuekit check-encoding [-h] [--json] [--gate] [--no-mojibake] [--no-halfwidth-kana]\n                               [--show-unconfirmed-mojibake] [--fail-on-unconfirmed] [--no-crlf]\n                               [--no-stray-cr] [--fix] [--changed] [--base BASE]\n                               [--exclude PATTERN]\n\noptions:\n  -h, --help            show this help message and exit\n  --json                Print JSON output.\n  --gate                Reproduce the submit gate's mojibake verdict for the current worktree.\n  --no-mojibake         Disable likely mojibake text scanning.\n  --no-halfwidth-kana   Allow half-width katakana in likely mojibake text scanning.\n  --show-unconfirmed-mojibake\n                        Report likely mojibake candidates that fail CP932 reverse confirmation.\n  --fail-on-unconfirmed\n                        Fail on unconfirmed mojibake candidates and report their locations.\n                        Legitimate Japanese can also match; exclude paths containing it.\n  --no-crlf             Disable CRLF line-ending scanning.\n  --no-stray-cr         Disable stray carriage-return scanning in tracked source files.\n  --fix                 Strip leading UTF-8 BOM bytes from tracked source files.\n  --changed             Scan only files changed in the working tree (or relative to --base)\n                        instead of every tracked file. Cuts the fixed per-run cost on no-change or\n                        small-change runs; use a full scan (the default) in CI.\n  --base BASE           With --changed, scan files that differ from this git ref (e.g.\n                        origin/main) instead of only uncommitted working-tree changes.\n  --exclude PATTERN     Exclude repo-relative paths matching this POSIX glob pattern.\n"
+  },
+  {
+    "path": [
+      "protocol"
+    ],
+    "stdout": "usage: issuekit protocol [-h] [--agent AGENT] [--role {author,implementer,pm,reviewer,triage}]\n\noptions:\n  -h, --help            show this help message and exit\n  --agent AGENT         Print the protocol for one agent (defaults to implementer flow for unknown\n                        agents).\n  --role {author,implementer,pm,reviewer,triage}\n                        Print the protocol for a specific role instead of the agent default.\n"
+  },
+  {
+    "path": [
+      "init"
+    ],
+    "stdout": "usage: issuekit init [-h] [--force] [--with-mcp]\n\noptions:\n  -h, --help  show this help message and exit\n  --force     Refresh issuekit entries and issuekit-owned template files.\n  --with-mcp  Also scaffold MCP registration and thin agent protocol references.\n"
+  },
+  {
+    "path": [
+      "setup"
+    ],
+    "stdout": "usage: issuekit setup [-h] [--force] [--json] [--check] <action> ...\n\npositional arguments:\n  <action>\n    check     Check setup state without writing files.\n    apply     Initialize repo MCP handoff scaffolding and print setup diagnostics.\n\noptions:\n  -h, --help  show this help message and exit\n  --force     Refresh issuekit entries and issuekit-owned template files.\n  --json      Print JSON output.\n  --check     Check setup state without writing files.\n"
+  },
+  {
+    "path": [
+      "setup",
+      "check"
+    ],
+    "stdout": "usage: issuekit setup check [-h] [--json]\n\noptions:\n  -h, --help  show this help message and exit\n  --json      Print JSON output.\n"
+  },
+  {
+    "path": [
+      "setup",
+      "apply"
+    ],
+    "stdout": "usage: issuekit setup apply [-h] [--force] [--json]\n\noptions:\n  -h, --help  show this help message and exit\n  --force     Refresh issuekit entries and issuekit-owned template files.\n  --json      Print JSON output.\n"
+  },
+  {
+    "path": [
+      "dev-tool"
+    ],
+    "stdout": "usage: issuekit dev-tool [-h] <action> ...\n\npositional arguments:\n  <action>\n    install-editable  Install this checkout as the global issuekit tool in editable mode.\n    reinstall         Reinstall this checkout as the global issuekit tool using an absolute path.\n    reload-mcp        Stop running issuekit-mcp processes so clients can restart them.\n\noptions:\n  -h, --help          show this help message and exit\n"
+  },
+  {
+    "path": [
+      "dev-tool",
+      "install-editable"
+    ],
+    "stdout": "usage: issuekit dev-tool install-editable [-h] [--repo REPO] [--no-stop] [--json]\n\noptions:\n  -h, --help   show this help message and exit\n  --repo REPO  Explicit issuekit checkout path; defaults to the installed source root.\n  --no-stop    Do not stop running issuekit-mcp processes before installing.\n  --json       Print JSON output.\n"
+  },
+  {
+    "path": [
+      "dev-tool",
+      "reinstall"
+    ],
+    "stdout": "usage: issuekit dev-tool reinstall [-h] [--repo REPO] [--no-stop] [--json]\n\noptions:\n  -h, --help   show this help message and exit\n  --repo REPO  Explicit issuekit checkout path; defaults to the installed source root.\n  --no-stop    Do not stop running issuekit-mcp processes before reinstalling.\n  --json       Print JSON output.\n"
+  },
+  {
+    "path": [
+      "dev-tool",
+      "reload-mcp"
+    ],
+    "stdout": "usage: issuekit dev-tool reload-mcp [-h] [--json]\n\noptions:\n  -h, --help  show this help message and exit\n  --json      Print JSON output.\n"
+  },
+  {
+    "path": [
+      "profile"
+    ],
+    "stdout": "usage: issuekit profile [-h] [--project PROJECT] [--all] [--json]\n\noptions:\n  -h, --help         show this help message and exit\n  --project PROJECT  Fetch the stored profile for this project instead of the local one.\n  --all              List every stored remote project profile (the PM router's input).\n  --json             Print JSON output.\n"
+  },
+  {
+    "path": [
+      "add-ref"
+    ],
+    "stdout": "usage: issuekit add-ref [-h] --path PATH [--scope {local,workspace}]\n                        [--path-to-workspace PATH_TO_WORKSPACE]\n                        name\n\npositional arguments:\n  name                  Short ref name.\n\noptions:\n  -h, --help            show this help message and exit\n  --path PATH           Absolute or relative repository path.\n  --scope {local,workspace}\n                        Write to issuekit.local.toml or issuekit.workspace.toml.\n  --path-to-workspace PATH_TO_WORKSPACE\n                        Explicit workspace registry file for --scope workspace.\n"
+  },
+  {
+    "path": [
+      "list-refs"
+    ],
+    "stdout": "usage: issuekit list-refs [-h]\n\noptions:\n  -h, --help  show this help message and exit\n"
+  },
+  {
+    "path": [
+      "propose"
+    ],
+    "stdout": "usage: issuekit propose [-h] [--to TO] [--title TITLE] [--body BODY] [--body-file BODY_FILE]\n                        [--from-issue FROM_ISSUE] [--reply REPLY] [--agent AGENT]\n                        [--project PROJECT] [--blocking] [--depends-on DEPENDS_ON] [--json]\n\noptions:\n  -h, --help            show this help message and exit\n  --to TO               Target API project, or worker.repo[@machine] to direct the proposal to a\n                        worker.\n  --title TITLE         Proposal title.\n  --body BODY           Inline proposal body.\n  --body-file BODY_FILE\n                        File containing proposal body.\n  --from-issue FROM_ISSUE\n                        Local issue id to propose from.\n  --reply REPLY         Local adopted issue id to reply from.\n  --agent AGENT         Optional author agent for the local STOP guard.\n  --project PROJECT     Explicit origin API project when running outside a local issuekit project\n                        root.\n  --blocking            Mark the proposal as a hard dependency for the origin project.\n  --depends-on DEPENDS_ON\n                        Attach an upstream dependency reference such as project#proposal:123.\n  --json                Print JSON output.\n"
+  },
+  {
+    "path": [
+      "incoming"
+    ],
+    "stdout": "usage: issuekit incoming [-h] [--json]\n\noptions:\n  -h, --help  show this help message and exit\n  --json      Print JSON output.\n"
+  },
+  {
+    "path": [
+      "outgoing"
+    ],
+    "stdout": "usage: issuekit outgoing [-h] --to TO [--id ID] [--status STATUS] [--json]\n\noptions:\n  -h, --help       show this help message and exit\n  --to TO          Target project whose inbox holds the outgoing proposals.\n  --id ID          Look up a single proposal id.\n  --status STATUS  Filter by proposal status (pending, adopted, or discarded).\n  --json           Print JSON output.\n"
+  },
+  {
+    "path": [
+      "adopt"
+    ],
+    "stdout": "usage: issuekit adopt [-h] [--priority {high,medium,low}] [--append-file APPEND_FILE] [--json]\n                      proposal\n\npositional arguments:\n  proposal              Proposal id.\n\noptions:\n  -h, --help            show this help message and exit\n  --priority {high,medium,low}\n                        Priority for the adopted issue.\n  --append-file APPEND_FILE\n                        File containing text to append to the adopted issue body.\n  --json                Print JSON output.\n"
+  },
+  {
+    "path": [
+      "discard"
+    ],
+    "stdout": "usage: issuekit discard [-h] [--to TO] [--json] proposal\n\npositional arguments:\n  proposal    Proposal id.\n\noptions:\n  -h, --help  show this help message and exit\n  --to TO     Target project whose inbox holds the proposal, for discarding an outgoing proposal.\n  --json      Print JSON output.\n"
+  },
+  {
+    "path": [
+      "request"
+    ],
+    "stdout": "usage: issuekit request [-h] [--answer REQUEST_ID] [--status [REQUEST_ID]] [--inbox]\n                        [--target TARGET] [--link REQUEST_ID] [--json] [--dry-run]\n                        [--timeout-sec TIMEOUT_SEC] [--model MODEL]\n                        [--reasoning-effort REASONING_EFFORT]\n                        [text]\n\npositional arguments:\n  text                  Request text or clarification answer.\n\noptions:\n  -h, --help            show this help message and exit\n  --answer REQUEST_ID   Answer a pending clarification for a recorded request.\n  --status [REQUEST_ID]\n                        Show routed proposal status for one request or all requests.\n  --inbox               Show pending target clarification replies in the PM project inbox.\n  --target TARGET       Target project whose pending clarification reply is being answered.\n  --link REQUEST_ID     Link an existing proposal ref to an unsent routed request target.\n  --json                Print JSON output.\n  --dry-run             Print the parsed router decision without sending proposals.\n  --timeout-sec TIMEOUT_SEC\n                        Hard timeout for the router agent run in seconds.\n  --model MODEL         Override the router agent model for this run.\n  --reasoning-effort REASONING_EFFORT\n                        Override the router agent reasoning effort for this run.\n"
+  },
+  {
+    "path": [
+      "triage"
+    ],
+    "stdout": "usage: issuekit triage [-h] [--once] [--model MODEL] [--reasoning-effort REASONING_EFFORT]\n                       [--timeout-sec TIMEOUT_SEC] [--json]\n\noptions:\n  -h, --help            show this help message and exit\n  --once                Run a single evaluation cycle and exit (currently required).\n  --model MODEL         Optional model name passed to the agent.\n  --reasoning-effort REASONING_EFFORT\n                        Optional reasoning effort passed to the agent.\n  --timeout-sec TIMEOUT_SEC\n                        Hard timeout for each triage agent run in seconds.\n  --json                Print JSON output.\n"
+  }
+]

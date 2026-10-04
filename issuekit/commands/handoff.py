@@ -5,7 +5,11 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from issuekit.commands._common import run_command
+from issuekit.commands._common import (
+    add_exclusive_text_file_pair,
+    add_guard_override_flags,
+    run_command,
+)
 from issuekit.config import load_config
 from issuekit.core import parse_issue_id_arg
 from issuekit.errors import WorkflowError
@@ -19,21 +23,20 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         help="Submit an issue for review.",
     )
     submit_review_parser.add_argument("id", help="Issue id to submit.")
-    summary_group = submit_review_parser.add_mutually_exclusive_group(required=True)
-    summary_group.add_argument("--summary", help="ASCII handoff summary.")
-    summary_group.add_argument("--summary-file", help="File containing the ASCII handoff summary.")
+    add_exclusive_text_file_pair(
+        submit_review_parser,
+        "summary",
+        help="ASCII handoff summary.",
+        file_help="File containing the ASCII handoff summary.",
+        required=True,
+    )
     submit_review_parser.add_argument("--branch", help="Branch containing the implementation.")
     submit_review_parser.add_argument("--commit", help="Commit containing the implementation.")
     submit_review_parser.add_argument("--reviewer", help="Reviewer assignee for this handoff.")
-    submit_review_parser.add_argument(
-        "--allow-author-session",
-        action="store_true",
-        help="Override a local author-session STOP guard for human recovery.",
-    )
-    submit_review_parser.add_argument(
-        "--allow-any-branch",
-        action="store_true",
-        help="Override the configured work_branch guard for human recovery.",
+    add_guard_override_flags(
+        submit_review_parser,
+        any_branch=True,
+        sync=False,
     )
     submit_review_parser.set_defaults(func=run_submit_review)
 
@@ -42,9 +45,13 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         help="Return an issue to its implementer with requested changes.",
     )
     request_changes_parser.add_argument("id", help="Issue id to return.")
-    notes_group = request_changes_parser.add_mutually_exclusive_group(required=True)
-    notes_group.add_argument("--notes", help="ASCII review feedback.")
-    notes_group.add_argument("--notes-file", help="File containing ASCII review feedback.")
+    add_exclusive_text_file_pair(
+        request_changes_parser,
+        "notes",
+        help="ASCII review feedback.",
+        file_help="File containing ASCII review feedback.",
+        required=True,
+    )
     request_changes_parser.add_argument("--assignee", help="Implementation assignee to return to.")
     request_changes_parser.add_argument("--reviewer", help="Reviewer assignee returning the issue.")
     request_changes_parser.set_defaults(func=run_request_changes)

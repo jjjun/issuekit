@@ -6,6 +6,8 @@ import argparse
 from pathlib import Path
 
 from issuekit.commands._common import (
+    add_json_flag,
+    add_text_file_pair,
     print_json,
     run_command,
 )
@@ -23,10 +25,18 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     edit_parser.add_argument("id", help="Issue id to edit.")
     edit_parser.add_argument("--title", help="Replacement issue title.")
     edit_body_group = edit_parser.add_mutually_exclusive_group()
-    edit_body_group.add_argument("--body", help="Replacement inline issue body.")
-    edit_body_group.add_argument("--body-file", help="File containing replacement issue body.")
-    edit_body_group.add_argument("--append", help="Inline text to append to the issue body.")
-    edit_body_group.add_argument("--append-file", help="File containing text to append to the issue body.")
+    add_text_file_pair(
+        edit_body_group,
+        "body",
+        help="Replacement inline issue body.",
+        file_help="File containing replacement issue body.",
+    )
+    add_text_file_pair(
+        edit_body_group,
+        "append",
+        help="Inline text to append to the issue body.",
+        file_help="File containing text to append to the issue body.",
+    )
     edit_parser.add_argument(
         "--priority",
         choices=("high", "medium", "low"),
@@ -43,7 +53,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         action="store_true",
         help="Allow editing an issue that is already in flight.",
     )
-    edit_parser.add_argument("--json", action="store_true", help="Print JSON output.")
+    add_json_flag(edit_parser)
     edit_parser.set_defaults(func=run)
 
 

@@ -8,7 +8,7 @@ import sys
 from bisect import bisect_right
 from pathlib import Path
 
-from issuekit.commands._common import print_json
+from issuekit.commands._common import add_json_flag, print_json
 from issuekit.config import load_config, resolve_repository_root
 from issuekit.encoding import (
     SOURCE_EXTENSIONS,
@@ -29,11 +29,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         "check-encoding",
         help="Check tracked files for encoding problems.",
     )
-    check_encoding_parser.add_argument(
-        "--json",
-        action="store_true",
-        help="Print JSON output.",
-    )
+    add_json_flag(check_encoding_parser)
     check_encoding_parser.add_argument(
         "--gate",
         action="store_true",

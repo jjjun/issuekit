@@ -12,7 +12,7 @@ from issuekit.agents.review import (
     ReviewRunParseError,
     run_review_and_decide,
 )
-from issuekit.commands._common import run_agent_command
+from issuekit.commands._common import add_agent_run_options, add_follow_flag, run_agent_command
 from issuekit.config import load_config
 from issuekit.core import Issue, parse_issue_id_arg
 from issuekit.errors import AGENT_RUN_ERRORS
@@ -29,24 +29,17 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         ),
     )
     review_parser.add_argument("id", help="Issue id to review.")
-    review_parser.add_argument(
-        "--agent",
-        required=True,
-        help="Configured reviewer agent name to run.",
+    add_agent_run_options(
+        review_parser,
+        agent_help="Configured reviewer agent name to run.",
+        agent_required=True,
+        model_help="Optional model name passed to the agent.",
+        effort_help="Optional reasoning effort passed to the agent.",
+        timeout_default=600.0,
+        timeout_help="Hard timeout for the reviewer agent run in seconds.",
     )
-    review_parser.add_argument("--model", help="Optional model name passed to the agent.")
-    review_parser.add_argument(
-        "--reasoning-effort", help="Optional reasoning effort passed to the agent."
-    )
-    review_parser.add_argument(
-        "--timeout-sec",
-        type=float,
-        default=600.0,
-        help="Hard timeout for the reviewer agent run in seconds.",
-    )
-    review_parser.add_argument(
-        "--follow",
-        action="store_true",
+    add_follow_flag(
+        review_parser,
         help=(
             "Emit a live heartbeat to stderr; it polls git status read-only without an"
             " index lock and is safe for issues that rewrite the checkout."

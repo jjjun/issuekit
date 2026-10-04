@@ -12,7 +12,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath, PureWindowsPath
 
-from issuekit.commands._common import print_json
+from issuekit.commands._common import add_json_flag, print_json
 
 MCP_PROCESS_NAME = "issuekit-mcp.exe"
 MCP_PROCESS_NAME_POSIX = "issuekit-mcp"
@@ -82,7 +82,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         action="store_true",
         help=f"Do not stop running {_mcp_process_name()} processes before installing.",
     )
-    install_editable_parser.add_argument("--json", action="store_true", help="Print JSON output.")
+    add_json_flag(install_editable_parser)
     install_editable_parser.set_defaults(func=run)
 
     reinstall_parser = dev_tool_subparsers.add_parser(
@@ -98,14 +98,14 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         action="store_true",
         help=f"Do not stop running {_mcp_process_name()} processes before reinstalling.",
     )
-    reinstall_parser.add_argument("--json", action="store_true", help="Print JSON output.")
+    add_json_flag(reinstall_parser)
     reinstall_parser.set_defaults(func=run)
 
     reload_mcp_parser = dev_tool_subparsers.add_parser(
         "reload-mcp",
         help="Stop running issuekit-mcp processes so clients can restart them.",
     )
-    reload_mcp_parser.add_argument("--json", action="store_true", help="Print JSON output.")
+    add_json_flag(reload_mcp_parser)
     reload_mcp_parser.set_defaults(func=run)
 
 

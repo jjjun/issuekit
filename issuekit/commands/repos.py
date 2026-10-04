@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from issuekit.commands._common import print_json, run_command
+from issuekit.commands._common import add_json_flag, print_json, run_command
 from issuekit.config import load_config
 from issuekit.errors import WorkflowError
 from issuekit.workers.registry import (
@@ -31,7 +31,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         help="Remove a registered repo catalog entry.",
     )
     remove_parser.add_argument("repo", help="Repository key to remove.")
-    remove_parser.add_argument("--json", action="store_true", help="Print JSON output.")
+    add_json_flag(remove_parser)
     remove_parser.set_defaults(func=run_remove)
 
 

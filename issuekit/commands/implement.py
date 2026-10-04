@@ -14,7 +14,12 @@ from issuekit.agents.run_claimed import (
     review_feedback_prompt,
     run_and_submit,
 )
-from issuekit.commands._common import run_agent_command
+from issuekit.commands._common import (
+    add_agent_run_options,
+    add_follow_flag,
+    add_guard_override_flags,
+    run_agent_command,
+)
 from issuekit.config import load_config
 from issuekit.core import Issue, parse_issue_id_arg
 from issuekit.encoding import sanitize_to_ascii
@@ -34,23 +39,16 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         help="Drive an agent to implement an active issue.",
     )
     implement_parser.add_argument("id", help="Issue id to implement.")
-    implement_parser.add_argument(
-        "--agent",
-        help="Configured agent name to run.",
+    add_agent_run_options(
+        implement_parser,
+        agent_help="Configured agent name to run.",
+        model_help="Optional model name passed to the agent.",
+        effort_help="Optional reasoning effort passed to the agent.",
+        timeout_default=600.0,
+        timeout_help="Hard timeout for the agent run in seconds.",
     )
-    implement_parser.add_argument("--model", help="Optional model name passed to the agent.")
-    implement_parser.add_argument(
-        "--reasoning-effort", help="Optional reasoning effort passed to the agent."
-    )
-    implement_parser.add_argument(
-        "--timeout-sec",
-        type=float,
-        default=600.0,
-        help="Hard timeout for the agent run in seconds.",
-    )
-    implement_parser.add_argument(
-        "--follow",
-        action="store_true",
+    add_follow_flag(
+        implement_parser,
         help=(
             "Emit a live heartbeat to stderr; it polls git status read-only without an"
             " index lock and is safe for issues that rewrite the checkout."
@@ -66,21 +64,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         action="store_true",
         help="Submit for review even when the agent wrote no implementer report.",
     )
-    implement_parser.add_argument(
-        "--allow-author-session",
-        action="store_true",
-        help="Override a local author-session STOP guard for human recovery.",
-    )
-    implement_parser.add_argument(
-        "--allow-any-branch",
-        action="store_true",
-        help="Override the configured work_branch guard for human recovery.",
-    )
-    implement_parser.add_argument(
-        "--no-sync",
-        action="store_true",
-        help="Skip the claim-time clean checkout and fast-forward sync guard.",
-    )
+    add_guard_override_flags(implement_parser)
     implement_parser.set_defaults(func=run)
 
 

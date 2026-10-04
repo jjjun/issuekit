@@ -6,7 +6,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from issuekit.commands._common import print_json, run_command
+from issuekit.commands._common import add_json_flag, print_json, run_command
 from issuekit.commands._heartbeat import warn_if_staleness_not_wider
 from issuekit.config import load_config
 from issuekit.core import worker_display_from_row
@@ -30,7 +30,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     )
     workers_parser.add_argument("--repo-id", help="Filter workers by repo id.")
     workers_parser.add_argument("--project", help="Filter workers by project.")
-    workers_parser.add_argument("--json", action="store_true", help="Print JSON output.")
+    add_json_flag(workers_parser)
     workers_parser.set_defaults(func=run_list)
     subcommands = workers_parser.add_subparsers(
         dest="workers_command",
@@ -50,12 +50,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         action="store_true",
         help="Remove even if the worker currently holds an implementing issue.",
     )
-    remove_parser.add_argument(
-        "--json",
-        action="store_true",
-        default=argparse.SUPPRESS,
-        help="Print JSON output.",
-    )
+    add_json_flag(remove_parser, suppress=True)
     remove_parser.set_defaults(func=run_remove)
 
     prune_parser = subcommands.add_parser(
@@ -78,12 +73,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         action="store_true",
         help="Confirm deletion without an interactive prompt.",
     )
-    prune_parser.add_argument(
-        "--json",
-        action="store_true",
-        default=argparse.SUPPRESS,
-        help="Print JSON output.",
-    )
+    add_json_flag(prune_parser, suppress=True)
     prune_parser.set_defaults(func=run_prune)
 
 

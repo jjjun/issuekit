@@ -12,7 +12,15 @@ from issuekit.agents.proposal_check import (
     list_worker_proposal_checks,
     run_proposal_check_cycle,
 )
-from issuekit.commands._common import print_json, run_agent_command, run_command
+from issuekit.commands._common import (
+    add_agent_option,
+    add_json_flag,
+    add_model_options,
+    add_timeout_option,
+    print_json,
+    run_agent_command,
+    run_command,
+)
 from issuekit.config import IssuekitConfig, load_config
 from issuekit.errors import AGENT_RUN_ERRORS, WorkflowError
 from issuekit.proposals import ProposalError
@@ -24,10 +32,11 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         "proposal-checks",
         help="Run one worker-side proposal-check polling cycle.",
     )
-    parser.add_argument("--agent", help="Configured agent name to run.")
-    parser.add_argument("--model", help="Optional model name passed to the agent.")
-    parser.add_argument(
-        "--reasoning-effort", help="Optional reasoning effort passed to the agent."
+    add_agent_option(parser, help="Configured agent name to run.")
+    add_model_options(
+        parser,
+        model_help="Optional model name passed to the agent.",
+        effort_help="Optional reasoning effort passed to the agent.",
     )
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument(
@@ -45,9 +54,8 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         choices=("pending", "answered"),
         help="Filter listed proposal checks by status.",
     )
-    parser.add_argument(
-        "--timeout-sec",
-        type=float,
+    add_timeout_option(
+        parser,
         default=600.0,
         help="Hard timeout for each proposal-check agent run in seconds.",
     )
@@ -67,7 +75,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         type=int,
         help="Evaluate this proposal-check id with --once.",
     )
-    parser.add_argument("--json", action="store_true", help="Print JSON output.")
+    add_json_flag(parser)
     parser.set_defaults(func=run)
 
 
