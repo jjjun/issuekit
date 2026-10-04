@@ -1,5 +1,7 @@
 import json
 import subprocess
+import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -1436,7 +1438,7 @@ def test_api_cli_outgoing_lists_own_proposals(
     assert outgoing[0]["adopted_issue_stage"] is None
     assert outgoing[1]["adopted_issue_status"] is None
     assert outgoing[1]["adopted_issue_stage"] is None
-    assert set(created_projects) == {"source", "target"}
+    assert created_projects == ["target"]
 
     assert cli.main(["outgoing", "--to", "target", "--status", "adopted", "--json"]) == 0
     adopted = json.loads(capsys.readouterr().out)
@@ -1529,6 +1531,112 @@ def test_api_cli_outgoing_includes_pending_check_wait_time(
 
     assert cli.main(["outgoing", "--to", "target"]) == 0
     assert "check=#1 status=pending" in capsys.readouterr().out
+
+
+def test_list_outgoing_proposals_reuses_client_and_preserves_order(
+    fake_api,
+    monkeypatch,
+) -> None:
+    proposals = [
+        {
+            "id": proposal_id,
+            "origin": f"source#{proposal_id}@abc",
+            "title": f"Proposal {proposal_id}",
+            "body": "Body.",
+            "status": (
+                "pending"
+                if proposal_id <= 4
+                else "adopted"
+                if proposal_id <= 8
+                else "discarded"
+            ),
+            "adopted_issue_number": 44 if proposal_id == 5 else None,
+        }
+        for proposal_id in range(1, 13)
+    ]
+    proposals.append(
+        {
+            "id": 13,
+            "origin": "another-source#13@abc",
+            "title": "Foreign proposal",
+            "body": "Body.",
+            "status": "pending",
+        }
+    )
+    client = FakeIssuekitClient(
+        issues=[api_issue(44, "Adopted", status="completed", stage="done")],
+        proposals=proposals,
+    )
+    client.register_catalog_project("target")
+    for proposal_id in (1, 2):
+        check = client.create_proposal_check(
+            proposal_id,
+            target_worker="worker.target@machine",
+            project="target",
+        )
+        client._proposal_checks[check["id"]]["created_at"] = "2026-07-30T00:00:00Z"
+
+    created_projects: list[str] = []
+
+    def fake_client(*_args, **kwargs):
+        created_projects.append(kwargs["project"])
+        return client
+
+    fake_api.install_factory(fake_client)
+    lock = threading.Lock()
+    active = 0
+    maximum_active = 0
+    worker_threads: set[int] = set()
+    original_list_checks = client.list_proposal_checks_for_proposal
+
+    def delayed_list_checks(proposal_id: int, *args, **kwargs):
+        nonlocal active, maximum_active
+        with lock:
+            active += 1
+            maximum_active = max(maximum_active, active)
+            worker_threads.add(threading.get_ident())
+        try:
+            time.sleep((13 - proposal_id) * 0.002)
+            return original_list_checks(proposal_id, *args, **kwargs)
+        finally:
+            with lock:
+                active -= 1
+
+    monkeypatch.setattr(client, "list_proposal_checks_for_proposal", delayed_list_checks)
+    config = IssuekitConfig(api_url="https://mine.example", project="source")
+
+    outgoing = proposals_api.list_outgoing_proposals(config, to="target")
+
+    assert created_projects == ["target"]
+    assert [proposal["id"] for proposal in outgoing] == list(range(1, 13))
+    assert [proposal["status"] for proposal in outgoing] == [
+        "pending",
+        "pending",
+        "pending",
+        "pending",
+        "adopted",
+        "adopted",
+        "adopted",
+        "adopted",
+        "discarded",
+        "discarded",
+        "discarded",
+        "discarded",
+    ]
+    assert [
+        {
+            key: value
+            for key, value in proposal.items()
+            if key not in {"adopted_issue_status", "adopted_issue_stage", "proposal_checks"}
+        }
+        for proposal in outgoing
+    ] == [client._proposals[proposal_id] for proposal_id in range(1, 13)]
+    assert outgoing[4]["adopted_issue_status"] == "completed"
+    assert outgoing[4]["adopted_issue_stage"] == "done"
+    assert outgoing[0]["proposal_checks"][0]["waiting_seconds"] > 0
+    assert outgoing[1]["proposal_checks"][0]["waiting_seconds"] > 0
+    assert 1 < maximum_active <= 4
+    assert len(worker_threads) > 1
 
 
 def test_api_cli_outgoing_rejects_foreign_and_invalid_lookups(

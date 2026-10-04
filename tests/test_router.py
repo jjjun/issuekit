@@ -996,6 +996,92 @@ def test_request_status_maps_outgoing_status(fake_api, monkeypatch, tmp_path, ca
     assert status[0]["targets"][0]["adopted_issue_ref"] == "api#42"
 
 
+def test_request_status_all_lists_raw_proposal_rows_once_per_project(
+    fake_api,
+    monkeypatch,
+    tmp_path,
+    capsys,
+) -> None:
+    clients, _runner = _setup(fake_api, monkeypatch, tmp_path, [])
+    clients["api"] = FakeIssuekitClient(
+        proposals=[
+            {"id": 1, "origin": "pm#1@abc", "status": "pending"},
+            {
+                "id": 2,
+                "origin": "pm#2@abc",
+                "status": "adopted",
+                "adopted_issue_number": 51,
+            },
+        ]
+    )
+    clients["ui"] = FakeIssuekitClient(
+        proposals=[{"id": 1, "origin": "pm#3@abc", "status": "discarded"}]
+    )
+    calls_by_project: dict[str, list[str | None]] = {}
+
+    def fail_if_called(*_args, **_kwargs):
+        pytest.fail("status loaded proposal enrichment")
+
+    for project in ("api", "ui"):
+        client = clients[project]
+        calls_by_project[project] = []
+        original_list_proposals = client.list_proposals
+
+        def counted_list_proposals(
+            *,
+            status=None,
+            _project=project,
+            _original=original_list_proposals,
+            **kwargs,
+        ):
+            calls_by_project[_project].append(status)
+            return _original(status=status, **kwargs)
+
+        monkeypatch.setattr(client, "list_proposals", counted_list_proposals)
+        monkeypatch.setattr(client, "list_project_profiles", fail_if_called)
+        monkeypatch.setattr(client, "list_workers", fail_if_called)
+        monkeypatch.setattr(client, "list_proposal_checks_for_proposal", fail_if_called)
+        monkeypatch.setattr(client, "get_issue", fail_if_called)
+
+    _write_request_state(
+        tmp_path,
+        {
+            "1": {
+                "original_text": "First",
+                "decision": "route",
+                "targets": [
+                    {"project": "api", "proposal_ref": "api#1"},
+                    {"project": "ui", "proposal_ref": "ui#1"},
+                ],
+            },
+            "2": {
+                "original_text": "Second",
+                "decision": "route",
+                "targets": [
+                    {"project": "api", "proposal_ref": "api#2"},
+                    {"project": "api", "proposal_ref": "api#1"},
+                ],
+            },
+            "3": {
+                "original_text": "Third",
+                "decision": "route",
+                "targets": [{"project": "ui", "proposal_ref": "ui#1"}],
+            },
+        },
+    )
+
+    assert cli.main(["request", "--status", "all", "--json"]) == 0
+    status = json.loads(capsys.readouterr().out)
+
+    assert calls_by_project == {
+        "api": ["pending", "adopted", "discarded"],
+        "ui": ["pending", "adopted", "discarded"],
+    }
+    assert status[1]["targets"][0]["status"] == "adopted"
+    assert status[1]["targets"][0]["adopted_issue_ref"] == "api#51"
+    assert status[2]["targets"][0]["status"] == "discarded"
+
+
 def test_request_inbox_lists_matched_and_unmatched_replies(
     fake_api,
     monkeypatch,

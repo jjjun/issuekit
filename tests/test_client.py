@@ -6,6 +6,7 @@ import os
 import subprocess
 import time
 from pathlib import Path
+from threading import Barrier, Lock, Thread
 from urllib.parse import parse_qs
 
 import httpx
@@ -409,6 +410,56 @@ def test_client_reauthenticates_once_after_401() -> None:
     assert client.get_issue(7) == {"id": 7}
     assert login_count == 2
     assert issue_count == 2
+
+
+def test_concurrent_401_responses_refresh_token_once() -> None:
+    login_count = 0
+    get_barrier = Barrier(2)
+    count_lock = Lock()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal login_count
+        if request.url.path == "/auth/login":
+            with count_lock:
+                login_count += 1
+                current_login = login_count
+            return httpx.Response(
+                200,
+                json={"access_token": _jwt(exp=time.time() + 3600, subject=f"token-{current_login}")},
+            )
+
+        token = _decode_payload(request.headers["authorization"].split(" ", 1)[1])
+        if "token-1" in token:
+            get_barrier.wait(timeout=5)
+            return httpx.Response(401, json={"code": "unauthorized", "message": "expired"})
+        assert "token-2" in token
+        return httpx.Response(200, json={"id": 7})
+
+    client = IssuekitClient(
+        "https://mine.example",
+        username="svc",
+        password="secret",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+    results: list[dict] = []
+    errors: list[Exception] = []
+
+    def get_issue() -> None:
+        try:
+            results.append(client.get_issue(7))
+        except Exception as exc:
+            errors.append(exc)
+
+    threads = [Thread(target=get_issue) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=10)
+
+    assert all(not thread.is_alive() for thread in threads)
+    assert errors == []
+    assert results == [{"id": 7}, {"id": 7}]
+    assert login_count == 2
 
 
 def test_login_writes_token_cache_with_expiry(

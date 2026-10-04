@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Mapping
+from threading import Lock
 
 import httpx
 
@@ -74,6 +75,7 @@ class IssuekitClient(
         self._external_token = token is not None or env_token is not None
         self._token = token if token is not None else env_token
         self._token_expiry = jwt_expiry(self._token)
+        self._login_lock = Lock()
         if self._token is None:
             cached = read_cached_token(self.api_url)
             if cached is not None:

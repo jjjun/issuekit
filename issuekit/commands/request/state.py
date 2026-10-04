@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -62,25 +63,58 @@ def status_record(
     request_id: int,
     record: dict[str, Any],
 ) -> dict[str, Any]:
-    targets = state_targets(record)
-    by_project: dict[str, dict[int, dict[str, Any]]] = {}
-    for target in targets:
-        ref = str(target.get("proposal_ref") or "")
-        match = PROPOSAL_REF_PATTERN.match(ref)
-        if match is None:
-            continue
-        project = match.group("project")
-        proposal_id = int(match.group("id"))
-        if project not in by_project:
-            by_project[project] = {}
-            for proposal in proposals_api.list_outgoing_proposals(config, to=project):
+    return status_records(config, [(request_id, record)])[0]
+
+
+def status_records(
+    config: IssuekitConfig,
+    records: Sequence[tuple[int, dict[str, Any]]],
+) -> list[dict[str, Any]]:
+    outgoing_by_project: dict[str, dict[int, dict[str, Any]]] = {}
+    for _request_id, record in records:
+        for target in state_targets(record):
+            match = PROPOSAL_REF_PATTERN.match(str(target.get("proposal_ref") or ""))
+            if match is None:
+                continue
+            project = match.group("project")
+            if project in outgoing_by_project:
+                continue
+            by_id: dict[int, dict[str, Any]] = {}
+            with proposals_api.api_client(config, project=project) as client:
+                proposals = proposals_api.list_outgoing_proposal_rows(
+                    client,
+                    project=config.project,
+                    statuses=proposals_api.OUTGOING_PROPOSAL_STATUSES,
+                )
+            for proposal in proposals:
                 try:
                     outgoing_id = int(proposal.get("id"))
                 except (TypeError, ValueError):
                     continue
-                by_project[project][outgoing_id] = proposal
-        target["status"] = by_project[project].get(proposal_id, {}).get("status", "unknown")
-        adopted = by_project[project].get(proposal_id, {}).get("adopted_issue_number")
+                by_id[outgoing_id] = proposal
+            outgoing_by_project[project] = by_id
+
+    return [
+        _status_record(request_id, record, outgoing_by_project)
+        for request_id, record in records
+    ]
+
+
+def _status_record(
+    request_id: int,
+    record: dict[str, Any],
+    outgoing_by_project: dict[str, dict[int, dict[str, Any]]],
+) -> dict[str, Any]:
+    targets = state_targets(record)
+    for target in targets:
+        match = PROPOSAL_REF_PATTERN.match(str(target.get("proposal_ref") or ""))
+        if match is None:
+            continue
+        project = match.group("project")
+        proposal_id = int(match.group("id"))
+        proposal = outgoing_by_project.get(project, {}).get(proposal_id, {})
+        target["status"] = proposal.get("status", "unknown")
+        adopted = proposal.get("adopted_issue_number")
         if adopted:
             target["adopted_issue_ref"] = f"{project}#{adopted}"
     return {

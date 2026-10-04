@@ -44,37 +44,40 @@ class ClientTransportMixin:
     _http: httpx.Client
     allow_insecure_api_url: bool
 
-    def login(self, *, force: bool = False) -> str:
+    def login(self, *, force: bool = False, expected_token: str | None = None) -> str:
         """Log in with service-account credentials and cache the JWT."""
-        if not force and self._token and not is_expired(self._token_expiry):
-            return self._token
-        if not self.username or not self.password:
-            if self._external_token and self._token and not is_expired(self._token_expiry):
+        with self._login_lock:
+            if expected_token is not None and self._token != expected_token:
+                force = False
+            if not force and self._token and not is_expired(self._token_expiry):
                 return self._token
-            raise WorkflowError(_login_guidance(self.api_url), code="unauthorized")
+            if not self.username or not self.password:
+                if self._external_token and self._token and not is_expired(self._token_expiry):
+                    return self._token
+                raise WorkflowError(_login_guidance(self.api_url), code="unauthorized")
 
-        warn_insecure_api_url(
-            self.api_url,
-            allow_insecure_api_url=self.allow_insecure_api_url,
-        )
-        response = self._send(
-            "POST",
-            "/auth/login",
-            data={"username": self.username, "password": self.password},
-            headers={"Accept": "application/json"},
-            follow_redirects=False,
-        )
-        payload = self._parse_response(response)
-        if not isinstance(payload, dict):
-            raise WorkflowError("Login response was not a JSON object.", code="invalid_response")
-        token = payload.get("access_token") or payload.get("token")
-        if not isinstance(token, str) or not token:
-            raise WorkflowError("Login response did not include an access token.", code="invalid_response")
-        self._token = token
-        self._token_expiry = response_expiry(payload) or jwt_expiry(token)
-        if not self._external_token:
-            write_cached_token(self.api_url, token, self._token_expiry)
-        return token
+            warn_insecure_api_url(
+                self.api_url,
+                allow_insecure_api_url=self.allow_insecure_api_url,
+            )
+            response = self._send(
+                "POST",
+                "/auth/login",
+                data={"username": self.username, "password": self.password},
+                headers={"Accept": "application/json"},
+                follow_redirects=False,
+            )
+            payload = self._parse_response(response)
+            if not isinstance(payload, dict):
+                raise WorkflowError("Login response was not a JSON object.", code="invalid_response")
+            token = payload.get("access_token") or payload.get("token")
+            if not isinstance(token, str) or not token:
+                raise WorkflowError("Login response did not include an access token.", code="invalid_response")
+            self._token = token
+            self._token_expiry = response_expiry(payload) or jwt_expiry(token)
+            if not self._external_token:
+                write_cached_token(self.api_url, token, self._token_expiry)
+            return token
 
     def logout(self) -> None:
         """Best-effort API logout followed by local token-cache removal."""
@@ -173,7 +176,7 @@ class ClientTransportMixin:
         if response.status_code == 401:
             if not self.username or not self.password:
                 raise WorkflowError(_login_guidance(self.api_url), code="unauthorized")
-            token = self.login(force=True)
+            token = self.login(force=True, expected_token=token)
             request_headers["Authorization"] = f"Bearer {token}"
             response = self._send(
                 method,

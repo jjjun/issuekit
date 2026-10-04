@@ -12,7 +12,7 @@ from issuekit.commands.request.state import (
     PROPOSAL_REF_PATTERN,
     load_state,
     state_targets,
-    status_record,
+    status_records,
 )
 from issuekit.config import IssuekitConfig
 from issuekit.proposals.service import list_incoming_proposals
@@ -72,10 +72,7 @@ def run_status(
         if not isinstance(record, dict):
             raise ValueError(f"PM request {request_id} was not found.")
         records = [(request_id, record)]
-    payload = [
-        status_record(config, request_id=request_id, record=record)
-        for request_id, record in records
-    ]
+    payload = status_records(config, records)
     if json_output:
         print_json(payload)
         return 0

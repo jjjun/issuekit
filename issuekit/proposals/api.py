@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 import time
 from collections.abc import Callable, Iterator, Mapping, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
@@ -439,22 +440,35 @@ def list_outgoing_proposals(
 ) -> list[dict]:
     """List proposals this project sent to another project's inbox (read-only)."""
     to = _target_repo(to, label="--to")
-    validate_target_project(config, to)
-    if status is not None and status not in OUTGOING_PROPOSAL_STATUSES:
-        raise ProposalError(
-            f"Invalid proposal status: {status}. "
-            f"Expected one of {', '.join(OUTGOING_PROPOSAL_STATUSES)}."
-        )
-    statuses = (status,) if status else OUTGOING_PROPOSAL_STATUSES
-    outgoing = []
     with api_client(config, project=to) as client:
-        for candidate_status in statuses:
-            outgoing.extend(
-                proposal
-                for proposal in client.list_proposals(status=candidate_status)
-                if _is_own_origin(proposal.get("origin"), config.project)
+        validate_target_project(config, to, client=client)
+        if status is not None and status not in OUTGOING_PROPOSAL_STATUSES:
+            raise ProposalError(
+                f"Invalid proposal status: {status}. "
+                f"Expected one of {', '.join(OUTGOING_PROPOSAL_STATUSES)}."
             )
-        outgoing = [_with_adopted_issue_state(proposal, client) for proposal in outgoing]
+        statuses = (status,) if status else OUTGOING_PROPOSAL_STATUSES
+        outgoing = list_outgoing_proposal_rows(
+            client,
+            project=config.project,
+            statuses=statuses,
+        )
+        return _enrich_outgoing_proposals(outgoing, client)
+
+
+def list_outgoing_proposal_rows(
+    client: IssuekitClient,
+    *,
+    project: str,
+    statuses: Sequence[str],
+) -> list[dict]:
+    """List raw proposals sent by a project without fetching enrichment data."""
+    outgoing = [
+        proposal
+        for status in statuses
+        for proposal in client.list_proposals(status=status)
+        if _is_own_origin(proposal.get("origin"), project)
+    ]
     outgoing.sort(key=lambda proposal: int(proposal.get("id", 0)))
     return outgoing
 
@@ -462,14 +476,14 @@ def list_outgoing_proposals(
 def get_outgoing_proposal(config: IssuekitConfig, *, to: str, proposal_id: int) -> dict:
     """Read one proposal this project sent to another project's inbox."""
     to = _target_repo(to, label="--to")
-    validate_target_project(config, to)
     with api_client(config, project=to) as client:
+        validate_target_project(config, to, client=client)
         proposal = client.get_proposal(int(proposal_id))
         if not _is_own_origin(proposal.get("origin"), config.project):
             raise ProposalError(
                 f"Proposal #{proposal_id} in {to} was not sent by {config.project}."
             )
-        return _with_adopted_issue_state(proposal, client)
+        return _enrich_outgoing_proposals([proposal], client)[0]
 
 
 def discard_outgoing_proposal(config: IssuekitConfig, *, to: str, proposal_id: int) -> dict:
@@ -509,6 +523,20 @@ def _with_adopted_issue_state(proposal: Mapping[str, Any], client: IssuekitClien
     return enriched
 
 
+def _enrich_outgoing_proposals(
+    proposals: Sequence[Mapping[str, Any]],
+    client: IssuekitClient,
+) -> list[dict]:
+    if not proposals:
+        return []
+    with ThreadPoolExecutor(max_workers=min(4, len(proposals))) as executor:
+        futures = [
+            executor.submit(_with_adopted_issue_state, proposal, client)
+            for proposal in proposals
+        ]
+        return [future.result() for future in futures]
+
+
 def _with_proposal_check_waiting_time(check: Mapping[str, Any]) -> dict:
     enriched = dict(check)
     if check.get("status") != "pending":
@@ -543,18 +571,33 @@ def matches_triage_policy(proposal: Mapping[str, Any], config: IssuekitConfig) -
     return True
 
 
-def validate_target_project(config: IssuekitConfig, target_project: str) -> None:
+def validate_target_project(
+    config: IssuekitConfig,
+    target_project: str,
+    *,
+    client: IssuekitClient | None = None,
+) -> None:
     """Validate proposal targets against the API's project catalog."""
     target_project = _target_repo(target_project, label="target project")
-    projects = fetch_project_catalog(config)
+    projects = fetch_project_catalog(config, client=client)
     if target_project not in projects:
         raise ProposalError(_unknown_target_project_message(target_project, projects))
 
 
-def fetch_project_catalog(config: IssuekitConfig) -> tuple[str, ...]:
-    with api_client(config) as client:
-        profile_projects = _project_names_from_rows(client.list_project_profiles())
-        worker_projects = _project_names_from_rows(client.list_workers())
+def fetch_project_catalog(
+    config: IssuekitConfig,
+    *,
+    client: IssuekitClient | None = None,
+) -> tuple[str, ...]:
+    if client is not None:
+        return _fetch_project_catalog(client)
+    with api_client(config) as catalog_client:
+        return _fetch_project_catalog(catalog_client)
+
+
+def _fetch_project_catalog(client: IssuekitClient) -> tuple[str, ...]:
+    profile_projects = _project_names_from_rows(client.list_project_profiles())
+    worker_projects = _project_names_from_rows(client.list_workers())
     return tuple(sorted(set(profile_projects) | set(worker_projects)))
 
 
