@@ -16,9 +16,9 @@ from typing import Literal
 from issuekit.agentrun.adapter import AgentAdapter
 from issuekit.agents.handoff import review_feedback_prompt
 from issuekit.agents.review import (
-    ReviewRunParseError,
     run_review_and_decide,
 )
+from issuekit.agents.review_output import ReviewRunParseError
 from issuekit.agents.run_claimed import (
     run_and_submit,
 )

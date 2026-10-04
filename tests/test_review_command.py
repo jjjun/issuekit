@@ -5,7 +5,7 @@ import pytest
 
 from issuekit import cli
 from issuekit.agentrun import AgentPrompt
-from issuekit.agents import review as review_agent
+from issuekit.agents import review_context, review_output
 from issuekit.agents.handoff import NO_IMPLEMENTATION_CHANGES_MARKER
 from issuekit.core import Issue
 from issuekit.testing import FakeIssuekitClient
@@ -944,11 +944,11 @@ def test_body_handoff_evidence_requires_content_and_keeps_continuations() -> Non
         ),
     )
 
-    evidence = review_agent._handoff_evidence_text(issue)
+    evidence = review_context._handoff_evidence_text(issue)
 
     assert "Checks:\n- uv run pytest\n  uv run issuekit check-encoding" in evidence
     assert "not evidence" not in evidence
-    assert review_agent._handoff_evidence_text(
+    assert review_context._handoff_evidence_text(
         replace(_issue(), body="Checks:\n\n## Notes\nNothing.\n")
     ) == ""
 
@@ -962,7 +962,7 @@ def test_collect_git_diff_context_includes_untracked_text_and_binary(
     (tmp_path / "new file.py").write_text("first\nsecond\n", encoding="utf-8", newline="\n")
     (tmp_path / "asset.bin").write_bytes(b"\0binary")
 
-    context = review_agent._collect_git_diff_context(tmp_path)
+    context = review_context._collect_git_diff_context(tmp_path)
 
     assert context.has_changed_files is True
     assert "--- /dev/null" in context.text
@@ -976,12 +976,12 @@ def test_combined_review_evidence_applies_one_size_limit(
     monkeypatch,
 ) -> None:
     (tmp_path / "new.py").write_text("new = True\n", encoding="utf-8", newline="\n")
-    monkeypatch.setattr(review_agent, "_MAX_DIFF_CHARS", 200)
+    monkeypatch.setattr(review_context, "_MAX_DIFF_CHARS", 200)
 
-    evidence = review_agent._combined_diff_evidence(
+    evidence = review_context._combined_diff_evidence(
         tmp_path,
         "+" + ("x" * 400),
-        (review_agent.GitStatusEntry(status="??", path=Path("new.py")),),
+        (review_context.GitStatusEntry(status="??", path=Path("new.py")),),
     )
 
     assert len(evidence) <= 200
@@ -994,7 +994,7 @@ def test_large_untracked_file_is_omitted_without_reading(
 ) -> None:
     path = tmp_path / "large.bin"
     path.write_bytes(b"x" * 201)
-    monkeypatch.setattr(review_agent, "_MAX_DIFF_CHARS", 200)
+    monkeypatch.setattr(review_context, "_MAX_DIFF_CHARS", 200)
     original_read_bytes = Path.read_bytes
 
     def fail_read_bytes(self: Path) -> bytes:
@@ -1004,21 +1004,21 @@ def test_large_untracked_file_is_omitted_without_reading(
 
     monkeypatch.setattr(Path, "read_bytes", fail_read_bytes)
 
-    assert review_agent._untracked_diff_section(tmp_path, path.relative_to(tmp_path)) == (
+    assert review_context._untracked_diff_section(tmp_path, path.relative_to(tmp_path)) == (
         "[untracked file omitted by review context size limit: large.bin]"
     )
 
 
 def test_reviewable_status_filters_only_agent_run_paths() -> None:
-    runtime_entry = review_agent.GitStatusEntry(
+    runtime_entry = review_context.GitStatusEntry(
         status="??",
         path=Path(".agent-runs/review-issue-1.md"),
     )
 
-    assert review_agent._has_reviewable_changed_files((runtime_entry,)) is False
-    assert review_agent._has_reviewable_changed_files(
+    assert review_context._has_reviewable_changed_files((runtime_entry,)) is False
+    assert review_context._has_reviewable_changed_files(
         (
-            review_agent.GitStatusEntry(
+            review_context.GitStatusEntry(
                 status="R ",
                 path=Path(".agent-runs/code.py"),
                 original_path=Path("code.py"),
@@ -1028,7 +1028,7 @@ def test_reviewable_status_filters_only_agent_run_paths() -> None:
 
 
 def test_review_prompt_surfaces_obfuscation_hints() -> None:
-    diff_context = review_agent.ReviewDiffContext(
+    diff_context = review_context.ReviewDiffContext(
         text=(
             "diff --git a/code.py b/code.py\n"
             "+_module = importlib.import_module(\"basekit.\" + \"doc\" + \"ker_manager\")\n"
@@ -1036,14 +1036,14 @@ def test_review_prompt_surfaces_obfuscation_hints() -> None:
             "+globals()[\"generate_\" + \"doc\" + \"ker_compose\"] = _generate\n"
         ),
         has_changed_files=True,
-        suspicious_warnings=review_agent._suspicious_readability_warnings(
+        suspicious_warnings=review_context._suspicious_readability_warnings(
             "+importlib.import_module(\"basekit.\" + \"doc\")\n"
             "+getattr(_module, \"Doc\" + \"kerComposeGenerator\")\n"
             "+globals()[\"generate_\" + \"doc\"] = value\n"
         ),
     )
 
-    prompt = review_agent._render_review_prompt(
+    prompt = review_context._render_review_prompt(
         _issue(),
         diff_context=diff_context,
     )
@@ -1055,9 +1055,9 @@ def test_review_prompt_surfaces_obfuscation_hints() -> None:
 
 
 def test_review_prompt_identifies_the_last_handoff_as_current() -> None:
-    prompt = review_agent._render_review_prompt(
+    prompt = review_context._render_review_prompt(
         _issue(),
-        diff_context=review_agent.ReviewDiffContext(
+        diff_context=review_context.ReviewDiffContext(
             text="Handoff evidence:\nCommit: current",
             has_changed_files=False,
         ),
@@ -1072,10 +1072,10 @@ def test_review_prompt_identifies_the_last_handoff_as_current() -> None:
 def test_readability_warnings_only_inspect_added_lines() -> None:
     suspicious = 'globals()["generated"] = value'
 
-    assert review_agent._suspicious_readability_warnings(
+    assert review_context._suspicious_readability_warnings(
         f" {suspicious}\n-{suspicious}\n"
     ) == ()
-    assert review_agent._suspicious_readability_warnings(f"+{suspicious}\n") == (
+    assert review_context._suspicious_readability_warnings(f"+{suspicious}\n") == (
         "globals() attribute injection",
     )
 
@@ -1084,21 +1084,24 @@ def test_collect_git_diff_context_tolerates_missing_diff_stdout(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
+    (tmp_path / "code.py").write_text("before\n", encoding="utf-8", newline="\n")
+    init_git_repo(tmp_path, message="baseline", autocrlf=True)
+    (tmp_path / "code.py").write_text("after\n", encoding="utf-8", newline="\n")
     monkeypatch.setattr(
-        review_agent,
+        review_context,
         "git_status_short",
         lambda *args, **kwargs: " M code.py\n",
     )
     monkeypatch.setattr(
-        review_agent,
+        review_context,
         "git_status_entries",
         lambda *args, **kwargs: (
-            review_agent.GitStatusEntry(status=" M", path=Path("code.py")),
+            review_context.GitStatusEntry(status=" M", path=Path("code.py")),
         ),
     )
-    monkeypatch.setattr(review_agent, "_git_stdout", lambda *args, **kwargs: None)
+    monkeypatch.setattr(review_context, "_git_stdout", lambda *args, **kwargs: None)
 
-    context = review_agent._collect_git_diff_context(tmp_path)
+    context = review_context._collect_git_diff_context(tmp_path)
 
     assert context.has_changed_files is True
     assert "git diff HEAD --:\n(unavailable or empty)" in context.text
@@ -1106,7 +1109,7 @@ def test_collect_git_diff_context_tolerates_missing_diff_stdout(
 
 
 def test_parse_review_output_sanitizes_non_ascii_field(capsys) -> None:
-    verdict = review_agent.parse_review_output(
+    verdict = review_output.parse_review_output(
         "```review\n"
         '{"verdict":"request-changes","verification":"","notes":"\u76f4\u3057\u3066"}\n'
         "```"
@@ -1117,7 +1120,7 @@ def test_parse_review_output_sanitizes_non_ascii_field(capsys) -> None:
 
 
 def test_parse_review_output_normalizes_request_changes_verdict() -> None:
-    verdict = review_agent.parse_review_output(
+    verdict = review_output.parse_review_output(
         "```review\n"
         '{"verdict":"request_changes","verification":"","notes":"Add tests."}\n'
         "```"
@@ -1127,7 +1130,7 @@ def test_parse_review_output_normalizes_request_changes_verdict() -> None:
 
 
 def test_parse_review_output_skips_newer_invalid_json_block() -> None:
-    verdict = review_agent.parse_review_output(
+    verdict = review_output.parse_review_output(
         "```review\n"
         '{"verdict":"approve","verification":"pytest","notes":""}\n'
         "```\n"
@@ -1141,10 +1144,10 @@ def test_parse_review_output_skips_newer_invalid_json_block() -> None:
 
 def test_parse_review_output_rejects_newer_non_object_block() -> None:
     with pytest.raises(
-        review_agent.ReviewParseError,
+        review_output.ReviewParseError,
         match="Review block JSON must be an object",
     ):
-        review_agent.parse_review_output(
+        review_output.parse_review_output(
             "```review\n"
             '{"verdict":"approve","verification":"pytest","notes":""}\n'
             "```\n"
@@ -1155,7 +1158,7 @@ def test_parse_review_output_rejects_newer_non_object_block() -> None:
 
 
 def test_parse_review_output_accepts_json_fallback_block() -> None:
-    verdict = review_agent.parse_review_output(
+    verdict = review_output.parse_review_output(
         "```json\n"
         '{"verdict":"approve","verification":"pytest","notes":""}\n'
         "```"
@@ -1165,7 +1168,7 @@ def test_parse_review_output_accepts_json_fallback_block() -> None:
 
 
 def test_parse_review_output_accepts_bare_fallback_block() -> None:
-    verdict = review_agent.parse_review_output(
+    verdict = review_output.parse_review_output(
         "```\n"
         '{"verdict":"approve","verification":"pytest","notes":""}\n'
         "```"
@@ -1175,7 +1178,7 @@ def test_parse_review_output_accepts_bare_fallback_block() -> None:
 
 
 def test_parse_review_output_joins_list_valued_notes() -> None:
-    verdict = review_agent.parse_review_output(
+    verdict = review_output.parse_review_output(
         "```review\n"
         '{"verdict":"request-changes","verification":"","notes":["Add tests.","Fix docs."]}\n'
         "```"
@@ -1185,7 +1188,7 @@ def test_parse_review_output_joins_list_valued_notes() -> None:
 
 
 def test_parse_review_output_joins_mapping_valued_notes() -> None:
-    verdict = review_agent.parse_review_output(
+    verdict = review_output.parse_review_output(
         "```review\n"
         '{"verdict":"request-changes","verification":"",'
         '"notes":{"tests":"Add tests.","docs":"Fix docs."}}\n'
@@ -1197,10 +1200,10 @@ def test_parse_review_output_joins_mapping_valued_notes() -> None:
 
 def test_parse_review_output_rejects_non_string_mapping_value() -> None:
     with pytest.raises(
-        review_agent.ReviewParseError,
+        review_output.ReviewParseError,
         match="Review key verification entry 2 must be a string",
     ):
-        review_agent.parse_review_output(
+        review_output.parse_review_output(
             "```review\n"
             '{"verdict":"approve","verification":{"1":"pytest","2":false},"notes":""}\n'
             "```"
@@ -1225,8 +1228,8 @@ def test_parse_review_output_rejects_empty_required_mapping(
     notes: str,
     message: str,
 ) -> None:
-    with pytest.raises(review_agent.ReviewParseError, match=message):
-        review_agent.parse_review_output(
+    with pytest.raises(review_output.ReviewParseError, match=message):
+        review_output.parse_review_output(
             "```review\n"
             f'{{"verdict":"{verdict}","verification":{verification},"notes":{notes}}}\n'
             "```"
@@ -1234,7 +1237,7 @@ def test_parse_review_output_rejects_empty_required_mapping(
 
 
 def test_parse_review_output_prefers_review_block_over_json_block() -> None:
-    verdict = review_agent.parse_review_output(
+    verdict = review_output.parse_review_output(
         "```review\n"
         '{"verdict":"approve","verification":"pytest","notes":""}\n'
         "```\n"
@@ -1248,10 +1251,10 @@ def test_parse_review_output_prefers_review_block_over_json_block() -> None:
 
 def test_parse_review_output_rejects_json_fallback_without_required_keys() -> None:
     with pytest.raises(
-        review_agent.ReviewParseError,
+        review_output.ReviewParseError,
         match="Review block is missing required key",
     ):
-        review_agent.parse_review_output(
+        review_output.parse_review_output(
             "```json\n"
             '{"verdict":"approve"}\n'
             "```"

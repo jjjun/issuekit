@@ -5,7 +5,7 @@ import re
 import pytest
 
 from issuekit.agents.proposal_check import _render_check_prompt
-from issuekit.agents.review import ReviewDiffContext, _render_review_prompt
+from issuekit.agents.review_context import ReviewDiffContext, _render_review_prompt
 from issuekit.agents.router import ProjectProfile, _render_router_prompt
 from issuekit.agents.triage_author import _render_triage_prompt
 from issuekit.core import Issue

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 import sys
 import threading
 from dataclasses import dataclass
@@ -10,66 +9,35 @@ from pathlib import Path
 from typing import TextIO
 
 from issuekit.agentrun import AgentResult, AgentRunner
+from issuekit.agentrun.adapter import AgentAdapter
 from issuekit.agentrun.parsed import parsed_is_error
-from issuekit.agents.handoff import NO_IMPLEMENTATION_CHANGES_MARKER
 from issuekit.agents.readonly import (
+    ReadonlyAgentRun,
     prompt_from_spec,
     repository_mutation_message,
     run_readonly_evaluation,
     stdout_text,
 )
 from issuekit.agents.registry import resolve_adapter
+from issuekit.agents.review_context import (
+    ReviewDiffContext,
+    _collect_git_diff_context,
+    _latest_handoff_has_run_log,
+    _render_review_prompt,
+)
+from issuekit.agents.review_output import (
+    ReviewRunParseError,
+    ReviewVerdict,
+    _empty_verdict,
+    parse_review_output,
+)
 from issuekit.config import IssuekitConfig
 from issuekit.core import Issue, worker_keys_match
-from issuekit.encoding import ASCII_ONLY_HINT, has_non_ascii
 from issuekit.errors import WorkflowError
-from issuekit.gitutil import (
-    GitStatusEntry,
-    git_status_entries,
-    git_status_short,
-    git_stdout,
-)
 from issuekit.issues.service import approve_issue
-from issuekit.prompts import (
-    REVIEW_PROMPT,
-    ReviewParseError,
-    canonical_contract_token,
-    fence_untrusted,
-)
-from issuekit.prompts.fields import require_str, sanitize_ascii_field
+from issuekit.prompts import REVIEW_PROMPT, ReviewParseError
 from issuekit.store import managed_issue_store
 from issuekit.workflow import ensure_assigned_reviewer, request_changes
-
-REVIEW_OUTPUT_KEYS = REVIEW_PROMPT.required_keys
-_REVIEW_VERDICTS = {"approve", "request-changes"}
-_MAX_DIFF_CHARS = 60000
-_SUSPICIOUS_READABILITY_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
-    (
-        re.compile(
-            r"\bimportlib\.import_module\([^)\n]*(?:['\"][^'\"]*['\"]\s*\+)"
-        ),
-        "string-concatenated import_module path",
-    ),
-    (
-        re.compile(r"\bgetattr\([^,\n]+,\s*['\"][A-Za-z_][A-Za-z0-9_]*['\"]\s*\+"),
-        "string-concatenated getattr name",
-    ),
-    (
-        re.compile(r"\bsetattr\([^,\n]+,\s*['\"][A-Za-z_][A-Za-z0-9_]*['\"]\s*\+"),
-        "string-concatenated setattr name",
-    ),
-    (
-        re.compile(r"\bglobals\(\)\s*\[[^\]\n]+\]\s*="),
-        "globals() attribute injection",
-    ),
-)
-
-
-@dataclass(frozen=True)
-class ReviewVerdict:
-    verdict: str
-    verification: str
-    notes: str
 
 
 @dataclass(frozen=True)
@@ -79,22 +47,6 @@ class ReviewOutcome:
     verdict: ReviewVerdict
     exit_code: int
     decided_issue: Issue | None = None
-
-
-class ReviewRunParseError(ReviewParseError):
-    """A review parse error that retains the completed agent run result."""
-
-    def __init__(self, error: ReviewParseError, result: AgentResult) -> None:
-        super().__init__(str(error))
-        self.result = result
-
-
-@dataclass(frozen=True)
-class ReviewDiffContext:
-    text: str
-    has_changed_files: bool
-    has_handoff_evidence: bool = False
-    suspicious_warnings: tuple[str, ...] = ()
 
 
 def run_review_and_decide(
@@ -117,13 +69,7 @@ def run_review_and_decide(
 
     out = out or sys.stdout
     err = err or sys.stderr
-    issue_id = issue.id
-    if issue_id is None:
-        raise ValueError("Review issue is missing an id.")
-    if issue.stage != "review":
-        raise WorkflowError(f"Issue #{issue_id} is not at the review stage.")
-    _ensure_registered_distinct_worker(issue, agent=agent, config=config)
-    ensure_assigned_reviewer(issue, agent, agent)
+    issue_id = _require_reviewable(issue, agent=agent, config=config)
 
     adapter = resolve_adapter(
         agent,
@@ -133,9 +79,44 @@ def run_review_and_decide(
         role="reviewer",
     )
     diff_context = _collect_git_diff_context(cwd, issue=issue)
+    _require_review_evidence(issue, diff_context)
+    run = _run_reviewer(
+        issue, issue_id=issue_id, agent=agent, cwd=cwd, timeout=timeout,
+        adapter=adapter, diff_context=diff_context, follow=follow,
+        abort_event=abort_event, runner_factory=runner_factory,
+    )
+    failed_outcome = _failed_run_outcome(run, issue, err)
+    if failed_outcome is not None:
+        return failed_outcome
+    return _apply_verdict(
+        run, issue, issue_id=issue_id, agent=agent, adapter=adapter,
+        config=config, store=store, out=out, err=err,
+    )
+
+
+def _require_reviewable(
+    issue: Issue,
+    *,
+    agent: str,
+    config: IssuekitConfig,
+) -> int:
+    issue_id = issue.id
+    if issue_id is None:
+        raise ValueError("Review issue is missing an id.")
+    if issue.stage != "review":
+        raise WorkflowError(f"Issue #{issue_id} is not at the review stage.")
+    _ensure_registered_distinct_worker(issue, agent=agent, config=config)
+    ensure_assigned_reviewer(issue, agent, agent)
+    return issue_id
+
+
+def _require_review_evidence(
+    issue: Issue,
+    diff_context: ReviewDiffContext,
+) -> None:
     if not diff_context.has_changed_files and _latest_handoff_has_run_log(issue):
         raise WorkflowError(
-            f"Issue #{issue_id} was implemented by an agent run whose changes are not "
+            f"Issue #{issue.id} was implemented by an agent run whose changes are not "
             "in this checkout. Run the review in the implementing checkout, or commit "
             "and push the changes first."
         )
@@ -145,18 +126,30 @@ def run_review_and_decide(
             "refusing to run the reviewer agent."
         )
 
-    runner_factory = runner_factory or AgentRunner
-    review_filename = f"review-issue-{issue_id}.md"
-    run = run_readonly_evaluation(
+
+def _run_reviewer(
+    issue: Issue,
+    *,
+    issue_id: int,
+    agent: str,
+    cwd: Path,
+    timeout: float,
+    adapter: AgentAdapter,
+    diff_context: ReviewDiffContext,
+    follow: bool,
+    abort_event: threading.Event | None,
+    runner_factory,
+) -> ReadonlyAgentRun:
+    return run_readonly_evaluation(
         agent=agent,
         adapter=adapter,
         cwd=cwd,
         timeout=timeout,
-        runner_factory=runner_factory,
+        runner_factory=runner_factory or AgentRunner,
         prompt=prompt_from_spec(
             REVIEW_PROMPT,
             cwd=cwd,
-            filename=review_filename,
+            filename=f"review-issue-{issue_id}.md",
             body=_render_review_prompt(issue, diff_context=diff_context),
         ),
         label="Reviewer",
@@ -165,8 +158,14 @@ def run_review_and_decide(
         follow=follow,
         abort_event=abort_event,
     )
-    result = run.result
 
+
+def _failed_run_outcome(
+    run: ReadonlyAgentRun,
+    issue: Issue,
+    err: TextIO,
+) -> ReviewOutcome | None:
+    result = run.result
     if run.repository_modified:
         print(
             repository_mutation_message(
@@ -187,14 +186,28 @@ def run_review_and_decide(
             verdict=_empty_verdict(),
             exit_code=result.exit_code if result.exit_code > 0 else 1,
         )
-
     if run.repository_modified:
         return ReviewOutcome(issue=issue, result=result, verdict=_empty_verdict(), exit_code=1)
+    return None
 
+
+def _apply_verdict(
+    run: ReadonlyAgentRun,
+    issue: Issue,
+    *,
+    agent: str,
+    adapter: AgentAdapter,
+    config: IssuekitConfig,
+    issue_id: int,
+    store,
+    out: TextIO,
+    err: TextIO,
+) -> ReviewOutcome:
     try:
-        verdict = parse_review_output(stdout_text(result), err=err)
+        verdict = parse_review_output(stdout_text(run.result), err=err)
     except ReviewParseError as exc:
-        raise ReviewRunParseError(exc, result) from exc
+        raise ReviewRunParseError(exc, run.result) from exc
+
     with managed_issue_store(config, store) as active_store:
         agent_model, agent_reasoning_effort = adapter.effective_runtime()
         if verdict.verdict == "approve":
@@ -226,88 +239,10 @@ def run_review_and_decide(
             )
         return ReviewOutcome(
             issue=issue,
-            result=result,
+            result=run.result,
             verdict=verdict,
             exit_code=0,
             decided_issue=decided,
-        )
-
-
-def parse_review_output(stdout: str, *, err: TextIO | None = None) -> ReviewVerdict:
-    """Parse the newest well-formed review block from agent stdout."""
-
-    return _review_verdict_from_json(
-        REVIEW_PROMPT.parse_json(stdout),
-        err=err or sys.stderr,
-    )
-
-
-def _review_verdict_from_json(
-    raw: dict[str, object],
-    *,
-    err: TextIO,
-) -> ReviewVerdict:
-    missing = [key for key in REVIEW_OUTPUT_KEYS if key not in raw]
-    if missing:
-        raise ReviewParseError(f"Review block is missing required key: {', '.join(missing)}.")
-
-    raw_verdict = require_str(
-        raw["verdict"],
-        error=ReviewParseError,
-        message="Review key verdict must be a string.",
-    )
-    verdict = canonical_contract_token(raw_verdict, _REVIEW_VERDICTS)
-    if verdict is None:
-        raise ReviewParseError(f"Invalid review verdict: {raw_verdict}")
-    verification = sanitize_ascii_field(
-        "verification",
-        _required_review_text(raw["verification"], "verification").strip(),
-        err=err,
-        actor="reviewer",
-        recording="verdict",
-    )
-    notes = sanitize_ascii_field(
-        "notes",
-        _required_review_text(raw["notes"], "notes").strip(),
-        err=err,
-        actor="reviewer",
-        recording="verdict",
-    )
-    if verdict == "approve" and not verification:
-        raise ReviewParseError("Approved review verdict requires verification.")
-    if verdict == "request-changes" and not notes:
-        raise ReviewParseError("Request-changes review verdict requires notes.")
-    _validate_ascii_review_field("verdict", verdict)
-    return ReviewVerdict(verdict=verdict, verification=verification, notes=notes)
-
-
-def _required_review_text(value: object, key: str) -> str:
-    if isinstance(value, list):
-        if not all(isinstance(item, str) for item in value):
-            raise ReviewParseError(
-                f"Review key {key} must be a string or a list of strings."
-            )
-        return "\n".join(value)
-    if isinstance(value, dict):
-        for entry_key, entry_value in value.items():
-            if not isinstance(entry_value, str):
-                raise ReviewParseError(
-                    f"Review key {key} entry {entry_key} must be a string."
-                )
-        return "\n".join(
-            f"{entry_key}: {entry_value}" for entry_key, entry_value in value.items()
-        )
-    return require_str(
-        value,
-        error=ReviewParseError,
-        message=f"Review key {key} must be a string.",
-    )
-
-
-def _validate_ascii_review_field(key: str, value: str) -> None:
-    if has_non_ascii(value):
-        raise ReviewParseError(
-            f"Review field {key} must be ASCII-only. {ASCII_ONLY_HINT}"
         )
 
 
@@ -343,292 +278,3 @@ def _ensure_registered_distinct_worker(
             f"Issue #{issue.id} was implemented by {agent}; self-review is not allowed."
             f"{no_eligible_reviewer_message}"
         )
-
-
-def _render_review_prompt(
-    issue: Issue,
-    *,
-    diff_context: ReviewDiffContext,
-) -> str:
-    diff = diff_context.text
-    review_target = (
-        "the implementation diff"
-        if diff_context.has_changed_files
-        else "the submitted handoff evidence"
-    )
-    return REVIEW_PROMPT.render(
-        issue_ref=issue.ref,
-        review_target=review_target,
-        issue_body=fence_untrusted("issue_body", issue.body),
-        implementation_context=fence_untrusted("implementation_context", diff),
-        readability_hints=_readability_hint_section(diff_context),
-        output_keys=", ".join(REVIEW_OUTPUT_KEYS),
-        ascii_only_hint=ASCII_ONLY_HINT,
-    )
-
-
-def _collect_git_diff_context(cwd: Path, *, issue: Issue | None = None) -> ReviewDiffContext:
-    status_entries = git_status_entries(cwd)
-    status = git_status_short(cwd, strip=False, untracked_files="all")
-    stat = _git_stdout(
-        [
-            "--no-pager",
-            "diff",
-            "--stat",
-            "--no-ext-diff",
-            "--no-textconv",
-            "HEAD",
-            "--",
-        ],
-        cwd,
-    ) or ""
-    tracked_diff = (
-        _git_stdout(
-            [
-                "--no-pager",
-                "diff",
-                "--no-ext-diff",
-                "--no-textconv",
-                "--unified=80",
-                "HEAD",
-                "--",
-            ],
-            cwd,
-        )
-        or ""
-    )
-    diff = _combined_diff_evidence(cwd, tracked_diff, status_entries or ())
-    handoff_evidence = _handoff_evidence_text(issue) if issue is not None else ""
-    has_changed_files = _has_reviewable_changed_files(status_entries)
-    no_diff_note = (
-        ""
-        if has_changed_files
-        else "\n\nNo local implementation diff is available in this checkout."
-    )
-    text = "\n".join(
-        (
-            "git status --short:",
-            status.strip() if status else "(unavailable or clean)",
-            "",
-            "git diff --stat HEAD --:",
-            stat.strip() if stat else "(unavailable or empty)",
-            "",
-            "git diff HEAD --:",
-            diff.strip() if diff else "(unavailable or empty)",
-            no_diff_note,
-            handoff_evidence,
-        )
-    ).strip()
-    return ReviewDiffContext(
-        text=text,
-        has_changed_files=has_changed_files,
-        has_handoff_evidence=bool(handoff_evidence.strip()),
-        suspicious_warnings=_suspicious_readability_warnings(diff),
-    )
-
-
-_HANDOFF_METADATA_LABELS = {
-    "branch": "Branch",
-    "commit": "Commit",
-}
-
-_BODY_EVIDENCE_PATTERN = re.compile(
-    r"^\s*(handoff summary|branch|commit|verification|"
-    r"verification evidence|command evidence|commands run|checks|live host state)\s*:"
-    r"(?P<value>.*)$",
-    re.IGNORECASE,
-)
-_MARKDOWN_HEADING_PATTERN = re.compile(r"^\s*#{1,6}\s+")
-
-
-def _latest_handoff_has_run_log(issue: Issue) -> bool:
-    lines = issue.body.splitlines()
-    handoff_index = next(
-        (
-            index
-            for index in range(len(lines) - 1, -1, -1)
-            if re.fullmatch(r"\s*## Handoff\s*", lines[index])
-        ),
-        None,
-    )
-    if handoff_index is None:
-        return False
-    end_index = next(
-        (
-            index
-            for index in range(handoff_index + 1, len(lines))
-            if re.match(r"^\s*##\s+", lines[index])
-        ),
-        len(lines),
-    )
-    summary = "\n".join(lines[handoff_index + 1 : end_index])
-    lines = summary.splitlines()
-    has_allow_no_changes_marker = any(
-        line.strip() == NO_IMPLEMENTATION_CHANGES_MARKER for line in lines
-    )
-    return not has_allow_no_changes_marker and any(
-        line.startswith("Run log: ") for line in lines
-    )
-
-
-def _handoff_evidence_text(issue: Issue | None) -> str:
-    if issue is None:
-        return ""
-
-    entries: list[str] = []
-    seen_labels: set[str] = set()
-    for key, label in _HANDOFF_METADATA_LABELS.items():
-        value = issue.metadata.get(key, "").strip()
-        if not value:
-            continue
-        unique_label = label
-        if unique_label in seen_labels:
-            unique_label = f"{label} ({key})"
-        seen_labels.add(unique_label)
-        entries.append(f"{unique_label}: {value}")
-
-    body_evidence = _body_handoff_evidence(issue.body)
-    if body_evidence:
-        entries.append("Issue body evidence:")
-        entries.append(body_evidence)
-
-    if not entries:
-        return ""
-    return "\n".join(("Handoff evidence:", *entries))
-
-
-def _body_handoff_evidence(body: str) -> str:
-    lines = [line.rstrip() for line in body.splitlines()]
-    sections: list[str] = []
-    index = 0
-    while index < len(lines):
-        match = _BODY_EVIDENCE_PATTERN.match(lines[index])
-        if match is None:
-            index += 1
-            continue
-        section = [lines[index]]
-        has_value = bool(match.group("value").strip())
-        index += 1
-        while index < len(lines):
-            if _MARKDOWN_HEADING_PATTERN.match(lines[index]):
-                break
-            if _BODY_EVIDENCE_PATTERN.match(lines[index]):
-                break
-            section.append(lines[index])
-            has_value = has_value or bool(lines[index].strip())
-            index += 1
-        while section and not section[-1].strip():
-            section.pop()
-        if has_value:
-            sections.append("\n".join(section))
-    return "\n".join(sections)
-
-
-def _readability_hint_section(context: ReviewDiffContext) -> str:
-    warnings = context.suspicious_warnings
-    if not warnings:
-        return "Automated readability hints: none."
-    return "\n".join(
-        (
-            "Automated readability hints:",
-            *[f"- {warning}" for warning in warnings],
-        )
-    )
-
-
-def _suspicious_readability_warnings(diff: str) -> tuple[str, ...]:
-    added_text = "\n".join(
-        line[1:]
-        for line in diff.splitlines()
-        if line.startswith("+") and not line.startswith("+++")
-    )
-    warnings: list[str] = []
-    for pattern, label in _SUSPICIOUS_READABILITY_PATTERNS:
-        if pattern.search(added_text):
-            warnings.append(label)
-    return tuple(warnings)
-
-
-def _has_reviewable_changed_files(
-    entries: tuple[GitStatusEntry, ...] | None,
-) -> bool:
-    if entries is None:
-        return False
-    for entry in entries:
-        paths = tuple(
-            path for path in (entry.path, entry.original_path) if path is not None
-        )
-        if paths and all(path.parts and path.parts[0] == ".agent-runs" for path in paths):
-            continue
-        return True
-    return False
-
-
-def _combined_diff_evidence(
-    cwd: Path,
-    tracked_diff: str,
-    entries: tuple[GitStatusEntry, ...],
-) -> str:
-    untracked_sections = [
-        _untracked_diff_section(cwd, entry.path)
-        for entry in entries
-        if entry.status == "??"
-        and not (entry.path.parts and entry.path.parts[0] == ".agent-runs")
-    ]
-    parts = [part for part in (tracked_diff.strip(), *untracked_sections) if part]
-    combined = "\n\n".join(parts)
-    if len(combined) <= _MAX_DIFF_CHARS:
-        return combined
-
-    omitted = [
-        f"[untracked file omitted by review context size limit: {entry.path.as_posix()}]"
-        for entry in entries
-        if entry.status == "??"
-        and not (entry.path.parts and entry.path.parts[0] == ".agent-runs")
-    ]
-    marker_text = "\n".join(omitted)
-    suffix = "\n\n".join(part for part in ("[diff truncated]", marker_text) if part)
-    available = max(0, _MAX_DIFF_CHARS - len(suffix) - 2)
-    tracked = tracked_diff.strip()[:available]
-    return "\n\n".join(part for part in (tracked, suffix) if part)[:_MAX_DIFF_CHARS]
-
-
-def _untracked_diff_section(cwd: Path, rel_path: Path) -> str:
-    path_text = rel_path.as_posix()
-    path = cwd / rel_path
-    if path.is_symlink():
-        return f"[untracked symlink: {path_text}]"
-    try:
-        if not path.is_file():
-            return f"[untracked non-regular file: {path_text}]"
-        if path.stat().st_size > _MAX_DIFF_CHARS:
-            return f"[untracked file omitted by review context size limit: {path_text}]"
-        raw = path.read_bytes()
-    except OSError as exc:
-        return f"[untracked unreadable file: {path_text}: {exc}]"
-    if b"\0" in raw:
-        return f"[untracked binary file: {path_text}]"
-    try:
-        text = raw.decode("utf-8")
-    except UnicodeDecodeError:
-        return f"[untracked binary file: {path_text}]"
-    lines = text.splitlines()
-    additions = "\n".join(f"+{line}" for line in lines)
-    return "\n".join(
-        (
-            f"diff --git a/{path_text} b/{path_text}",
-            "new file mode 100644",
-            "--- /dev/null",
-            f"+++ b/{path_text}",
-            f"@@ -0,0 +1,{len(lines)} @@",
-            additions,
-        )
-    ).rstrip()
-
-
-def _git_stdout(args: list[str], cwd: Path) -> str:
-    return git_stdout(args, cwd) or ""
-
-
-def _empty_verdict() -> ReviewVerdict:
-    return ReviewVerdict(verdict="", verification="", notes="")

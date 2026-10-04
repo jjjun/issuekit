@@ -6,8 +6,7 @@ from pathlib import Path
 import pytest
 
 from issuekit import cli
-from issuekit.agents import implementation_changes
-from issuekit.agents import review as review_agent
+from issuekit.agents import implementation_changes, review_context
 from issuekit.commands import check_encoding
 from issuekit.encoding import changed_line_numbers
 from issuekit.gitutil import GitStatusEntry
@@ -61,7 +60,7 @@ def test_issuekit_diff_operations_disable_textconv(
     marker.unlink()
 
     if operation == "review":
-        review_agent._collect_git_diff_context(tmp_path)
+        review_context._collect_git_diff_context(tmp_path)
     elif operation == "numstat":
         snapshot = implementation_changes.ImplementationChangeSnapshot(
             root=tmp_path.resolve(),

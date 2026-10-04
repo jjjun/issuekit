@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import TextIO
 
 from issuekit.agentrun import AgentPrompt, AgentResult
+from issuekit.agents.paths import is_agent_runtime_entry
 from issuekit.errors import WorkflowError
 from issuekit.gitutil import git_root, git_status_entries, run_git
 from issuekit.prompts import PromptSpec
@@ -164,7 +165,7 @@ def worktree_fingerprint(cwd: Path) -> tuple[tuple[str, str, str, str], ...] | N
         paths = tuple(
             path for path in (entry.path, entry.original_path) if path is not None
         )
-        if paths and all(path.parts and path.parts[0] == ".agent-runs" for path in paths):
+        if paths and all(is_agent_runtime_entry(path) for path in paths):
             continue
         entries.append(
             (

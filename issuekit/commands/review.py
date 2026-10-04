@@ -9,9 +9,9 @@ from pathlib import Path
 from issuekit.agentrun import AgentResult, AgentRunner
 from issuekit.agents.review import (
     ReviewOutcome,
-    ReviewRunParseError,
     run_review_and_decide,
 )
+from issuekit.agents.review_output import ReviewRunParseError
 from issuekit.commands._common import add_agent_run_options, add_follow_flag, run_agent_command
 from issuekit.config import load_config
 from issuekit.core import Issue, parse_issue_id_arg
