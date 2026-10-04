@@ -7,7 +7,6 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
-import issuekit.proposals.send as proposals_send
 from issuekit.agentrun import AgentRunner
 from issuekit.agents.router import RouterDecision, RouteTarget, run_router
 from issuekit.commands.request.output import print_payload
@@ -21,6 +20,8 @@ from issuekit.commands.request.state import (
     resolve_depends_on,
     routed_origin,
     save_state,
+    send_target_proposal,
+    sent_target_update,
     state_targets,
     target_depends_on,
     target_state,
@@ -28,7 +29,6 @@ from issuekit.commands.request.state import (
 from issuekit.config import IssuekitConfig
 from issuekit.errors import WorkflowError
 from issuekit.proposals import ProposalError
-from issuekit.proposals.build import build_proposal
 from issuekit.proposals.client import api_client
 
 
@@ -234,7 +234,55 @@ def send_route_targets(
     record: dict[str, Any],
     targets: tuple[RouteTarget, ...],
 ) -> list[dict[str, Any]]:
+    existing_targets = _prepare_route_targets(
+        cwd,
+        state,
+        request_id,
+        record,
+        targets,
+    )
+    return _send_pending_route_targets(
+        cwd,
+        config,
+        state,
+        request_id,
+        record,
+        existing_targets,
+    )
+
+
+def _prepare_route_targets(
+    cwd: Path,
+    state: dict[str, dict[str, Any]],
+    request_id: int,
+    record: dict[str, Any],
+    targets: tuple[RouteTarget, ...],
+) -> list[dict[str, Any]]:
     existing_targets = state_targets(record)
+    target_indexes = _route_target_indexes(request_id, existing_targets, targets)
+    saved_projects = {str(target.get("project") or "") for target in existing_targets}
+    for target in targets:
+        if target.project in saved_projects:
+            continue
+        stable_depends_on = tuple(
+            _saved_target_reference(ref, target_indexes) for ref in target.depends_on
+        )
+        existing_targets.append(target_state(replace(target, depends_on=stable_depends_on)))
+
+    record["decision"] = "route"
+    record.pop("pending_question", None)
+    record["targets"] = existing_targets
+    record["updated_at"] = now()
+    state[str(request_id)] = record
+    save_state(cwd, state)
+    return existing_targets
+
+
+def _route_target_indexes(
+    request_id: int,
+    existing_targets: list[dict[str, Any]],
+    targets: tuple[RouteTarget, ...],
+) -> dict[int, int]:
     existing_indexes: dict[str, int] = {}
     for index, stored in enumerate(existing_targets):
         project = str(stored.get("project") or "")
@@ -259,23 +307,17 @@ def send_route_targets(
             target_indexes[index] = next_index
             existing_indexes[target.project] = next_index
             next_index += 1
+    return target_indexes
 
-    saved_projects = {str(target.get("project") or "") for target in existing_targets}
-    for target in targets:
-        if target.project in saved_projects:
-            continue
-        stable_depends_on = tuple(
-            _saved_target_reference(ref, target_indexes) for ref in target.depends_on
-        )
-        existing_targets.append(target_state(replace(target, depends_on=stable_depends_on)))
 
-    record["decision"] = "route"
-    record.pop("pending_question", None)
-    record["targets"] = existing_targets
-    record["updated_at"] = now()
-    state[str(request_id)] = record
-    save_state(cwd, state)
-
+def _send_pending_route_targets(
+    cwd: Path,
+    config: IssuekitConfig,
+    state: dict[str, dict[str, Any]],
+    request_id: int,
+    record: dict[str, Any],
+    existing_targets: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
     refs_by_index: dict[int, str] = {}
     for index, stored in enumerate(existing_targets):
         stored_ref = str(stored.get("proposal_ref") or "").strip()
@@ -299,62 +341,66 @@ def send_route_targets(
             raise ProposalError("Saved route targets have unresolved target dependencies.")
 
         for index in ready_indexes:
-            stored = existing_targets[index]
-            target = RouteTarget(
-                project=str(stored.get("project") or ""),
-                title=str(stored.get("title") or ""),
-                body=str(stored.get("body") or ""),
-                blocking=bool(stored.get("blocking", False)),
-                depends_on=target_depends_on(stored),
-            )
-            resolved_depends_on = resolve_depends_on(target.depends_on, refs_by_index)
-            project = target.project
-            proposal = build_proposal(
+            refs_by_index[index] = _send_route_target(
                 cwd,
-                to=project,
-                title=target.title,
-                body=target.body,
-                body_file=None,
-                from_issue=None,
-                reply=None,
-                blocking=target.blocking,
-                depends_on=resolved_depends_on,
+                config,
+                state,
+                request_id,
+                record,
+                existing_targets,
+                index,
+                refs_by_index,
             )
-            proposal = replace(
-                proposal,
-                origin=routed_origin(
-                    config,
-                    cwd,
-                    request_id=request_id,
-                    target_index=index,
-                    target_project=project,
-                ),
-            )
-            sent = proposals_send.send_proposal(config, proposal)
-            if sent.get("payload_mismatch"):
-                save_state(cwd, state)
-                raise ProposalError(
-                    _routed_payload_mismatch_message(request_id, project, sent)
-                )
-            proposal_ref = f"{project}#{sent.get('id')}"
-            dependency_ref = str(sent.get("dependency_ref") or proposal_ref)
-            refs_by_index[index] = dependency_ref
-            updated = dict(stored)
-            updated.update(
-                {
-                    "proposal_ref": proposal_ref,
-                    "dependency_ref": dependency_ref,
-                    "proposal_id": sent.get("id"),
-                    "sent_at": now(),
-                }
-            )
-            existing_targets[index] = updated
-            record["targets"] = existing_targets
-            record["updated_at"] = now()
-            save_state(cwd, state)
             pending_indexes.remove(index)
 
     return [dict(target) for target in existing_targets]
+
+
+def _send_route_target(
+    cwd: Path,
+    config: IssuekitConfig,
+    state: dict[str, dict[str, Any]],
+    request_id: int,
+    record: dict[str, Any],
+    existing_targets: list[dict[str, Any]],
+    index: int,
+    refs_by_index: dict[int, str],
+) -> str:
+    stored = existing_targets[index]
+    target = RouteTarget(
+        project=str(stored.get("project") or ""),
+        title=str(stored.get("title") or ""),
+        body=str(stored.get("body") or ""),
+        blocking=bool(stored.get("blocking", False)),
+        depends_on=target_depends_on(stored),
+    )
+    project = target.project
+    sent_target = send_target_proposal(
+        cwd,
+        config,
+        project=project,
+        title=target.title,
+        body=target.body,
+        blocking=target.blocking,
+        depends_on=tuple(resolve_depends_on(target.depends_on, refs_by_index)),
+        origin=routed_origin(
+            config,
+            cwd,
+            request_id=request_id,
+            target_index=index,
+            target_project=project,
+        ),
+    )
+    if sent_target.sent.get("payload_mismatch"):
+        save_state(cwd, state)
+        raise ProposalError(
+            _routed_payload_mismatch_message(request_id, project, sent_target.sent)
+        )
+    existing_targets[index] = sent_target_update(stored, sent_target)
+    record["targets"] = existing_targets
+    record["updated_at"] = now()
+    save_state(cwd, state)
+    return sent_target.dependency_ref
 
 
 def _saved_target_reference(ref: str, target_indexes: dict[int, int]) -> str:

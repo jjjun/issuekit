@@ -5,15 +5,18 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Sequence
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
+import issuekit.proposals.send as proposals_send
 from issuekit.agentrun.run_dir import prepare_run_dir
 from issuekit.agents.router import RouteTarget
 from issuekit.config import IssuekitConfig
 from issuekit.file_permissions import write_owner_only_text
 from issuekit.gitutil import git_short_head
 from issuekit.proposals import ProposalError
+from issuekit.proposals.build import build_proposal
 from issuekit.proposals.client import api_client
 from issuekit.proposals.outgoing import (
     OUTGOING_PROPOSAL_STATUSES,
@@ -26,6 +29,14 @@ PROPOSAL_REF_PATTERN = re.compile(
     r"^(?P<project>[A-Za-z0-9_.-]+)#(?P<id>[1-9][0-9]*)$"
 )
 TARGET_PLACEHOLDER_PATTERN = re.compile(r"^target:(?P<index>[0-9]+)$")
+
+
+@dataclass(frozen=True)
+class SentTarget:
+    sent: dict[str, Any]
+    proposal_ref: str
+    dependency_ref: str
+    proposal_id: Any
 
 
 def state_path(cwd: Path) -> Path:
@@ -170,6 +181,55 @@ def target_state(target: RouteTarget) -> dict[str, Any]:
     data.setdefault("blocking", False)
     data.setdefault("depends_on", [])
     return data
+
+
+def send_target_proposal(
+    cwd: Path,
+    config: IssuekitConfig,
+    *,
+    project: str,
+    title: str,
+    body: str,
+    blocking: bool,
+    depends_on: tuple[str, ...],
+    origin: str,
+) -> SentTarget:
+    proposal = build_proposal(
+        cwd,
+        to=project,
+        title=title,
+        body=body,
+        body_file=None,
+        from_issue=None,
+        reply=None,
+        blocking=blocking,
+        depends_on=depends_on,
+    )
+    proposal = replace(proposal, origin=origin)
+    sent = proposals_send.send_proposal(config, proposal)
+    proposal_ref = f"{project}#{sent.get('id')}"
+    dependency_ref = str(sent.get("dependency_ref") or proposal_ref)
+    return SentTarget(
+        sent=sent,
+        proposal_ref=proposal_ref,
+        dependency_ref=dependency_ref,
+        proposal_id=sent.get("id"),
+    )
+
+
+def sent_target_update(
+    stored: dict[str, Any], sent_target: SentTarget
+) -> dict[str, Any]:
+    updated = dict(stored)
+    updated.update(
+        {
+            "proposal_ref": sent_target.proposal_ref,
+            "dependency_ref": sent_target.dependency_ref,
+            "proposal_id": sent_target.proposal_id,
+            "sent_at": now(),
+        }
+    )
+    return updated
 
 
 def resolve_depends_on(depends_on: tuple[str, ...], refs_by_index: dict[int, str]) -> list[str]:

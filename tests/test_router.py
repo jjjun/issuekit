@@ -13,8 +13,10 @@ from issuekit.agentrun import AgentPrompt
 from issuekit.agents import router
 from issuekit.agents.registry import resolve_adapter
 from issuekit.agents.router import RouterParseError, parse_router_output
+from issuekit.commands.request import state as request_state
 from issuekit.config import RouterPolicy, load_config
 from issuekit.proposals import ProposalError
+from issuekit.proposals.model import Proposal
 from issuekit.testing import FakeIssuekitClient
 from tests.agent_fakes import FakeRunner, fenced_block
 from tests.git_helpers import init_git_repo
@@ -1370,3 +1372,104 @@ def test_router_allows_change_to_already_dirty_worktree_path(
     )
 
     assert decision.decision == "reject"
+
+
+def test_send_target_proposal_returns_proposal_references(monkeypatch, tmp_path) -> None:
+    proposal = Proposal(
+        origin="pm#0@before",
+        to="api",
+        target_worker="",
+        reply_to="",
+        created="2026-10-04",
+        title="Add endpoint",
+        body="Implement endpoint.",
+    )
+    build_calls = {}
+
+    def build_proposal(cwd, **kwargs):
+        build_calls.update(cwd=cwd, **kwargs)
+        return proposal
+
+    sent = {"id": 42, "dependency_ref": "api#issue:42"}
+    send_calls = []
+
+    def send_proposal(config, proposal_to_send):
+        send_calls.append((config, proposal_to_send))
+        return sent
+
+    monkeypatch.setattr(request_state, "build_proposal", build_proposal)
+    monkeypatch.setattr(request_state.proposals_send, "send_proposal", send_proposal)
+    config = object()
+
+    result = request_state.send_target_proposal(
+        tmp_path,
+        config,
+        project="api",
+        title="Add endpoint",
+        body="Implement endpoint.",
+        blocking=True,
+        depends_on=("core#proposal:7",),
+        origin="pm#1@abcdef0",
+    )
+
+    assert build_calls == {
+        "cwd": tmp_path,
+        "to": "api",
+        "title": "Add endpoint",
+        "body": "Implement endpoint.",
+        "body_file": None,
+        "from_issue": None,
+        "reply": None,
+        "blocking": True,
+        "depends_on": ("core#proposal:7",),
+    }
+    assert len(send_calls) == 1
+    assert send_calls[0][0] is config
+    assert send_calls[0][1].origin == "pm#1@abcdef0"
+    assert send_calls[0][1].to == "api"
+    assert result.sent is sent
+    assert result.proposal_ref == "api#42"
+    assert result.dependency_ref == "api#issue:42"
+    assert result.proposal_id == 42
+
+
+def test_send_target_proposal_returns_payload_mismatch(monkeypatch, tmp_path) -> None:
+    proposal = Proposal(
+        origin="pm#0@before",
+        to="api",
+        target_worker="",
+        reply_to="",
+        created="2026-10-04",
+        title="Add endpoint",
+        body="Implement endpoint.",
+    )
+    sent = {
+        "id": 42,
+        "payload_mismatch": True,
+        "warning": "Pending proposal has different content.",
+    }
+    monkeypatch.setattr(
+        request_state,
+        "build_proposal",
+        lambda _cwd, **_kwargs: proposal,
+    )
+    monkeypatch.setattr(
+        request_state.proposals_send,
+        "send_proposal",
+        lambda _config, _proposal: sent,
+    )
+
+    result = request_state.send_target_proposal(
+        tmp_path,
+        object(),
+        project="api",
+        title="Add endpoint",
+        body="Implement endpoint.",
+        blocking=False,
+        depends_on=(),
+        origin="pm#1@abcdef0",
+    )
+
+    assert result.sent is sent
+    assert result.sent["payload_mismatch"] is True
+    assert result.proposal_ref == "api#42"

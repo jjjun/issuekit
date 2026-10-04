@@ -3,17 +3,16 @@
 from __future__ import annotations
 
 import sys
-from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
-import issuekit.proposals.send as proposals_send
 from issuekit.agentrun import AgentRunner
 from issuekit.agents.router import run_router
 from issuekit.commands.request.inbox import ambiguous_answer_message, matched_inbox_questions
 from issuekit.commands.request.output import print_payload
 from issuekit.commands.request.routing import handle_decision, require_router_config
 from issuekit.commands.request.state import (
+    SentTarget,
     amended_origin,
     compose_amended_body,
     load_state,
@@ -22,13 +21,14 @@ from issuekit.commands.request.state import (
     refs_by_target_index,
     resolve_depends_on,
     save_state,
+    send_target_proposal,
+    sent_target_update,
     state_targets,
     target_clarifications,
     target_depends_on,
 )
 from issuekit.config import IssuekitConfig
 from issuekit.proposals import ProposalError
-from issuekit.proposals.build import build_proposal
 from issuekit.proposals.client import api_client
 
 
@@ -163,79 +163,69 @@ def run_target_reply_answer(
     dry_run: bool,
 ) -> int:
     if dry_run:
-        payload = {
-            "request_id": request_id,
-            "decision": "answer",
-            "target_project": pending_question["target_project"],
-            "supersedes": pending_question["proposal_ref"],
-        }
-        print_payload(payload, json_output=json_output)
-        return 0
+        return _print_target_reply_dry_run(
+            request_id,
+            pending_question,
+            json_output=json_output,
+        )
 
     targets = state_targets(record)
     target_index = int(pending_question["target_index"])
     target = targets[target_index]
-    previous_ref = str(target.get("proposal_ref") or "").strip()
-    if previous_ref != pending_question["proposal_ref"]:
-        raise ValueError(
-            f"Pending clarification targets {pending_question['proposal_ref']}, "
-            f"but request {request_id} now records {previous_ref or 'no proposal'}."
-        )
-
-    clarifications = target_clarifications(target)
-    clarifications.append(
-        {
-            "question": str(pending_question.get("question") or "").strip(),
-            "answer": answer_text.strip(),
-        }
+    previous_ref, clarifications, amended_body, depends_on = _prepare_target_reply(
+        target,
+        pending_question,
+        request_id=request_id,
+        answer_text=answer_text,
+        targets=targets,
     )
-    amended_body = compose_amended_body(
-        str(target.get("body") or "").strip(),
-        clarifications,
-        supersedes=previous_ref,
-    )
-    resolved_depends_on = resolve_depends_on(
-        target_depends_on(target),
-        refs_by_target_index(targets),
-    )
-    proposal = build_proposal(
+    sent_target = _send_target_reply_proposal(
         cwd,
-        to=str(target["project"]),
-        title=str(target.get("title") or ""),
-        body=amended_body,
-        body_file=None,
-        from_issue=None,
-        reply=None,
-        blocking=bool(target.get("blocking", False)),
-        depends_on=resolved_depends_on,
+        config,
+        target,
+        amended_body,
+        depends_on,
+        request_id=request_id,
+        previous_ref=previous_ref,
+        round_count=len(clarifications),
     )
-    proposal = replace(
-        proposal,
-        origin=amended_origin(
-            config,
-            cwd,
-            request_id=request_id,
-            target_project=str(target["project"]),
-            previous_ref=previous_ref,
-            round_count=len(clarifications),
-        ),
+    return _finish_target_reply_answer(
+        cwd,
+        config,
+        state,
+        record,
+        targets,
+        target_index,
+        target,
+        sent_target,
+        clarifications,
+        request_id=request_id,
+        previous_ref=previous_ref,
+        pending_question=pending_question,
+        json_output=json_output,
     )
-    sent = proposals_send.send_proposal(config, proposal)
-    if sent.get("payload_mismatch"):
-        raise ProposalError(str(sent.get("warning") or "Proposal payload mismatch."))
 
-    proposal_ref = f"{target['project']}#{sent.get('id')}"
-    dependency_ref = str(sent.get("dependency_ref") or proposal_ref)
-    updated = dict(target)
-    updated.update(
-        {
-            "proposal_ref": proposal_ref,
-            "dependency_ref": dependency_ref,
-            "proposal_id": sent.get("id"),
-            "sent_at": now(),
-            "clarifications": clarifications,
-        }
-    )
+
+def _finish_target_reply_answer(
+    cwd: Path,
+    config: IssuekitConfig,
+    state: dict[str, dict[str, Any]],
+    record: dict[str, Any],
+    targets: list[dict[str, Any]],
+    target_index: int,
+    target: dict[str, Any],
+    sent_target: SentTarget,
+    clarifications: list[dict[str, str]],
+    *,
+    request_id: int,
+    previous_ref: str,
+    pending_question: dict[str, Any],
+    json_output: bool,
+) -> int:
+    proposal_ref = sent_target.proposal_ref
+    dependency_ref = sent_target.dependency_ref
+    updated = sent_target_update(target, sent_target)
+    updated["clarifications"] = clarifications
     targets[target_index] = updated
     record["targets"] = targets
     record["updated_at"] = now()
@@ -255,3 +245,89 @@ def run_target_reply_answer(
     }
     print_payload(payload, json_output=json_output)
     return 0
+
+
+def _print_target_reply_dry_run(
+    request_id: int,
+    pending_question: dict[str, Any],
+    *,
+    json_output: bool,
+) -> int:
+    payload = {
+        "request_id": request_id,
+        "decision": "answer",
+        "target_project": pending_question["target_project"],
+        "supersedes": pending_question["proposal_ref"],
+    }
+    print_payload(payload, json_output=json_output)
+    return 0
+
+
+def _prepare_target_reply(
+    target: dict[str, Any],
+    pending_question: dict[str, Any],
+    *,
+    request_id: int,
+    answer_text: str,
+    targets: list[dict[str, Any]],
+) -> tuple[str, list[dict[str, str]], str, tuple[str, ...]]:
+    previous_ref = str(target.get("proposal_ref") or "").strip()
+    if previous_ref != pending_question["proposal_ref"]:
+        raise ValueError(
+            f"Pending clarification targets {pending_question['proposal_ref']}, "
+            f"but request {request_id} now records {previous_ref or 'no proposal'}."
+        )
+    clarifications = target_clarifications(target)
+    clarifications.append(
+        {
+            "question": str(pending_question.get("question") or "").strip(),
+            "answer": answer_text.strip(),
+        }
+    )
+    amended_body = compose_amended_body(
+        str(target.get("body") or "").strip(),
+        clarifications,
+        supersedes=previous_ref,
+    )
+    depends_on = tuple(
+        resolve_depends_on(
+            target_depends_on(target),
+            refs_by_target_index(targets),
+        )
+    )
+    return previous_ref, clarifications, amended_body, depends_on
+
+
+def _send_target_reply_proposal(
+    cwd: Path,
+    config: IssuekitConfig,
+    target: dict[str, Any],
+    amended_body: str,
+    depends_on: tuple[str, ...],
+    *,
+    request_id: int,
+    previous_ref: str,
+    round_count: int,
+) -> SentTarget:
+    sent_target = send_target_proposal(
+        cwd,
+        config,
+        project=str(target["project"]),
+        title=str(target.get("title") or ""),
+        body=amended_body,
+        blocking=bool(target.get("blocking", False)),
+        depends_on=depends_on,
+        origin=amended_origin(
+            config,
+            cwd,
+            request_id=request_id,
+            target_project=str(target["project"]),
+            previous_ref=previous_ref,
+            round_count=round_count,
+        ),
+    )
+    if sent_target.sent.get("payload_mismatch"):
+        raise ProposalError(
+            str(sent_target.sent.get("warning") or "Proposal payload mismatch.")
+        )
+    return sent_target

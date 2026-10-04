@@ -6,6 +6,7 @@ import argparse
 import subprocess
 import sys
 from bisect import bisect_right
+from dataclasses import dataclass
 from pathlib import Path
 
 from issuekit.commands._common import add_json_flag, print_json
@@ -23,6 +24,29 @@ from issuekit.encoding import (
 from issuekit.gitutil import git_status_entries, run_git
 
 BOM = b"\xef\xbb\xbf"
+
+
+@dataclass(frozen=True)
+class ScanTargets:
+    gate: bool
+    exclude_patterns: tuple[str, ...]
+    scan_paths: tuple[Path, ...]
+    source_files: list[str]
+    crlf_paths: list[str] | None
+    changed_lines_by_path: dict[Path, set[int]] | None
+    whole_file_paths: set[Path]
+
+
+@dataclass
+class ScanResults:
+    bom_files: list[str]
+    mojibake_files: list[str]
+    mojibake_hits: list[dict[str, int | str]]
+    unconfirmed_mojibake_hits: list[dict[str, int | str]]
+    stray_cr_files: dict[str, list[int]]
+    fixed_files: list[str]
+    mojibake_failed: bool
+    crlf_files: list[str]
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:
@@ -112,6 +136,40 @@ def run(args) -> int:
         )
         return 2
 
+    targets = _select_scan_targets(args, config, repo_root)
+    results = _scan_bom_and_stray_cr(args, repo_root, targets)
+    _scan_mojibake(args, config, repo_root, targets, results)
+
+    remaining_bom_files = [] if args.fix else results.bom_files
+    payload = {
+        "bom_files": remaining_bom_files,
+        "mojibake_files": results.mojibake_files,
+        "mojibake_hits": results.mojibake_hits,
+        "unconfirmed_mojibake_hits": results.unconfirmed_mojibake_hits,
+        "stray_cr_files": list(results.stray_cr_files),
+        "crlf_files": results.crlf_files,
+        "fixed": results.fixed_files,
+    }
+    if args.json:
+        print_json(payload)
+
+    if (
+        not remaining_bom_files
+        and not results.mojibake_failed
+        and not results.stray_cr_files
+        and not results.crlf_files
+    ):
+        if not args.json:
+            _print_success(args, results)
+        return 0
+
+    if not args.json:
+        _print_failures(args, results, targets, remaining_bom_files)
+    return 1
+
+
+def _select_scan_targets(args, config, repo_root: Path) -> ScanTargets:
+    gate = getattr(args, "gate", False)
     exclude_patterns = (*config.check_encoding_exclude, *args.exclude)
     changed = getattr(args, "changed", False)
     changed_lines_by_path: dict[Path, set[int]] | None = None
@@ -152,21 +210,30 @@ def run(args) -> int:
             and not is_encoding_excluded_path(file, exclude_patterns)
         ]
         crlf_paths = None
+    return ScanTargets(
+        gate=gate,
+        exclude_patterns=exclude_patterns,
+        scan_paths=tuple(scan_paths),
+        source_files=source_files,
+        crlf_paths=crlf_paths,
+        changed_lines_by_path=changed_lines_by_path,
+        whole_file_paths=whole_file_paths,
+    )
 
+
+def _scan_bom_and_stray_cr(
+    args, repo_root: Path, targets: ScanTargets
+) -> ScanResults:
     bom_files: list[str] = []
-    mojibake_files: list[str] = []
-    mojibake_hits: list[dict[str, int | str]] = []
-    unconfirmed_mojibake_hits: list[dict[str, int | str]] = []
     stray_cr_files: dict[str, list[int]] = {}
     fixed_files: list[str] = []
-    mojibake_failed = False
     crlf_files = [] if args.no_crlf else [
         file
-        for file in list_crlf_files(repo_root, paths=crlf_paths)
-        if not is_encoding_excluded_path(file, exclude_patterns)
+        for file in list_crlf_files(repo_root, paths=targets.crlf_paths)
+        if not is_encoding_excluded_path(file, targets.exclude_patterns)
     ]
 
-    for file in source_files:
+    for file in targets.source_files:
         path = repo_root / file
         try:
             content = path.read_bytes()
@@ -184,159 +251,162 @@ def run(args) -> int:
         except OSError:
             continue
 
+    return ScanResults(
+        bom_files=bom_files,
+        mojibake_files=[],
+        mojibake_hits=[],
+        unconfirmed_mojibake_hits=[],
+        stray_cr_files=stray_cr_files,
+        fixed_files=fixed_files,
+        mojibake_failed=False,
+        crlf_files=crlf_files,
+    )
+
+
+def _scan_mojibake(
+    args,
+    config,
+    repo_root: Path,
+    targets: ScanTargets,
+    results: ScanResults,
+) -> None:
     if not args.no_mojibake:
         failure_classes = {"confirmed"}
-        if gate or args.fail_on_unconfirmed:
+        if targets.gate or args.fail_on_unconfirmed:
             failure_classes.add("unconfirmed")
         scan_result = scan_mojibake(
             repo_root,
-            scan_paths,
+            targets.scan_paths,
             options=MojibakeScanOptions(
                 failure_classes=frozenset(failure_classes),
                 include_halfwidth_katakana=(
                     config.gate_halfwidth_kana
-                    if gate
+                    if targets.gate
                     else not args.no_halfwidth_kana
                 ),
-                source_extensions=None if gate else SOURCE_EXTENSIONS,
-                line_scope="changed-lines" if gate else "whole-file",
-                exclude_patterns=exclude_patterns,
+                source_extensions=None if targets.gate else SOURCE_EXTENSIONS,
+                line_scope="changed-lines" if targets.gate else "whole-file",
+                exclude_patterns=targets.exclude_patterns,
                 excluded_hit_classes=frozenset({"unconfirmed"}),
             ),
-            changed_lines_by_path=changed_lines_by_path,
-            whole_file_paths=whole_file_paths,
+            changed_lines_by_path=targets.changed_lines_by_path,
+            whole_file_paths=targets.whole_file_paths,
         )
-        mojibake_hits = list(scan_result.confirmed_hits)
-        mojibake_failed = scan_result.failed
-        mojibake_files = list(
-            dict.fromkeys(str(hit["file"]) for hit in mojibake_hits)
+        results.mojibake_hits = list(scan_result.confirmed_hits)
+        results.mojibake_failed = scan_result.failed
+        results.mojibake_files = list(
+            dict.fromkeys(str(hit["file"]) for hit in results.mojibake_hits)
         )
-        if gate or args.show_unconfirmed_mojibake or args.fail_on_unconfirmed:
-            unconfirmed_mojibake_hits = list(scan_result.unconfirmed_hits)
+        if targets.gate or args.show_unconfirmed_mojibake or args.fail_on_unconfirmed:
+            results.unconfirmed_mojibake_hits = list(scan_result.unconfirmed_hits)
 
-    remaining_bom_files = [] if args.fix else bom_files
-    payload = {
-        "bom_files": remaining_bom_files,
-        "mojibake_files": mojibake_files,
-        "mojibake_hits": mojibake_hits,
-        "unconfirmed_mojibake_hits": unconfirmed_mojibake_hits,
-        "stray_cr_files": list(stray_cr_files),
-        "crlf_files": crlf_files,
-        "fixed": fixed_files,
-    }
-    if args.json:
-        print_json(payload)
 
-    if (
-        not remaining_bom_files
-        and not mojibake_failed
-        and not stray_cr_files
-        and not crlf_files
-    ):
-        if not args.json:
-            if gate:
-                print(
-                    "Encoding submit gate passed: no mojibake in changed lines."
-                )
-                return 0
-            for file in fixed_files:
-                print(f"Fixed BOM: {file}")
-            completed_checks = ["UTF-8 BOM"]
-            if not args.no_mojibake:
-                completed_checks.append("likely mojibake")
-            if not args.no_stray_cr:
-                completed_checks.append("stray carriage returns")
-            if not args.no_crlf:
-                completed_checks.append("CRLF")
-            checks_text = _join_checks(completed_checks)
-            if fixed_files:
-                remaining_checks = completed_checks[1:]
-                if remaining_checks:
-                    print(
-                        "Encoding check passed after fixing UTF-8 BOM files; "
-                        f"no {_join_checks(remaining_checks)} found."
-                    )
-                else:
-                    print("Encoding check passed after fixing UTF-8 BOM files.")
-            else:
-                print(f"Encoding check passed: no {checks_text} in tracked files.")
-            _print_unconfirmed_mojibake_hits(unconfirmed_mojibake_hits)
-        return 0
+def _print_success(args, results: ScanResults) -> None:
+    if getattr(args, "gate", False):
+        print("Encoding submit gate passed: no mojibake in changed lines.")
+        return
+    for file in results.fixed_files:
+        print(f"Fixed BOM: {file}")
+    completed_checks = ["UTF-8 BOM"]
+    if not args.no_mojibake:
+        completed_checks.append("likely mojibake")
+    if not args.no_stray_cr:
+        completed_checks.append("stray carriage returns")
+    if not args.no_crlf:
+        completed_checks.append("CRLF")
+    checks_text = _join_checks(completed_checks)
+    if results.fixed_files:
+        remaining_checks = completed_checks[1:]
+        if remaining_checks:
+            print(
+                "Encoding check passed after fixing UTF-8 BOM files; "
+                f"no {_join_checks(remaining_checks)} found."
+            )
+        else:
+            print("Encoding check passed after fixing UTF-8 BOM files.")
+    else:
+        print(f"Encoding check passed: no {checks_text} in tracked files.")
+    _print_unconfirmed_mojibake_hits(results.unconfirmed_mojibake_hits)
 
-    if not args.json:
-        for file in fixed_files:
-            print(f"Fixed BOM: {file}")
-        if remaining_bom_files:
-            print(
-                f"Encoding check failed: {len(remaining_bom_files)} file(s) start with a UTF-8 BOM.",
-                file=sys.stderr,
-            )
-            print("Re-save these files as UTF-8 without a BOM:", file=sys.stderr)
-            for file in remaining_bom_files:
-                print(f"  {file}", file=sys.stderr)
-            print(
-                "\nTip: a BOM is invisible to ripgrep; verify with `head -c 3 <file> | xxd`.",
-                file=sys.stderr,
-            )
-        if mojibake_files:
-            print(
-                f"Encoding check failed: {len(mojibake_files)} file(s) contain likely mojibake.",
-                file=sys.stderr,
-            )
-            for hit in mojibake_hits:
-                print_mojibake_hit(
-                    hit,
-                    sys.stderr,
-                    prefix="  ",
-                    context_prefix="    ",
-                )
-                print(f"    recovers to {hit['recovered']}", file=sys.stderr)
-            excluded_mojibake_files = {
-                str(hit["file"])
-                for hit in mojibake_hits
-                if is_encoding_excluded_path(str(hit["file"]), exclude_patterns)
-            }
-            if excluded_mojibake_files:
-                print(
-                    "check_encoding_exclude matches "
-                    f"{len(excluded_mojibake_files)} of these path(s); exclusions "
-                    "suppress unconfirmed candidates only, so confirmed mojibake "
-                    "is still reported.",
-                    file=sys.stderr,
-                )
-            print(
-                "\nTip: use the reported location and code-point context to replace mojibake with the intended UTF-8 text.",
-                file=sys.stderr,
-            )
-        if stray_cr_files:
-            print(
-                f"Encoding check failed: {len(stray_cr_files)} source file(s) contain stray carriage returns.",
-                file=sys.stderr,
-            )
-            for file, lines in stray_cr_files.items():
-                line_numbers = ", ".join(map(str, lines))
-                print(f"  {file}: line(s) {line_numbers}", file=sys.stderr)
-            print(
-                "\nTip: locate carriage returns with `grep -nU $'\\r' <file>`.",
-                file=sys.stderr,
-            )
-        if crlf_files:
-            print(
-                f"Encoding check failed: {len(crlf_files)} tracked file(s) have CRLF or mixed line endings.",
-                file=sys.stderr,
-            )
-            for file in crlf_files:
-                print(f"  {file}", file=sys.stderr)
-            print(
-                "\nTip: normalize tracked line endings with `git add --renormalize .`.",
-                file=sys.stderr,
-            )
-        _print_unconfirmed_mojibake_hits(
-            unconfirmed_mojibake_hits,
-            failed=gate or args.fail_on_unconfirmed,
-            gate=gate,
+
+def _print_failures(
+    args,
+    results: ScanResults,
+    targets: ScanTargets,
+    remaining_bom_files: list[str],
+) -> None:
+    for file in results.fixed_files:
+        print(f"Fixed BOM: {file}")
+    if remaining_bom_files:
+        print(
+            f"Encoding check failed: {len(remaining_bom_files)} file(s) start with a UTF-8 BOM.",
+            file=sys.stderr,
         )
-    return 1
+        print("Re-save these files as UTF-8 without a BOM:", file=sys.stderr)
+        for file in remaining_bom_files:
+            print(f"  {file}", file=sys.stderr)
+        print(
+            "\nTip: a BOM is invisible to ripgrep; verify with `head -c 3 <file> | xxd`.",
+            file=sys.stderr,
+        )
+    if results.mojibake_files:
+        print(
+            f"Encoding check failed: {len(results.mojibake_files)} file(s) contain likely mojibake.",
+            file=sys.stderr,
+        )
+        for hit in results.mojibake_hits:
+            print_mojibake_hit(
+                hit,
+                sys.stderr,
+                prefix="  ",
+                context_prefix="    ",
+            )
+            print(f"    recovers to {hit['recovered']}", file=sys.stderr)
+        excluded_mojibake_files = {
+            str(hit["file"])
+            for hit in results.mojibake_hits
+            if is_encoding_excluded_path(str(hit["file"]), targets.exclude_patterns)
+        }
+        if excluded_mojibake_files:
+            print(
+                "check_encoding_exclude matches "
+                f"{len(excluded_mojibake_files)} of these path(s); exclusions "
+                "suppress unconfirmed candidates only, so confirmed mojibake "
+                "is still reported.",
+                file=sys.stderr,
+            )
+        print(
+            "\nTip: use the reported location and code-point context to replace mojibake with the intended UTF-8 text.",
+            file=sys.stderr,
+        )
+    if results.stray_cr_files:
+        print(
+            f"Encoding check failed: {len(results.stray_cr_files)} source file(s) contain stray carriage returns.",
+            file=sys.stderr,
+        )
+        for file, lines in results.stray_cr_files.items():
+            line_numbers = ", ".join(map(str, lines))
+            print(f"  {file}: line(s) {line_numbers}", file=sys.stderr)
+        print(
+            "\nTip: locate carriage returns with `grep -nU $'\\r' <file>`.",
+            file=sys.stderr,
+        )
+    if results.crlf_files:
+        print(
+            f"Encoding check failed: {len(results.crlf_files)} tracked file(s) have CRLF or mixed line endings.",
+            file=sys.stderr,
+        )
+        for file in results.crlf_files:
+            print(f"  {file}", file=sys.stderr)
+        print(
+            "\nTip: normalize tracked line endings with `git add --renormalize .`.",
+            file=sys.stderr,
+        )
+    _print_unconfirmed_mojibake_hits(
+        results.unconfirmed_mojibake_hits,
+        failed=targets.gate or args.fail_on_unconfirmed,
+        gate=targets.gate,
+    )
 
 
 def _gate_incompatible_options(args) -> bool:

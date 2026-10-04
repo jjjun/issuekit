@@ -179,78 +179,119 @@ def run_triage_author_cycle(
     evaluated = 0
     limit = config.triage.max_adoptions_per_cycle
 
-    pending = list_incoming_proposals(config)
-
-    for proposal in pending:
+    for proposal in list_incoming_proposals(config):
         if abort_event is not None and abort_event.is_set():
             break
         if evaluated >= limit:
             break
-        if not matches_triage_policy(proposal, config):
-            continue
-        proposal_id = int(proposal["id"])
-        fingerprint = _proposal_fingerprint(proposal)
-        body_sha = _body_sha(proposal.get("body", ""))
-        if _skip_replied(state, proposal_id, fingerprint, body_sha):
-            reason = (
-                "reply_suppressed"
-                if "suppressed_at" in state.get(str(proposal_id), {})
-                else "replied"
-            )
-            emit("triage_author_skip", proposal=proposal_id, reason=reason)
-            continue
-
-        evaluated += 1
-        try:
-            parsed = _evaluate_proposal(
-                proposal,
-                agent=agent,
-                adapter=adapter,
-                cwd=cwd,
-                timeout=timeout,
-                runner_factory=runner_factory,
-                err=err,
-                abort_event=abort_event,
-            )
-        except AGENT_RUN_ERRORS as exc:
-            emit("triage_author_error", proposal=proposal_id, error=str(exc))
-            decisions.append(
-                TriageDecision(
-                    proposal_id=proposal_id,
-                    origin=str(proposal.get("origin", "")),
-                    decision="error",
-                    detail="",
-                    error=str(exc),
-                )
-            )
-            continue
-
-        decision = _apply_decision(
+        decision, was_evaluated = _process_pending_proposal(
             proposal,
-            parsed,
             config=config,
             cwd=cwd,
             state=state,
-            fingerprint=fingerprint,
+            agent=agent,
+            adapter=adapter,
+            timeout=timeout,
+            runner_factory=runner_factory,
+            err=err,
+            abort_event=abort_event,
             emit=emit,
         )
-        decisions.append(decision)
-        if decision.error is not None:
-            emit(
-                "triage_author_error",
-                proposal=proposal_id,
-                error=decision.error,
-            )
-        else:
-            emit(
-                "triage_author_decision",
-                proposal=proposal_id,
-                decision=decision.decision,
-                issue=decision.issue_id if decision.issue_id is not None else decision.detail,
-            )
+        evaluated += was_evaluated
+        if decision is not None:
+            decisions.append(decision)
 
     save_state(cwd, state)
     return decisions
+
+
+def _process_pending_proposal(
+    proposal: Mapping[str, Any],
+    *,
+    config: IssuekitConfig,
+    cwd: Path,
+    state: dict[str, dict[str, str]],
+    agent: str,
+    adapter,
+    timeout: float,
+    runner_factory,
+    err: TextIO,
+    abort_event: threading.Event | None,
+    emit: LogFn,
+) -> tuple[TriageDecision | None, int]:
+    if not matches_triage_policy(proposal, config):
+        return None, 0
+    proposal_id = int(proposal["id"])
+    fingerprint = _proposal_fingerprint(proposal)
+    body_sha = _body_sha(proposal.get("body", ""))
+    reason = _skip_reason(proposal, state, fingerprint, body_sha)
+    if reason is not None:
+        emit("triage_author_skip", proposal=proposal_id, reason=reason)
+        return None, 0
+
+    try:
+        parsed = _evaluate_proposal(
+            proposal,
+            agent=agent,
+            adapter=adapter,
+            cwd=cwd,
+            timeout=timeout,
+            runner_factory=runner_factory,
+            err=err,
+            abort_event=abort_event,
+        )
+    except AGENT_RUN_ERRORS as exc:
+        decision = TriageDecision(
+            proposal_id=proposal_id,
+            origin=str(proposal.get("origin", "")),
+            decision="error",
+            detail="",
+            error=str(exc),
+        )
+        emit("triage_author_error", proposal=proposal_id, error=str(exc))
+        return decision, 1
+
+    decision = _apply_decision(
+        proposal,
+        parsed,
+        config=config,
+        cwd=cwd,
+        state=state,
+        fingerprint=fingerprint,
+        emit=emit,
+    )
+    _emit_decision(decision, emit)
+    return decision, 1
+
+
+def _skip_reason(
+    proposal: Mapping[str, Any],
+    state: dict[str, dict[str, str]],
+    fingerprint: str,
+    body_sha: str,
+) -> str | None:
+    proposal_id = int(proposal["id"])
+    if not _skip_replied(state, proposal_id, fingerprint, body_sha):
+        return None
+    if "suppressed_at" in state.get(str(proposal_id), {}):
+        return "reply_suppressed"
+    return "replied"
+
+
+def _emit_decision(decision: TriageDecision, emit: LogFn) -> None:
+    if decision.error is not None:
+        emit(
+            "triage_author_error",
+            proposal=decision.proposal_id,
+            error=decision.error,
+        )
+    else:
+        emit(
+            "triage_author_decision",
+            proposal=decision.proposal_id,
+            decision=decision.decision,
+            issue=decision.issue_id if decision.issue_id is not None else decision.detail,
+        )
 
 
 def _evaluate_proposal(
@@ -303,97 +344,25 @@ def _apply_decision(
     decision = parsed["decision"]
     try:
         if decision in {"adopt", "adopt_and_reply"}:
-            spec = parsed["spec_markdown"]
-            outcome = adopt_proposal_with_append(
-                config,
-                proposal_id,
-                priority=config.triage.default_priority,
-                append_text=spec,
-            )
-            issue_id = outcome.get("issue_id")
-            held = False
-            if issue_id is not None:
-                held = hold_adopted_issue(
-                    config,
-                    int(issue_id),
-                    origin=origin,
-                    reason="triage author",
-                )
-            state.pop(str(proposal_id), None)
-            _discard_superseded_pending_proposal(
+            return _apply_adopt(
                 proposal,
+                parsed,
                 config=config,
+                cwd=cwd,
                 state=state,
                 emit=emit,
             )
-            reply_ref = None
-            if decision == "adopt_and_reply" and not proposal.get("reply_to"):
-                try:
-                    reply_ref = _send_reply(
-                        proposal,
-                        parsed["reply_markdown"],
-                        config=config,
-                        cwd=cwd,
-                        from_issue=str(outcome["issue_id"]),
-                    )
-                except ProposalError as exc:
-                    return TriageDecision(
-                        proposal_id=proposal_id,
-                        origin=origin,
-                        decision=decision,
-                        detail=str(outcome.get("issue_ref") or ""),
-                        issue_id=outcome.get("issue_id"),
-                        error=str(exc),
-                        held=held,
-                    )
-            elif decision == "adopt_and_reply":
-                emit("triage_author_reply_suppressed", proposal=proposal_id)
-            return TriageDecision(
-                proposal_id=proposal_id,
-                origin=origin,
-                decision="adopt" if reply_ref is None else decision,
-                detail=str(outcome.get("issue_ref") or ""),
-                issue_id=issue_id,
-                reply_ref=reply_ref,
-                held=held,
-            )
         if decision == "reply":
-            if proposal.get("reply_to"):
-                emit("triage_author_reply_suppressed", proposal=proposal_id)
-                state[str(proposal_id)] = {
-                    "fingerprint": fingerprint,
-                    "suppressed_at": now(),
-                }
-                save_state(cwd, state)
-                return TriageDecision(
-                    proposal_id=proposal_id,
-                    origin=origin,
-                    decision="reply_suppressed",
-                    detail="Automatic replies to replies are suppressed.",
-                )
-            question = parsed["question"]
-            issue_ref = _send_reply(proposal, question, config=config, cwd=cwd)
-            state[str(proposal_id)] = {
-                "fingerprint": fingerprint,
-                "replied_at": now(),
-            }
-            save_state(cwd, state)
-            return TriageDecision(
-                proposal_id=proposal_id,
-                origin=origin,
-                decision="reply",
-                detail=issue_ref,
+            return _apply_reply(
+                proposal,
+                parsed,
+                config=config,
+                cwd=cwd,
+                state=state,
+                fingerprint=fingerprint,
+                emit=emit,
             )
-        reason = parsed["reason"]
-        with api_client(config) as client:
-            client.discard_proposal(proposal_id)
-        state.pop(str(proposal_id), None)
-        return TriageDecision(
-            proposal_id=proposal_id,
-            origin=origin,
-            decision="discard",
-            detail=reason,
-        )
+        return _apply_discard(proposal, parsed, config=config, state=state)
     except AdoptedIssueHoldError as exc:
         return TriageDecision(
             proposal_id=proposal_id,
@@ -412,6 +381,136 @@ def _apply_decision(
             detail="",
             error=str(exc),
         )
+
+
+def _apply_adopt(
+    proposal: Mapping[str, Any],
+    parsed: dict[str, str],
+    *,
+    config: IssuekitConfig,
+    cwd: Path,
+    state: dict[str, dict[str, str]],
+    emit: LogFn,
+) -> TriageDecision:
+    proposal_id = int(proposal["id"])
+    origin = str(proposal.get("origin", ""))
+    decision = parsed["decision"]
+    outcome = adopt_proposal_with_append(
+        config,
+        proposal_id,
+        priority=config.triage.default_priority,
+        append_text=parsed["spec_markdown"],
+    )
+    issue_id = outcome.get("issue_id")
+    held = False
+    if issue_id is not None:
+        held = hold_adopted_issue(
+            config,
+            int(issue_id),
+            origin=origin,
+            reason="triage author",
+        )
+    state.pop(str(proposal_id), None)
+    _discard_superseded_pending_proposal(
+        proposal,
+        config=config,
+        state=state,
+        emit=emit,
+    )
+    reply_ref = None
+    if decision == "adopt_and_reply" and not proposal.get("reply_to"):
+        try:
+            reply_ref = _send_reply(
+                proposal,
+                parsed["reply_markdown"],
+                config=config,
+                cwd=cwd,
+                from_issue=str(outcome["issue_id"]),
+            )
+        except ProposalError as exc:
+            return TriageDecision(
+                proposal_id=proposal_id,
+                origin=origin,
+                decision=decision,
+                detail=str(outcome.get("issue_ref") or ""),
+                issue_id=outcome.get("issue_id"),
+                error=str(exc),
+                held=held,
+            )
+    elif decision == "adopt_and_reply":
+        emit("triage_author_reply_suppressed", proposal=proposal_id)
+    return TriageDecision(
+        proposal_id=proposal_id,
+        origin=origin,
+        decision="adopt" if reply_ref is None else decision,
+        detail=str(outcome.get("issue_ref") or ""),
+        issue_id=issue_id,
+        reply_ref=reply_ref,
+        held=held,
+    )
+
+
+def _apply_reply(
+    proposal: Mapping[str, Any],
+    parsed: dict[str, str],
+    *,
+    config: IssuekitConfig,
+    cwd: Path,
+    state: dict[str, dict[str, str]],
+    fingerprint: str,
+    emit: LogFn,
+) -> TriageDecision:
+    proposal_id = int(proposal["id"])
+    origin = str(proposal.get("origin", ""))
+    if proposal.get("reply_to"):
+        emit("triage_author_reply_suppressed", proposal=proposal_id)
+        state[str(proposal_id)] = {
+            "fingerprint": fingerprint,
+            "suppressed_at": now(),
+        }
+        save_state(cwd, state)
+        return TriageDecision(
+            proposal_id=proposal_id,
+            origin=origin,
+            decision="reply_suppressed",
+            detail="Automatic replies to replies are suppressed.",
+        )
+    issue_ref = _send_reply(
+        proposal,
+        parsed["question"],
+        config=config,
+        cwd=cwd,
+    )
+    state[str(proposal_id)] = {
+        "fingerprint": fingerprint,
+        "replied_at": now(),
+    }
+    save_state(cwd, state)
+    return TriageDecision(
+        proposal_id=proposal_id,
+        origin=origin,
+        decision="reply",
+        detail=issue_ref,
+    )
+
+
+def _apply_discard(
+    proposal: Mapping[str, Any],
+    parsed: dict[str, str],
+    *,
+    config: IssuekitConfig,
+    state: dict[str, dict[str, str]],
+) -> TriageDecision:
+    proposal_id = int(proposal["id"])
+    with api_client(config) as client:
+        client.discard_proposal(proposal_id)
+    state.pop(str(proposal_id), None)
+    return TriageDecision(
+        proposal_id=proposal_id,
+        origin=str(proposal.get("origin", "")),
+        decision="discard",
+        detail=parsed["reason"],
+    )
 
 
 def _discard_superseded_pending_proposal(

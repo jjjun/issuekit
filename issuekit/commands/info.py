@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import dataclass
 from pathlib import Path
 
 from issuekit.api import IssuekitClient
@@ -25,6 +26,17 @@ from issuekit.urls import api_url_origin
 from issuekit.workflow import resolve_implementer
 
 
+@dataclass
+class ApiStatus:
+    active_issues: list
+    completed_count: int
+    latest_completed_id: int | None
+    incoming_proposals: list
+    pending_proposal_checks: int
+    api_error: str | None
+    author_guards: list
+
+
 def register(subparsers: argparse._SubParsersAction) -> None:
     info_parser = subparsers.add_parser("info", help="Show issue tracker status.")
     add_json_flag(info_parser)
@@ -34,6 +46,17 @@ def register(subparsers: argparse._SubParsersAction) -> None:
 def run(args) -> int:
     repo_root = resolve_repository_root(Path.cwd())
     config = load_config(repo_root)
+    status = _collect_api_status(config)
+    summary = _build_summary(config, status)
+    if args.json:
+        print_json(summary)
+        return 1 if status.api_error else 0
+
+    _print_human(summary, status.active_issues, status.author_guards)
+    return 1 if status.api_error else 0
+
+
+def _collect_api_status(config) -> ApiStatus:
     active_issues = []
     completed_count = 0
     latest_completed_id = None
@@ -57,16 +80,29 @@ def run(args) -> int:
             pending_proposal_checks = _pending_proposal_check_count(config, client)
     except (ProposalError, ValueError, WorkflowError) as exc:
         api_error = str(exc)
-    author_guards = read_author_guards(repo_root)
+    author_guards = read_author_guards(resolve_repository_root(Path.cwd()))
+
+    return ApiStatus(
+        active_issues=active_issues,
+        completed_count=completed_count,
+        latest_completed_id=latest_completed_id,
+        incoming_proposals=incoming_proposals,
+        pending_proposal_checks=pending_proposal_checks,
+        api_error=api_error,
+        author_guards=author_guards,
+    )
+
+
+def _build_summary(config, status: ApiStatus) -> dict:
     enabled_agents = [name for name, _run_config in config.agents]
-    summary = {
+    return {
         "counts": {
-            "active": len(active_issues),
-            "completed": completed_count,
-            "total": len(active_issues) + completed_count,
+            "active": len(status.active_issues),
+            "completed": status.completed_count,
+            "total": len(status.active_issues) + status.completed_count,
         },
-        "latestCompletedId": latest_completed_id,
-        "pendingProposalChecks": pending_proposal_checks,
+        "latestCompletedId": status.latest_completed_id,
+        "pendingProposalChecks": status.pending_proposal_checks,
         "worker": config.worker_key(),
         "workerPresent": config.worker is not None,
         "enabledAgents": enabled_agents,
@@ -81,7 +117,7 @@ def run(args) -> int:
         "apiUrlSource": config.api_url_source,
         "apiUrlTrustedBy": config.api_url_trusted_by,
         "apiUrlOrigin": api_url_origin(config.api_url),
-        "apiError": api_error,
+        "apiError": status.api_error,
         "agentConfigs": {
             name: {
                 "binary": run_config.binary,
@@ -108,7 +144,7 @@ def run(args) -> int:
                 "priority": issue.priority or None,
                 "stage": issue.stage or None,
             }
-            for issue in active_issues
+            for issue in status.active_issues
         ],
         "incomingProposals": [
             {
@@ -117,15 +153,14 @@ def run(args) -> int:
                 "title": proposal.get("title", ""),
                 "created": proposal.get("created"),
             }
-            for proposal in incoming_proposals
+            for proposal in status.incoming_proposals
         ],
-        "authorGuards": guards_dict(author_guards),
+        "authorGuards": guards_dict(status.author_guards),
     }
 
-    if args.json:
-        print_json(summary)
-        return 1 if api_error else 0
 
+def _print_human(summary: dict, active_issues: list, author_guards: list) -> None:
+    api_error = summary["apiError"]
     print("Issue tracker status")
     print(f"- Active issues: {summary['counts']['active']}")
     print(f"- Completed issues: {summary['counts']['completed']}")
@@ -202,8 +237,6 @@ def run(args) -> int:
         print("Incoming proposals")
         for proposal in summary["incomingProposals"]:
             print(f"- #{proposal['id']} {proposal['origin']}: {proposal['title']}")
-
-    return 1 if api_error else 0
 
 
 def _pending_proposal_check_count(config, client: IssuekitClient) -> int:
