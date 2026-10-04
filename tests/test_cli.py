@@ -2,10 +2,14 @@ import argparse
 import json
 import os
 import signal
+import subprocess
+import sys
+from importlib import import_module
 
 import pytest
 
 from issuekit import cli
+from issuekit.commands import info
 from issuekit.commands._common import run_agent_command
 from issuekit.config import IssuekitConfig
 from issuekit.errors import WorkflowError
@@ -76,6 +80,50 @@ def test_parser_registers_all_subcommands() -> None:
     subparsers = _subparser_action(parser)
 
     assert set(subparsers.choices) == EXPECTED_COMMANDS
+
+
+def test_command_module_table_matches_register_functions() -> None:
+    mapped_commands: dict[str, set[str]] = {}
+    for command, module_path in cli.COMMAND_MODULES.items():
+        mapped_commands.setdefault(module_path, set()).add(command)
+
+    registered_commands = set()
+    for module_path, expected_commands in mapped_commands.items():
+        parser = argparse.ArgumentParser()
+        subparsers = parser.add_subparsers()
+        module = import_module(module_path)
+        module.register(subparsers)
+
+        actual_commands = set(subparsers.choices)
+        assert actual_commands == expected_commands
+        registered_commands.update(actual_commands)
+
+    assert registered_commands == set(cli.COMMAND_MODULES)
+
+
+@pytest.mark.parametrize("command", ["protocol", "check-encoding"])
+def test_non_api_commands_do_not_import_httpx(command: str, tmp_path) -> None:
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    code = """
+import sys
+from issuekit.cli import main
+
+command = sys.argv[1]
+arguments = [command, "--role", "author"] if command == "protocol" else [command]
+if main(arguments) != 0:
+    raise SystemExit(1)
+if "httpx" in sys.modules:
+    raise SystemExit("httpx was imported")
+"""
+
+    result = subprocess.run(
+        [sys.executable, "-c", code, command],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
 
 
 def test_help_lists_all_subcommands(capsys: pytest.CaptureFixture[str]) -> None:
@@ -229,7 +277,7 @@ def test_cli_formats_expected_uncaught_errors(
     def fail(_args) -> int:
         raise error
 
-    monkeypatch.setattr(cli.info, "run", fail)
+    monkeypatch.setattr(info, "run", fail)
 
     assert cli.main(["info"]) == 1
     captured = capsys.readouterr()
