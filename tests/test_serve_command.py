@@ -14,8 +14,9 @@ import pytest
 import issuekit.agentrun.run_dir as run_dir_module
 from issuekit import cli
 from issuekit.agentrun import AgentPrompt
-from issuekit.commands import serve, serve_loop
-from issuekit.config import TriagePolicy
+from issuekit.commands.serve import command as serve_command
+from issuekit.commands.serve import implement, loop, proposal_checks, review, runtime, triage
+from issuekit.config import IssuekitConfig, TriagePolicy
 from issuekit.errors import WorkflowError
 from issuekit.testing import FakeIssuekitClient
 from tests.agent_fakes import FakeResult, create_reviewable_diff
@@ -204,9 +205,9 @@ def _configure_registered_api(
 
 
 def test_backoff_uses_current_initial_value(monkeypatch) -> None:
-    monkeypatch.setattr(serve_loop, "BACKOFF_INITIAL_SEC", 4.0)
+    monkeypatch.setattr(loop, "BACKOFF_INITIAL_SEC", 4.0)
 
-    backoff = serve_loop.Backoff()
+    backoff = loop.Backoff()
     assert backoff.current == 4.0
 
     backoff.step()
@@ -215,18 +216,18 @@ def test_backoff_uses_current_initial_value(monkeypatch) -> None:
 
 
 def test_poll_loop_run_failure_limit_resets_after_success_and_idle() -> None:
-    controller = serve_loop.ShutdownController.create()
+    controller = loop.ShutdownController.create()
     controller.sleep = lambda _seconds: False
     statuses = iter(("failed", "success", "idle", "error", "failed"))
     failure_limits: list[tuple[str, int]] = []
 
-    def poll(_attempt: int, _backoff: float) -> serve_loop.PollResult:
+    def poll(_attempt: int, _backoff: float) -> loop.PollResult:
         status = next(statuses)
-        return serve_loop.PollResult(status=status)
+        return loop.PollResult(status=status)
 
-    exit_code = serve_loop.run_poll_loop(
+    exit_code = loop.run_poll_loop(
         controller,
-        serve_loop.Backoff(),
+        loop.Backoff(),
         poll=poll,
         on_idle=lambda _attempt: None,
         on_success=lambda _result, _count: None,
@@ -245,7 +246,7 @@ def test_poll_loop_run_failure_limit_resets_after_success_and_idle() -> None:
 
 
 def test_poll_loop_zero_run_failure_limit_keeps_retrying() -> None:
-    controller = serve_loop.ShutdownController.create()
+    controller = loop.ShutdownController.create()
     sleep_durations: list[float] = []
     poll_count = 0
 
@@ -258,15 +259,15 @@ def test_poll_loop_zero_run_failure_limit_keeps_retrying() -> None:
 
     controller.sleep = sleep
 
-    def poll(_attempt: int, _backoff: float) -> serve_loop.PollResult:
+    def poll(_attempt: int, _backoff: float) -> loop.PollResult:
         nonlocal poll_count
         poll_count += 1
-        return serve_loop.PollResult("failed", exit_code=1)
+        return loop.PollResult("failed", exit_code=1)
 
     assert (
-        serve_loop.run_poll_loop(
+        loop.run_poll_loop(
             controller,
-            serve_loop.Backoff(),
+            loop.Backoff(),
             poll=poll,
             on_idle=lambda _attempt: None,
             on_success=lambda _result, _count: None,
@@ -506,7 +507,7 @@ def test_serve_review_skips_failed_issue_and_reviews_next_issue(
     )
     _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
     create_reviewable_diff(tmp_path)
-    monkeypatch.setattr(serve_loop, "BACKOFF_INITIAL_SEC", 0.0)
+    monkeypatch.setattr(loop, "BACKOFF_INITIAL_SEC", 0.0)
     monkeypatch.setattr(
         "issuekit.agents.review.AgentRunner",
         FailFirstThenApproveRunner,
@@ -662,7 +663,7 @@ def test_serve_proposal_checks_once_processes_pending_check(
     _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
     init_git_repo(tmp_path, message="baseline", autocrlf=True)
     monkeypatch.setattr("issuekit.agents.proposal_check.resolve_adapter", lambda *a, **k: object())
-    monkeypatch.setattr(serve, "AgentRunner", ProposalCheckRunner)
+    monkeypatch.setattr(proposal_checks, "AgentRunner", ProposalCheckRunner)
 
     exit_code = cli.main(
         [
@@ -706,7 +707,7 @@ def test_serve_proposal_checks_once_idle_does_not_spawn_agent(
 ) -> None:
     client = FakeIssuekitClient()
     _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
-    monkeypatch.setattr(serve, "AgentRunner", ExplodingRunner)
+    monkeypatch.setattr(proposal_checks, "AgentRunner", ExplodingRunner)
 
     exit_code = cli.main(["serve", "--agent", "codex", "--proposal-checks", "--once"])
 
@@ -787,13 +788,12 @@ def test_serve_proposal_checks_backs_off_after_cycle_error(
     def fail_cycle(*args, **kwargs):
         raise WorkflowError("temporary API failure")
 
-    monkeypatch.setattr(serve, "run_proposal_check_cycle", fail_cycle)
+    monkeypatch.setattr(proposal_checks, "run_proposal_check_cycle", fail_cycle)
 
-    exit_code = serve._serve_loop(
+    exit_code = proposal_checks._serve_proposal_checks_loop(
         Args(),
-        mode=serve.ServeMode.PROPOSAL_CHECKS,
         agent="codex",
-        config=serve.IssuekitConfig(api_url="https://mine.example"),
+        config=IssuekitConfig(api_url="https://mine.example"),
         cwd=tmp_path,
         log_path=tmp_path / "serve.log",
         controller=StopAfterSleep(),
@@ -818,16 +818,16 @@ def test_serve_proposal_checks_stops_at_run_failure_limit(
     def fail_cycle(*args, **kwargs):
         raise WorkflowError("temporary error")
 
-    monkeypatch.setattr(serve_loop, "BACKOFF_INITIAL_SEC", 0.0)
-    monkeypatch.setattr(serve, "run_proposal_check_cycle", fail_cycle)
+    monkeypatch.setattr(loop, "BACKOFF_INITIAL_SEC", 0.0)
+    monkeypatch.setattr(proposal_checks, "run_proposal_check_cycle", fail_cycle)
 
-    exit_code = serve._serve_proposal_checks_loop(
+    exit_code = proposal_checks._serve_proposal_checks_loop(
         Args(),
         agent="codex",
-        config=serve.IssuekitConfig(),
+        config=IssuekitConfig(),
         cwd=tmp_path,
         log_path=tmp_path / "serve.log",
-        controller=serve_loop.ShutdownController.create(),
+        controller=loop.ShutdownController.create(),
     )
 
     assert exit_code == 1
@@ -852,16 +852,16 @@ def test_serve_review_stops_at_run_failure_limit(
     def fail_review(*args, **kwargs):
         raise WorkflowError("temporary error")
 
-    monkeypatch.setattr(serve_loop, "BACKOFF_INITIAL_SEC", 0.0)
-    monkeypatch.setattr(serve, "next_review", fail_review)
+    monkeypatch.setattr(loop, "BACKOFF_INITIAL_SEC", 0.0)
+    monkeypatch.setattr(review, "next_review", fail_review)
 
-    exit_code = serve._serve_review_loop(
+    exit_code = review._serve_review_loop(
         Args(),
         agent="codex",
-        config=serve.IssuekitConfig(),
+        config=IssuekitConfig(),
         cwd=tmp_path,
         log_path=tmp_path / "serve.log",
-        controller=serve_loop.ShutdownController.create(),
+        controller=loop.ShutdownController.create(),
         store=IdleStore(),
     )
 
@@ -909,13 +909,13 @@ def test_serve_proposal_checks_sleeps_between_successful_cycles(
             )
         ]
 
-    monkeypatch.setattr(serve, "run_proposal_check_cycle", successful_cycle)
+    monkeypatch.setattr(proposal_checks, "run_proposal_check_cycle", successful_cycle)
 
     assert (
-        serve._serve_proposal_checks_loop(
+        proposal_checks._serve_proposal_checks_loop(
             Args(),
             agent="codex",
-            config=serve.IssuekitConfig(api_url="https://mine.example"),
+            config=IssuekitConfig(api_url="https://mine.example"),
             cwd=tmp_path,
             log_path=tmp_path / "serve.log",
             controller=controller,
@@ -1133,8 +1133,8 @@ def test_serve_triage_uses_author_agent_when_configured(
         calls["mechanical"] += 1
         return []
 
-    monkeypatch.setattr(serve, "run_triage_author_cycle", fake_author_cycle)
-    monkeypatch.setattr(serve, "auto_adopt_incoming_proposals", fake_mechanical)
+    monkeypatch.setattr(triage, "run_triage_author_cycle", fake_author_cycle)
+    monkeypatch.setattr(triage, "auto_adopt_incoming_proposals", fake_mechanical)
 
     exit_code = cli.main(["serve", "--agent", "codex", "--once", "--triage"])
 
@@ -1320,7 +1320,7 @@ def test_serve_preflights_the_agent_role_for_each_mode(
         roles.append(role)
         return AvailableAdapter()
 
-    monkeypatch.setattr(serve, "preflight_agent", preflight)
+    monkeypatch.setattr(serve_command, "preflight_agent", preflight)
 
     assert cli.main(["serve", "--agent", "codex", mode_option, "--once"]) == 0
     assert roles == [expected_role]
@@ -1351,7 +1351,7 @@ def test_serve_retries_own_claim_after_recovery_error(
     RecoveryErrorThenRunner.attempts.clear()
     _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
     monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", RecoveryErrorThenRunner)
-    monkeypatch.setattr(serve_loop, "BACKOFF_INITIAL_SEC", 0.0)
+    monkeypatch.setattr(loop, "BACKOFF_INITIAL_SEC", 0.0)
 
     exit_code = cli.main(["serve", "--agent", "codex", "--max-issues", "1", "--interval", "0"])
 
@@ -1379,7 +1379,7 @@ def test_serve_retries_failed_claim_and_releases_it_at_failure_limit(
     client = FakeIssuekitClient([api_issue(1, "Ready", author="claude")])
     _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
     monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", AlwaysFailRunner)
-    monkeypatch.setattr(serve_loop, "BACKOFF_INITIAL_SEC", 0.0)
+    monkeypatch.setattr(loop, "BACKOFF_INITIAL_SEC", 0.0)
 
     assert cli.main(["serve", "--agent", "codex", "--interval", "0"]) == 1
 
@@ -1591,7 +1591,7 @@ def test_serve_resolves_configured_heartbeat_and_cli_override_takes_precedence(
         client,
         triage="worker_heartbeat_interval_sec = 12.5\n",
     )
-    monkeypatch.setattr(serve, "WorkerHeartbeat", FakeHeartbeat)
+    monkeypatch.setattr(runtime, "WorkerHeartbeat", FakeHeartbeat)
     monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", ExplodingRunner)
 
     assert cli.main(["serve", "--agent", "codex", "--once"]) == 0
@@ -1696,10 +1696,10 @@ def test_worker_heartbeat_logs_failure_state_and_escalates_once(
         def stop(self) -> None:
             pass
 
-    monkeypatch.setattr(serve, "WorkerHeartbeat", FakeHeartbeat)
-    controller = serve_loop.ShutdownController.create()
+    monkeypatch.setattr(runtime, "WorkerHeartbeat", FakeHeartbeat)
+    controller = loop.ShutdownController.create()
 
-    with serve._worker_heartbeat(
+    with runtime._worker_heartbeat(
         SimpleNamespace(),
         tmp_path,
         tmp_path / "serve.log",
@@ -1735,10 +1735,10 @@ def test_worker_heartbeat_initial_unexpected_exception_uses_failure_path(
         def stop(self) -> None:
             pass
 
-    monkeypatch.setattr(serve, "WorkerHeartbeat", FakeHeartbeat)
-    controller = serve_loop.ShutdownController.create()
+    monkeypatch.setattr(runtime, "WorkerHeartbeat", FakeHeartbeat)
+    controller = loop.ShutdownController.create()
 
-    with serve._worker_heartbeat(
+    with runtime._worker_heartbeat(
         SimpleNamespace(),
         tmp_path,
         tmp_path / "serve.log",
@@ -1777,10 +1777,10 @@ def test_worker_heartbeat_failure_limit_requests_shutdown(
         def stop(self) -> None:
             pass
 
-    monkeypatch.setattr(serve, "WorkerHeartbeat", FakeHeartbeat)
-    controller = serve_loop.ShutdownController.create()
+    monkeypatch.setattr(runtime, "WorkerHeartbeat", FakeHeartbeat)
+    controller = loop.ShutdownController.create()
 
-    with serve._worker_heartbeat(
+    with runtime._worker_heartbeat(
         SimpleNamespace(),
         tmp_path,
         tmp_path / "serve.log",
@@ -1829,7 +1829,7 @@ def test_serve_refuses_live_lock(
     run_dir.mkdir()
     lock_path = run_dir / "serve.lock"
 
-    with serve._serve_lock(lock_path):
+    with runtime.serve_lock(lock_path):
         exit_code = cli.main(["serve", "--agent", "codex", "--once"])
 
     assert exit_code == 1
@@ -1861,7 +1861,7 @@ def test_serve_lock_records_current_pid_and_keeps_file(
     lock_path.parent.mkdir()
     lock_path.write_text(f"{os.getpid()}\n", encoding="utf-8", newline="\n")
 
-    with serve._serve_lock(lock_path):
+    with runtime.serve_lock(lock_path):
         assert lock_path.read_text(encoding="utf-8") == f"{os.getpid()}\n"
 
     assert lock_path.exists()
@@ -1872,9 +1872,9 @@ def test_serve_rejects_lock_already_owned_by_this_process(
 ) -> None:
     lock_path = tmp_path / ".agent-runs" / "serve.lock"
 
-    with serve._serve_lock(lock_path):
-        with pytest.raises(serve.ServeLockError, match="already running"):
-            with serve._serve_lock(lock_path):
+    with runtime.serve_lock(lock_path):
+        with pytest.raises(runtime.ServeLockError, match="already running"):
+            with runtime.serve_lock(lock_path):
                 pass
 
 
@@ -1885,7 +1885,7 @@ def test_serve_acquires_existing_empty_lock_file(
     lock_path.parent.mkdir()
     lock_path.touch()
 
-    with serve._serve_lock(lock_path):
+    with runtime.serve_lock(lock_path):
         assert lock_path.read_text(encoding="utf-8") == f"{os.getpid()}\n"
 
     assert lock_path.exists()
@@ -1919,11 +1919,11 @@ def test_serve_lock_uses_windows_msvcrt_path(monkeypatch, tmp_path: Path) -> Non
     monkeypatch.setattr(run_dir_module, "open_owner_only", open_with_nonzero_position)
     lock_path = tmp_path / ".agent-runs" / "serve.lock"
 
-    with serve._serve_lock(lock_path):
+    with runtime.serve_lock(lock_path):
         pass
 
-    with pytest.raises(serve.ServeLockError, match="already running"):
-        with serve._serve_lock(lock_path):
+    with pytest.raises(runtime.ServeLockError, match="already running"):
+        with runtime.serve_lock(lock_path):
             pass
     assert fake_msvcrt.calls == 2
 
@@ -1948,14 +1948,14 @@ def test_serve_lock_releases_after_holder_process_exits(tmp_path: Path) -> None:
     try:
         assert process.stdout is not None
         assert process.stdout.readline().strip() == "locked"
-        with pytest.raises(serve.ServeLockError, match="already running"):
-            with serve._serve_lock(lock_path):
+        with pytest.raises(runtime.ServeLockError, match="already running"):
+            with runtime.serve_lock(lock_path):
                 pass
     finally:
         process.kill()
         process.wait(timeout=5)
 
-    with serve._serve_lock(lock_path):
+    with runtime.serve_lock(lock_path):
         assert lock_path.read_text(encoding="utf-8") == f"{os.getpid()}\n"
     assert lock_path.exists()
 
@@ -1966,7 +1966,7 @@ def test_log_event_quotes_multiline_values_on_one_line(
     stream = io.StringIO()
     log_path = tmp_path / "serve.log"
 
-    serve_loop.log_event(
+    loop.log_event(
         stream,
         log_path,
         "claim_sync_error",
@@ -1997,12 +1997,11 @@ def test_serve_backs_off_after_claim_error(monkeypatch, tmp_path: Path, capsys) 
     def fail_claim(*args, **kwargs):
         raise WorkflowError("temporary API failure")
 
-    monkeypatch.setattr(serve, "claim_next", fail_claim)
-    config = serve.IssuekitConfig()
+    monkeypatch.setattr(implement, "claim_next", fail_claim)
+    config = IssuekitConfig()
 
-    exit_code = serve._serve_loop(
+    exit_code = implement.run_implement_loop(
         Args(),
-        mode=serve.ServeMode.IMPLEMENT,
         agent="codex",
         config=config,
         cwd=tmp_path,
@@ -2057,13 +2056,12 @@ def test_serve_loop_reuses_store_across_idle_polls(monkeypatch, tmp_path: Path) 
         stores.append(store)
         return store
 
-    monkeypatch.setattr(serve, "get_store", fake_get_store)
+    monkeypatch.setattr(implement, "get_store", fake_get_store)
     controller = StopAfterThreeSleeps()
-    config = serve.IssuekitConfig(api_url="https://mine.example")
+    config = IssuekitConfig(api_url="https://mine.example")
 
-    exit_code = serve._serve_loop(
+    exit_code = implement.run_implement_loop(
         Args(),
-        mode=serve.ServeMode.IMPLEMENT,
         agent="codex",
         config=config,
         cwd=tmp_path,
@@ -2099,7 +2097,7 @@ def test_serve_retries_failed_hold_before_claiming(fake_api, monkeypatch, tmp_pa
         ]
     )
     fake_api.install_client(client)
-    monkeypatch.setattr(serve, "get_store", lambda _config: client)
+    monkeypatch.setattr(implement, "get_store", lambda _config: client)
     original_plan = client.plan
     plan_attempts = 0
 
@@ -2118,8 +2116,8 @@ def test_serve_retries_failed_hold_before_claiming(fake_api, monkeypatch, tmp_pa
         assert client.get_issue(1)["stage"] == "planned"
         return
 
-    monkeypatch.setattr(serve, "claim_next", claim_next)
-    config = serve.IssuekitConfig(
+    monkeypatch.setattr(implement, "claim_next", claim_next)
+    config = IssuekitConfig(
         api_url="https://mine.example",
         project="target",
         triage=TriagePolicy(
@@ -2127,7 +2125,7 @@ def test_serve_retries_failed_hold_before_claiming(fake_api, monkeypatch, tmp_pa
             trusted_origins=("source",),
         ),
     )
-    controller = serve.ShutdownController.create()
+    controller = loop.ShutdownController.create()
     sleep_count = 0
 
     def sleep(_seconds: float) -> bool:
@@ -2140,9 +2138,8 @@ def test_serve_retries_failed_hold_before_claiming(fake_api, monkeypatch, tmp_pa
     controller.sleep = sleep
 
     assert (
-        serve._serve_loop(
+        implement.run_implement_loop(
             Args(),
-            mode=serve.ServeMode.IMPLEMENT,
             agent="codex",
             config=config,
             cwd=tmp_path,
@@ -2201,7 +2198,7 @@ def test_serve_loop_claim_ignores_author_guard_outside_configured_cwd(
     process_cwd.mkdir()
     loop_cwd.mkdir()
 
-    config = serve.IssuekitConfig(api_url="https://mine.example")
+    config = IssuekitConfig(api_url="https://mine.example")
     # Live author guard in the PROCESS cwd only; the loop's cwd has none.
     create_author_guard(
         process_cwd,
@@ -2220,11 +2217,10 @@ def test_serve_loop_claim_ignores_author_guard_outside_configured_cwd(
         stores.append(store)
         return store
 
-    monkeypatch.setattr(serve, "get_store", fake_get_store)
+    monkeypatch.setattr(implement, "get_store", fake_get_store)
 
-    exit_code = serve._serve_loop(
+    exit_code = implement.run_implement_loop(
         Args(),
-        mode=serve.ServeMode.IMPLEMENT,
         agent="codex",
         config=config,
         cwd=loop_cwd,
@@ -2244,14 +2240,14 @@ def test_serve_sigint_during_idle_keeps_lock_file(
 ) -> None:
     client = FakeIssuekitClient()
     _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
-    controller = serve.ShutdownController.create()
+    controller = loop.ShutdownController.create()
 
     def sleep_and_signal(seconds: float) -> bool:
         controller.handle_signal(signal.SIGINT, None)
         return True
 
     controller.sleep = sleep_and_signal
-    monkeypatch.setattr(serve.ShutdownController, "create", lambda: controller)
+    monkeypatch.setattr(loop.ShutdownController, "create", lambda: controller)
     monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", ExplodingRunner)
 
     assert cli.main(["serve", "--agent", "codex", "--interval", "30"]) == 0

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import os
-import sys
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -13,18 +12,8 @@ from pathlib import Path
 from types import FrameType
 from typing import Literal
 
-from issuekit.agentrun.adapter import AgentAdapter
-from issuekit.agents.handoff import review_feedback_prompt
-from issuekit.agents.review import (
-    run_review_and_decide,
-)
-from issuekit.agents.review_output import ReviewRunParseError
-from issuekit.agents.run_claimed import (
-    run_and_submit,
-)
 from issuekit.config import IssuekitConfig
-from issuekit.core import Issue
-from issuekit.errors import AGENT_RUN_ERRORS, WorkflowError
+from issuekit.errors import WorkflowError
 from issuekit.file_permissions import open_owner_only_new
 from issuekit.store import get_store
 
@@ -41,7 +30,6 @@ class Backoff:
 
     def reset(self) -> None:
         self.current = BACKOFF_INITIAL_SEC
-
 
 @dataclass
 class ShutdownController:
@@ -74,7 +62,6 @@ class ShutdownController:
         if self.signal_count >= 2:
             self.abort_event.set()
 
-
 @dataclass(frozen=True)
 class PollResult:
     """The outcome of one poll and optional worker run."""
@@ -84,7 +71,6 @@ class PollResult:
     recreate_store: bool = False
     value: object | None = None
     issue_id: int | None = None
-
 
 def run_poll_loop(
     controller: ShutdownController,
@@ -158,150 +144,18 @@ def run_poll_loop(
     on_stopped()
     return 0
 
-
 def should_recreate_store(exc: BaseException) -> bool:
     if isinstance(exc, TimeoutError):
         return True
     return isinstance(exc, WorkflowError) and exc.code == "request_failed"
 
-
 def recreate_store(store, config: IssuekitConfig):
     close_store(store)
     return get_store(config) if config.api_url else None
 
-
 def close_store(store) -> None:
     if store is not None:
         store.close()
-
-
-@dataclass(frozen=True)
-class IssueRunResult:
-    status: str
-    exit_code: int
-    reviewed_issue: Issue | None = None
-    recreate_store: bool = False
-
-
-def run_claimed_issue(
-    args,
-    issue: Issue,
-    *,
-    agent: str,
-    config: IssuekitConfig,
-    cwd: Path,
-    log_path: Path,
-    controller: ShutdownController,
-    backoff: float,
-    adapter: AgentAdapter | None = None,
-    store=None,
-) -> IssueRunResult:
-    try:
-        outcome = run_and_submit(
-            issue,
-            agent=agent,
-            config=config,
-            cwd=cwd,
-            timeout=float(args.timeout_sec),
-            model=getattr(args, "model", None),
-            reasoning_effort=getattr(args, "reasoning_effort", None),
-            adapter=adapter,
-            prompt_suffix=review_feedback_prompt(issue.body),
-            abort_event=controller.abort_event,
-            store=store,
-            out=sys.stderr,
-            err=sys.stderr,
-            allow_any_branch=getattr(args, "allow_any_branch", False),
-        )
-    except AGENT_RUN_ERRORS as exc:
-        log_event(
-            sys.stderr, log_path, "run_error", issue=issue.id, error=str(exc), backoff=backoff
-        )
-        return IssueRunResult("error", 1, recreate_store=should_recreate_store(exc))
-
-    if outcome.exit_code != 0 or outcome.reviewed_issue is None:
-        log_event(
-            sys.stderr,
-            log_path,
-            "run_failed",
-            issue=issue.id,
-            exit_code=outcome.exit_code,
-            backoff=backoff,
-        )
-        return IssueRunResult("failed", outcome.exit_code)
-
-    return IssueRunResult("submitted", 0, reviewed_issue=outcome.reviewed_issue)
-
-
-def run_review_issue(
-    args,
-    issue: Issue,
-    *,
-    agent: str,
-    config: IssuekitConfig,
-    cwd: Path,
-    log_path: Path,
-    controller: ShutdownController,
-    backoff: float,
-    store=None,
-) -> IssueRunResult:
-    try:
-        outcome = run_review_and_decide(
-            issue,
-            agent=agent,
-            config=config,
-            cwd=cwd,
-            timeout=float(args.timeout_sec),
-            model=getattr(args, "model", None),
-            reasoning_effort=getattr(args, "reasoning_effort", None),
-            abort_event=controller.abort_event,
-            store=store,
-            out=sys.stderr,
-            err=sys.stderr,
-        )
-    except ReviewRunParseError as exc:
-        log_event(
-            sys.stderr,
-            log_path,
-            "review_decision_discarded",
-            issue=issue.id,
-            error=str(exc),
-            remedy="rerun_review",
-            backoff=backoff,
-        )
-        return IssueRunResult("error", 1)
-    except AGENT_RUN_ERRORS as exc:
-        log_event(
-            sys.stderr,
-            log_path,
-            "review_error",
-            issue=issue.id,
-            error=str(exc),
-            backoff=backoff,
-        )
-        return IssueRunResult("error", 1, recreate_store=should_recreate_store(exc))
-
-    if outcome.exit_code != 0 or outcome.decided_issue is None:
-        log_event(
-            sys.stderr,
-            log_path,
-            "review_failed",
-            issue=issue.id,
-            exit_code=outcome.exit_code,
-            backoff=backoff,
-        )
-        return IssueRunResult("failed", outcome.exit_code)
-
-    return IssueRunResult("reviewed", 0, reviewed_issue=outcome.decided_issue)
-
-
-def find_implementing_issues(config: IssuekitConfig, *, store) -> list[Issue]:
-    """Find this checkout's active claims for startup recovery and poll retries."""
-
-    if config.worker is None or config.worker_key() is None or store is None:
-        return []
-    return store.find_implementing_for_workers(config.worker_lookup_keys())
-
 
 def log_event(stream, log_path: Path | None, event: str, **fields: object) -> None:
     timestamp = datetime.now().replace(microsecond=0).isoformat()
