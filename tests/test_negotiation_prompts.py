@@ -11,7 +11,7 @@ from issuekit.negotiation.prompts import (
 
 def _entry(
     *,
-    side: str = "frontend",
+    side: str = "consumer",
     verdict: Verdict = Verdict.propose,
     title: str = "Initial contract",
     body: str = "Repo file contents should not be copied into prompts.",
@@ -31,12 +31,12 @@ def _entry(
 
 def test_render_round_prompt_includes_side_thread_budget_and_contract() -> None:
     prompt = render_round_prompt(
-        side="frontend",
+        side="consumer",
         seed="Negotiate the item list contract.",
         thread=[
             _entry(title="Initial contract", verdict=Verdict.propose, contract="GET /items"),
             _entry(
-                side="backend",
+                side="provider",
                 title="Pagination counter",
                 verdict=Verdict.counter,
                 contract="GET /items?page=1",
@@ -45,7 +45,7 @@ def test_render_round_prompt_includes_side_thread_budget_and_contract() -> None:
         resolved_contract="GET /items?page=1",
     )
 
-    assert "Perspective: you represent the frontend side." in prompt
+    assert "Perspective: you represent the consumer side." in prompt
     assert "Round job: propose, counter, agree, or blocked" in prompt
     assert "Initial contract | verdict=propose | contract=GET /items" in prompt
     assert "Pagination counter | verdict=counter | contract=GET /items?page=1" in prompt
@@ -63,7 +63,7 @@ def test_render_round_prompt_includes_side_thread_budget_and_contract() -> None:
 
 def test_render_round_prompt_excludes_entry_bodies_and_repo_dumps() -> None:
     prompt = render_round_prompt(
-        side="backend",
+        side="provider",
         seed="Review a small API contract.",
         thread=[_entry(body="SECRET_REPO_FILE_CONTENTS")],
     )
@@ -75,12 +75,12 @@ def test_render_round_prompt_excludes_entry_bodies_and_repo_dumps() -> None:
 def test_parse_round_output_parses_clean_block() -> None:
     parsed = parse_round_output(
         """```negotiation
-{"side":"frontend","verdict":"propose","contract":"GET /items","notes":"Looks viable."}
+{"side":"consumer","verdict":"propose","contract":"GET /items","notes":"Looks viable."}
 ```"""
     )
 
     assert parsed == ParsedRound(
-        side="frontend",
+        side="consumer",
         verdict=Verdict.propose,
         contract="GET /items",
         notes="Looks viable.",
@@ -91,29 +91,29 @@ def test_parse_round_output_picks_last_well_formed_block() -> None:
     parsed = parse_round_output(
         """Ignoring preamble.
 ```negotiation
-{"side":"frontend","verdict":"propose","contract":"GET /items","notes":"First."}
+{"side":"consumer","verdict":"propose","contract":"GET /items","notes":"First."}
 ```
 More stdout.
 ```negotiation
-{"side":"backend","verdict":"agree","contract":"GET /items","notes":"Accepted."}
+{"side":"provider","verdict":"agree","contract":"GET /items","notes":"Accepted."}
 ```"""
     )
 
-    assert parsed.side == "backend"
+    assert parsed.side == "provider"
     assert parsed.verdict is Verdict.agree
     assert parsed.notes == "Accepted."
 
 
 def test_parse_round_output_raises_on_missing_block() -> None:
     with pytest.raises(NegotiationParseError, match="No ```negotiation``` block"):
-        parse_round_output('{"side":"frontend","verdict":"propose"}')
+        parse_round_output('{"side":"consumer","verdict":"propose"}')
 
 
 def test_parse_round_output_raises_on_invalid_verdict() -> None:
     with pytest.raises(NegotiationParseError, match="Invalid negotiation verdict"):
         parse_round_output(
             """```negotiation
-{"side":"frontend","verdict":"maybe","contract":"GET /items","notes":"Unsure."}
+{"side":"consumer","verdict":"maybe","contract":"GET /items","notes":"Unsure."}
 ```"""
         )
 
@@ -121,7 +121,7 @@ def test_parse_round_output_raises_on_invalid_verdict() -> None:
 def test_parse_round_output_round_trips_null_contract() -> None:
     parsed = parse_round_output(
         """```negotiation
-{"side":"backend","verdict":"blocked","contract":null,"notes":"Need auth decision."}
+{"side":"provider","verdict":"blocked","contract":null,"notes":"Need auth decision."}
 ```"""
     )
 
@@ -132,7 +132,7 @@ def test_parse_round_output_round_trips_null_contract() -> None:
 def test_parse_round_output_sanitizes_non_ascii_fields(capsys) -> None:
     parsed = parse_round_output(
         """```negotiation
-{"side":"frontend","verdict":"agree","contract":"GET /caf\u00e9","notes":"\u627f\u8a8d"}
+{"side":"consumer","verdict":"agree","contract":"GET /caf\u00e9","notes":"\u627f\u8a8d"}
 ```"""
     )
 

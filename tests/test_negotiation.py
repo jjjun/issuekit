@@ -21,7 +21,7 @@ def test_mock_store_create_thread_allocates_id_and_first_entry(tmp_path) -> None
     store = MockNegotiationStore(tmp_path / "negotiations.json")
 
     entry = store.create_thread(
-        side="frontend",
+        side="consumer",
         verdict=Verdict.propose,
         title="Initial contract",
         body="Use the public endpoint.",
@@ -31,7 +31,7 @@ def test_mock_store_create_thread_allocates_id_and_first_entry(tmp_path) -> None
 
     assert entry.thread_id == "1"
     assert entry.id == 1
-    assert entry.side == "frontend"
+    assert entry.side == "consumer"
     assert entry.verdict is Verdict.propose
     assert entry.contract == "GET /items"
     assert entry.created
@@ -42,7 +42,7 @@ def test_mock_store_create_thread_allocates_id_and_first_entry(tmp_path) -> None
 def test_mock_store_append_entry_preserves_order(tmp_path) -> None:
     store = MockNegotiationStore(tmp_path / "negotiations.json")
     first = store.create_thread(
-        side="frontend",
+        side="consumer",
         verdict=Verdict.propose,
         title="Initial",
         body="Start here.",
@@ -51,7 +51,7 @@ def test_mock_store_append_entry_preserves_order(tmp_path) -> None:
 
     second = store.append_entry(
         first.thread_id,
-        side="backend",
+        side="provider",
         verdict=Verdict.counter,
         title="Counter",
         body="Use pagination.",
@@ -59,7 +59,7 @@ def test_mock_store_append_entry_preserves_order(tmp_path) -> None:
     )
     third = store.append_entry(
         first.thread_id,
-        side="frontend",
+        side="consumer",
         verdict=Verdict.agree,
         title="Agreed",
         body="Pagination accepted.",
@@ -81,7 +81,7 @@ def test_mock_store_append_entry_preserves_order(tmp_path) -> None:
 def test_mock_store_status_round_trips(tmp_path) -> None:
     store = MockNegotiationStore(tmp_path / "negotiations.json")
     entry = store.create_thread(
-        side="frontend",
+        side="consumer",
         verdict="propose",
         title="Initial",
         body="Start.",
@@ -98,7 +98,7 @@ def test_mock_store_json_persistence_round_trips(tmp_path) -> None:
     path = tmp_path / "negotiations.json"
     first_store = MockNegotiationStore(path)
     first = first_store.create_thread(
-        side="frontend",
+        side="consumer",
         verdict=Verdict.propose,
         title="Initial",
         body="Start.",
@@ -106,7 +106,7 @@ def test_mock_store_json_persistence_round_trips(tmp_path) -> None:
     )
     second = first_store.append_entry(
         first.thread_id,
-        side="backend",
+        side="provider",
         verdict=Verdict.blocked,
         title="Blocked",
         body="Need API support.",
@@ -119,7 +119,7 @@ def test_mock_store_json_persistence_round_trips(tmp_path) -> None:
     assert second_store.get_status(first.thread_id) is ThreadStatus.blocked
     assert second_store.get_thread(first.thread_id) == [first, second]
     next_entry = second_store.create_thread(
-        side="frontend",
+        side="consumer",
         verdict=Verdict.propose,
         title="Next",
         body="Another thread.",
@@ -132,7 +132,7 @@ def test_mock_store_json_persistence_round_trips(tmp_path) -> None:
 def test_mock_store_lists_thread_summaries(tmp_path) -> None:
     store = MockNegotiationStore(tmp_path / "negotiations.json")
     first = store.create_thread(
-        side="frontend",
+        side="consumer",
         verdict=Verdict.propose,
         title="Initial",
         body="Start.",
@@ -140,7 +140,7 @@ def test_mock_store_lists_thread_summaries(tmp_path) -> None:
         contract="GET /items",
     )
     second = store.create_thread(
-        side="frontend",
+        side="consumer",
         verdict=Verdict.propose,
         title="Other",
         body="Start.",
@@ -159,7 +159,7 @@ def test_mock_store_freezes_agreed_contract_and_persists_it(tmp_path) -> None:
     path = tmp_path / "negotiations.json"
     first_store = MockNegotiationStore(path)
     first = first_store.create_thread(
-        side="frontend",
+        side="consumer",
         verdict=Verdict.propose,
         title="Initial",
         body="Start.",
@@ -168,7 +168,7 @@ def test_mock_store_freezes_agreed_contract_and_persists_it(tmp_path) -> None:
     )
     first_store.append_entry(
         first.thread_id,
-        side="backend",
+        side="provider",
         verdict=Verdict.agree,
         title="Agreed",
         body="Accepted.",
@@ -187,7 +187,7 @@ def test_mock_store_issue_refs_round_trip(tmp_path) -> None:
     path = tmp_path / "negotiations.json"
     first_store = MockNegotiationStore(path)
     first = first_store.create_thread(
-        side="frontend",
+        side="consumer",
         verdict=Verdict.agree,
         title="Agreed",
         body="Accepted.",
@@ -211,7 +211,7 @@ def test_mock_store_rejects_contract_over_cap(tmp_path) -> None:
 
     with pytest.raises(WorkflowError) as excinfo:
         store.create_thread(
-            side="frontend",
+            side="consumer",
             verdict=Verdict.propose,
             title="Initial",
             body="Start.",
@@ -225,7 +225,7 @@ def test_mock_store_rejects_contract_over_cap(tmp_path) -> None:
 def test_mock_store_rejects_changes_after_terminal_status(tmp_path) -> None:
     store = MockNegotiationStore(tmp_path / "negotiations.json")
     first = store.create_thread(
-        side="frontend",
+        side="consumer",
         verdict=Verdict.propose,
         title="Initial",
         body="Start.",
@@ -236,7 +236,7 @@ def test_mock_store_rejects_changes_after_terminal_status(tmp_path) -> None:
     with pytest.raises(WorkflowError) as append_exc:
         store.append_entry(
             first.thread_id,
-            side="backend",
+            side="provider",
             verdict=Verdict.counter,
             title="Counter",
             body="No.",
@@ -267,7 +267,7 @@ def test_negotiation_entry_rejects_invalid_verdict() -> None:
     with pytest.raises(ValueError, match="Invalid verdict"):
         NegotiationEntry(
             thread_id="1",
-            side="frontend",
+            side="consumer",
             verdict="maybe",
             contract=None,
             title="Initial",
@@ -280,7 +280,7 @@ def test_negotiation_entry_rejects_invalid_verdict() -> None:
 def test_negotiation_entry_normalizes_verdict() -> None:
     entry = NegotiationEntry(
         thread_id="1",
-        side="frontend",
+        side="consumer",
         verdict=" AGREE ",
         contract="GET /items",
         title="Agreed",
@@ -296,7 +296,7 @@ def test_entry_from_api_selects_created_timestamp_fallbacks() -> None:
     raw = {
         "id": 1,
         "thread_id": 7,
-        "side": "frontend",
+        "side": "consumer",
         "verdict": "propose",
         "title": "Initial",
         "body": "Start.",
@@ -320,7 +320,7 @@ def test_mock_store_rejects_invalid_verdict(tmp_path) -> None:
 
     with pytest.raises(ValueError, match="Invalid verdict"):
         store.create_thread(
-            side="frontend",
+            side="consumer",
             verdict="maybe",
             title="Initial",
             body="Start.",
@@ -372,7 +372,7 @@ def test_api_negotiation_store_round_trips_via_fake_client() -> None:
     )
 
     first = store.create_thread(
-        side="frontend",
+        side="consumer",
         verdict=Verdict.propose,
         title="Initial",
         body="Start.",
@@ -381,7 +381,7 @@ def test_api_negotiation_store_round_trips_via_fake_client() -> None:
     )
     second = store.append_entry(
         first.thread_id,
-        side="backend",
+        side="provider",
         verdict=Verdict.counter,
         title="Counter",
         body="Add pagination.",
@@ -390,7 +390,7 @@ def test_api_negotiation_store_round_trips_via_fake_client() -> None:
     )
     third = store.append_entry(
         first.thread_id,
-        side="frontend",
+        side="consumer",
         verdict=Verdict.agree,
         title="Agreed",
         body="Pagination accepted.",
@@ -416,7 +416,7 @@ def test_api_negotiation_store_round_trips_via_fake_client() -> None:
     with pytest.raises(WorkflowError) as append_exc:
         store.append_entry(
             first.thread_id,
-            side="backend",
+            side="provider",
             verdict=Verdict.counter,
             title="Too late",
             body="No.",
@@ -769,7 +769,7 @@ def test_api_store_create_thread_treats_same_payload_as_idempotent_retry() -> No
         client=client,
     )
     entry_kwargs = {
-        "side": "frontend",
+        "side": "consumer",
         "verdict": Verdict.propose,
         "title": "Initial",
         "body": "Start.",
@@ -791,7 +791,7 @@ def test_api_store_create_thread_rejects_same_origin_with_different_payload() ->
         client=client,
     )
     store.create_thread(
-        side="frontend",
+        side="consumer",
         verdict=Verdict.propose,
         title="Initial",
         body="Start.",
@@ -801,7 +801,7 @@ def test_api_store_create_thread_rejects_same_origin_with_different_payload() ->
 
     with pytest.raises(WorkflowError) as excinfo:
         store.create_thread(
-            side="frontend",
+            side="consumer",
             verdict=Verdict.propose,
             title="Different opener",
             body="Other body.",
@@ -830,7 +830,7 @@ def test_api_store_errors_include_negotiation_context() -> None:
 
     with pytest.raises(WorkflowError) as excinfo:
         store.create_thread(
-            side="frontend",
+            side="consumer",
             verdict=Verdict.propose,
             title="Initial",
             body="Start.",
@@ -857,7 +857,7 @@ def test_api_store_issue_refs_fail_clearly_when_thread_fields_are_missing() -> N
         client=client,
     )
     first = store.create_thread(
-        side="frontend",
+        side="consumer",
         verdict=Verdict.propose,
         title="Initial",
         body="Use the public endpoint.",
@@ -887,7 +887,7 @@ def test_api_store_accepts_empty_nested_issue_refs_as_supported() -> None:
         client=client,
     )
     first = store.create_thread(
-        side="frontend",
+        side="consumer",
         verdict=Verdict.propose,
         title="Initial",
         body="Use the public endpoint.",
@@ -912,7 +912,7 @@ def test_api_store_set_issue_refs_requires_patch_confirmation() -> None:
         client=client,
     )
     first = store.create_thread(
-        side="frontend",
+        side="consumer",
         verdict=Verdict.propose,
         title="Initial",
         body="Use the public endpoint.",

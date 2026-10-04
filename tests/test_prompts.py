@@ -59,7 +59,7 @@ SPEC_CONTEXTS = {
         "profile_text": "## Project: api\nSummary: API\nTags: python\n\nOwns APIs.",
     },
     "negotiation_round": {
-        "side": "frontend",
+        "side": "consumer",
         "seed": "Origin issue body.",
         "resolved_contract": "(none yet)",
         "thread_summary": "- (no prior entries)",
@@ -215,7 +215,7 @@ def test_untrusted_prompt_builders_fence_every_external_field() -> None:
     thread = [
         NegotiationEntry(
             thread_id="1",
-            side="backend",
+            side="provider",
             verdict=Verdict.propose,
             contract="Contract instruction.",
             title="Thread title instruction.",
@@ -226,7 +226,7 @@ def test_untrusted_prompt_builders_fence_every_external_field() -> None:
     ]
     negotiation_prompts = [
         render_round_prompt(
-            side="frontend",
+            side="consumer",
             seed="Seed instruction.",
             thread=thread,
             resolved_contract="Resolved contract instruction.",

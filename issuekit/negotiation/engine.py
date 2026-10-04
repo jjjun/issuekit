@@ -35,8 +35,6 @@ from issuekit.workflow import WorkflowError
 
 PROVIDER_SIDE = "provider"
 CONSUMER_SIDE = "consumer"
-# Legacy threads used positional sides, so frontend maps to consumer and backend to provider.
-LEGACY_SIDES = {"frontend": CONSUMER_SIDE, "backend": PROVIDER_SIDE}
 DEFAULT_MAX_ROUNDS = 4
 
 
@@ -238,6 +236,7 @@ def finalize_negotiation(
 
     status = store.get_status(thread_id)
     thread = store.get_thread(thread_id)
+    _require_supported_thread(thread_id, thread)
     if status is ThreadStatus.negotiating:
         outcome = _evaluate_convergence(thread)
         if outcome != "negotiating":
@@ -269,7 +268,7 @@ def finalize_negotiation(
         )
 
     origin_issue_ref = origin_issue_ref_from_thread(thread)
-    initiator_side = _normalized_side(thread[0].side)
+    initiator_side = thread[0].side
     counterpart_side = _other_side(initiator_side)
     projects = {initiator_side: config.project, counterpart_side: to_project}
     titles = {
@@ -372,18 +371,15 @@ def run_negotiation(
     config: IssuekitConfig,
     cwd: Path,
     store: NegotiationStore,
-    initiator_side: str | None = None,
-    provider_agent: str | None = None,
-    consumer_agent: str | None = None,
+    initiator_side: str,
+    provider_agent: str,
+    consumer_agent: str,
     max_rounds: int = DEFAULT_MAX_ROUNDS,
     timeout: float = 120.0,
     model: str | None = None,
     reasoning_effort: str | None = None,
     counterpart_cwd: Path | None = None,
     runner: AgentRunner | None = None,
-    frontend_agent: str | None = None,
-    backend_agent: str | None = None,
-    backend_cwd: Path | None = None,
     proposal_thread_id: str | None = None,
 ) -> NegotiationResult:
     """Drive a bounded provider/consumer negotiation to a terminal outcome."""
@@ -393,29 +389,17 @@ def run_negotiation(
     runner = runner or AgentRunner()
     seed = _seed_text(issue, config=config, to_project=to_project)
     run_records: list[RoundRun] = []
-    legacy_mode = initiator_side is None
-    if legacy_mode:
-        initiator_side = "frontend"
-        provider_agent = backend_agent
-        consumer_agent = frontend_agent
-        counterpart_cwd = backend_cwd
-    if initiator_side not in (PROVIDER_SIDE, CONSUMER_SIDE, "frontend"):
+    if initiator_side not in (PROVIDER_SIDE, CONSUMER_SIDE):
         raise ValueError("initiator_side must be provider or consumer.")
-    if provider_agent is None or consumer_agent is None:
-        raise ValueError("provider_agent and consumer_agent are required.")
-    provider_side = "backend" if legacy_mode else PROVIDER_SIDE
-    consumer_side = "frontend" if legacy_mode else CONSUMER_SIDE
-    if legacy_mode:
-        initiator_side = consumer_side
     adapters = {
-        provider_side: resolve_adapter(
+        PROVIDER_SIDE: resolve_adapter(
             provider_agent,
             config=config,
             model=model,
             reasoning_effort=reasoning_effort,
             role="negotiation",
         ),
-        consumer_side: resolve_adapter(
+        CONSUMER_SIDE: resolve_adapter(
             consumer_agent,
             config=config,
             model=model,
@@ -424,12 +408,12 @@ def run_negotiation(
         ),
     }
     agents = {
-        provider_side: provider_agent,
-        consumer_side: consumer_agent,
+        PROVIDER_SIDE: provider_agent,
+        CONSUMER_SIDE: consumer_agent,
     }
     side_cwds = {
         initiator_side: cwd,
-        _other_side(initiator_side) if not legacy_mode else provider_side: counterpart_cwd or cwd,
+        _other_side(initiator_side): counterpart_cwd or cwd,
     }
     sessions = _SideSessions(adapters)
     resume_thread_id = proposal_thread_id or _find_resumable_thread_id(
@@ -461,10 +445,11 @@ def run_negotiation(
         )
         run_records.append(first.run)
         thread_id = first_entry.thread_id
-        thread = _thread_for_run(store.get_thread(thread_id), normalize_legacy=not legacy_mode)
+        thread = store.get_thread(thread_id)
     else:
         thread_id = resume_thread_id
-        thread = _thread_for_run(store.get_thread(thread_id), normalize_legacy=not legacy_mode)
+        thread = store.get_thread(thread_id)
+        _require_supported_thread(thread_id, thread)
         stored_status = store.get_status(thread_id)
         if stored_status is ThreadStatus.cancelled:
             raise WorkflowError(
@@ -501,11 +486,9 @@ def run_negotiation(
                 contract=first.parsed.contract,
             )
             run_records.append(first.run)
-            thread = _thread_for_run(
-                store.get_thread(thread_id),
-                normalize_legacy=not legacy_mode,
-            )
-        if not legacy_mode and thread[0].side != initiator_side:
+            thread = store.get_thread(thread_id)
+            _require_supported_thread(thread_id, thread)
+        if thread and thread[0].side != initiator_side:
             raise WorkflowError(
                 f"Negotiation thread {thread_id} was initiated by the {thread[0].side} "
                 f"side, not the requested {initiator_side} side.",
@@ -547,7 +530,8 @@ def run_negotiation(
             contract=turn.parsed.contract,
         )
         run_records.append(turn.run)
-        thread = _thread_for_run(store.get_thread(thread_id), normalize_legacy=not legacy_mode)
+        thread = store.get_thread(thread_id)
+        _require_supported_thread(thread_id, thread)
 
         outcome = _evaluate_convergence(thread)
         if outcome != "negotiating":
@@ -575,7 +559,7 @@ def inspect_thread(thread_id: str, *, store: NegotiationStore) -> NegotiationThr
         agreed_contract=store.get_agreed_contract(thread_id),
         issue_refs=issue_refs,
         source_proposal_ref=source_proposal_ref or source_proposal_ref_from_thread(thread),
-        entries=tuple(_normalize_thread(thread)),
+        entries=tuple(thread),
     )
 
 
@@ -856,25 +840,16 @@ def _seed_text(issue: Issue, *, config: IssuekitConfig, to_project: str) -> str:
 def _next_side(thread: list[NegotiationEntry]) -> str:
     if not thread:
         raise ValueError("A negotiation thread needs an initiating entry.")
-    if thread[-1].side == "frontend":
-        return "backend"
-    if thread[-1].side == "backend":
-        return "frontend"
-    return _other_side(_normalized_side(thread[-1].side))
+    return _other_side(thread[-1].side)
 
 
-def _thread_for_run(
-    thread: list[NegotiationEntry], *, normalize_legacy: bool
-) -> list[NegotiationEntry]:
-    return _normalize_thread(thread) if normalize_legacy else thread
-
-
-def _normalize_thread(thread: list[NegotiationEntry]) -> list[NegotiationEntry]:
-    return [replace(entry, side=_normalized_side(entry.side)) for entry in thread]
-
-
-def _normalized_side(side: str) -> str:
-    return LEGACY_SIDES.get(side, side)
+def _require_supported_thread(thread_id: str, thread: list[NegotiationEntry]) -> None:
+    if any(entry.side not in (PROVIDER_SIDE, CONSUMER_SIDE) for entry in thread):
+        raise WorkflowError(
+            f"Negotiation thread {thread_id} predates provider/consumer sides; "
+            "a new thread is needed.",
+            code="unsupported_thread",
+        )
 
 
 def _other_side(side: str) -> str:

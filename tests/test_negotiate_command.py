@@ -269,16 +269,17 @@ def test_negotiate_converges_when_both_sides_agree_on_same_contract(tmp_path) ->
     store = MockNegotiationStore(None)
     runner = CannedRunner(
         [
-            _block(side="frontend", verdict="agree", contract="GET /items 200"),
-            _block(side="backend", verdict="agree", contract="GET /items 200"),
+            _block(side="consumer", verdict="agree", contract="GET /items 200"),
+            _block(side="provider", verdict="agree", contract="GET /items 200"),
         ]
     )
 
     result = run_negotiation(
         issue=_issue(),
         to_project="backend",
-        frontend_agent="codex",
-        backend_agent="claude",
+        initiator_side="consumer",
+        consumer_agent="codex",
+        provider_agent="claude",
         max_rounds=3,
         timeout=9.0,
         config=IssuekitConfig(api_url="https://mine.example", project="frontend"),
@@ -292,7 +293,7 @@ def test_negotiate_converges_when_both_sides_agree_on_same_contract(tmp_path) ->
     assert result.run_ids == ("run-1", "run-2")
     assert store.get_status(result.thread_id) is ThreadStatus.agreed
     thread = store.get_thread(result.thread_id)
-    assert [entry.side for entry in thread] == ["frontend", "backend"]
+    assert [entry.side for entry in thread] == ["consumer", "provider"]
     assert [entry.verdict for entry in thread] == [
         Verdict.agree,
         Verdict.agree,
@@ -302,28 +303,29 @@ def test_negotiate_converges_when_both_sides_agree_on_same_contract(tmp_path) ->
     prompt = runner.calls[0]["prompt"]
     assert isinstance(prompt, AgentPrompt)
     assert "Read the negotiation round prompt at:" in prompt.pointer
-    assert "Perspective: you represent the frontend side." in _call_plan_text(runner, 0)
+    assert "Perspective: you represent the consumer side." in _call_plan_text(runner, 0)
 
 
-def test_negotiate_runs_backend_turns_in_backend_checkout(tmp_path) -> None:
+def test_negotiate_runs_provider_turns_in_counterpart_checkout(tmp_path) -> None:
     backend_cwd = tmp_path / "backend"
     backend_cwd.mkdir()
     runner = CannedRunner(
         [
-            _block(side="frontend", verdict="propose", contract="GET /items"),
-            _block(side="backend", verdict="blocked", contract=None),
+            _block(side="consumer", verdict="propose", contract="GET /items"),
+            _block(side="provider", verdict="blocked", contract=None),
         ]
     )
 
     run_negotiation(
         issue=_issue(),
         to_project="backend",
-        frontend_agent="codex",
-        backend_agent="claude",
+        initiator_side="consumer",
+        consumer_agent="codex",
+        provider_agent="claude",
         max_rounds=2,
         config=IssuekitConfig(api_url="https://mine.example", project="frontend"),
         cwd=tmp_path,
-        backend_cwd=backend_cwd,
+        counterpart_cwd=backend_cwd,
         store=MockNegotiationStore(None),
         runner=runner,
     )
@@ -344,8 +346,8 @@ def test_negotiate_rejects_worktree_mutations_from_either_side(
     subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
     runner = WritingRunner(
         [
-            _block(side="frontend", verdict="propose", contract="GET /items"),
-            _block(side="backend", verdict="counter", contract="GET /items?page=1"),
+            _block(side="consumer", verdict="propose", contract="GET /items"),
+            _block(side="provider", verdict="counter", contract="GET /items?page=1"),
         ],
         write_call=write_call,
     )
@@ -354,8 +356,9 @@ def test_negotiate_rejects_worktree_mutations_from_either_side(
         run_negotiation(
             issue=_issue(),
             to_project="backend",
-            frontend_agent="codex",
-            backend_agent="claude",
+            initiator_side="consumer",
+            consumer_agent="codex",
+            provider_agent="claude",
             max_rounds=max_rounds,
             config=IssuekitConfig(api_url="https://mine.example", project="frontend"),
             cwd=tmp_path,
@@ -390,15 +393,16 @@ def _init_git_repository(path: Path) -> None:
 def test_negotiate_rejects_head_or_branch_changes(tmp_path, runner_type) -> None:
     _init_git_repository(tmp_path)
     runner = runner_type(
-        [_block(side="frontend", verdict="agree", contract="GET /items")]
+        [_block(side="consumer", verdict="agree", contract="GET /items")]
     )
 
     with pytest.raises(WorkflowError, match="modified repository state"):
         run_negotiation(
             issue=_issue(),
             to_project="backend",
-            frontend_agent="codex",
-            backend_agent="claude",
+            initiator_side="consumer",
+            consumer_agent="codex",
+            provider_agent="claude",
             max_rounds=1,
             config=IssuekitConfig(api_url="https://mine.example", project="frontend"),
             cwd=tmp_path,
@@ -491,17 +495,18 @@ def test_negotiate_resumes_the_side_session_and_keeps_the_full_prompt(tmp_path) 
     store = MockNegotiationStore(None)
     runner = CannedRunner(
         [
-            _block(side="frontend", verdict="propose", contract="GET /items"),
-            _block(side="backend", verdict="counter", contract="GET /items?page=1"),
-            _block(side="frontend", verdict="agree", contract="GET /items?page=1"),
+            _block(side="consumer", verdict="propose", contract="GET /items"),
+            _block(side="provider", verdict="counter", contract="GET /items?page=1"),
+            _block(side="consumer", verdict="agree", contract="GET /items?page=1"),
         ]
     )
 
     result = run_negotiation(
         issue=_issue(),
         to_project="backend",
-        frontend_agent="claude",
-        backend_agent="codex",
+        initiator_side="consumer",
+        consumer_agent="claude",
+        provider_agent="codex",
         max_rounds=3,
         timeout=9.0,
         config=IssuekitConfig(api_url="https://mine.example", project="frontend"),
@@ -525,8 +530,8 @@ def test_negotiate_resumes_the_side_session_and_keeps_the_full_prompt(tmp_path) 
     assert "Origin issue: frontend#108" in repeated_side_prompt
     assert "Title: Negotiate API contract" in repeated_side_prompt
     assert "Compact thread so far:" in repeated_side_prompt
-    assert "frontend propose | verdict=propose | contract=GET /items" in repeated_side_prompt
-    assert "backend counter | verdict=counter | contract=GET /items?page=1" in repeated_side_prompt
+    assert "consumer propose | verdict=propose | contract=GET /items" in repeated_side_prompt
+    assert "provider counter | verdict=counter | contract=GET /items?page=1" in repeated_side_prompt
     assert "Latest counterpart entry:" not in repeated_side_prompt
 
 
@@ -534,18 +539,19 @@ def test_negotiate_keeps_one_session_per_side_for_the_same_agent(tmp_path) -> No
     store = MockNegotiationStore(None)
     runner = CannedRunner(
         [
-            _block(side="frontend", verdict="propose", contract="GET /items"),
-            _block(side="backend", verdict="counter", contract="GET /items?page=1"),
-            _block(side="frontend", verdict="counter", contract="GET /items?cursor=x"),
-            _block(side="backend", verdict="counter", contract="GET /items?offset=0"),
+            _block(side="consumer", verdict="propose", contract="GET /items"),
+            _block(side="provider", verdict="counter", contract="GET /items?page=1"),
+            _block(side="consumer", verdict="counter", contract="GET /items?cursor=x"),
+            _block(side="provider", verdict="counter", contract="GET /items?offset=0"),
         ]
     )
 
     result = run_negotiation(
         issue=_issue(),
         to_project="backend",
-        frontend_agent="claude",
-        backend_agent="claude",
+        initiator_side="consumer",
+        consumer_agent="claude",
+        provider_agent="claude",
         max_rounds=4,
         timeout=9.0,
         config=IssuekitConfig(api_url="https://mine.example", project="frontend"),
@@ -612,8 +618,9 @@ def test_negotiate_failure_includes_round_session_and_log_reason(tmp_path) -> No
         run_negotiation(
             issue=_issue(),
             to_project="backend",
-            frontend_agent="claude",
-            backend_agent="codex",
+            initiator_side="consumer",
+            consumer_agent="claude",
+            provider_agent="codex",
             max_rounds=1,
             timeout=9.0,
             config=IssuekitConfig(api_url="https://mine.example", project="frontend"),
@@ -623,7 +630,7 @@ def test_negotiate_failure_includes_round_session_and_log_reason(tmp_path) -> No
         )
 
     message = str(excinfo.value)
-    assert "Negotiation round 1 failed for frontend" in message
+    assert "Negotiation round 1 failed for consumer" in message
     assert "agent=claude" in message
     assert "run_id=run-1" in message
     assert f"session_id={runner.calls[0]['session_id']}" in message
@@ -634,15 +641,16 @@ def test_negotiate_passes_single_line_pointer_prompt_and_writes_full_plan(tmp_pa
     store = MockNegotiationStore(None)
     runner = CannedRunner(
         [
-            _block(side="frontend", verdict="propose", contract="GET /items"),
+            _block(side="consumer", verdict="propose", contract="GET /items"),
         ]
     )
 
     run_negotiation(
         issue=_issue(),
         to_project="backend",
-        frontend_agent="codex",
-        backend_agent="claude",
+        initiator_side="consumer",
+        consumer_agent="codex",
+        provider_agent="claude",
         max_rounds=1,
         timeout=9.0,
         config=IssuekitConfig(api_url="https://mine.example", project="frontend"),
@@ -660,7 +668,7 @@ def test_negotiate_passes_single_line_pointer_prompt_and_writes_full_plan(tmp_pa
 
     plan_text = prompt.body
     assert "You are participating in an issuekit cross-repo design negotiation." in plan_text
-    assert "Perspective: you represent the frontend side." in plan_text
+    assert "Perspective: you represent the consumer side." in plan_text
     assert "Read-only run: Inspect the repository only." in plan_text
     assert "Compact thread so far:" in plan_text
 
@@ -669,17 +677,18 @@ def test_negotiate_blocked_path_stops_immediately(tmp_path) -> None:
     store = SettlementTrackingNegotiationStore()
     runner = CannedRunner(
         [
-            _block(side="frontend", verdict="propose", contract="GET /items"),
-            _block(side="backend", verdict="blocked", contract=None, notes="Need auth."),
-            _block(side="frontend", verdict="agree", contract="GET /items"),
+            _block(side="consumer", verdict="propose", contract="GET /items"),
+            _block(side="provider", verdict="blocked", contract=None, notes="Need auth."),
+            _block(side="consumer", verdict="agree", contract="GET /items"),
         ]
     )
 
     result = run_negotiation(
         issue=_issue(),
         to_project="backend",
-        frontend_agent="codex",
-        backend_agent="claude",
+        initiator_side="consumer",
+        consumer_agent="codex",
+        provider_agent="claude",
         max_rounds=4,
         timeout=9.0,
         config=IssuekitConfig(api_url="https://mine.example", project="frontend"),
@@ -699,17 +708,18 @@ def test_negotiate_escalates_at_max_rounds_without_status_change(tmp_path) -> No
     store = MockNegotiationStore(None)
     runner = CannedRunner(
         [
-            _block(side="frontend", verdict="propose", contract="GET /items"),
-            _block(side="backend", verdict="counter", contract="GET /items?page=1"),
-            _block(side="frontend", verdict="counter", contract="GET /items?cursor=x"),
+            _block(side="consumer", verdict="propose", contract="GET /items"),
+            _block(side="provider", verdict="counter", contract="GET /items?page=1"),
+            _block(side="consumer", verdict="counter", contract="GET /items?cursor=x"),
         ]
     )
 
     result = run_negotiation(
         issue=_issue(),
         to_project="backend",
-        frontend_agent="codex",
-        backend_agent="claude",
+        initiator_side="consumer",
+        consumer_agent="codex",
+        provider_agent="claude",
         max_rounds=3,
         timeout=9.0,
         config=IssuekitConfig(api_url="https://mine.example", project="frontend"),
@@ -727,16 +737,17 @@ def test_negotiate_materially_different_agreements_do_not_converge(tmp_path) -> 
     store = MockNegotiationStore(None)
     runner = CannedRunner(
         [
-            _block(side="frontend", verdict="agree", contract="GET /items"),
-            _block(side="backend", verdict="agree", contract="POST /items"),
+            _block(side="consumer", verdict="agree", contract="GET /items"),
+            _block(side="provider", verdict="agree", contract="POST /items"),
         ]
     )
 
     result = run_negotiation(
         issue=_issue(),
         to_project="backend",
-        frontend_agent="codex",
-        backend_agent="claude",
+        initiator_side="consumer",
+        consumer_agent="codex",
+        provider_agent="claude",
         max_rounds=2,
         timeout=9.0,
         config=IssuekitConfig(api_url="https://mine.example", project="frontend"),
@@ -752,24 +763,25 @@ def test_negotiate_materially_different_agreements_do_not_converge(tmp_path) -> 
 def test_negotiate_resumes_open_thread_for_same_origin_issue(tmp_path) -> None:
     store = MockNegotiationStore(None)
     first = store.create_thread(
-        side="frontend",
+        side="consumer",
         verdict=Verdict.propose,
-        title="frontend propose",
+        title="consumer propose",
         body="Start.",
-        origin="frontend#108@frontend:round-1",
+        origin="frontend#108@consumer:round-1",
         contract="GET /items",
     )
     runner = CannedRunner(
         [
-            _block(side="backend", verdict="agree", contract="GET /items"),
+            _block(side="provider", verdict="agree", contract="GET /items"),
         ]
     )
 
     result = run_negotiation(
         issue=_issue(),
         to_project="backend",
-        frontend_agent="codex",
-        backend_agent="claude",
+        initiator_side="consumer",
+        consumer_agent="codex",
+        provider_agent="claude",
         max_rounds=2,
         timeout=9.0,
         config=IssuekitConfig(api_url="https://mine.example", project="frontend"),
@@ -784,8 +796,8 @@ def test_negotiate_resumes_open_thread_for_same_origin_issue(tmp_path) -> None:
     assert runner.calls[0]["agent_name"] == "claude"
     thread = store.get_thread(first.thread_id)
     assert [entry.origin for entry in thread] == [
-        "frontend#108@frontend:round-1",
-        "frontend#108@backend:round-2",
+        "frontend#108@consumer:round-1",
+        "frontend#108@provider:round-2",
     ]
     assert store.get_status(first.thread_id) is ThreadStatus.agreed
 
@@ -794,22 +806,22 @@ def test_entry_origin_matches_api_proposal_origin_contract() -> None:
     origin = entry_origin(
         _issue(),
         config=IssuekitConfig(project="frontend"),
-        side="frontend",
+        side="consumer",
         round_number=1,
     )
 
-    assert origin == "frontend#108@frontend:round-1"
+    assert origin == "frontend#108@consumer:round-1"
     assert re.fullmatch(r"^([^#]+)#([^@]+)@(.+)$", origin)
 
 
 def test_origin_issue_ref_extracts_issue_ref_from_entry_origin() -> None:
     store = MockNegotiationStore(None)
     first = store.create_thread(
-        side="frontend",
+        side="consumer",
         verdict=Verdict.agree,
-        title="frontend agree",
+        title="consumer agree",
         body="Accepted.",
-        origin="frontend#108@frontend:round-1",
+        origin="frontend#108@consumer:round-1",
         contract="GET /items 200",
     )
 
@@ -819,20 +831,20 @@ def test_origin_issue_ref_extracts_issue_ref_from_entry_origin() -> None:
 def _agreed_store(contract: str = "GET /items 200") -> tuple[MockNegotiationStore, str]:
     store = MockNegotiationStore(None)
     first = store.create_thread(
-        side="frontend",
+        side="consumer",
         verdict=Verdict.agree,
-        title="frontend agree",
+        title="consumer agree",
         body="Accepted.",
-        origin="frontend#108@frontend:round-1",
+        origin="frontend#108@consumer:round-1",
         contract=contract,
     )
     store.append_entry(
         first.thread_id,
-        side="backend",
+        side="provider",
         verdict=Verdict.agree,
-        title="backend agree",
+        title="provider agree",
         body="Accepted.",
-        origin="frontend#108@backend:round-2",
+        origin="frontend#108@provider:round-2",
         contract=contract,
     )
     store.set_status(first.thread_id, ThreadStatus.agreed)
@@ -1046,34 +1058,58 @@ def test_negotiate_initiator_opens_for_each_role(tmp_path, initiator_side: str) 
     assert runner.calls[0]["agent_name"] == ("codex" if initiator_side == "provider" else "claude")
 
 
-def test_negotiate_resumes_legacy_thread_as_consumer(tmp_path) -> None:
+def test_run_negotiation_requires_initiator_side(tmp_path) -> None:
+    with pytest.raises(TypeError, match="initiator_side"):
+        run_negotiation(
+            issue=_issue(),
+            to_project="backend",
+            provider_agent="claude",
+            consumer_agent="codex",
+            config=IssuekitConfig(api_url="https://mine.example", project="frontend"),
+            cwd=tmp_path,
+            store=MockNegotiationStore(None),
+        )
+
+
+def test_negotiate_rejects_legacy_thread_when_resuming(tmp_path) -> None:
     store = MockNegotiationStore(None)
     first = store.create_thread(
         side="frontend",
         verdict=Verdict.propose,
         title="frontend propose",
         body="Start.",
-        origin="frontend#108@frontend:round-1",
+        origin="frontend#108@consumer:round-1",
         contract="GET /items",
     )
-    runner = CannedRunner([_block(side="provider", verdict="blocked", contract=None)])
-
-    result = run_negotiation(
-        issue=_issue(),
-        to_project="backend",
-        initiator_side="consumer",
-        provider_agent="claude",
-        consumer_agent="codex",
-        max_rounds=2,
-        config=IssuekitConfig(api_url="https://mine.example", project="frontend"),
-        cwd=tmp_path,
-        store=store,
-        runner=runner,
+    store.append_entry(
+        first.thread_id,
+        side="backend",
+        verdict=Verdict.counter,
+        title="backend counter",
+        body="Continue.",
+        origin="frontend#108@provider:round-2",
+        contract="GET /items?page=1",
     )
+    runner = CannedRunner([])
 
-    assert result.outcome == "blocked"
-    assert [entry.side for entry in store.get_thread(first.thread_id)] == ["frontend", "provider"]
-    assert runner.calls[0]["agent_name"] == "claude"
+    with pytest.raises(WorkflowError) as excinfo:
+        run_negotiation(
+            issue=_issue(),
+            to_project="backend",
+            initiator_side="consumer",
+            provider_agent="claude",
+            consumer_agent="codex",
+            max_rounds=2,
+            config=IssuekitConfig(api_url="https://mine.example", project="frontend"),
+            cwd=tmp_path,
+            store=store,
+            runner=runner,
+        )
+
+    assert excinfo.value.code == "unsupported_thread"
+    assert "predates provider/consumer sides" in str(excinfo.value)
+    assert "a new thread is needed" in str(excinfo.value)
+    assert runner.calls == []
 
 
 def test_negotiate_rejects_mismatched_initiator_role_when_resuming(tmp_path) -> None:
@@ -1223,11 +1259,11 @@ def test_finalize_proposal_negotiation_reuses_source_as_provider_issue() -> None
 def test_finalize_negotiation_refuses_non_agreed_thread() -> None:
     store = MockNegotiationStore(None)
     first = store.create_thread(
-        side="frontend",
+        side="consumer",
         verdict=Verdict.propose,
-        title="frontend propose",
+        title="consumer propose",
         body="Start.",
-        origin="frontend#108@frontend:round-1",
+        origin="frontend#108@consumer:round-1",
         contract="GET /items",
     )
 
@@ -1247,14 +1283,14 @@ def test_finalize_negotiation_refuses_non_agreed_thread() -> None:
     assert "latest verdict is propose" in str(excinfo.value)
 
 
-def test_finalize_negotiation_promotes_agreed_in_substance_thread() -> None:
+def test_finalize_negotiation_rejects_legacy_thread() -> None:
     store = MockNegotiationStore(None)
     first = store.create_thread(
         side="frontend",
-        verdict=Verdict.propose,
-        title="frontend propose",
-        body="Start.",
-        origin="frontend#108@frontend:round-1",
+        verdict=Verdict.agree,
+        title="frontend agree",
+        body="Accepted.",
+        origin="frontend#108@consumer:round-1",
         contract="GET /items 200",
     )
     store.append_entry(
@@ -1263,7 +1299,44 @@ def test_finalize_negotiation_promotes_agreed_in_substance_thread() -> None:
         verdict=Verdict.agree,
         title="backend agree",
         body="Accepted.",
-        origin="frontend#108@backend:round-2",
+        origin="frontend#108@provider:round-2",
+        contract="GET /items 200",
+    )
+    store.set_status(first.thread_id, ThreadStatus.agreed, agreed_contract="GET /items 200")
+
+    with pytest.raises(WorkflowError) as excinfo:
+        finalize_negotiation(
+            thread_id=first.thread_id,
+            to_project="backend",
+            author_agent="codex",
+            priority="medium",
+            config=IssuekitConfig(project="frontend"),
+            store=store,
+            issue_creator=MockIssueCreator(),
+        )
+
+    assert excinfo.value.code == "unsupported_thread"
+    assert "predates provider/consumer sides" in str(excinfo.value)
+    assert "a new thread is needed" in str(excinfo.value)
+
+
+def test_finalize_negotiation_promotes_agreed_in_substance_thread() -> None:
+    store = MockNegotiationStore(None)
+    first = store.create_thread(
+        side="consumer",
+        verdict=Verdict.propose,
+        title="consumer propose",
+        body="Start.",
+        origin="frontend#108@consumer:round-1",
+        contract="GET /items 200",
+    )
+    store.append_entry(
+        first.thread_id,
+        side="provider",
+        verdict=Verdict.agree,
+        title="provider agree",
+        body="Accepted.",
+        origin="frontend#108@provider:round-2",
         contract="GET /items 200",
     )
 
@@ -1285,11 +1358,11 @@ def test_finalize_negotiation_promotes_agreed_in_substance_thread() -> None:
 def test_inspect_thread_explains_finalize_refusal() -> None:
     store = MockNegotiationStore(None)
     first = store.create_thread(
-        side="frontend",
+        side="consumer",
         verdict=Verdict.propose,
-        title="frontend propose",
+        title="consumer propose",
         body="Start.",
-        origin="frontend#108@frontend:round-1",
+        origin="frontend#108@consumer:round-1",
         contract="GET /items",
     )
 
@@ -1298,26 +1371,57 @@ def test_inspect_thread_explains_finalize_refusal() -> None:
     payload = inspection.to_dict()
     assert payload["status"] == "negotiating"
     assert payload["finalize_refusal"] == "latest verdict is propose, not agree"
-    assert payload["entries"][0]["origin"] == "frontend#108@frontend:round-1"
+    assert payload["entries"][0]["origin"] == "frontend#108@consumer:round-1"
 
 
-def test_inspect_thread_has_no_refusal_for_recoverable_agreement() -> None:
-    store = MockNegotiationStore(None)
+def test_threads_cli_preserves_legacy_sides_in_stored_thread(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    store = MockNegotiationStore(tmp_path / ".agent-runs" / "negotiations" / "mock.json")
     first = store.create_thread(
         side="frontend",
         verdict=Verdict.propose,
         title="frontend propose",
         body="Start.",
-        origin="frontend#108@frontend:round-1",
-        contract="GET /items 200",
+        origin="issuekit#108@consumer:round-1",
+        contract="GET /items",
     )
     store.append_entry(
         first.thread_id,
         side="backend",
+        verdict=Verdict.counter,
+        title="backend counter",
+        body="Continue.",
+        origin="issuekit#108@provider:round-2",
+        contract="GET /items?page=1",
+    )
+
+    assert cli.main(["threads", first.thread_id, "--mock", "--json"]) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert [entry["side"] for entry in payload["entries"]] == ["frontend", "backend"]
+
+
+def test_inspect_thread_has_no_refusal_for_recoverable_agreement() -> None:
+    store = MockNegotiationStore(None)
+    first = store.create_thread(
+        side="consumer",
+        verdict=Verdict.propose,
+        title="consumer propose",
+        body="Start.",
+        origin="frontend#108@consumer:round-1",
+        contract="GET /items 200",
+    )
+    store.append_entry(
+        first.thread_id,
+        side="provider",
         verdict=Verdict.agree,
-        title="backend agree",
+        title="provider agree",
         body="Accepted.",
-        origin="frontend#108@backend:round-2",
+        origin="frontend#108@provider:round-2",
         contract="GET /items 200",
     )
 
@@ -1332,20 +1436,20 @@ def test_inspect_thread_has_no_refusal_for_recoverable_agreement() -> None:
 def test_inspect_thread_reports_contract_mismatch_for_non_matching_agreement() -> None:
     store = MockNegotiationStore(None)
     first = store.create_thread(
-        side="frontend",
+        side="consumer",
         verdict=Verdict.propose,
-        title="frontend propose",
+        title="consumer propose",
         body="Start.",
-        origin="frontend#108@frontend:round-1",
+        origin="frontend#108@consumer:round-1",
         contract="GET /items 200",
     )
     store.append_entry(
         first.thread_id,
-        side="backend",
+        side="provider",
         verdict=Verdict.agree,
-        title="backend agree",
+        title="provider agree",
         body="Accepted.",
-        origin="frontend#108@backend:round-2",
+        origin="frontend#108@provider:round-2",
         contract="POST /items 201",
     )
 
@@ -1647,20 +1751,20 @@ def test_negotiate_cli_finalize_json_uses_mock_store(tmp_path, monkeypatch, caps
     monkeypatch.chdir(tmp_path)
     store = MockNegotiationStore(tmp_path / ".agent-runs" / "negotiations" / "mock.json")
     first = store.create_thread(
-        side="frontend",
+        side="consumer",
         verdict=Verdict.agree,
-        title="frontend agree",
+        title="consumer agree",
         body="Accepted.",
-        origin="frontend#108@frontend:round-1",
+        origin="frontend#108@consumer:round-1",
         contract="GET /items 200",
     )
     store.append_entry(
         first.thread_id,
-        side="backend",
+        side="provider",
         verdict=Verdict.agree,
-        title="backend agree",
+        title="provider agree",
         body="Accepted.",
-        origin="frontend#108@backend:round-2",
+        origin="frontend#108@provider:round-2",
         contract="GET /items 200",
     )
     store.set_status(first.thread_id, ThreadStatus.agreed)
@@ -1695,11 +1799,11 @@ def test_threads_cli_inspects_mock_thread_json(tmp_path, monkeypatch, capsys) ->
     monkeypatch.chdir(tmp_path)
     store = MockNegotiationStore(tmp_path / ".agent-runs" / "negotiations" / "mock.json")
     first = store.create_thread(
-        side="frontend",
+        side="consumer",
         verdict=Verdict.propose,
-        title="frontend propose",
+        title="consumer propose",
         body="Start.",
-        origin="issuekit#108@frontend:round-1",
+        origin="issuekit#108@consumer:round-1",
         contract="GET /items",
     )
 
@@ -1709,4 +1813,4 @@ def test_threads_cli_inspects_mock_thread_json(tmp_path, monkeypatch, capsys) ->
     assert payload["thread_id"] == first.thread_id
     assert payload["status"] == "negotiating"
     assert payload["finalize_refusal"] == "latest verdict is propose, not agree"
-    assert payload["entries"][0]["origin"] == "issuekit#108@frontend:round-1"
+    assert payload["entries"][0]["origin"] == "issuekit#108@consumer:round-1"

@@ -1485,7 +1485,7 @@ def test_client_create_proposal_sends_thread_fields() -> None:
     response = {
         "id": 3,
         "thread_id": 9,
-        "side": "frontend",
+        "side": "consumer",
         "verdict": "propose",
         "contract": "GET /items",
         "origin": "source#0@abc123",
@@ -1501,7 +1501,7 @@ def test_client_create_proposal_sends_thread_fields() -> None:
             "title": "Proposal",
             "body": "Body",
             "thread_id": 9,
-            "side": "frontend",
+            "side": "consumer",
             "verdict": "propose",
             "contract": "GET /items",
         }
@@ -1519,7 +1519,7 @@ def test_client_create_proposal_sends_thread_fields() -> None:
         title="Proposal",
         body="Body",
         thread_id=9,
-        side="frontend",
+        side="consumer",
         verdict="propose",
         contract="GET /items",
     ) == {**response, "was_created": True}
@@ -1674,7 +1674,7 @@ def test_client_proposal_thread_methods_use_expected_paths() -> None:
         body = json.loads(request.content) if request.content else None
         seen.append((request.method, request.url.path, body))
         if request.url.path.endswith("/4/reply"):
-            return httpx.Response(200, json={"id": 5, "thread_id": 7, "side": "backend"})
+            return httpx.Response(200, json={"id": 5, "thread_id": 7, "side": "provider"})
         if request.url.path.endswith("/thread/7") and request.method == "GET":
             return httpx.Response(200, json={"id": 7, "status": "negotiating", "items": []})
         if request.url.path.endswith("/threads"):
@@ -1706,11 +1706,11 @@ def test_client_proposal_thread_methods_use_expected_paths() -> None:
         origin="source#1",
         title="Reply",
         body="Body",
-        side="backend",
+        side="provider",
         verdict="counter",
         contract="GET /items?page=1",
         priority="high",
-    ) == {"id": 5, "thread_id": 7, "side": "backend"}
+    ) == {"id": 5, "thread_id": 7, "side": "provider"}
     assert client.get_thread(7) == {"id": 7, "status": "negotiating", "items": []}
     assert client.list_threads(status="negotiating", page_size=2) == threads
     assert client.patch_thread(7, status="agreed", agreed_contract="GET /items") == {
@@ -1726,7 +1726,7 @@ def test_client_proposal_thread_methods_use_expected_paths() -> None:
                 "origin": "source#1",
                 "title": "Reply",
                 "body": "Body",
-                "side": "backend",
+                "side": "provider",
                 "verdict": "counter",
                 "contract": "GET /items?page=1",
                 "priority": "high",

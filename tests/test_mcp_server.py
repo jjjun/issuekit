@@ -580,7 +580,7 @@ def test_list_negotiation_threads_reads_mock_store_without_api_client(
     )
     store = MockNegotiationStore(None)
     entry = store.create_thread(
-        side="frontend",
+        side="consumer",
         verdict=Verdict.propose,
         title="Contract",
         body="Proposed contract.",
@@ -589,7 +589,7 @@ def test_list_negotiation_threads_reads_mock_store_without_api_client(
     )
     store.append_entry(
         entry.thread_id,
-        side="backend",
+        side="provider",
         verdict=Verdict.agree,
         title="Contract",
         body="Agreed contract.",
