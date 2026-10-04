@@ -9,7 +9,7 @@ from pathlib import Path
 
 from issuekit.coerce import optional_str
 from issuekit.config import load_config, resolve_repository_root
-from issuekit.config.settings import REPO_DESCRIPTION_MAX_LEN
+from issuekit.config.model import REPO_DESCRIPTION_MAX_LEN
 from issuekit.core import is_valid_workflow_token
 from issuekit.workers.identity import WorkerRegistrationError, register_worker
 from issuekit.workers.registry import try_post_worker_registration

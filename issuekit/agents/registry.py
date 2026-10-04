@@ -6,7 +6,7 @@ from dataclasses import replace
 
 from issuekit.agentrun.adapter import AgentAdapter, build_adapter
 from issuekit.config import IssuekitConfig
-from issuekit.config.settings import BUILTIN_ROLE_LAUNCH_POLICIES, READ_ONLY_ROLES
+from issuekit.config.model import BUILTIN_ROLE_LAUNCH_POLICIES, READ_ONLY_ROLES
 
 
 def resolve_adapter(

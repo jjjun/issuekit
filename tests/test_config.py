@@ -14,7 +14,7 @@ from issuekit.config import (
     WorkerIdentity,
     load_config,
 )
-from issuekit.config.settings import PROFILE_TAG_MAX_LEN
+from issuekit.config.model import PROFILE_TAG_MAX_LEN
 
 _ENV_KEYS = (
     "ISSUEKIT_API_PASSWORD",
@@ -327,7 +327,7 @@ def test_load_config_reads_machine_insecure_api_opt_out(
 def test_load_config_reports_unreadable_machine_config_clearly(
     tmp_path: Path, monkeypatch
 ) -> None:
-    from issuekit.config import settings
+    from issuekit.config import sources
 
     machine_path = tmp_path / "machine.toml"
     machine_path.write_text("api_url = 'https://private.example'\n", encoding="utf-8")
@@ -336,7 +336,7 @@ def test_load_config_reports_unreadable_machine_config_clearly(
     def raise_permission_error(_path: Path) -> dict[str, object]:
         raise PermissionError(13, "Permission denied", str(machine_path))
 
-    monkeypatch.setattr(settings, "_load_config_toml", raise_permission_error)
+    monkeypatch.setattr(sources, "_load_config_toml", raise_permission_error)
 
     with pytest.raises(ValueError, match="Cannot read machine config") as excinfo:
         load_config(tmp_path)
@@ -417,7 +417,7 @@ def test_machine_config_ignores_newer_role_overlay(tmp_path: Path, monkeypatch) 
     )
     monkeypatch.setenv("ISSUEKIT_CONFIG", str(machine_path))
     monkeypatch.setattr(
-        "issuekit.config.settings.ROLE_OVERLAY_ROLES",
+        "issuekit.config.model.ROLE_OVERLAY_ROLES",
         frozenset({"implementer", "reviewer", "triage"}),
     )
 
@@ -434,7 +434,7 @@ def test_repo_config_rejects_unknown_role_overlay(tmp_path: Path, monkeypatch) -
         newline="\n",
     )
     monkeypatch.setattr(
-        "issuekit.config.settings.ROLE_OVERLAY_ROLES",
+        "issuekit.config.model.ROLE_OVERLAY_ROLES",
         frozenset({"implementer", "reviewer", "triage"}),
     )
 

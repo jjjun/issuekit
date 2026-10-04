@@ -7,6 +7,8 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from .values import _string_tuple
+
 LOCAL_CONFIG_NAME = "issuekit.local.toml"
 LOCAL_GITIGNORE_ENTRIES = (LOCAL_CONFIG_NAME, ".agent-runs/", ".env")
 
@@ -201,12 +203,6 @@ def _disabled_agents(data: dict[str, object]) -> tuple[str, ...] | None:
     if "disabled_agents" in data:
         return _string_tuple(data["disabled_agents"])
     return None
-
-
-def _string_tuple(value: object) -> tuple[str, ...]:
-    if isinstance(value, (list, tuple)):
-        return tuple(str(item) for item in value)
-    return tuple(str(value).split()) if isinstance(value, str) else ()
 
 
 def _author_guard_tables(data: dict[str, object]) -> tuple[dict[str, object], ...]:

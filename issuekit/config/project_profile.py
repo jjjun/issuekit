@@ -12,7 +12,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from issuekit.config.settings import IssuekitConfig
+from issuekit.config.model import IssuekitConfig
 from issuekit.core import drop_none
 from issuekit.gitutil import run_git
 
