@@ -19,7 +19,10 @@ from issuekit.agents.review import (
     ReviewRunParseError,
     run_review_and_decide,
 )
-from issuekit.agents.run_claimed import review_feedback_prompt, run_and_submit
+from issuekit.agents.run_claimed import (
+    review_feedback_prompt,
+    run_and_submit,
+)
 from issuekit.config import IssuekitConfig
 from issuekit.core import Issue
 from issuekit.file_permissions import open_owner_only_new
@@ -81,6 +84,7 @@ class PollResult:
     exit_code: int = 0
     recreate_store: bool = False
     value: object | None = None
+    issue_id: int | None = None
 
 
 def run_poll_loop(
@@ -94,6 +98,8 @@ def run_poll_loop(
     once: bool,
     interval: float,
     max_count: int | None,
+    max_consecutive_failures: int = 0,
+    on_failure_limit: Callable[[PollResult, int], None] | None = None,
     recreate_store: Callable[[], None] | None = None,
     stop_before_retry_sleep: bool = False,
     abort_failed_exit_code: int | None = None,
@@ -102,6 +108,7 @@ def run_poll_loop(
     """Run poll attempts until stopped, idle-once, or the success limit is reached."""
     count = 0
     attempt = 0
+    consecutive_failures = 0
     while not controller.requested:
         attempt += 1
         result = poll(attempt, backoff.current)
@@ -109,6 +116,7 @@ def run_poll_loop(
             recreate_store()
 
         if result.status == "idle":
+            consecutive_failures = 0
             on_idle(attempt)
             if once:
                 return 0
@@ -116,6 +124,14 @@ def run_poll_loop(
             continue
 
         if result.status in {"error", "failed"}:
+            consecutive_failures += 1
+            if (
+                max_consecutive_failures > 0
+                and consecutive_failures >= max_consecutive_failures
+            ):
+                if on_failure_limit is not None:
+                    on_failure_limit(result, consecutive_failures)
+                return 1
             if once:
                 return result.exit_code
             if result.status == "failed" and abort_failed_exit_code is not None:
@@ -128,6 +144,7 @@ def run_poll_loop(
             continue
 
         count += 1
+        consecutive_failures = 0
         backoff.reset()
         on_success(result, count)
         if once or (max_count is not None and count >= max_count):
@@ -288,71 +305,12 @@ def run_review_issue(
     return IssueRunResult("reviewed", 0, reviewed_issue=outcome.decided_issue)
 
 
-def recover_orphaned_issues(
-    args,
-    *,
-    agent: str,
-    config: IssuekitConfig,
-    cwd: Path,
-    issues_dir: Path,
-    log_path: Path,
-    controller: ShutdownController,
-    submitted_count: int,
-    backoff: Backoff,
-    adapter: AgentAdapter | None = None,
-    store,
-    log_submitted: Callable[[Path, Issue | None, int], None],
-) -> tuple[int, int | None, object]:
-    if config.worker is None:
-        return submitted_count, None, store
+def find_implementing_issues(config: IssuekitConfig, *, store) -> list[Issue]:
+    """Find this checkout's active claims for startup recovery and poll retries."""
 
-    me = config.worker_key()
-    if me is None:
-        return submitted_count, None, store
-    try:
-        issues = store.find_implementing_for_workers(config.worker_lookup_keys())
-    except (RuntimeError, TimeoutError, WorkflowError, ValueError) as exc:
-        log_event(sys.stderr, log_path, "recovery_error", worker=me, error=str(exc))
-        if should_recreate_store(exc):
-            store = recreate_store(store, config)
-        return submitted_count, None, store
-
-    for issue in issues:
-        if controller.requested:
-            break
-        log_event(sys.stderr, log_path, "recovered", issue=issue.id, agent=agent, worker=me)
-        result = run_claimed_issue(
-            args,
-            issue,
-            agent=agent,
-            config=config,
-            cwd=cwd,
-            issues_dir=issues_dir,
-            log_path=log_path,
-            controller=controller,
-            backoff=backoff.current,
-            adapter=adapter,
-        )
-        if result.status == "submitted":
-            submitted_count += 1
-            backoff.reset()
-            log_submitted(log_path, result.reviewed_issue, submitted_count)
-            if args.once or (
-                args.max_issues is not None and submitted_count >= args.max_issues
-            ):
-                return submitted_count, 0, store
-            continue
-
-        if args.once:
-            return submitted_count, result.exit_code, store
-        if result.status == "failed" and controller.abort_event.is_set():
-            return submitted_count, 0, store
-        if result.recreate_store:
-            store = recreate_store(store, config)
-        controller.sleep(backoff.current)
-        backoff.step()
-
-    return submitted_count, None, store
+    if config.worker is None or config.worker_key() is None or store is None:
+        return []
+    return store.find_implementing_for_workers(config.worker_lookup_keys())
 
 
 def log_event(stream, log_path: Path | None, event: str, **fields: object) -> None:

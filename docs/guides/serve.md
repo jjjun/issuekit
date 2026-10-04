@@ -86,11 +86,12 @@ committed.
 
 ## What one cycle does
 
-1. **Startup recovery.** Before the first poll, the implement loop looks for
-   every issue still at `stage=implementing` held by this checkout's worker
-   keys, including manual claims, and runs them with serve's `--agent` value,
-   regardless of each issue's assignee. A serve process killed mid-run resumes
-   its own work instead of leaving an orphaned claim behind; see
+1. **Startup recovery and retry.** Before claiming from the pool on every
+   implement poll, the loop looks for an issue at `stage=implementing` held by
+   this checkout's worker keys, including manual claims, and runs the first
+   match with serve's `--agent` value, regardless of its assignee. A failed run
+   stays with this worker and is retried before any new issue is claimed. A
+   serve process killed mid-run resumes its own work; see
    [Orphaned claim detection](orphaned-claim-detection.md).
 2. **Poll.** One call to the pool. No work means an `idle` log line
    (`review_idle` or `proposal_checks_idle` in the other modes) and a sleep of
@@ -104,12 +105,13 @@ committed.
 5. **Submit or decide.** On success the loop calls the lifecycle mutation for
    its mode and logs `submitted` or `reviewed`. On failure it logs `run_failed`
    (`review_failed` in review mode), or `run_error` (`review_error`) when the
-   run raised an error, and backs off.
+   run raised an error, and backs off before retrying.
 
 ## Backoff, limits, and exit
 
 Errors use exponential backoff starting at 1s and capped at 60s; any success
-resets it. Idle polls always wait `--interval`, not the backoff.
+resets it. Idle polls always wait `--interval`, not the backoff. Consecutive
+failed and error polls reset after a success or idle poll.
 
 - `--once` runs at most one agent and exits. Startup recovery takes precedence;
   otherwise the loop attempts one poll. Useful for cron-style operation and for
@@ -117,6 +119,9 @@ resets it. Idle polls always wait `--interval`, not the backoff.
 - `--max-issues <n>` exits after `n` successful submissions, including issues
   finished by startup recovery. With `--review` it counts review decisions;
   `--proposal-checks` ignores it.
+- `--max-run-failures <n>` exits with status 1 after `n` consecutive failed or
+  error polls (default 3). In implement mode it releases the last failed issue
+  back to the pool first. Use `0` for unlimited retries.
 - `--proposal-check-limit <n>` caps how many pending proposal checks one
   `--proposal-checks` cycle evaluates (default 50, maximum 500). The option is
   ignored unless `--proposal-checks` is selected.
@@ -128,10 +133,11 @@ resets it. Idle polls always wait `--interval`, not the backoff.
 
 ## Concurrency, logging, and shutdown
 
-Serve takes a PID lock at `.agent-runs/serve.lock`. A second serve in the same
-checkout exits with `issuekit serve is already running for this checkout (pid N)`.
-A lock left behind by a dead process is detected and reclaimed, so a crashed
-serve does not need manual cleanup.
+Serve takes an OS file lock at `.agent-runs/serve.lock`. A second serve in the
+same checkout exits with `issuekit serve is already running for this checkout (pid N)`.
+The kernel releases the lock when the process exits, so a later serve
+can reuse the same lock file without stale-lock cleanup. The file remains in
+place and contains the PID of the most recent holder.
 
 Every event is written both to stderr and to `.agent-runs/serve.log` as a single
 line of `key=value` pairs. Values containing whitespace or `=` are JSON-quoted
@@ -148,10 +154,10 @@ Event names by loop:
 | Loop | Events |
 |------|--------|
 | any mode | `stopped`, `signal`, `worker_registry_error`, `worker_registry_escalated` |
-| implement | `recovered`, `recovery_error`, `idle`, `claimed`, `claim_error`, `submitted`, `run_error`, `run_failed` |
+| implement | `recovered`, `retrying`, `recovery_error`, `idle`, `claimed`, `claim_error`, `submitted`, `run_error`, `run_failed`, `run_failure_limit` |
 | `--triage` | `auto_adopted`, `triage_adoption_error`, `triage_error`, and `triage_author_*` when `[triage] author_agent` is set |
-| `--review` | `review_idle`, `reviewing`, `review_skipped`, `review_poll_error`, `reviewed`, `review_error`, `review_failed`, `review_decision_discarded` |
-| `--proposal-checks` | `proposal_checks_idle`, `proposal_checks_cycle_start`, `proposal_checks_cycle_complete`, `proposal_checks_cycle_error`, `proposal_check_decision`, `proposal_check_already_decided`, `proposal_check_error` |
+| `--review` | `review_idle`, `reviewing`, `review_skipped`, `review_poll_error`, `reviewed`, `review_error`, `review_failed`, `review_decision_discarded`, `review_failure_limit` |
+| `--proposal-checks` | `proposal_checks_idle`, `proposal_checks_cycle_start`, `proposal_checks_cycle_complete`, `proposal_checks_cycle_error`, `proposal_check_decision`, `proposal_check_already_decided`, `proposal_check_error`, `proposal_check_failure_limit` |
 
 Shutdown is two-stage. The first `SIGINT`/`SIGTERM` requests a graceful stop:
 the current agent run finishes and the loop exits afterwards. A second signal
@@ -193,11 +199,11 @@ still alive, check the log for these events before re-registering.
 | `This checkout is not registered as an issuekit worker.` | no `issuekit.local.toml` | run `issuekit add` |
 | `No implementer is configured.` | no enabled assignee, or several enabled assignees with no default | pass `--agent` or set `default_implementer` |
 | `Agent preflight failed` | the selected agent has invalid runtime settings or its executable is unavailable | fix the agent configuration or install the executable before starting serve |
-| `issuekit serve is already running for this checkout` | live PID holds the lock | stop the other process, or serve from a second checkout |
+| `issuekit serve is already running for this checkout` | another process holds the OS lock | stop the other process, or serve from a second checkout |
 | Repeated `claim_error` with growing backoff | API unreachable or auth expired | check `issuekit info --json`, re-authenticate |
 | `claim_error` with `Claim-sync guard blocks claim-next` | dirty working tree, or a failed `git status`, `git fetch`, or `git merge --ff-only` for `work_branch` | commit or stash, fix the Git failure, or pass `--no-sync`; see [Topologies](#topologies) |
 | `claim_error` with `Author-session guard blocks claim-next` | this checkout recorded an issue author guard, which blocks every pool claim; serve has no `--allow-author-session` | hand off the authored issue, then run `issuekit author-guard clear` |
-| Repeated `run_failed` | the agent exits non-zero; the claim stays at `implementing` under this worker, and serve does not retry it in the same process | read the run logs under `.agent-runs/`, then use `issuekit reclaim <id>` after the worker heartbeat is stale or `issuekit implement <id>` to recover it. `orphans` does not flag the claim while this worker keeps heartbeating |
+| Repeated `run_failed` | the agent exits non-zero; serve retries the same claim with backoff | read the run logs under `.agent-runs/`; after three consecutive failures serve releases the claim and exits, or use `--max-run-failures 0` to keep retrying |
 | `review_decision_discarded` with growing backoff | the reviewer agent emitted an unparseable review block, so the verdict was dropped | read the reported parse error and stdout log, then rerun the review or use the printed manual `request-changes`/`approve` fallback |
 | Work-branch guard blocks every claim | checkout is off `work_branch` | switch branches, or `--allow-any-branch` for human recovery |
 

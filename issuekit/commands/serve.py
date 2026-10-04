@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import argparse
-import os
 import signal
-import subprocess
 import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -15,12 +13,13 @@ from pathlib import Path
 
 from issuekit.agentrun import AgentRunner
 from issuekit.agentrun.adapter import AgentAdapter
-from issuekit.agentrun.run_dir import prepare_run_dir
+from issuekit.agentrun.run_dir import ServeLockError, prepare_run_dir
+from issuekit.agentrun.run_dir import serve_lock as _serve_lock
 from issuekit.agents.proposal_check import (
     ProposalCheckParseError,
     run_proposal_check_cycle,
 )
-from issuekit.agents.run_claimed import preflight_agent
+from issuekit.agents.run_claimed import _release_claim_after_run_error, preflight_agent
 from issuekit.agents.triage_author import TriageDecision, run_triage_author_cycle
 from issuekit.commands._heartbeat import warn_if_staleness_not_wider
 from issuekit.commands.serve_loop import (
@@ -33,11 +32,9 @@ from issuekit.commands.serve_loop import (
     close_store as _close_store,
 )
 from issuekit.commands.serve_loop import (
-    log_event as _log,
+    find_implementing_issues as _find_implementing_issues,
 )
-from issuekit.commands.serve_loop import (
-    recover_orphaned_issues as _recover_orphaned_issues,
-)
+from issuekit.commands.serve_loop import log_event as _log
 from issuekit.commands.serve_loop import (
     recreate_store as _recreate_store,
 )
@@ -52,7 +49,6 @@ from issuekit.commands.serve_loop import (
 )
 from issuekit.config import IssuekitConfig, load_config
 from issuekit.core import Issue
-from issuekit.file_permissions import open_owner_only_new
 from issuekit.issues.orphans import DEFAULT_STALE_AFTER_SEC
 from issuekit.proposals import ProposalError
 from issuekit.proposals.api import (
@@ -104,6 +100,12 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         type=int,
         default=0,
         help="Stop gracefully after this many consecutive heartbeat failures (default: 0, unlimited).",
+    )
+    serve_parser.add_argument(
+        "--max-run-failures",
+        type=int,
+        default=3,
+        help="Stop after this many consecutive failed runs (default: 3, 0: unlimited).",
     )
     serve_parser.add_argument(
         "--priority",
@@ -161,10 +163,6 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     serve_parser.set_defaults(func=run)
 
 
-class ServeLockError(RuntimeError):
-    """Raised when another live serve process holds the checkout lock."""
-
-
 class ServeMode(StrEnum):
     IMPLEMENT = "implement"
     REVIEW = "review"
@@ -187,9 +185,6 @@ _MODE_REJECTED_OPTIONS = {
         "priority": "--priority",
     },
 }
-_ACTIVE_SERVE_LOCKS: set[Path] = set()
-
-
 def run(args) -> int:
     cwd = Path.cwd()
     try:
@@ -236,6 +231,9 @@ def run(args) -> int:
         return 1
     if args.max_heartbeat_failures < 0:
         print("--max-heartbeat-failures must be non-negative.", file=sys.stderr)
+        return 1
+    if args.max_run_failures < 0:
+        print("--max-run-failures must be non-negative.", file=sys.stderr)
         return 1
     warn_if_staleness_not_wider(DEFAULT_STALE_AFTER_SEC, heartbeat_interval)
     if args.max_issues is not None and args.max_issues < 1:
@@ -361,7 +359,6 @@ def _serve_loop(
     controller: ShutdownController,
     adapter: AgentAdapter | None = None,
 ) -> int:
-    submitted_count = 0
     if mode is ServeMode.PROPOSAL_CHECKS:
         return _serve_proposal_checks_loop(
             args,
@@ -373,7 +370,6 @@ def _serve_loop(
         )
 
     store = get_store(config) if config.api_url else None
-    recovery_store = None
     try:
         if mode is ServeMode.REVIEW:
             review_store = store
@@ -390,25 +386,11 @@ def _serve_loop(
 
         backoff = Backoff()
         pending_holds: dict[int, tuple[str, str]] = {}
-        recovery_store = get_store(config) if config.api_url else None
-        submitted_count, exit_code, recovery_store = _recover_orphaned_issues(
-            args,
-            agent=agent,
-            config=config,
-            cwd=cwd,
-            issues_dir=issues_dir,
-            log_path=log_path,
-            controller=controller,
-            submitted_count=submitted_count,
-            backoff=backoff,
-            adapter=adapter,
-            store=recovery_store,
-            log_submitted=_log_submitted,
-        )
-        if exit_code is not None:
-            return exit_code
+        attempted_issue_ids: set[int] = set()
+        last_failed_issue_id: int | None = None
 
         def poll(attempt: int, backoff_seconds: float):
+            nonlocal last_failed_issue_id
             hold_result = _retry_pending_holds(
                 pending_holds,
                 config=config,
@@ -540,27 +522,52 @@ def _serve_loop(
                         recreate_store=_should_recreate_store(exc),
                     )
             try:
-                issue = claim_next(
-                    agent,
-                    priority=args.priority,
-                    config=config,
-                    store=store,
-                    cwd=cwd,
-                    allow_any_branch=getattr(args, "allow_any_branch", False),
-                    no_sync=getattr(args, "no_sync", False),
-                )
-            except (TimeoutError, WorkflowError, ValueError) as exc:
-                _log(sys.stderr, log_path, "claim_error", error=str(exc), backoff=backoff_seconds)
+                implementing_issues = _find_implementing_issues(config, store=store)
+            except (RuntimeError, TimeoutError, WorkflowError, ValueError) as exc:
+                _log(sys.stderr, log_path, "recovery_error", error=str(exc))
                 return PollResult(
                     status="error",
                     exit_code=1,
                     recreate_store=_should_recreate_store(exc),
                 )
 
+            if implementing_issues:
+                issue = implementing_issues[0]
+                event = "retrying" if issue.id in attempted_issue_ids else "recovered"
+                _log(sys.stderr, log_path, event, issue=issue.id, agent=agent)
+            else:
+                last_failed_issue_id = None
+                try:
+                    issue = claim_next(
+                        agent,
+                        priority=args.priority,
+                        config=config,
+                        store=store,
+                        cwd=cwd,
+                        allow_any_branch=getattr(args, "allow_any_branch", False),
+                        no_sync=getattr(args, "no_sync", False),
+                    )
+                except (TimeoutError, WorkflowError, ValueError) as exc:
+                    _log(
+                        sys.stderr,
+                        log_path,
+                        "claim_error",
+                        error=str(exc),
+                        backoff=backoff_seconds,
+                    )
+                    return PollResult(
+                        status="error",
+                        exit_code=1,
+                        recreate_store=_should_recreate_store(exc),
+                    )
+
             if issue is None:
                 return PollResult(status="idle")
 
-            _log(sys.stderr, log_path, "claimed", issue=issue.id, agent=agent)
+            if issue.id is not None:
+                attempted_issue_ids.add(issue.id)
+            if not implementing_issues:
+                _log(sys.stderr, log_path, "claimed", issue=issue.id, agent=agent)
             result = _run_claimed_issue(
                 args,
                 issue,
@@ -575,9 +582,19 @@ def _serve_loop(
                 store=store,
             )
             if result.status == "error":
-                return PollResult("error", 1, result.recreate_store)
+                last_failed_issue_id = issue.id
+                return PollResult(
+                    "error", 1, result.recreate_store, issue_id=issue.id
+                )
             if result.status == "failed":
-                return PollResult("failed", result.exit_code, result.recreate_store)
+                last_failed_issue_id = issue.id
+                return PollResult(
+                    "failed",
+                    result.exit_code,
+                    result.recreate_store,
+                    issue_id=issue.id,
+                )
+            last_failed_issue_id = None
             return PollResult(
                 "success",
                 recreate_store=result.recreate_store,
@@ -587,6 +604,31 @@ def _serve_loop(
         def recreate() -> None:
             nonlocal store
             store = _recreate_store(store, config)
+
+        def on_failure_limit(result: PollResult, failures: int) -> None:
+            issue_id = (
+                result.issue_id
+                if result.issue_id is not None
+                else last_failed_issue_id
+            )
+            fields: dict[str, object] = {}
+            if issue_id is not None:
+                fields["issue"] = issue_id
+            fields["failures"] = failures
+            _log(
+                sys.stderr,
+                log_path,
+                "run_failure_limit",
+                **fields,
+            )
+            if issue_id is not None:
+                _release_claim_after_run_error(
+                    issue_id,
+                    config=config,
+                    store=store,
+                    err=sys.stderr,
+                    reason=f"serve stopped after {failures} consecutive failed runs",
+                )
 
         return run_poll_loop(
             controller,
@@ -599,13 +641,14 @@ def _serve_loop(
             on_stopped=lambda: _log(sys.stderr, log_path, "stopped"),
             once=args.once,
             interval=float(args.interval),
-            max_count=args.max_issues - submitted_count if args.max_issues is not None else None,
+            max_count=args.max_issues,
+            max_consecutive_failures=getattr(args, "max_run_failures", 3),
+            on_failure_limit=on_failure_limit,
             recreate_store=recreate,
             abort_failed_exit_code=0,
         )
     finally:
         _close_store(store)
-        _close_store(recovery_store)
 
 
 def _resolve_mode(args) -> ServeMode:
@@ -732,6 +775,13 @@ def _serve_proposal_checks_loop(
         once=args.once,
         interval=float(args.interval),
         max_count=None,
+        max_consecutive_failures=getattr(args, "max_run_failures", 3),
+        on_failure_limit=lambda _result, failures: _log(
+            sys.stderr,
+            log_path,
+            "proposal_check_failure_limit",
+            failures=failures,
+        ),
         stop_before_retry_sleep=True,
         sleep_after_success=True,
     )
@@ -792,16 +842,35 @@ def _serve_review_loop(
             if result.status == "error":
                 if issue.id is not None:
                     failed_review_ids.add(issue.id)
-                return PollResult("error", 1, result.recreate_store)
+                return PollResult(
+                    "error", 1, result.recreate_store, issue_id=issue.id
+                )
             if result.status == "failed":
                 if issue.id is not None:
                     failed_review_ids.add(issue.id)
-                return PollResult("failed", result.exit_code, result.recreate_store)
+                return PollResult(
+                    "failed",
+                    result.exit_code,
+                    result.recreate_store,
+                    issue_id=issue.id,
+                )
             return PollResult("success", value=result.reviewed_issue)
 
         def recreate() -> None:
             nonlocal store
             store = _recreate_store(store, config)
+
+        def on_failure_limit(result: PollResult, failures: int) -> None:
+            fields: dict[str, object] = {}
+            if result.issue_id is not None:
+                fields["issue"] = result.issue_id
+            fields["failures"] = failures
+            _log(
+                sys.stderr,
+                log_path,
+                "review_failure_limit",
+                **fields,
+            )
 
         return run_poll_loop(
             controller,
@@ -815,6 +884,8 @@ def _serve_review_loop(
             once=args.once,
             interval=float(args.interval),
             max_count=args.max_issues,
+            max_consecutive_failures=getattr(args, "max_run_failures", 3),
+            on_failure_limit=on_failure_limit,
             recreate_store=recreate,
             abort_failed_exit_code=0,
         )
@@ -952,107 +1023,6 @@ def _worker_heartbeat(
         yield
     finally:
         heartbeat.stop()
-
-
-@contextmanager
-def _serve_lock(lock_path: Path) -> Iterator[None]:
-    lock_path.parent.mkdir(exist_ok=True)
-    pid = os.getpid()
-    active_lock_path = lock_path.resolve()
-    while True:
-        try:
-            fd = open_owner_only_new(lock_path)
-        except FileExistsError:
-            existing_pid = _read_lock_pid(lock_path)
-            if existing_pid is not None and (
-                _pid_is_live(existing_pid)
-                or (existing_pid == pid and active_lock_path in _ACTIVE_SERVE_LOCKS)
-            ):
-                raise ServeLockError(
-                    f"issuekit serve is already running for this checkout (pid {existing_pid})."
-                ) from None
-            if existing_pid is None and _is_recent_empty_lock(lock_path):
-                raise ServeLockError(
-                    "issuekit serve is starting for this checkout; try again shortly."
-                ) from None
-            try:
-                lock_path.unlink()
-            except FileNotFoundError:
-                pass
-            continue
-        else:
-            _ACTIVE_SERVE_LOCKS.add(active_lock_path)
-            try:
-                os.write(fd, f"{pid}\n".encode("ascii"))
-            except BaseException:
-                os.close(fd)
-                _ACTIVE_SERVE_LOCKS.discard(active_lock_path)
-                try:
-                    lock_path.unlink()
-                except FileNotFoundError:
-                    pass
-                raise
-            else:
-                os.close(fd)
-            break
-
-    try:
-        yield
-    finally:
-        try:
-            if _read_lock_pid(lock_path) == pid:
-                lock_path.unlink()
-        except FileNotFoundError:
-            pass
-        finally:
-            _ACTIVE_SERVE_LOCKS.discard(active_lock_path)
-
-
-def _read_lock_pid(lock_path: Path) -> int | None:
-    try:
-        raw = lock_path.read_text(encoding="utf-8").strip()
-    except OSError:
-        return None
-    try:
-        return int(raw)
-    except ValueError:
-        return None
-
-
-def _is_recent_empty_lock(lock_path: Path) -> bool:
-    try:
-        stat = lock_path.stat()
-    except OSError:
-        return False
-    return stat.st_size == 0 and datetime.now().timestamp() - stat.st_mtime < 5
-
-
-def _pid_is_live(pid: int) -> bool:
-    if pid <= 0:
-        return False
-    if pid == os.getpid():
-        return False
-    if os.name != "nt":
-        try:
-            os.kill(pid, 0)
-            return True
-        except ProcessLookupError:
-            return False
-        except PermissionError:
-            return True
-        except OSError:
-            return False
-
-    try:
-        result = subprocess.run(
-            ["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return False
-    return result.returncode == 0 and f'"{pid}"' in result.stdout
 
 
 @contextmanager

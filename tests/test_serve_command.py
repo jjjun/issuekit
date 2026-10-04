@@ -1,7 +1,9 @@
+import errno
 import io
 import os
 import signal
 import subprocess
+import sys
 import threading
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -10,6 +12,7 @@ from types import SimpleNamespace
 
 import pytest
 
+import issuekit.agentrun.run_dir as run_dir_module
 import issuekit.proposals.api as proposals_api
 from issuekit import cli
 from issuekit import store as store_module
@@ -156,6 +159,7 @@ class ExplodingRunner:
 
 class RecoveryErrorThenRunner:
     calls: list[int | None] = []
+    attempts: dict[int | None, int] = {}
 
     def run(
         self,
@@ -169,7 +173,8 @@ class RecoveryErrorThenRunner:
         **kwargs,
     ) -> FakeResult:
         self.calls.append(issue_id)
-        if issue_id == 1:
+        self.attempts[issue_id] = self.attempts.get(issue_id, 0) + 1
+        if issue_id == 1 and self.attempts[issue_id] == 1:
             raise RuntimeError("temporary recovery failure")
         return FakeResult(parsed={"resume_session_id": "def456"})
 
@@ -243,6 +248,77 @@ def test_backoff_uses_current_initial_value(monkeypatch) -> None:
     assert backoff.current == 4.0
 
 
+def test_poll_loop_run_failure_limit_resets_after_success_and_idle() -> None:
+    controller = serve_loop.ShutdownController.create()
+    controller.sleep = lambda _seconds: False
+    statuses = iter(("failed", "success", "idle", "error", "failed"))
+    failure_limits: list[tuple[str, int]] = []
+
+    def poll(_attempt: int, _backoff: float) -> serve_loop.PollResult:
+        status = next(statuses)
+        return serve_loop.PollResult(status=status)
+
+    exit_code = serve_loop.run_poll_loop(
+        controller,
+        serve_loop.Backoff(),
+        poll=poll,
+        on_idle=lambda _attempt: None,
+        on_success=lambda _result, _count: None,
+        on_stopped=lambda: None,
+        once=False,
+        interval=0,
+        max_count=None,
+        max_consecutive_failures=2,
+        on_failure_limit=lambda result, count: failure_limits.append(
+            (result.status, count)
+        ),
+    )
+
+    assert exit_code == 1
+    assert failure_limits == [("failed", 2)]
+
+
+def test_poll_loop_zero_run_failure_limit_keeps_retrying() -> None:
+    controller = serve_loop.ShutdownController.create()
+    sleep_durations: list[float] = []
+    poll_count = 0
+
+    def sleep(seconds: float) -> bool:
+        nonlocal poll_count
+        sleep_durations.append(seconds)
+        if len(sleep_durations) == 4:
+            controller.request()
+        return controller.requested
+
+    controller.sleep = sleep
+
+    def poll(_attempt: int, _backoff: float) -> serve_loop.PollResult:
+        nonlocal poll_count
+        poll_count += 1
+        return serve_loop.PollResult("failed", exit_code=1)
+
+    assert (
+        serve_loop.run_poll_loop(
+            controller,
+            serve_loop.Backoff(),
+            poll=poll,
+            on_idle=lambda _attempt: None,
+            on_success=lambda _result, _count: None,
+            on_stopped=lambda: None,
+            once=False,
+            interval=0,
+            max_count=None,
+            max_consecutive_failures=0,
+            on_failure_limit=lambda _result, _count: pytest.fail(
+                "unlimited failures must not trigger the limit"
+            ),
+        )
+        == 0
+    )
+    assert poll_count == 4
+    assert sleep_durations == [1.0, 2.0, 4.0, 8.0]
+
+
 def test_serve_once_empty_queue_exits_without_agent(
     tmp_path: Path,
     monkeypatch,
@@ -281,7 +357,9 @@ def test_serve_once_empty_queue_exits_without_agent(
             "body": {"assignee": "codex", "worker": "checkout.demo@machine"},
         }
     ]
-    assert not (tmp_path / ".agent-runs" / "serve.lock").exists()
+    lock_path = tmp_path / ".agent-runs" / "serve.lock"
+    assert lock_path.exists()
+    assert lock_path.read_text(encoding="utf-8") == f"{os.getpid()}\n"
     assert "event=idle" in capsys.readouterr().err
 
 
@@ -752,6 +830,72 @@ def test_serve_proposal_checks_backs_off_after_cycle_error(
     assert "event=proposal_checks_cycle_error" in capsys.readouterr().err
 
 
+def test_serve_proposal_checks_stops_at_run_failure_limit(
+    monkeypatch,
+    tmp_path: Path,
+    capsys,
+) -> None:
+    class Args:
+        once = False
+        interval = 0
+        timeout_sec = 1
+        proposal_check_limit = 50
+        max_run_failures = 2
+
+    def fail_cycle(*args, **kwargs):
+        raise WorkflowError("temporary error")
+
+    monkeypatch.setattr(serve_loop, "BACKOFF_INITIAL_SEC", 0.0)
+    monkeypatch.setattr(serve, "run_proposal_check_cycle", fail_cycle)
+
+    exit_code = serve._serve_proposal_checks_loop(
+        Args(),
+        agent="codex",
+        config=serve.IssuekitConfig(),
+        cwd=tmp_path,
+        log_path=tmp_path / "serve.log",
+        controller=serve_loop.ShutdownController.create(),
+    )
+
+    assert exit_code == 1
+    assert "event=proposal_check_failure_limit failures=2" in capsys.readouterr().err
+
+
+def test_serve_review_stops_at_run_failure_limit(
+    monkeypatch,
+    tmp_path: Path,
+    capsys,
+) -> None:
+    class Args:
+        once = False
+        interval = 0
+        max_issues = None
+        max_run_failures = 2
+
+    class IdleStore:
+        def close(self) -> None:
+            pass
+
+    def fail_review(*args, **kwargs):
+        raise WorkflowError("temporary error")
+
+    monkeypatch.setattr(serve_loop, "BACKOFF_INITIAL_SEC", 0.0)
+    monkeypatch.setattr(serve, "next_review", fail_review)
+
+    exit_code = serve._serve_review_loop(
+        Args(),
+        agent="codex",
+        config=serve.IssuekitConfig(),
+        cwd=tmp_path,
+        log_path=tmp_path / "serve.log",
+        controller=serve_loop.ShutdownController.create(),
+        store=IdleStore(),
+    )
+
+    assert exit_code == 1
+    assert "event=review_failure_limit failures=2" in capsys.readouterr().err
+
+
 def test_serve_proposal_checks_sleeps_between_successful_cycles(
     monkeypatch,
     tmp_path: Path,
@@ -1195,7 +1339,7 @@ def test_serve_preflights_the_agent_role_for_each_mode(
     assert roles == [expected_role]
 
 
-def test_serve_recovery_error_continues_to_poll(
+def test_serve_retries_own_claim_after_recovery_error(
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -1216,6 +1360,7 @@ def test_serve_recovery_error_continues_to_poll(
         ]
     )
     RecoveryErrorThenRunner.calls.clear()
+    RecoveryErrorThenRunner.attempts.clear()
     _configure_registered_api(tmp_path, monkeypatch, client)
     monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", RecoveryErrorThenRunner)
     monkeypatch.setattr(serve_loop, "BACKOFF_INITIAL_SEC", 0.0)
@@ -1223,9 +1368,40 @@ def test_serve_recovery_error_continues_to_poll(
     exit_code = cli.main(["serve", "--agent", "codex", "--max-issues", "1", "--interval", "0"])
 
     assert exit_code == 0
-    assert RecoveryErrorThenRunner.calls == [1, 2]
-    assert [call["method"] for call in client.calls] == ["upsert_repo", "upsert_worker", "claim_next", "submit"]
-    assert "event=run_error issue=1" in capsys.readouterr().err
+    assert RecoveryErrorThenRunner.calls == [1, 1]
+    assert [call["method"] for call in client.calls] == ["upsert_repo", "upsert_worker", "submit"]
+    output = capsys.readouterr().err
+    assert "event=run_error issue=1" in output
+    assert "event=retrying issue=1" in output
+
+
+def test_serve_retries_failed_claim_and_releases_it_at_failure_limit(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    class AlwaysFailRunner:
+        calls: list[int | None] = []
+
+        def run(self, *args, issue_id=None, **kwargs) -> FakeResult:
+            self.calls.append(issue_id)
+            return FakeResult(exit_code=1)
+
+    client = FakeIssuekitClient([api_issue(1, "Ready", author="claude")])
+    _configure_registered_api(tmp_path, monkeypatch, client)
+    monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", AlwaysFailRunner)
+    monkeypatch.setattr(serve_loop, "BACKOFF_INITIAL_SEC", 0.0)
+
+    assert cli.main(["serve", "--agent", "codex", "--interval", "0"]) == 1
+
+    assert AlwaysFailRunner.calls == [1, 1, 1]
+    assert client.get_issue(1)["stage"] == "todo"
+    assert [call["method"] for call in client.calls].count("claim_next") == 1
+    reclaim_call = next(call for call in client.calls if call["method"] == "reclaim")
+    assert reclaim_call["body"]["reason"] == "serve stopped after 3 consecutive failed runs"
+    output = capsys.readouterr().err
+    assert output.count("event=retrying issue=1") == 2
+    assert "event=run_failure_limit issue=1 failures=3" in output
 
 
 def test_serve_once_returns_recovery_failure_without_claiming(
@@ -1249,6 +1425,7 @@ def test_serve_once_returns_recovery_failure_without_claiming(
         ]
     )
     RecoveryErrorThenRunner.calls.clear()
+    RecoveryErrorThenRunner.attempts.clear()
     _configure_registered_api(tmp_path, monkeypatch, client)
     monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", RecoveryErrorThenRunner)
 
@@ -1483,6 +1660,17 @@ def test_serve_rejects_negative_max_heartbeat_failures(
     assert "--max-heartbeat-failures must be non-negative" in capsys.readouterr().err
 
 
+def test_serve_rejects_negative_max_run_failures(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    _configure_registered_api(tmp_path, monkeypatch, FakeIssuekitClient())
+
+    assert cli.main(["serve", "--agent", "codex", "--max-run-failures", "-1"]) == 1
+    assert "--max-run-failures must be non-negative" in capsys.readouterr().err
+
+
 def test_worker_heartbeat_logs_failure_state_and_escalates_once(
     tmp_path: Path,
     monkeypatch,
@@ -1638,16 +1826,16 @@ def test_serve_refuses_live_lock(
     _configure_registered_api(tmp_path, monkeypatch, FakeIssuekitClient())
     run_dir = tmp_path / ".agent-runs"
     run_dir.mkdir()
-    monkeypatch.setattr(serve, "_pid_is_live", lambda pid: pid == 12345)
-    (run_dir / "serve.lock").write_text("12345\n", encoding="utf-8", newline="\n")
+    lock_path = run_dir / "serve.lock"
 
-    exit_code = cli.main(["serve", "--agent", "codex", "--once"])
+    with serve._serve_lock(lock_path):
+        exit_code = cli.main(["serve", "--agent", "codex", "--once"])
 
     assert exit_code == 1
     assert "already running" in capsys.readouterr().err
 
 
-def test_serve_reclaims_stale_lock(
+def test_serve_reuses_existing_unlocked_lock_file(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -1659,10 +1847,12 @@ def test_serve_reclaims_stale_lock(
     monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", ExplodingRunner)
 
     assert cli.main(["serve", "--agent", "codex", "--once"]) == 0
-    assert not (run_dir / "serve.lock").exists()
+    lock_path = run_dir / "serve.lock"
+    assert lock_path.exists()
+    assert lock_path.read_text(encoding="utf-8") == f"{os.getpid()}\n"
 
 
-def test_serve_reclaims_lock_with_current_pid(
+def test_serve_lock_records_current_pid_and_keeps_file(
     tmp_path: Path,
 ) -> None:
     lock_path = tmp_path / ".agent-runs" / "serve.lock"
@@ -1670,9 +1860,9 @@ def test_serve_reclaims_lock_with_current_pid(
     lock_path.write_text(f"{os.getpid()}\n", encoding="utf-8", newline="\n")
 
     with serve._serve_lock(lock_path):
-        assert serve._read_lock_pid(lock_path) == os.getpid()
+        assert lock_path.read_text(encoding="utf-8") == f"{os.getpid()}\n"
 
-    assert not lock_path.exists()
+    assert lock_path.exists()
 
 
 def test_serve_rejects_lock_already_owned_by_this_process(
@@ -1686,16 +1876,86 @@ def test_serve_rejects_lock_already_owned_by_this_process(
                 pass
 
 
-def test_serve_treats_recent_empty_lock_as_held(
+def test_serve_acquires_existing_empty_lock_file(
     tmp_path: Path,
 ) -> None:
     lock_path = tmp_path / ".agent-runs" / "serve.lock"
     lock_path.parent.mkdir()
     lock_path.touch()
 
-    with pytest.raises(serve.ServeLockError, match="starting"):
+    with serve._serve_lock(lock_path):
+        assert lock_path.read_text(encoding="utf-8") == f"{os.getpid()}\n"
+
+    assert lock_path.exists()
+
+
+def test_serve_lock_uses_windows_msvcrt_path(monkeypatch, tmp_path: Path) -> None:
+    class FakeMsvcrt:
+        LK_NBLCK = 1
+
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def locking(self, fd: int, mode: int, count: int) -> None:
+            self.calls += 1
+            assert mode == self.LK_NBLCK
+            assert count == 1
+            assert os.lseek(fd, 0, os.SEEK_CUR) == 0
+            if self.calls == 2:
+                raise OSError(errno.EACCES, "lock is held")
+
+    fake_msvcrt = FakeMsvcrt()
+    open_owner_only = run_dir_module.open_owner_only
+
+    def open_with_nonzero_position(path: Path, flags: int) -> int:
+        fd = open_owner_only(path, flags)
+        os.lseek(fd, 5, os.SEEK_SET)
+        return fd
+
+    monkeypatch.setattr(run_dir_module, "_is_windows", lambda: True)
+    monkeypatch.setattr(run_dir_module, "msvcrt", fake_msvcrt)
+    monkeypatch.setattr(run_dir_module, "open_owner_only", open_with_nonzero_position)
+    lock_path = tmp_path / ".agent-runs" / "serve.lock"
+
+    with serve._serve_lock(lock_path):
+        pass
+
+    with pytest.raises(serve.ServeLockError, match="already running"):
         with serve._serve_lock(lock_path):
             pass
+    assert fake_msvcrt.calls == 2
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX flock is not available on Windows")
+def test_serve_lock_releases_after_holder_process_exits(tmp_path: Path) -> None:
+    lock_path = tmp_path / ".agent-runs" / "serve.lock"
+    script = (
+        "import sys, time\n"
+        "from pathlib import Path\n"
+        "from issuekit.agentrun.run_dir import serve_lock\n"
+        "with serve_lock(Path(sys.argv[1])):\n"
+        "    print('locked', flush=True)\n"
+        "    time.sleep(60)\n"
+    )
+    process = subprocess.Popen(
+        [sys.executable, "-c", script, str(lock_path)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        assert process.stdout is not None
+        assert process.stdout.readline().strip() == "locked"
+        with pytest.raises(serve.ServeLockError, match="already running"):
+            with serve._serve_lock(lock_path):
+                pass
+    finally:
+        process.kill()
+        process.wait(timeout=5)
+
+    with serve._serve_lock(lock_path):
+        assert lock_path.read_text(encoding="utf-8") == f"{os.getpid()}\n"
+    assert lock_path.exists()
 
 
 def test_log_event_quotes_multiline_values_on_one_line(
@@ -1779,6 +2039,9 @@ def test_serve_loop_reuses_store_across_idle_polls(monkeypatch, tmp_path: Path) 
             self.claim_count = 0
             self.close_count = 0
 
+        def find_implementing_for_workers(self, workers):
+            return []
+
         def claim_next(self, **kwargs):
             self.claim_count += 1
             return
@@ -1809,10 +2072,9 @@ def test_serve_loop_reuses_store_across_idle_polls(monkeypatch, tmp_path: Path) 
     )
 
     assert exit_code == 0
-    assert len(stores) == 2
+    assert len(stores) == 1
     assert stores[0].claim_count == 3
     assert stores[0].close_count == 1
-    assert stores[1].close_count == 1
 
 
 def test_serve_retries_failed_hold_before_claiming(monkeypatch, tmp_path: Path, capsys) -> None:
@@ -1838,11 +2100,6 @@ def test_serve_retries_failed_hold_before_claiming(monkeypatch, tmp_path: Path, 
     )
     monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
     monkeypatch.setattr(serve, "get_store", lambda _config: client)
-    monkeypatch.setattr(
-        serve,
-        "_recover_orphaned_issues",
-        lambda _args, **kwargs: (kwargs["submitted_count"], None, kwargs["store"]),
-    )
     original_plan = client.plan
     plan_attempts = 0
 
@@ -1982,7 +2239,7 @@ def test_serve_loop_claim_ignores_author_guard_outside_configured_cwd(
     assert stores[0].claim_count == 1
 
 
-def test_serve_sigint_during_idle_releases_lock(
+def test_serve_sigint_during_idle_keeps_lock_file(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -1999,4 +2256,6 @@ def test_serve_sigint_during_idle_releases_lock(
     monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", ExplodingRunner)
 
     assert cli.main(["serve", "--agent", "codex", "--interval", "30"]) == 0
-    assert not (tmp_path / ".agent-runs" / "serve.lock").exists()
+    lock_path = tmp_path / ".agent-runs" / "serve.lock"
+    assert lock_path.exists()
+    assert lock_path.read_text(encoding="utf-8") == f"{os.getpid()}\n"

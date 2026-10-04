@@ -97,12 +97,13 @@ def _release_claim_after_run_error(
     config: IssuekitConfig,
     store,
     err: TextIO,
+    reason: str = "agent setup failed before execution",
 ) -> None:
     try:
         result = reclaim_issue(
             issue_id,
             force=True,
-            reason="agent setup failed before execution",
+            reason=reason,
             config=config,
             store=store,
         )
