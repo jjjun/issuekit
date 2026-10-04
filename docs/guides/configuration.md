@@ -298,8 +298,12 @@ unprivileged user namespaces. issuekit probes the configured sandbox before
 launch and stops with the probe error if the host blocks it. On Ubuntu with
 AppArmor user-namespace restrictions, allow unprivileged user namespaces for
 /usr/bin/bwrap, for example with an AppArmor profile containing `userns,` or
-by setting `kernel.apparmor_restrict_unprivileged_userns=0`, then rerun. To
-opt out for a role, set its `approval_argv` explicitly in machine config.
+by setting `kernel.apparmor_restrict_unprivileged_userns=0`, then rerun. On
+either platform, opt out for a role by setting its `approval_argv` explicitly
+in machine config.
+On Windows, issuekit probes inside Codex's restricted-token sandbox with
+`cmd /c exit 0`; the sandbox must be available and able to launch `cmd.exe`.
+The probe fails closed with the Windows diagnostic if it cannot.
 Implementer runs keep the existing unsandboxed defaults. For other `exec`
 runtimes, set `approval_flag = "--sandbox"` and
 `approval_value = "workspace-write"` in machine config to restrict filesystem

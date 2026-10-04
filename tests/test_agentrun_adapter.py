@@ -1,11 +1,17 @@
 import json
 import os
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
 from issuekit.agentrun import AgentBinaryNotFoundError, AgentRunConfig, ConfigAgentAdapter
-from issuekit.agentrun.adapters.codex import CodexAdapter
+from issuekit.agentrun.adapters.codex import (
+    CodexAdapter,
+    _probe_sandbox,
+    _sandbox_failure_message,
+)
 from issuekit.agents.registry import resolve_adapter
 from issuekit.config import IssuekitConfig, RoleOverlay
 
@@ -120,9 +126,68 @@ def test_codex_sandbox_preflight_runs_command_and_caches_success(tmp_path: Path)
     assert adapter.resolve_binary() == binary
     assert adapter.resolve_binary() == binary
     probe_calls = [json.loads(line) for line in calls.read_text().splitlines()]
+    command = ["cmd", "/c", "exit", "0"] if os.name == "nt" else ["true"]
     assert probe_calls == [
-        ["sandbox", "-c", 'sandbox_mode="read-only"', "--", "true"]
+        ["sandbox", "-c", 'sandbox_mode="read-only"', "--", *command]
     ]
+
+
+@pytest.mark.parametrize(
+    ("platform_name", "expected_command"),
+    (("posix", ["true"]), ("nt", ["cmd", "/c", "exit", "0"])),
+)
+def test_codex_sandbox_preflight_uses_platform_command(
+    monkeypatch, platform_name: str, expected_command: list[str]
+) -> None:
+    calls: list[tuple[list[str], dict[str, object]]] = []
+
+    def fake_run(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess:
+        calls.append((argv, kwargs))
+        return subprocess.CompletedProcess(argv, 0, stdout=b"", stderr=b"")
+
+    monkeypatch.setattr("issuekit.agentrun.adapters.codex.subprocess.run", fake_run)
+    with monkeypatch.context() as platform_patch:
+        platform_patch.setattr(os, "name", platform_name)
+        assert _probe_sandbox(f"fake-codex-{platform_name}", "read-only") is None
+
+    assert calls == [
+        (
+            [
+                f"fake-codex-{platform_name}",
+                "sandbox",
+                "-c",
+                'sandbox_mode="read-only"',
+                "--",
+                *expected_command,
+            ],
+            {"capture_output": True, "check": False, "timeout": 10},
+        )
+    ]
+
+
+@pytest.mark.parametrize(
+    ("platform_name", "sys_platform", "required", "excluded"),
+    (
+        ("nt", "win32", "Windows restricted-token sandbox", "AppArmor"),
+        ("posix", "linux", "AppArmor profile for /usr/bin/bwrap", "Windows"),
+    ),
+)
+def test_codex_sandbox_preflight_failure_message_is_platform_specific(
+    monkeypatch,
+    platform_name: str,
+    sys_platform: str,
+    required: str,
+    excluded: str,
+) -> None:
+    with monkeypatch.context() as platform_patch:
+        platform_patch.setattr(os, "name", platform_name)
+        platform_patch.setattr(sys, "platform", sys_platform)
+        message = _sandbox_failure_message("read-only", "sandbox diagnostic")
+
+    assert required in message
+    assert excluded not in message
+    assert "sandbox diagnostic" in message
+    assert "[agents.codex.roles.<role>] approval_argv = [...]" in message
 
 
 def test_codex_sandbox_preflight_blocks_launch_and_caches_failure(
@@ -147,32 +212,70 @@ def test_codex_sandbox_preflight_blocks_launch_and_caches_failure(
             adapter.resolve_binary()
         message = str(error.value)
         assert "bwrap: loopback: Failed RTM_NEWADDR" in message
-        assert "AppArmor profile for /usr/bin/bwrap containing 'userns,'" in message
-        assert "kernel.apparmor_restrict_unprivileged_userns=0" in message
+        if os.name == "nt":
+            assert "Windows restricted-token sandbox" in message
+            assert "cmd /c exit 0" in message
+            assert "AppArmor" not in message
+            assert "bubblewrap" not in message
+        else:
+            assert "AppArmor profile for /usr/bin/bwrap containing 'userns,'" in message
+            assert "kernel.apparmor_restrict_unprivileged_userns=0" in message
         assert "[agents.codex.roles.<role>] approval_argv = [...]" in message
 
     assert len(calls.read_text().splitlines()) == 1
+
+
+def test_codex_sandbox_preflight_decodes_invalid_probe_output_as_utf8(
+    tmp_path: Path,
+) -> None:
+    binary, _ = _fake_codex_binary(tmp_path, exit_code=1, stderr=b"\x81\xff")
+    adapter = CodexAdapter(
+        "codex",
+        run_config=AgentRunConfig(
+            binary=str(binary),
+            headless_argv=("exec",),
+            approval_argv=("--sandbox", "read-only"),
+        ),
+    )
+
+    with pytest.raises(RuntimeError) as error:
+        adapter.resolve_binary()
+
+    assert chr(0xFFFD) * 2 in str(error.value)
 
 
 def _fake_codex_binary(
     tmp_path: Path,
     *,
     exit_code: int,
-    stderr: str,
+    stderr: str | bytes,
 ) -> tuple[Path, Path]:
-    binary = tmp_path / "codex"
+    binary = tmp_path / ("codex.cmd" if os.name == "nt" else "codex")
+    script = tmp_path / "fake_codex.py"
     calls = tmp_path / "probe-calls.jsonl"
-    binary.write_text(
-        "#!/usr/bin/env python3\n"
+    stderr_bytes = stderr if isinstance(stderr, bytes) else stderr.encode("utf-8")
+    script.write_text(
         "import json, pathlib, sys\n"
         f"with pathlib.Path({str(calls)!r}).open('a', encoding='utf-8') as stream:\n"
         "    stream.write(json.dumps(sys.argv[1:]) + '\\n')\n"
-        f"sys.stderr.write({stderr!r})\n"
+        f"sys.stderr.buffer.write({stderr_bytes!r})\n"
         f"raise SystemExit({exit_code})\n",
         encoding="utf-8",
         newline="\n",
     )
-    binary.chmod(0o755)
+    if os.name == "nt":
+        binary.write_text(
+            f'@echo off\n"{sys.executable}" "{script}" %*\n',
+            encoding="utf-8",
+            newline="\r\n",
+        )
+    else:
+        binary.write_text(
+            f"#!{sys.executable}\n{script.read_text(encoding='utf-8')}",
+            encoding="utf-8",
+            newline="\n",
+        )
+        binary.chmod(0o755)
     return binary, calls
 
 

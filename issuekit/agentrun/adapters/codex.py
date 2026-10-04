@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
+import sys
 from functools import cache
 from pathlib import Path
 
@@ -20,16 +22,7 @@ class CodexAdapter(ConfigAgentAdapter):
         if sandbox_mode is not None:
             diagnostic = _probe_sandbox(str(binary), sandbox_mode)
             if diagnostic is not None:
-                raise RuntimeError(
-                    f"Codex sandbox preflight failed for mode '{sandbox_mode}'; "
-                    "the agent was not launched. Probe stderr: "
-                    f"{diagnostic}\nAllow unprivileged user namespaces for "
-                    "bubblewrap, for example with an AppArmor profile for "
-                    "/usr/bin/bwrap containing 'userns,' or by setting "
-                    "kernel.apparmor_restrict_unprivileged_userns=0, then rerun. "
-                    "To opt out for this role, configure "
-                    "[agents.codex.roles.<role>] approval_argv = [...]."
-                )
+                raise RuntimeError(_sandbox_failure_message(sandbox_mode, diagnostic))
         return binary
 
     def _sandbox_mode(self) -> str | None:
@@ -131,6 +124,7 @@ class CodexAdapter(ConfigAgentAdapter):
 @cache
 def _probe_sandbox(binary: str, mode: str) -> str | None:
     """Return a diagnostic when Codex cannot execute a command in this sandbox."""
+    command = ["cmd", "/c", "exit", "0"] if os.name == "nt" else ["true"]
     try:
         result = subprocess.run(
             [
@@ -139,25 +133,56 @@ def _probe_sandbox(binary: str, mode: str) -> str | None:
                 "-c",
                 f"sandbox_mode={json.dumps(mode)}",
                 "--",
-                "true",
+                *command,
             ],
             capture_output=True,
             check=False,
-            text=True,
             timeout=10,
         )
     except subprocess.TimeoutExpired as exc:
         diagnostic = exc.stderr or exc.stdout
-        if isinstance(diagnostic, bytes):
-            diagnostic = diagnostic.decode(errors="replace")
-        return (diagnostic or str(exc)).strip()
+        return (_decode_probe_output(diagnostic) or str(exc)).strip()
     except OSError as exc:
         return str(exc)
 
     if result.returncode == 0:
         return None
     return (
-        result.stderr.strip()
-        or result.stdout.strip()
+        _decode_probe_output(result.stderr).strip()
+        or _decode_probe_output(result.stdout).strip()
         or f"probe exited with status {result.returncode} without diagnostic output"
+    )
+
+
+def _decode_probe_output(output: bytes | str | None) -> str:
+    if isinstance(output, bytes):
+        return output.decode("utf-8", errors="replace")
+    return output or ""
+
+
+def _sandbox_failure_message(mode: str, diagnostic: str) -> str:
+    prefix = (
+        f"Codex sandbox preflight failed for mode '{mode}'; "
+        "the agent was not launched. Probe stderr: "
+        f"{diagnostic}\n"
+    )
+    if os.name == "nt":
+        guidance = (
+            "The Windows restricted-token sandbox must be able to run "
+            "`cmd /c exit 0`; ensure the Codex sandbox is available, then rerun. "
+        )
+    elif sys.platform.startswith("linux"):
+        guidance = (
+            "Allow unprivileged user namespaces for bubblewrap, for example "
+            "with an AppArmor profile for /usr/bin/bwrap containing 'userns,' "
+            "or by setting kernel.apparmor_restrict_unprivileged_userns=0, "
+            "then rerun. "
+        )
+    else:
+        guidance = "Ensure the Codex sandbox can run its probe command, then rerun. "
+    return (
+        prefix
+        + guidance
+        + "To opt out for this role, configure "
+        "[agents.codex.roles.<role>] approval_argv = [...]."
     )

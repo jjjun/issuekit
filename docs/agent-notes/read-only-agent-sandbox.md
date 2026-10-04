@@ -24,6 +24,24 @@ before launching a role with a Codex sandbox policy and reports the probe error
 without launching the agent. Operators can instead opt out for that role with
 `[agents.codex.roles.<role>] approval_argv = [...]`.
 
+On Windows 11 with Codex CLI 0.158.0, `codex --version` reports
+`codex-cli 0.158.0`, and `codex sandbox --help` describes running commands
+under the Windows restricted-token sandbox. The probes
+`codex sandbox -c 'sandbox_mode="read-only"' -- cmd /c exit 0` and
+`codex sandbox -c 'sandbox_mode="workspace-write"' -- cmd /c exit 0` both exit
+0 with no output. Running
+`codex sandbox -c 'sandbox_mode="read-only"' -- cmd /c git log -1 --oneline`
+also exits 0 and prints the commit. The POSIX `true` command and direct `git`
+or `git.exe` commands fail with Windows error 2 because the restricted-token
+runner cannot find those executables; use `cmd /c` for the preflight command.
+The command-executing smoke run
+`codex exec --sandbox read-only --model <model> -c 'mcp_servers={}' --skip-git-repo-check 'Run git log -1 --oneline and print its output'`
+completed and printed the current commit. If `codex exec` fails because the
+model in the local Codex config is not available to the account, pass
+`--model <model>` explicitly. issuekit's Windows preflight must therefore use
+`cmd /c exit 0`, report Windows sandbox failures without Linux AppArmor or
+bubblewrap remediation, and keep failing closed if the sandbox is unavailable.
+
 The empty `mcp_servers` TOML override disables configured Codex MCP servers
 for that invocation. Codex CLI 0.158.0 accepts this override and the sandbox
 mode flags.
