@@ -27,7 +27,7 @@ def _register_worker(client: FakeIssuekitClient, *, machine: str = "machine") ->
     client.upsert_worker(
         machine_id=machine,
         repo_id="demo",
-        worker_id="checkout",
+        worker_name="checkout",
         project="demo",
     )
     client.calls.clear()

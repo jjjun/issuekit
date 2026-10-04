@@ -216,9 +216,6 @@ def run_and_submit(
     except (FileNotFoundError, RuntimeError, ValueError):
         _release_claim_after_run_error(issue_id, config=config, store=store, err=err)
         raise
-    if not config.send_agent_runtime:
-        agent_model = None
-        agent_reasoning_effort = None
     run_dir = cwd / ".agent-runs"
     plan_path = run_dir / f"issue-{issue_id}.md"
     plan_body = issue.body

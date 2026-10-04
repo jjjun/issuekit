@@ -10,7 +10,7 @@ from pathlib import Path
 
 from issuekit.agentrun import AgentRunner
 from issuekit.commands._common import print_json, run_agent_command, run_command
-from issuekit.config import IssuekitConfig, load_config
+from issuekit.config import load_config
 from issuekit.config.refs import RefError, list_effective_refs
 from issuekit.core import parse_issue_id_arg
 from issuekit.gitutil import git_status_short
@@ -152,7 +152,7 @@ def run(args) -> int:
                     "default_implementer, or configure exactly one enabled assignee."
                 )
             if not args.mock:
-                _warn_target_validation(config, args.to)
+                validate_target_project(config, args.to)
             creator: IssueCreator = MockIssueCreator() if args.mock else ApiIssueCreator(config)
             with get_negotiation_store(config, use_mock=bool(args.mock)) as store:
                 result = finalize_negotiation(
@@ -176,7 +176,7 @@ def run(args) -> int:
         if max_rounds < 1:
             raise ValueError("--max-rounds must be at least 1.")
         if not args.mock:
-            _warn_target_validation(config, args.to)
+            validate_target_project(config, args.to)
 
         issue_id = parse_issue_id_arg(args.from_issue)
         with get_store(config) as issue_store:
@@ -221,11 +221,6 @@ def run(args) -> int:
             NegotiationParseError,
         ),
     )
-
-
-def _warn_target_validation(config: IssuekitConfig, target_project: str) -> None:
-    for warning in validate_target_project(config, target_project):
-        print(warning, file=sys.stderr)
 
 
 def run_threads(args) -> int:

@@ -27,7 +27,6 @@ from issuekit.agentrun.runner import (
     implementation_report_instruction,
 )
 from issuekit.api import IssuekitClient
-from issuekit.api.features import is_feature_unavailable
 from issuekit.config import IssuekitConfig
 from issuekit.core import Issue
 from issuekit.file_permissions import open_owner_only_new, write_owner_only_text
@@ -522,20 +521,11 @@ class AppServerAttemptRunner:
         if resume_from_session_id:
             request["resume_from_session_id"] = resume_from_session_id
         try:
-            try:
-                session = client.create_agent_session(issue_id, request)
-            except WorkflowError as exc:
-                if exc.code != "request_failed":
-                    raise
-                session = client.create_agent_session(issue_id, request)
+            session = client.create_agent_session(issue_id, request)
         except WorkflowError as exc:
-            if not is_feature_unavailable(exc):
+            if exc.code != "request_failed":
                 raise
-            raise WorkflowError(
-                "The provider does not support issue agent sessions; "
-                "use runtime='exec' or upgrade the provider.",
-                code="unsupported_runtime",
-            ) from exc
+            session = client.create_agent_session(issue_id, request)
         session_id = session.get("id")
         if not isinstance(session_id, str):
             raise WorkflowError(
@@ -731,16 +721,7 @@ class AppServerAttemptRunner:
     def _recovery_ancestry(
         self, client: IssuekitClient, issue_id: int, repo: Path
     ) -> tuple[str | None, str | None]:
-        try:
-            page = client.list_agent_sessions(issue_id, limit=100)
-        except WorkflowError as exc:
-            if not is_feature_unavailable(exc):
-                raise
-            raise WorkflowError(
-                "The provider does not support issue agent sessions; "
-                "use runtime='exec' or upgrade the provider.",
-                code="unsupported_runtime",
-            ) from exc
+        page = client.list_agent_sessions(issue_id, limit=100)
         items = page.get("items")
         if not isinstance(items, list):
             return None, None

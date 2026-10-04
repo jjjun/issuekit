@@ -180,9 +180,9 @@ The heartbeat is best-effort. If publishing fails, serve logs
 `worker_registry_error` with the consecutive failure count and the last
 successful beat, and keeps polling; it does not retry faster. A
 `worker_registry_error` with `consecutive=0` can also follow a successful beat
-when a non-fatal operation fails, such as a missing repo endpoint or failed
-profile push. Once failures have lasted longer than 300s (counted from the last
-successful beat, or from the first failure if none succeeded), serve also logs
+when a non-fatal profile push fails. Once failures have lasted longer than
+300s (counted from the last successful beat, or from the first failure if none
+succeeded), serve also logs
 `worker_registry_escalated`, once per failure streak: from then on `orphans`
 and `workers prune` may treat this worker as stale.
 

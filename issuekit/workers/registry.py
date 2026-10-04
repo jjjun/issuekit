@@ -100,21 +100,12 @@ def post_worker_registration(
         allow_insecure_api_url=config.allow_insecure_api_url,
     ) as client:
         try:
-            try:
-                client.upsert_repo(
-                    repo_key=worker.repo_id,
-                    canonical_url=resolved_canonical_url,
-                    description=config.repo_description or None,
-                    meta=config.repo_metadata or None,
-                )
-            except WorkflowError as exc:
-                if _is_missing_repo_endpoint(exc):
-                    if on_error is not None:
-                        on_error(exc)
-                    else:
-                        LOGGER.debug("%s", exc)
-                else:
-                    raise _registration_error(exc, config, default_conflict="repo") from exc
+            client.upsert_repo(
+                repo_key=worker.repo_id,
+                canonical_url=resolved_canonical_url,
+                description=config.repo_description or None,
+                meta=config.repo_metadata or None,
+            )
             client.upsert_worker(
                 machine_id=worker.machine_id,
                 repo_id=worker.repo_id,
@@ -123,7 +114,7 @@ def post_worker_registration(
                 project=config.project,
                 role=config.worker_role or None,
                 description=config.worker_description or None,
-                worker_metadata=worker_metadata or None,
+                meta=worker_metadata or None,
                 accept_directed=True if config.worker_accept_directed else None,
             )
         except WorkflowError as exc:
@@ -526,10 +517,6 @@ def _detail_text(details: dict[str, object], *keys: str) -> str:
 
 def _has_any(details: dict[str, object], *keys: str) -> bool:
     return any(key in details for key in keys)
-
-
-def _is_missing_repo_endpoint(exc: WorkflowError) -> bool:
-    return (exc.code or "").lower() in {"http_404", "http_405"}
 
 
 def _worker_implementing_issues(

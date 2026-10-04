@@ -189,9 +189,6 @@ def run_review_and_decide(
         raise ReviewRunParseError(exc, result) from exc
     with managed_issue_store(config, store) as active_store:
         agent_model, agent_reasoning_effort = adapter.effective_runtime()
-        if not config.send_agent_runtime:
-            agent_model = None
-            agent_reasoning_effort = None
         if verdict.verdict == "approve":
             decided = approve_issue(
                 issue_id,

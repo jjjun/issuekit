@@ -495,22 +495,6 @@ def test_implement_command_sends_effective_agent_runtime(tmp_path: Path, monkeyp
     assert client.calls[-1]["body"]["agent_reasoning_effort"] == "medium"
 
 
-def test_implement_command_omits_agent_runtime_when_disabled(tmp_path: Path, monkeypatch) -> None:
-    client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
-    _configure_api(
-        tmp_path,
-        monkeypatch,
-        client,
-        extra_config="send_agent_runtime = false\n[agents.codex]\nmodel = 'configured-model'\n",
-    )
-    monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", FakeRunner)
-
-    assert cli.main(["implement", "1", "--agent", "codex"]) == 0
-
-    assert "agent_model" not in client.calls[-1]["body"]
-    assert "agent_reasoning_effort" not in client.calls[-1]["body"]
-
-
 def test_implement_command_blocks_wrong_work_branch_before_agent(
     tmp_path: Path,
     monkeypatch,

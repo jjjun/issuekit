@@ -117,7 +117,7 @@ def test_orphans_flags_expired_heartbeat(
     client = FakeIssuekitClient([_implementing(6, "slow.issuekit@machine")])
     # Registered worker heartbeat is fixed at 2026-01-01, far older than "now".
     client.upsert_worker(
-        machine_id="machine", repo_id="issuekit", worker_id="slow", path="/repo"
+        machine_id="machine", repo_id="issuekit", worker_name="slow", path="/repo"
     )
     _configure_api(tmp_path, monkeypatch, client)
 
@@ -137,7 +137,7 @@ def test_orphans_healthy_worker_within_window_is_not_flagged(
 ) -> None:
     client = FakeIssuekitClient([_implementing(6, "slow.issuekit@machine")])
     client.upsert_worker(
-        machine_id="machine", repo_id="issuekit", worker_id="slow", path="/repo"
+        machine_id="machine", repo_id="issuekit", worker_name="slow", path="/repo"
     )
     _configure_api(tmp_path, monkeypatch, client)
 

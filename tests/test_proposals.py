@@ -470,11 +470,9 @@ def test_api_cli_propose_accepts_worker_project_catalog(
     monkeypatch,
     capsys,
 ) -> None:
-    from issuekit.workflow import WorkflowError
-
     class WorkerCatalogClient(FakeIssuekitClient):
         def list_project_profiles(self):
-            raise WorkflowError("profile endpoint not found", code="http_404")
+            return []
 
         def list_workers(self, *, repo_id=None, project=None):
             return [
@@ -556,7 +554,7 @@ def test_api_cli_propose_accepts_worker_project_when_profiles_exist(
     assert any(call["method"] == "create_proposal" for call in client.calls)
 
 
-def test_api_cli_propose_rejects_target_for_empty_supported_profile_catalog(
+def test_api_cli_propose_surfaces_worker_catalog_error(
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -594,11 +592,11 @@ def test_api_cli_propose_rejects_target_for_empty_supported_profile_catalog(
         == 1
     )
 
-    assert "Unknown target project 'unknown-target'" in capsys.readouterr().err
+    assert "worker endpoint not found" in capsys.readouterr().err
     assert not any(call["method"] == "create_proposal" for call in client.calls)
 
 
-def test_api_cli_propose_rejects_target_for_empty_supported_worker_catalog(
+def test_api_cli_propose_surfaces_profile_catalog_error(
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -636,7 +634,7 @@ def test_api_cli_propose_rejects_target_for_empty_supported_worker_catalog(
         == 1
     )
 
-    assert "Unknown target project 'unknown-target'" in capsys.readouterr().err
+    assert "profile endpoint not found" in capsys.readouterr().err
     assert not any(call["method"] == "create_proposal" for call in client.calls)
 
 

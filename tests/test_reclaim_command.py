@@ -46,7 +46,7 @@ def test_reclaim_refuses_healthy_claim_without_force(
 ) -> None:
     client = FakeIssuekitClient([_implementing(5, "live.issuekit@machine")])
     client.upsert_worker(
-        machine_id="machine", repo_id="issuekit", worker_id="live", path="/repo"
+        machine_id="machine", repo_id="issuekit", worker_name="live", path="/repo"
     )
     client.calls.clear()
     _configure_api(tmp_path, monkeypatch, client)

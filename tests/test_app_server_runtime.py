@@ -40,6 +40,7 @@ class FakeAdapter:
 class FakeAgentSessionClient:
     instances: list[FakeAgentSessionClient] = []
     create_error: WorkflowError | None = None
+    list_error: WorkflowError | None = None
 
     def __init__(self, *args, **kwargs) -> None:
         self.commands: list[dict[str, object]] = []
@@ -55,6 +56,8 @@ class FakeAgentSessionClient:
         return None
 
     def list_agent_sessions(self, *args, **kwargs) -> dict[str, object]:
+        if self.list_error is not None:
+            raise self.list_error
         return {"items": []}
 
     def create_agent_session(
@@ -438,17 +441,18 @@ def test_app_server_pointer_contains_one_concrete_report_instruction(
     assert str(result.report_path) in pointer
 
 
-def test_app_server_runner_translates_missing_provider_feature(
-    tmp_path: Path, monkeypatch
+@pytest.mark.parametrize("failure_point", ["session_list", "session_create"])
+def test_app_server_runner_propagates_missing_session_error(
+    tmp_path: Path, monkeypatch, failure_point: str
 ) -> None:
     FakeAgentSessionClient.instances.clear()
-    FakeAgentSessionClient.create_error = WorkflowError(
-        "Not found.", code="not_found"
-    )
+    original_error = WorkflowError("Not found.", code="not_found")
+    attribute = "list_error" if failure_point == "session_list" else "create_error"
+    monkeypatch.setattr(FakeAgentSessionClient, attribute, original_error)
     monkeypatch.setattr(app_server_runtime, "IssuekitClient", FakeAgentSessionClient)
     runner = AppServerAttemptRunner(make_config(), make_issue())
 
-    with pytest.raises(WorkflowError, match="does not support") as exc_info:
+    with pytest.raises(WorkflowError, match="Not found.") as exc_info:
         runner.run(
             FakeAdapter(),
             make_prompt(tmp_path),
@@ -457,7 +461,7 @@ def test_app_server_runner_translates_missing_provider_feature(
             agent_name="codex",
         )
 
-    assert exc_info.value.code == "unsupported_runtime"
+    assert exc_info.value is original_error
 
 
 def test_app_server_runner_interrupts_turn_when_aborted(

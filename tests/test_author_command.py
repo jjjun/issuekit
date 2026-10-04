@@ -148,7 +148,7 @@ def test_author_json_formats_directed_expired_heartbeat_warning(
     client.upsert_worker(
         machine_id="machine",
         repo_id="demo",
-        worker_id="checkout",
+        worker_name="checkout",
         project="demo",
     )
     client.calls.clear()
@@ -226,7 +226,7 @@ def test_author_command_directs_issue_to_registered_worker(
     client.upsert_worker(
         machine_id="machine",
         repo_id="demo",
-        worker_id="checkout",
+        worker_name="checkout",
         project="demo",
     )
     client.calls.clear()

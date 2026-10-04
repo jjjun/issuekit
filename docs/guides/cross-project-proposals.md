@@ -41,16 +41,14 @@ project becomes visible to other repos after that project runs `issuekit add`
 against the API, or otherwise pushes a project profile.
 Issuekit combines registered worker projects and project profiles when the API
 exposes both catalogs, so either registration path makes the project visible.
-If the API exposes its project catalog, issuekit rejects unknown targets before
-creating a proposal. If the connected API predates project catalog support,
-proposal writes continue and issuekit reports that the target could not be
-validated.
+Issuekit rejects unknown targets before creating a proposal and reports API
+errors if either catalog cannot be read.
 
 Do not assume a repo remote name is a valid proposal destination. For example,
 if a local alias such as `mine-dashboard` points at an old service name but the
 target project is registered as `dashboard`,
-`issuekit propose --to mine-dashboard ...` is rejected on catalog-aware APIs
-instead of creating a proposal in an unwatched inbox.
+`issuekit propose --to mine-dashboard ...` is rejected instead of creating a
+proposal in an unwatched inbox.
 
 ## Local aliases (refs)
 

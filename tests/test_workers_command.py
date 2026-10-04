@@ -98,7 +98,7 @@ def test_workers_command_lists_registered_workers(
     client.upsert_worker(
         machine_id="machine",
         repo_id="mine-py",
-        worker_id="checkout",
+        worker_name="checkout",
         path="/repo",
         role="api-server",
         description="Hosts the mine-py issue API.",
@@ -120,10 +120,10 @@ def test_workers_command_json_and_repo_filter(
 ) -> None:
     client = FakeIssuekitClient()
     client.upsert_worker(
-        machine_id="machine", repo_id="mine-py", worker_id="c1", path="/a", role="api"
+        machine_id="machine", repo_id="mine-py", worker_name="c1", path="/a", role="api"
     )
     client.upsert_worker(
-        machine_id="machine", repo_id="issuekit", worker_id="c2", path="/b", role="cli"
+        machine_id="machine", repo_id="issuekit", worker_name="c2", path="/b", role="cli"
     )
     _configure_api(tmp_path, monkeypatch, client)
 
@@ -143,14 +143,17 @@ def test_workers_command_prints_repo_and_worker_metadata(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     client = FakeIssuekitClient()
+    client.upsert_repo(
+        repo_key="mine-py",
+        description="Mine API service.",
+        meta={"domain": "api"},
+    )
     client.upsert_worker(
         machine_id="machine",
         repo_id="mine-py",
         worker_name="checkout",
         path="/repo",
-        repo_description="Mine API service.",
-        repo_metadata={"domain": "api"},
-        worker_metadata={"queue": "fast"},
+        meta={"queue": "fast"},
     )
     _configure_api(tmp_path, monkeypatch, client)
 

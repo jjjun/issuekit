@@ -5,7 +5,6 @@ from __future__ import annotations
 import re
 import time
 from collections.abc import Callable, Iterator, Mapping, Sequence
-from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
@@ -38,21 +37,8 @@ STRUCTURED_DEPENDENCY_PATTERN = re.compile(
 DEPENDENCY_LINE_PATTERN = re.compile(
     r"(?i)\b(depends?\s+on|requires?|prerequisite|blocked\s+by|upstream)\b"
 )
-PROJECT_CATALOG_UNSUPPORTED_CODES = {
-    "http_404",
-    "http_405",
-    "not_found",
-    "method_not_allowed",
-}
 ADOPT_APPEND_RETRY_DELAYS = (0.1, 0.2, 0.4, 0.8, 1.6)
 _sleep = time.sleep
-
-
-@dataclass(frozen=True)
-class ProjectCatalog:
-    projects: tuple[str, ...]
-    source: str | None
-    supported: bool
 
 
 def adopt_outcome(proposal_id: str | int, project: str, issue: dict) -> dict:
@@ -163,7 +149,7 @@ def api_client(config: IssuekitConfig, *, project: str | None = None) -> Issueki
 
 def send_proposal(config: IssuekitConfig, proposal: Proposal) -> dict:
     """Create a proposal and annotate idempotent payload conflicts."""
-    target_warnings = validate_target_project(config, proposal.to)
+    validate_target_project(config, proposal.to)
     with api_client(config, project=proposal.to) as client:
         created = client.create_proposal(
             origin=proposal.origin,
@@ -183,7 +169,6 @@ def send_proposal(config: IssuekitConfig, proposal: Proposal) -> dict:
     if proposal.depends_on and "depends_on" not in result:
         result["depends_on"] = list(proposal.depends_on)
     warnings = [
-        *target_warnings,
         *proposal.warnings,
         *bare_ref_collision_warnings(_dependency_rows_from_response(result)),
     ]
@@ -560,51 +545,23 @@ def matches_triage_policy(proposal: Mapping[str, Any], config: IssuekitConfig) -
     return True
 
 
-def validate_target_project(config: IssuekitConfig, target_project: str) -> tuple[str, ...]:
-    """Validate proposal targets against the API's project catalog when available."""
+def validate_target_project(config: IssuekitConfig, target_project: str) -> None:
+    """Validate proposal targets against the API's project catalog."""
     target_project = _target_repo(target_project, label="target project")
-    catalog = fetch_project_catalog(config)
-    if catalog.supported:
-        if target_project in catalog.projects:
-            return ()
-        raise ProposalError(_unknown_target_project_message(target_project, catalog.projects))
-    if catalog.source is not None:
-        return ()
-    return (
-        "Target project preflight: API server did not expose a project catalog; "
-        f"cannot validate target project {target_project}.",
-    )
+    projects = fetch_project_catalog(config)
+    if target_project not in projects:
+        raise ProposalError(_unknown_target_project_message(target_project, projects))
 
 
-def fetch_project_catalog(config: IssuekitConfig) -> ProjectCatalog:
+def fetch_project_catalog(config: IssuekitConfig) -> tuple[str, ...]:
     if not config.api_url:
         raise ProposalError(
             "Proposal commands require api_url in issuekit.toml/[tool.issuekit] or ISSUEKIT_API_URL."
         )
     with api_client(config) as client:
-        projects: set[str] = set()
-        sources: list[str] = []
-        try:
-            profile_projects = _project_names_from_rows(client.list_project_profiles())
-        except WorkflowError as exc:
-            if exc.code not in PROJECT_CATALOG_UNSUPPORTED_CODES:
-                raise
-        else:
-            sources.append("project profiles")
-            projects.update(profile_projects)
-
-        try:
-            worker_projects = _project_names_from_rows(client.list_workers())
-        except WorkflowError as exc:
-            if exc.code not in PROJECT_CATALOG_UNSUPPORTED_CODES:
-                raise
-        else:
-            sources.append("worker registry")
-            projects.update(worker_projects)
-
-    if not sources:
-        return ProjectCatalog((), None, False)
-    return ProjectCatalog(tuple(sorted(projects)), " and ".join(sources), True)
+        profile_projects = _project_names_from_rows(client.list_project_profiles())
+        worker_projects = _project_names_from_rows(client.list_workers())
+    return tuple(sorted(set(profile_projects) | set(worker_projects)))
 
 
 def _project_names_from_rows(rows: Sequence[Mapping[str, Any]]) -> tuple[str, ...]:

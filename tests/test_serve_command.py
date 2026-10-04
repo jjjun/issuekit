@@ -344,10 +344,9 @@ def test_serve_once_empty_queue_exits_without_agent(
         {
             "method": "upsert_worker",
             "body": {
-                "machine_id": "machine",
-                "repo_id": "demo",
-                "repo_key": "demo",
-                "worker_name": "checkout",
+                    "machine_id": "machine",
+                    "repo_id": "demo",
+                    "worker_name": "checkout",
                 "path": tmp_path.resolve().as_posix(),
                 "project": "demo",
             },

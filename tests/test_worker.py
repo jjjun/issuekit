@@ -428,7 +428,6 @@ def test_add_cli_best_effort_posts_worker_registry(
         {
             "machine_id": "win-desktop",
             "repo_id": "demo",
-            "repo_key": "demo",
             "worker_name": "checkout",
             "path": tmp_path.resolve().as_posix(),
             "project": "demo",
@@ -586,30 +585,29 @@ def test_add_cli_reports_duplicate_worker_name_conflict(
     assert "--worker-id win-desktop-checkout" in err
 
 
-def test_add_cli_tolerates_missing_repo_endpoint(
+def test_post_worker_registration_propagates_missing_repo_endpoint(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
 ) -> None:
     from issuekit.workers import registry as worker_registry
+    from issuekit.workflow import WorkflowError
 
-    client = MissingRepoEndpointRegistryClient()
-    _init_git(tmp_path)
-    (tmp_path / "issuekit.toml").write_text(
-        "api_url = 'https://mine.example'\nproject = 'demo'\n",
-        encoding="utf-8",
-        newline="\n",
+    monkeypatch.setattr(
+        worker_registry,
+        "IssuekitClient",
+        lambda *args, **kwargs: RepoEndpointNotFoundRegistryClient(),
     )
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("ISSUEKIT_WORKER_REGISTRY", str(tmp_path / "workers.toml"))
-    monkeypatch.setattr("issuekit.workers.identity.platform.node", lambda: "win-desktop")
-    monkeypatch.setattr(worker_registry, "IssuekitClient", lambda *args, **kwargs: client)
 
-    assert cli.main(["add", "--repo-id", "demo", "--worker-id", "checkout"]) == 0
+    config = IssuekitConfig(
+        api_url="https://mine.example",
+        project="demo",
+        worker=WorkerIdentity("machine", "demo", "checkout"),
+    )
 
-    assert len(client.calls) == 1
-    assert client.calls[0]["worker_name"] == "checkout"
-    assert "worker registry update failed" in capsys.readouterr().err
+    with pytest.raises(WorkflowError, match="repo endpoint not found") as exc_info:
+        worker_registry.post_worker_registration(config, tmp_path)
+
+    assert exc_info.value.code == "http_404"
 
 
 def test_add_cli_ignores_worker_registry_failure(
@@ -765,7 +763,6 @@ def test_add_cli_posts_configured_role_and_description(
         {
             "machine_id": "win-desktop",
             "repo_id": "demo",
-            "repo_key": "demo",
             "worker_name": "checkout",
             "path": tmp_path.resolve().as_posix(),
             "project": "demo",
@@ -930,27 +927,18 @@ class FakeRegistryClient:
         *,
         machine_id: str,
         repo_id: str,
-        worker_id: str | None = None,
-        worker_name: str | None = None,
+        worker_name: str,
         path: str | None = None,
-        canonical_url: str | None = None,
         project: str | None = None,
         role: str | None = None,
         description: str | None = None,
-        repo_description: str | None = None,
-        repo_metadata: dict[str, str] | None = None,
-        worker_metadata: dict[str, str] | None = None,
         meta: dict[str, str] | None = None,
         accept_directed: bool | None = None,
     ) -> dict[str, str | None]:
-        resolved_worker_name = worker_name or worker_id
-        assert resolved_worker_name is not None
-        resolved_meta = meta if meta is not None else worker_metadata
         call = {
             "machine_id": machine_id,
             "repo_id": repo_id,
-            "repo_key": repo_id,
-            "worker_name": resolved_worker_name,
+            "worker_name": worker_name,
             "path": path,
         }
         if project is not None:
@@ -959,12 +947,12 @@ class FakeRegistryClient:
             call["role"] = role
         if description is not None:
             call["description"] = description
-        if resolved_meta is not None:
-            call["meta"] = resolved_meta
+        if meta is not None:
+            call["meta"] = meta
         if accept_directed is not None:
             call["accept_directed"] = accept_directed
         self.calls.append(call)
-        return {"id": f"{resolved_worker_name}.{repo_id}", **call}
+        return {"id": f"{worker_name}.{repo_id}", **call}
 
     def put_project_profile(self, **kwargs) -> dict[str, object]:
         self.profile_calls.append(kwargs)
@@ -1016,7 +1004,7 @@ class WorkerConflictRegistryClient(FakeRegistryClient):
         )
 
 
-class MissingRepoEndpointRegistryClient(FakeRegistryClient):
+class RepoEndpointNotFoundRegistryClient(FakeRegistryClient):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__()
 

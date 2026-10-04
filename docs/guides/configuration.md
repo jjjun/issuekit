@@ -17,7 +17,6 @@ work_branch = "main"
 gate_halfwidth_kana = true
 check_encoding_exclude = ["packages/*/src/generated/**"]
 worker_heartbeat_interval_sec = 60.0
-send_agent_runtime = true
 ```
 
 Non-Python repositories can use a standalone `issuekit.toml` at the repo root
@@ -384,11 +383,9 @@ memory, journals commands before local side effects, uploads bounded redacted
 events, stops on fencing or claim loss, and seals the runtime before the
 existing submit-for-review workflow. A transient `request_failed` heartbeat
 retries until half the TTL has elapsed since the last successful heartbeat. A
-provider without the routes returns a clear unsupported-runtime error;
-issuekit does not silently fall back because the mode is explicit. App Server
-is Codex-only and
-implementer-only in this version. Both `implement` and `serve` honor this
-runtime. Its threads start and resume with approval policy `never` and the
+App Server is Codex-only and implementer-only in this version. Both `implement`
+and `serve` honor this runtime. Its threads start and resume with approval
+policy `never` and the
 `danger-full-access` sandbox, and it reads only `binary`,
 `known_paths`, `lease_ttl_seconds`, `app_server_argv`, `model`,
 `reasoning_effort`, `prompt_suffix`, and `model_prompts` from the agent
@@ -519,12 +516,6 @@ An older pinned issuekit that reads `speed = true` may stringify it and emit
 `service_tier=True`, so upgrade those pins at the same time. Setting
 `speed = true` on an agent without `speed_argv`, such as the built-in Kimi
 config or a custom agent, fails when the agent is launched.
-
-By default, agent-launched implementation and review transitions report the
-effective model and reasoning effort to mine-py. Set `send_agent_runtime = false`
-when using a mine-py deployment older than mine-py#579: that server rejects the
-additional fields with HTTP 422, so the transition fails rather than omitting
-the runtime data.
 
 `worker_heartbeat_interval_sec` controls how often `issuekit serve` refreshes
 its worker registry entry and defaults to `60.0`. The

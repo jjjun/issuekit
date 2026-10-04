@@ -1223,7 +1223,6 @@ def test_client_upsert_worker_posts_top_level_workers_endpoint() -> None:
         assert json.loads(request.content) == {
             "machine_id": "machine",
             "repo_id": "repo",
-            "repo_key": "repo",
             "worker_name": "checkout",
             "path": "/repo",
             "project": "demo",
@@ -1240,7 +1239,7 @@ def test_client_upsert_worker_posts_top_level_workers_endpoint() -> None:
     assert client.upsert_worker(
         machine_id="machine",
         repo_id="repo",
-        worker_id="checkout",
+        worker_name="checkout",
         path="/repo",
         project="demo",
     ) == response
@@ -1280,7 +1279,6 @@ def test_client_upsert_worker_sends_only_worker_schema_fields() -> None:
         assert body == {
             "machine_id": "machine",
             "repo_id": "repo",
-            "repo_key": "repo",
             "worker_name": "checkout",
             "path": "/repo",
             "project": "demo",
@@ -1288,10 +1286,6 @@ def test_client_upsert_worker_sends_only_worker_schema_fields() -> None:
             "description": "Hosts the API.",
             "meta": {"gpu": "false"},
         }
-        assert "canonical_url" not in body
-        assert "repo_description" not in body
-        assert "repo_metadata" not in body
-        assert "worker_metadata" not in body
         return httpx.Response(201, json={"id": "checkout.repo"})
 
     client = IssuekitClient(
@@ -1304,15 +1298,12 @@ def test_client_upsert_worker_sends_only_worker_schema_fields() -> None:
     client.upsert_worker(
         machine_id="machine",
         repo_id="repo",
-        worker_id="checkout",
+        worker_name="checkout",
         path="/repo",
         project="demo",
         role="api-server",
         description="Hosts the API.",
-        canonical_url="https://github.com/example/repo",
-        repo_description="Repo catalog entry.",
-        repo_metadata={"domain": "api"},
-        worker_metadata={"gpu": "false"},
+        meta={"gpu": "false"},
     )
 
 
@@ -1322,7 +1313,6 @@ def test_client_upsert_worker_sends_accept_directed_when_enabled() -> None:
         assert json.loads(request.content) == {
             "machine_id": "machine",
             "repo_id": "repo",
-            "repo_key": "repo",
             "worker_name": "checkout",
             "path": "/repo",
             "accept_directed": True,
@@ -1338,7 +1328,7 @@ def test_client_upsert_worker_sends_accept_directed_when_enabled() -> None:
     client.upsert_worker(
         machine_id="machine",
         repo_id="repo",
-        worker_id="checkout",
+        worker_name="checkout",
         path="/repo",
         accept_directed=True,
     )

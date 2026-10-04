@@ -671,7 +671,7 @@ def test_list_workers_returns_catalog(tmp_path: Path, monkeypatch: pytest.Monkey
     client.upsert_worker(
         machine_id="machine",
         repo_id="mine-py",
-        worker_id="checkout",
+        worker_name="checkout",
         path="/repo",
         role="api-server",
         description="Hosts the API.",
@@ -697,7 +697,7 @@ def test_list_workers_preserves_target_worker_when_set(
     client.upsert_worker(
         machine_id="machine",
         repo_id="mine-py",
-        worker_id="checkout",
+        worker_name="checkout",
         path="/repo",
     )
     client._workers["checkout.mine-py"]["target_worker"] = "checkout.mine-py"
@@ -718,7 +718,7 @@ def test_remove_worker_tool_rejects_legacy_id(
     client.upsert_worker(
         machine_id="machine",
         repo_id="mine-py",
-        worker_id="checkout",
+        worker_name="checkout",
         path="/repo",
     )
     _configure_api(tmp_path, monkeypatch, client)
@@ -751,7 +751,7 @@ def test_remove_worker_tool_force_allows_implementing_holder(
     client.upsert_worker(
         machine_id="machine",
         repo_id="mine-py",
-        worker_id="checkout",
+        worker_name="checkout",
         path="/repo",
     )
     _configure_api(tmp_path, monkeypatch, client)
@@ -903,7 +903,7 @@ def test_dispatch_issue_tool_directs_issue_to_registered_worker(
     client.upsert_worker(
         machine_id="machine",
         repo_id="demo",
-        worker_id="checkout",
+        worker_name="checkout",
         project="demo",
     )
     client.calls.clear()

@@ -445,39 +445,27 @@ class WorkerResourceMixin:
         *,
         machine_id: str,
         repo_id: str,
-        worker_id: str | None = None,
-        worker_name: str | None = None,
+        worker_name: str,
         path: str | None = None,
-        canonical_url: str | None = None,
         project: str | None = None,
         role: str | None = None,
         description: str | None = None,
-        repo_description: str | None = None,
-        repo_metadata: Mapping[str, str] | None = None,
-        worker_metadata: Mapping[str, str] | None = None,
         meta: Mapping[str, str] | None = None,
         accept_directed: bool | None = None,
     ) -> JsonDict:
-        resolved_worker_name = worker_name or worker_id
-        if not resolved_worker_name:
-            raise ValueError("upsert_worker requires worker_name or worker_id.")
-        resolved_meta = meta if meta is not None else worker_metadata
         body = {
             "machine_id": machine_id,
             "repo_id": repo_id,
-            "repo_key": repo_id,
-            "worker_name": resolved_worker_name,
+            "worker_name": worker_name,
             "path": path,
         }
-        # role/description are optional, backward-compatible fields: only send
-        # them when set so older backends keep accepting the payload.
         body.update(
             drop_none(
                 {
                     "project": project,
                     "role": role,
                     "description": description,
-                    "meta": dict(resolved_meta) if resolved_meta is not None else None,
+                    "meta": dict(meta) if meta is not None else None,
                     "accept_directed": accept_directed,
                 }
             )

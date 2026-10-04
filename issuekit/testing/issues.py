@@ -518,28 +518,18 @@ class FakeIssueSurface:
         *,
         machine_id: str,
         repo_id: str,
-        worker_id: str | None = None,
-        worker_name: str | None = None,
+        worker_name: str,
         path: str | None = None,
-        canonical_url: str | None = None,
         project: str | None = None,
         role: str | None = None,
         description: str | None = None,
-        repo_description: str | None = None,
-        repo_metadata: dict[str, str] | None = None,
-        worker_metadata: dict[str, str] | None = None,
         meta: dict[str, str] | None = None,
         accept_directed: bool | None = None,
     ) -> JsonDict:
-        resolved_worker_name = worker_name or worker_id
-        if not resolved_worker_name:
-            raise WorkflowError("worker_name is required.", code="invalid_value")
-        resolved_meta = meta if meta is not None else worker_metadata
         body = {
             "machine_id": machine_id,
             "repo_id": repo_id,
-            "repo_key": repo_id,
-            "worker_name": resolved_worker_name,
+            "worker_name": worker_name,
             "path": path,
         }
         if project is not None:
@@ -548,28 +538,27 @@ class FakeIssueSurface:
             body["role"] = role
         if description is not None:
             body["description"] = description
-        if resolved_meta is not None:
-            body["meta"] = deepcopy(resolved_meta)
+        if meta is not None:
+            body["meta"] = deepcopy(meta)
         if accept_directed is not None:
             body["accept_directed"] = accept_directed
         with self._lock:
             self._record("upsert_worker", body=body)
             repo = self._repos.get(repo_id, {})
             record = {
-                "id": f"{resolved_worker_name}.{repo_id}",
+                "id": f"{worker_name}.{repo_id}",
                 "machine_id": machine_id,
                 "repo_id": repo_id,
-                "repo_key": repo_id,
-                "worker_name": resolved_worker_name,
+                "worker_name": worker_name,
                 "path": path,
-                "canonical_url": repo.get("canonical_url", canonical_url),
+                "canonical_url": repo.get("canonical_url"),
                 "project": project,
                 "role": role,
                 "description": description,
-                "repo_description": repo.get("description", repo_description),
-                "repo_metadata": deepcopy(repo.get("meta", repo_metadata or {})),
-                "worker_metadata": deepcopy(resolved_meta or {}),
-                "meta": deepcopy(resolved_meta or {}),
+                "repo_description": repo.get("description"),
+                "repo_metadata": deepcopy(repo.get("meta", {})),
+                "worker_metadata": deepcopy(meta or {}),
+                "meta": deepcopy(meta or {}),
                 "accept_directed": bool(accept_directed),
                 "status": "idle",
                 "current_issue": None,
