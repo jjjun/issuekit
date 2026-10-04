@@ -17,9 +17,9 @@ from issuekit.commands._common import (
     run_agent_command,
     run_command,
 )
-from issuekit.config import load_config
+from issuekit.config import IssuekitConfig, load_config
 from issuekit.config.refs import list_effective_refs
-from issuekit.core import parse_issue_id_arg
+from issuekit.core import Issue, parse_issue_id_arg
 from issuekit.errors import AGENT_RUN_ERRORS, WorkflowError
 from issuekit.gitutil import git_status_short
 from issuekit.inputs import active_issue_not_found
@@ -30,16 +30,20 @@ from issuekit.negotiation import (
 )
 from issuekit.negotiation.engine import (
     DEFAULT_MAX_ROUNDS,
+    load_thread_inspection,
+    run_negotiation,
+)
+from issuekit.negotiation.finalize import (
     ApiIssueCreator,
     IssueCreator,
     MockIssueCreator,
     NegotiationFinalizationResult,
-    NegotiationResult,
-    NegotiationThreadInspection,
     finalize_negotiation,
+)
+from issuekit.negotiation.rounds import NegotiationResult
+from issuekit.negotiation.thread import (
+    NegotiationThreadInspection,
     finalize_refusal_reason,
-    inspect_thread,
-    run_negotiation,
 )
 from issuekit.proposals.client import validate_target_project
 from issuekit.store import get_store
@@ -138,86 +142,103 @@ def run(args) -> int:
         cwd = Path.cwd()
         config = load_config(cwd)
         if args.cancel:
-            _require_cancel_args(args)
-            store_config = replace(config, project=args.to)
-            with get_negotiation_store(store_config, use_mock=False) as store:
-                status = store.get_status(args.cancel)
-                if status is not ThreadStatus.cancelled:
-                    store.cancel_thread(args.cancel)
-                store.settle_thread_members(args.cancel)
-            if args.json:
-                print_json({"thread_id": args.cancel, "status": "cancelled"})
-            else:
-                print(f"negotiation thread={args.cancel} status=cancelled")
-            return 0
+            return _run_cancel(args, config)
         if args.finalize:
-            _require_finalize_args(args)
-            author_agent = require_implementer(
-                args.author_agent,
-                config,
-                flag="--author-agent",
-            )
-            if not args.mock:
-                validate_target_project(config, args.to)
-            creator: IssueCreator = MockIssueCreator() if args.mock else ApiIssueCreator(config)
-            with get_negotiation_store(config, use_mock=bool(args.mock)) as store:
-                result = finalize_negotiation(
-                    thread_id=args.finalize,
-                    to_project=args.to,
-                    author_agent=author_agent,
-                    priority=args.priority,
-                    config=config,
-                    store=store,
-                    issue_creator=creator,
-                )
-            if args.json:
-                print_json(result.to_dict())
-            else:
-                _print_human_finalization_result(result)
-            return 0
-
-        _require_round_args(args)
-        counterpart_cwd = _resolve_counterpart_cwd(args.counterpart_ref, args.to, cwd)
-        max_rounds = int(args.max_rounds)
-        if max_rounds < 1:
-            raise ValueError("--max-rounds must be at least 1.")
-        if not args.mock:
-            validate_target_project(config, args.to)
-
-        issue_id = parse_issue_id_arg(args.from_issue)
-        with get_store(config) as issue_store:
-            issue = issue_store.get_issue(issue_id)
-            if issue is None:
-                print(active_issue_not_found(issue_id), file=sys.stderr)
-                return 1
-
-        with get_negotiation_store(config, use_mock=bool(args.mock)) as store:
-            result = run_negotiation(
-                issue=issue,
-                to_project=args.to,
-                initiator_side=args.initiator_side,
-                provider_agent=args.provider_agent,
-                consumer_agent=args.consumer_agent,
-                max_rounds=max_rounds,
-                timeout=float(args.timeout_sec),
-                model=args.model,
-                reasoning_effort=args.reasoning_effort,
-                config=config,
-                cwd=cwd,
-                counterpart_cwd=counterpart_cwd,
-                store=store,
-                runner=AgentRunner(),
-            )
-        if args.json:
-            print_json(result.to_dict())
-        else:
-            _print_human_result(result)
-        return 0
+            return _run_finalize(args, config, cwd)
+        return _run_rounds(args, config, cwd)
 
     return run_agent_command(
         action,
         errors=AGENT_RUN_ERRORS,
     )
+
+
+def _run_cancel(args, config: IssuekitConfig) -> int:
+    _require_cancel_args(args)
+    store_config = replace(config, project=args.to)
+    with get_negotiation_store(store_config, use_mock=False) as store:
+        status = store.get_status(args.cancel)
+        if status is not ThreadStatus.cancelled:
+            store.cancel_thread(args.cancel)
+        store.settle_thread_members(args.cancel)
+    if args.json:
+        print_json({"thread_id": args.cancel, "status": "cancelled"})
+    else:
+        print(f"negotiation thread={args.cancel} status=cancelled")
+    return 0
+
+
+def _run_finalize(args, config: IssuekitConfig, cwd: Path) -> int:
+    _require_finalize_args(args)
+    author_agent = require_implementer(
+        args.author_agent,
+        config,
+        flag="--author-agent",
+    )
+    if not args.mock:
+        validate_target_project(config, args.to)
+    creator: IssueCreator = MockIssueCreator() if args.mock else ApiIssueCreator(config)
+    with get_negotiation_store(config, use_mock=bool(args.mock)) as store:
+        result = finalize_negotiation(
+            thread_id=args.finalize,
+            to_project=args.to,
+            author_agent=author_agent,
+            priority=args.priority,
+            config=config,
+            store=store,
+            issue_creator=creator,
+        )
+    if args.json:
+        print_json(result.to_dict())
+    else:
+        _print_human_finalization_result(result)
+    return 0
+
+
+def _run_rounds(args, config: IssuekitConfig, cwd: Path) -> int:
+    _require_round_args(args)
+    counterpart_cwd = _resolve_counterpart_cwd(args.counterpart_ref, args.to, cwd)
+    max_rounds = int(args.max_rounds)
+    if max_rounds < 1:
+        raise ValueError("--max-rounds must be at least 1.")
+    if not args.mock:
+        validate_target_project(config, args.to)
+
+    issue = _load_round_source(args, config)
+    if issue is None:
+        return 1
+
+    with get_negotiation_store(config, use_mock=bool(args.mock)) as store:
+        result = run_negotiation(
+            issue=issue,
+            to_project=args.to,
+            initiator_side=args.initiator_side,
+            provider_agent=args.provider_agent,
+            consumer_agent=args.consumer_agent,
+            max_rounds=max_rounds,
+            timeout=float(args.timeout_sec),
+            model=args.model,
+            reasoning_effort=args.reasoning_effort,
+            config=config,
+            cwd=cwd,
+            counterpart_cwd=counterpart_cwd,
+            store=store,
+            runner=AgentRunner(),
+        )
+    if args.json:
+        print_json(result.to_dict())
+    else:
+        _print_human_result(result)
+    return 0
+
+
+def _load_round_source(args, config: IssuekitConfig) -> Issue | None:
+    issue_id = parse_issue_id_arg(args.from_issue)
+    with get_store(config) as issue_store:
+        issue = issue_store.get_issue(issue_id)
+    if issue is None:
+        print(active_issue_not_found(issue_id), file=sys.stderr)
+    return issue
 
 
 def run_threads(args) -> int:
@@ -226,7 +247,7 @@ def run_threads(args) -> int:
         with get_negotiation_store(config, use_mock=bool(args.mock)) as store:
             status = ThreadStatus(args.status) if args.status else None
             if args.thread_id:
-                inspection = inspect_thread(args.thread_id, store=store)
+                inspection = load_thread_inspection(store, args.thread_id)
                 if args.json:
                     print_json(inspection.to_dict())
                 else:

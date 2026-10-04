@@ -7,13 +7,7 @@ import pytest
 
 from issuekit import cli
 from issuekit.agentrun import AgentPrompt, AgentResult
-from issuekit.commands.negotiate import (
-    MockIssueCreator,
-    _resolve_counterpart_cwd,
-    finalize_negotiation,
-    inspect_thread,
-    run_negotiation,
-)
+from issuekit.commands.negotiate import _resolve_counterpart_cwd
 from issuekit.config import IssuekitConfig
 from issuekit.config.refs import add_ref
 from issuekit.core import Issue
@@ -25,8 +19,13 @@ from issuekit.negotiation import (
     ThreadStatus,
     Verdict,
 )
-from issuekit.negotiation.engine import (
+from issuekit.negotiation.engine import load_thread_inspection, run_negotiation
+from issuekit.negotiation.finalize import (
     ApiIssueCreator,
+    MockIssueCreator,
+    finalize_negotiation,
+)
+from issuekit.negotiation.thread import (
     entry_origin,
     origin_issue_ref_from_thread,
 )
@@ -859,6 +858,10 @@ def _api_agreed_store(
     return store, api_client, first.thread_id, [first.id, second.id]
 
 
+def _inspect_thread(store: MockNegotiationStore, thread_id: str):
+    return load_thread_inspection(store, thread_id)
+
+
 def test_finalize_negotiation_creates_cross_linked_issues() -> None:
     store, thread_id = _agreed_store()
     creator = MockIssueCreator()
@@ -1274,7 +1277,7 @@ def test_inspect_thread_explains_finalize_refusal() -> None:
         contract="GET /items",
     )
 
-    inspection = inspect_thread(first.thread_id, store=store)
+    inspection = _inspect_thread(store, first.thread_id)
 
     payload = inspection.to_dict()
     assert payload["status"] == "negotiating"
@@ -1333,7 +1336,7 @@ def test_inspect_thread_has_no_refusal_for_recoverable_agreement() -> None:
         contract="GET /items 200",
     )
 
-    inspection = inspect_thread(first.thread_id, store=store)
+    inspection = _inspect_thread(store, first.thread_id)
 
     payload = inspection.to_dict()
     assert payload["status"] == "negotiating"
@@ -1361,7 +1364,7 @@ def test_inspect_thread_reports_contract_mismatch_for_non_matching_agreement() -
         contract="POST /items 201",
     )
 
-    inspection = inspect_thread(first.thread_id, store=store)
+    inspection = _inspect_thread(store, first.thread_id)
 
     payload = inspection.to_dict()
     assert payload["status"] == "negotiating"
@@ -1395,7 +1398,7 @@ def test_api_issue_creator_closes_stores_on_success_and_error(monkeypatch) -> No
         stores.append(store)
         return store
 
-    monkeypatch.setattr("issuekit.negotiation.engine.get_store", make_store)
+    monkeypatch.setattr("issuekit.negotiation.finalize.get_store", make_store)
     creator = ApiIssueCreator(
         IssuekitConfig(api_url="https://mine.example", project="frontend")
     )

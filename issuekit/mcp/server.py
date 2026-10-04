@@ -39,7 +39,7 @@ from issuekit.issues.orphans import (
 from issuekit.issues.service import approve_issue, edit_issue
 from issuekit.issues.service import dispatch_issue as issue_dispatch
 from issuekit.negotiation import ThreadStatus, get_negotiation_store
-from issuekit.negotiation.engine import inspect_thread
+from issuekit.negotiation.engine import load_thread_inspection
 from issuekit.prompts.protocol import render_protocol, render_server_instructions
 from issuekit.proposals.adopt import adopt_proposal_with_append
 from issuekit.proposals.checks import request_proposal_check
@@ -703,7 +703,7 @@ def create_server(
         async with _api_config(root, ctx) as (config, _config_root):
             with get_negotiation_store(config, use_mock=mock) as store:
                 if thread_id:
-                    return inspect_thread(thread_id, store=store).to_dict()
+                    return load_thread_inspection(store, thread_id).to_dict()
                 thread_status = ThreadStatus(status) if status else None
                 return [
                     summary.to_dict()
