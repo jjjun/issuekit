@@ -23,7 +23,12 @@ from issuekit.config import IssuekitConfig
 from issuekit.core import Issue, worker_keys_match
 from issuekit.encoding import ASCII_ONLY_HINT, has_non_ascii, sanitize_to_ascii
 from issuekit.gitutil import GitStatusEntry, git_status_entries, git_status_short, run_git
-from issuekit.prompts import REVIEW_PROMPT, ReviewParseError, canonical_contract_token
+from issuekit.prompts import (
+    REVIEW_PROMPT,
+    ReviewParseError,
+    canonical_contract_token,
+    fence_untrusted,
+)
 from issuekit.store import managed_issue_store
 from issuekit.workflow import WorkflowError, ensure_assigned_reviewer, request_changes
 
@@ -358,8 +363,8 @@ def _render_review_prompt(
     return REVIEW_PROMPT.render(
         issue_ref=issue.ref,
         review_target=review_target,
-        issue_body=issue.body,
-        implementation_context=diff,
+        issue_body=fence_untrusted("issue_body", issue.body),
+        implementation_context=fence_untrusted("implementation_context", diff),
         readability_hints=_readability_hint_section(diff_context),
         output_keys=", ".join(REVIEW_OUTPUT_KEYS),
         ascii_only_hint=ASCII_ONLY_HINT,

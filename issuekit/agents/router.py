@@ -14,7 +14,12 @@ from issuekit.agents.readonly import prompt_from_spec, require_clean_run, run_re
 from issuekit.agents.registry import resolve_adapter
 from issuekit.config import IssuekitConfig
 from issuekit.issues.dependencies import DEPENDENCY_REF_EXPECTED, DEPENDENCY_REF_PATTERN
-from issuekit.prompts import ROUTER_PROMPT, RouterParseError, canonical_contract_token
+from issuekit.prompts import (
+    ROUTER_PROMPT,
+    RouterParseError,
+    canonical_contract_token,
+    fence_untrusted,
+)
 from issuekit.proposals.api import api_client
 from issuekit.workflow import WorkflowError
 
@@ -313,8 +318,8 @@ def _render_router_prompt(
         max_targets=max_targets,
         final_instruction=final_instruction,
         request_text=request_text.strip(),
-        qa_text=qa_text,
-        profile_text=profile_text,
+        qa_text=fence_untrusted("qa_text", qa_text),
+        profile_text=fence_untrusted("profile_text", profile_text),
     )
 
 

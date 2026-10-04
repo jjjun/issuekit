@@ -3,6 +3,7 @@ Perspective: you represent the $side side.
 Round job: propose, counter, agree, or blocked the current contract.
 To agree, set verdict to agree and copy the counterpart's latest contract text exactly into contract; an agree without that text does not conclude the negotiation.
 $read_only_run_instruction
+$untrusted_data_rule
 
 Seed:
 $seed

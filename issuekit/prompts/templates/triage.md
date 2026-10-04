@@ -4,6 +4,7 @@ You are triaging one incoming cross-project proposal for this project.
 Inspect this repository read-only to judge whether the request belongs
 here and how it should be specified.
 $read_only_run_instruction
+$untrusted_data_rule
 
 Proposal title: $title
 Origin: $origin

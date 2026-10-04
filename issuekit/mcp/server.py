@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import os
 from collections.abc import AsyncIterator
@@ -95,7 +96,11 @@ _CODEX_ENV_VARS = (
 _HEALTH_ENV_KEYS = (*_CODEX_ENV_VARS, "ISSUEKIT_API_TOKEN")
 
 
-def create_server(cwd: Path | str | None = None) -> FastMCP:
+def create_server(
+    cwd: Path | str | None = None,
+    *,
+    allow_overrides: bool = False,
+) -> FastMCP:
     server = FastMCP("issuekit", instructions=render_server_instructions())
     root = Path.cwd() if cwd is None else Path(cwd)
 
@@ -123,13 +128,7 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
         config = load_config(config_root)
         return render_protocol(agent, role=role, agent_roles=config.agent_roles)
 
-    @server.tool(
-        description=(
-            "Implementer protocol step 1: claim the next task, then implement and call "
-            "submit_for_review."
-        )
-    )
-    async def claim_next_task(
+    async def claim_next_task_impl(
         assignee: str | None = None,
         priority: str | None = None,
         allow_author_session: bool = False,
@@ -159,13 +158,42 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
             return {"status": "none", "assignee": resolved_assignee}
         return issue_dict(issue, include_body=True)
 
-    @server.tool(
-        description=(
-            "Implementation protocol step 2: submit an implemented task for reviewer "
-            "handoff with summary and optional branch/commit metadata."
-        )
+    claim_description = (
+        "Implementer protocol step 1: claim the next task, then implement and call "
+        "submit_for_review."
     )
-    async def submit_for_review(
+    if allow_overrides:
+        @server.tool(description=claim_description)
+        async def claim_next_task(
+            assignee: str | None = None,
+            priority: str | None = None,
+            allow_author_session: bool = False,
+            allow_any_branch: bool = False,
+            no_sync: bool = False,
+            ctx: Context | None = None,
+        ) -> dict[str, Any]:
+            return await claim_next_task_impl(
+                assignee=assignee,
+                priority=priority,
+                allow_author_session=allow_author_session,
+                allow_any_branch=allow_any_branch,
+                no_sync=no_sync,
+                ctx=ctx,
+            )
+    else:
+        @server.tool(description=claim_description)
+        async def claim_next_task(
+            assignee: str | None = None,
+            priority: str | None = None,
+            ctx: Context | None = None,
+        ) -> dict[str, Any]:
+            return await claim_next_task_impl(
+                assignee=assignee,
+                priority=priority,
+                ctx=ctx,
+            )
+
+    async def submit_for_review_impl(
         id: int,
         summary: str,
         branch: str | None = None,
@@ -190,6 +218,51 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
                 session=MCP_SESSION,
             )
         return issue_dict(issue)
+
+    submit_description = (
+        "Implementation protocol step 2: submit an implemented task for reviewer "
+        "handoff with summary and optional branch/commit metadata."
+    )
+    if allow_overrides:
+        @server.tool(description=submit_description)
+        async def submit_for_review(
+            id: int,
+            summary: str,
+            branch: str | None = None,
+            commit: str | None = None,
+            reviewer: str | None = None,
+            allow_author_session: bool = False,
+            allow_any_branch: bool = False,
+            ctx: Context | None = None,
+        ) -> dict[str, Any]:
+            return await submit_for_review_impl(
+                id=id,
+                summary=summary,
+                branch=branch,
+                commit=commit,
+                reviewer=reviewer,
+                allow_author_session=allow_author_session,
+                allow_any_branch=allow_any_branch,
+                ctx=ctx,
+            )
+    else:
+        @server.tool(description=submit_description)
+        async def submit_for_review(
+            id: int,
+            summary: str,
+            branch: str | None = None,
+            commit: str | None = None,
+            reviewer: str | None = None,
+            ctx: Context | None = None,
+        ) -> dict[str, Any]:
+            return await submit_for_review_impl(
+                id=id,
+                summary=summary,
+                branch=branch,
+                commit=commit,
+                reviewer=reviewer,
+                ctx=ctx,
+            )
 
     @server.tool(
         description=(
@@ -261,8 +334,7 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
             return {"status": "none", "id": id}
         return issue_dict(issue, include_body=True)
 
-    @server.tool(description="Edit an API-backed issue title, body, appended text, or priority.")
-    async def update_issue(
+    async def update_issue_impl(
         id: int,
         title: str | None = None,
         body: str | None = None,
@@ -287,6 +359,50 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
                 store=store,
             )
         return issue_dict(issue, include_body=True)
+
+    update_description = "Edit an API-backed issue title, body, appended text, or priority."
+    if allow_overrides:
+        @server.tool(description=update_description)
+        async def update_issue(
+            id: int,
+            title: str | None = None,
+            body: str | None = None,
+            append: str | None = None,
+            priority: str | None = None,
+            depends_on: list[str] | str | None = None,
+            force: bool = False,
+            ctx: Context | None = None,
+        ) -> dict[str, Any]:
+            return await update_issue_impl(
+                id=id,
+                title=title,
+                body=body,
+                append=append,
+                priority=priority,
+                depends_on=depends_on,
+                force=force,
+                ctx=ctx,
+            )
+    else:
+        @server.tool(description=update_description)
+        async def update_issue(
+            id: int,
+            title: str | None = None,
+            body: str | None = None,
+            append: str | None = None,
+            priority: str | None = None,
+            depends_on: list[str] | str | None = None,
+            ctx: Context | None = None,
+        ) -> dict[str, Any]:
+            return await update_issue_impl(
+                id=id,
+                title=title,
+                body=body,
+                append=append,
+                priority=priority,
+                depends_on=depends_on,
+                ctx=ctx,
+            )
 
     @server.tool(
         description=(
@@ -322,42 +438,43 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
         async with _api_config(root, ctx) as (config, _config_root):
             return list_api_workers(config, repo_id=repo_id, project=project)
 
-    @server.tool(
-        description=(
-            "Remove a registered worker by worker.repo or worker.repo@machine id. "
-            "Refuses workers that hold implementing issues unless force is true."
+    if allow_overrides:
+        @server.tool(
+            description=(
+                "Remove a registered worker by worker.repo or worker.repo@machine id. "
+                "Refuses workers that hold implementing issues unless force is true."
+            )
         )
-    )
-    async def remove_worker(
-        address: str,
-        force: bool = False,
-        ctx: Context | None = None,
-    ) -> dict[str, Any]:
-        async with _api_config(root, ctx) as (config, _config_root):
-            result = remove_api_worker(config, address, force=force)
-        return {
-            "worker": result.worker,
-            "display": worker_display_from_row(result.worker),
-            "deleted": result.deleted,
-            "implementing_issues": [
-                issue_dict(issue) | {"worker": issue.worker}
-                for issue in result.implementing_issues
-            ],
-        }
+        async def remove_worker(
+            address: str,
+            force: bool = False,
+            ctx: Context | None = None,
+        ) -> dict[str, Any]:
+            async with _api_config(root, ctx) as (config, _config_root):
+                result = remove_api_worker(config, address, force=force)
+            return {
+                "worker": result.worker,
+                "display": worker_display_from_row(result.worker),
+                "deleted": result.deleted,
+                "implementing_issues": [
+                    issue_dict(issue) | {"worker": issue.worker}
+                    for issue in result.implementing_issues
+                ],
+            }
 
-    @server.tool(
-        description=(
-            "Remove a registered repo catalog entry. The API refuses repos that "
-            "still have worker, issue, or proposal references."
+        @server.tool(
+            description=(
+                "Remove a registered repo catalog entry. The API refuses repos that "
+                "still have worker, issue, or proposal references."
+            )
         )
-    )
-    async def remove_repo(
-        repo: str,
-        ctx: Context | None = None,
-    ) -> dict[str, Any]:
-        async with _api_config(root, ctx) as (config, _config_root):
-            result = remove_api_repo(config, repo)
-        return {"repo_key": result.repo_key, "deleted": result.deleted}
+        async def remove_repo(
+            repo: str,
+            ctx: Context | None = None,
+        ) -> dict[str, Any]:
+            async with _api_config(root, ctx) as (config, _config_root):
+                result = remove_api_repo(config, repo)
+            return {"repo_key": result.repo_key, "deleted": result.deleted}
 
     @server.tool(
         description=(
@@ -374,14 +491,7 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
             claims = list_stale_claims(config, stale_after_sec=stale_after_sec)
         return [stale_claim_dict(claim) for claim in claims]
 
-    @server.tool(
-        description=(
-            "Return an orphaned or stale implementing claim to the implement pool. "
-            "By default this refuses claims not listed by list_orphans; pass force "
-            "only for human emergency recovery."
-        )
-    )
-    async def reclaim_issue(
+    async def reclaim_issue_impl(
         id: int,
         force: bool = False,
         stale_after_sec: float = DEFAULT_STALE_AFTER_SEC,
@@ -397,6 +507,42 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
                 config=config,
             )
         return reclaim_result_dict(result)
+
+    reclaim_description = (
+        "Return an orphaned or stale implementing claim to the implement pool. "
+        "By default this refuses claims not listed by list_orphans."
+    )
+    if allow_overrides:
+        reclaim_description += " Pass force only for human emergency recovery."
+        @server.tool(description=reclaim_description)
+        async def reclaim_issue(
+            id: int,
+            force: bool = False,
+            stale_after_sec: float = DEFAULT_STALE_AFTER_SEC,
+            reason: str | None = None,
+            ctx: Context | None = None,
+        ) -> dict[str, Any]:
+            return await reclaim_issue_impl(
+                id=id,
+                force=force,
+                stale_after_sec=stale_after_sec,
+                reason=reason,
+                ctx=ctx,
+            )
+    else:
+        @server.tool(description=reclaim_description)
+        async def reclaim_issue(
+            id: int,
+            stale_after_sec: float = DEFAULT_STALE_AFTER_SEC,
+            reason: str | None = None,
+            ctx: Context | None = None,
+        ) -> dict[str, Any]:
+            return await reclaim_issue_impl(
+                id=id,
+                stale_after_sec=stale_after_sec,
+                reason=reason,
+                ctx=ctx,
+            )
 
     @server.tool(
         description=(
@@ -417,13 +563,7 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
             )
         return readdress_result_dict(result)
 
-    @server.tool(
-        description=(
-            "Direct an issue to a registered worker; use readdress_issue to return "
-            "it to the repo pool."
-        )
-    )
-    async def dispatch_issue(
+    async def dispatch_issue_impl(
         id: int,
         target_worker: str,
         assignee: str | None = None,
@@ -444,6 +584,45 @@ def create_server(cwd: Path | str | None = None) -> FastMCP:
         output = issue_dict(issue)
         output["target_worker"] = issue.target_worker
         return output
+
+    dispatch_description = (
+        "Direct an issue to a registered worker; use readdress_issue to return "
+        "it to the repo pool."
+    )
+    if allow_overrides:
+        @server.tool(description=dispatch_description)
+        async def dispatch_issue(
+            id: int,
+            target_worker: str,
+            assignee: str | None = None,
+            stage: str | None = None,
+            allow_unregistered_worker: bool = False,
+            ctx: Context | None = None,
+        ) -> dict[str, Any]:
+            return await dispatch_issue_impl(
+                id=id,
+                target_worker=target_worker,
+                assignee=assignee,
+                stage=stage,
+                allow_unregistered_worker=allow_unregistered_worker,
+                ctx=ctx,
+            )
+    else:
+        @server.tool(description=dispatch_description)
+        async def dispatch_issue(
+            id: int,
+            target_worker: str,
+            assignee: str | None = None,
+            stage: str | None = None,
+            ctx: Context | None = None,
+        ) -> dict[str, Any]:
+            return await dispatch_issue_impl(
+                id=id,
+                target_worker=target_worker,
+                assignee=assignee,
+                stage=stage,
+                ctx=ctx,
+            )
 
     @server.tool(
         description=(
@@ -917,4 +1096,11 @@ def _machine_config_api_url_status(
 
 
 def main() -> None:
-    asyncio.run(create_server().run_stdio_async())
+    parser = argparse.ArgumentParser(prog="issuekit-mcp")
+    parser.add_argument(
+        "--allow-overrides",
+        action="store_true",
+        help="Expose human emergency recovery tools and parameters.",
+    )
+    args = parser.parse_args()
+    asyncio.run(create_server(allow_overrides=args.allow_overrides).run_stdio_async())

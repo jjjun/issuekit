@@ -75,8 +75,9 @@ the parent session launches a distinct implementer run session and records the
 orchestrator in the submit summary. `ISSUEKIT_SESSION` is passed to the child
 for both claim and submit mutations. It is different from
 `--allow-author-session`, which is only a human emergency bypass for a local
-STOP guard. Prefer a clean worktree before orchestrating so existing author
-edits are not attributed to the implementer run.
+STOP guard. MCP exposes this override only when the server runs with
+`--allow-overrides`. Prefer a clean worktree before orchestrating so existing
+author edits are not attributed to the implementer run.
 Its `--follow` heartbeat polls `git status` read-only without an index lock, so
 it is safe for issues that rewrite the checkout.
 
@@ -464,7 +465,8 @@ The proposal guard records the handoff but does not interrupt your current task;
 stop only if sending the proposal was your only task. Proposal guards do not
 block unrelated local issue lifecycle commands. For recovery from an accidental
 guard after handoff, run `issuekit author-guard clear`. Human emergency
-lifecycle commands can pass `--allow-author-session`.
+lifecycle commands can pass `--allow-author-session`; MCP exposes this override
+only when the server runs with `--allow-overrides`.
 """
 
 

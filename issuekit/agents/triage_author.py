@@ -45,6 +45,7 @@ from issuekit.prompts import (
     TRIAGE_PROMPT,
     TriageAuthorParseError,
     canonical_contract_token,
+    fence_untrusted,
 )
 from issuekit.proposals import origin_destination
 from issuekit.proposals.api import (
@@ -555,12 +556,16 @@ def _send_reply(
 def _render_triage_prompt(proposal: Mapping[str, Any]) -> str:
     return TRIAGE_PROMPT.render(
         proposal_id=proposal["id"],
-        origin=proposal.get("origin", ""),
-        reply_to=proposal.get("reply_to") or "(none)",
-        title=proposal.get("title", ""),
+        origin=fence_untrusted("origin", str(proposal.get("origin", ""))),
+        reply_to=fence_untrusted(
+            "reply_to", str(proposal.get("reply_to") or "(none)")
+        ),
+        title=fence_untrusted("title", str(proposal.get("title", ""))),
         blocking=bool(proposal.get("blocking", False)),
-        depends_on=proposal_dependencies_text(proposal),
-        proposal_body=proposal.get("body", ""),
+        depends_on=fence_untrusted("depends_on", proposal_dependencies_text(proposal)),
+        proposal_body=fence_untrusted(
+            "proposal_body", str(proposal.get("body", ""))
+        ),
     )
 
 

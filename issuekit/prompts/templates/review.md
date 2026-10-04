@@ -2,6 +2,7 @@
 
 You are the reviewer. Review $review_target against the issue.
 $read_only_run_instruction
+$untrusted_data_rule
 Review correctness, tests, readability, maintainability, and fit with surrounding style.
 When no local implementation diff is present, review the handoff evidence, command evidence,
 and any referenced live state; request changes if the evidence is insufficient to decide.

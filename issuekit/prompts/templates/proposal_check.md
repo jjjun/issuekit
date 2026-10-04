@@ -5,6 +5,7 @@ be accepted by this local repository. Inspect this repository read-only
 for feasibility, project scope fit, dependency conflicts, and obvious
 implementation risks.
 $read_only_run_instruction
+$untrusted_data_rule
 
 Target project: $target_project
 Proposal id: $proposal_id

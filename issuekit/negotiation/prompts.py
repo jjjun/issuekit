@@ -12,6 +12,7 @@ from issuekit.negotiation import NegotiationEntry, Verdict
 from issuekit.prompts import (
     NEGOTIATION_ROUND_PROMPT,
     NegotiationParseError,
+    fence_untrusted,
 )
 
 NEGOTIATION_OUTPUT_KEYS = NEGOTIATION_ROUND_PROMPT.required_keys
@@ -40,9 +41,9 @@ def render_round_prompt(
 
     return NEGOTIATION_ROUND_PROMPT.render(
         side=side,
-        seed=seed,
-        resolved_contract=resolved,
-        thread_summary=thread_summary,
+        seed=fence_untrusted("seed", seed),
+        resolved_contract=fence_untrusted("resolved_contract", resolved),
+        thread_summary=fence_untrusted("thread_summary", thread_summary),
         output_keys=", ".join(NEGOTIATION_OUTPUT_KEYS),
         verdict_values=verdict_values,
     )

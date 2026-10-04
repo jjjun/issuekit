@@ -115,6 +115,37 @@ def test_server_registers_expected_tools(tmp_path: Path) -> None:
         "update_issue",
         "list_queue",
         "list_workers",
+        "list_orphans",
+        "reclaim_issue",
+        "readdress_issue",
+        "dispatch_issue",
+        "list_project_profiles",
+        "propose",
+        "list_incoming",
+        "list_outgoing",
+        "list_negotiation_threads",
+        "adopt_proposal",
+        "discard_proposal",
+        "create_proposal_check",
+        "list_proposal_checks",
+    }
+
+
+def test_server_registers_override_tools_when_enabled(tmp_path: Path) -> None:
+    server = create_server(tmp_path, allow_overrides=True)
+
+    assert _tool_names(server) == {
+        "health",
+        "get_protocol",
+        "claim_next_task",
+        "submit_for_review",
+        "next_review",
+        "request_changes",
+        "approve",
+        "get_issue",
+        "update_issue",
+        "list_queue",
+        "list_workers",
         "remove_worker",
         "remove_repo",
         "list_orphans",
@@ -138,8 +169,71 @@ def test_server_tool_schemas_match_the_contract(tmp_path: Path) -> None:
     # schema change was intended, describe it in the commit message, then update
     # this digest.
     assert _tool_schema_digest(create_server(tmp_path)) == (
+        "bf88316125665b74202556f75812c0217f6fb467bcb0940d66eac054fa6b3dbe"
+    )
+    assert _tool_schema_digest(create_server(tmp_path, allow_overrides=True)) == (
         "92d6bd40abf8b319ddc882473e769c93ddf779ffdf6064d55bf8c0a144136a64"
     )
+
+
+def test_default_server_schemas_hide_emergency_overrides(tmp_path: Path) -> None:
+    server = create_server(tmp_path)
+    hidden_parameters = {
+        "allow_author_session",
+        "allow_any_branch",
+        "no_sync",
+        "force",
+        "allow_unregistered_worker",
+    }
+
+    for tool_name in (
+        "claim_next_task",
+        "submit_for_review",
+        "update_issue",
+        "reclaim_issue",
+        "dispatch_issue",
+    ):
+        assert hidden_parameters.isdisjoint(_tool_schema(server, tool_name)["properties"])
+
+
+def test_override_server_schemas_expose_emergency_overrides(tmp_path: Path) -> None:
+    server = create_server(tmp_path, allow_overrides=True)
+
+    assert {"allow_author_session", "allow_any_branch", "no_sync"} <= set(
+        _tool_schema(server, "claim_next_task")["properties"]
+    )
+    assert {"allow_author_session", "allow_any_branch"} <= set(
+        _tool_schema(server, "submit_for_review")["properties"]
+    )
+    assert "force" in _tool_schema(server, "update_issue")["properties"]
+    assert "force" in _tool_schema(server, "reclaim_issue")["properties"]
+    assert "allow_unregistered_worker" in _tool_schema(server, "dispatch_issue")["properties"]
+
+
+def test_mcp_main_flag_enables_override_tool_set(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mcp.server.fastmcp import FastMCP
+
+    created_servers = []
+    create_server_impl = mcp_server.create_server
+
+    def create_server_with_capture(*args, **kwargs):
+        server = create_server_impl(*args, **kwargs)
+        created_servers.append(server)
+        return server
+
+    async def run_stdio_async(self) -> None:
+        return None
+
+    monkeypatch.setattr(mcp_server, "create_server", create_server_with_capture)
+    monkeypatch.setattr(FastMCP, "run_stdio_async", run_stdio_async)
+    monkeypatch.setattr("sys.argv", ["issuekit-mcp", "--allow-overrides"])
+
+    mcp_server.main()
+
+    assert len(created_servers) == 1
+    assert {"remove_worker", "remove_repo"} <= _tool_names(created_servers[0])
 
 
 def test_health_tool_reports_config_and_local_state(
@@ -569,7 +663,7 @@ def test_remove_worker_tool_rejects_legacy_id(
     )
     _configure_api(tmp_path, monkeypatch, client)
     monkeypatch.setattr(worker_registry, "IssuekitClient", lambda *args, **kwargs: client)
-    server = create_server(tmp_path)
+    server = create_server(tmp_path, allow_overrides=True)
 
     with pytest.raises(Exception, match="Worker was not found"):
         _call(
@@ -602,7 +696,7 @@ def test_remove_worker_tool_force_allows_implementing_holder(
     )
     _configure_api(tmp_path, monkeypatch, client)
     monkeypatch.setattr(worker_registry, "IssuekitClient", lambda *args, **kwargs: client)
-    server = create_server(tmp_path)
+    server = create_server(tmp_path, allow_overrides=True)
 
     result = _call(
         server,
@@ -622,7 +716,7 @@ def test_remove_repo_tool_deletes_repo(
     client.upsert_repo(repo_key="mine-py")
     _configure_api(tmp_path, monkeypatch, client)
     monkeypatch.setattr(worker_registry, "IssuekitClient", lambda *args, **kwargs: client)
-    server = create_server(tmp_path)
+    server = create_server(tmp_path, allow_overrides=True)
 
     result = _call(server, "remove_repo", {"repo": "mine-py"})
 
@@ -805,18 +899,20 @@ def test_list_project_profiles_returns_stored_profiles(
     assert {row["project"] for row in profiles} == {"issuekit", "mine-py"}
 
 
-def test_submit_for_review_schema_omits_assignee(tmp_path: Path) -> None:
+def test_submit_for_review_schema_omits_assignee_and_overrides(tmp_path: Path) -> None:
     schema = _tool_schema(create_server(tmp_path), "submit_for_review")
 
     assert "assignee" not in schema["properties"]
-    assert "allow_any_branch" in schema["properties"]
+    assert "allow_author_session" not in schema["properties"]
+    assert "allow_any_branch" not in schema["properties"]
 
 
-def test_claim_next_task_schema_includes_sync_escape_hatch(tmp_path: Path) -> None:
+def test_claim_next_task_schema_hides_emergency_overrides(tmp_path: Path) -> None:
     schema = _tool_schema(create_server(tmp_path), "claim_next_task")
 
-    assert "allow_any_branch" in schema["properties"]
-    assert "no_sync" in schema["properties"]
+    assert "allow_author_session" not in schema["properties"]
+    assert "allow_any_branch" not in schema["properties"]
+    assert "no_sync" not in schema["properties"]
 
 
 def test_get_protocol_matches_canonical_text(tmp_path: Path) -> None:
@@ -1616,7 +1712,7 @@ def test_mcp_update_issue_append_uses_stored_body_without_rendered_workflow_sect
         rendered_issue_suffixes={1: rendered_suffix},
     )
     _configure_api(tmp_path, monkeypatch, client)
-    server = create_server(tmp_path)
+    server = create_server(tmp_path, allow_overrides=True)
 
     _call(
         server,
@@ -1722,7 +1818,12 @@ def test_mcp_update_issue_requires_force_for_in_flight_issue(
     with pytest.raises(Exception, match="pass --force"):
         _call(server, "update_issue", {"id": 1, "title": "Blocked"})
 
-    forced = _call(server, "update_issue", {"id": 1, "title": "Forced", "force": True})
+    override_server = create_server(tmp_path, allow_overrides=True)
+    forced = _call(
+        override_server,
+        "update_issue",
+        {"id": 1, "title": "Forced", "force": True},
+    )
 
     assert forced["title"] == "Forced"
 

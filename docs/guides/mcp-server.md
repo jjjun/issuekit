@@ -205,6 +205,20 @@ from a checkout with:
 uv run --group mcp issuekit-mcp
 ```
 
+By default, `issuekit-mcp` hides human emergency recovery overrides. Start it
+with `--allow-overrides` only when those controls are needed:
+
+```console
+uv run --group mcp issuekit-mcp --allow-overrides
+```
+
+This flag adds `allow_author_session`, `allow_any_branch`, and `no_sync` to
+`claim_next_task`; `allow_author_session` and `allow_any_branch` to
+`submit_for_review`; `force` to `update_issue`, `remove_worker`, and
+`reclaim_issue`; and `allow_unregistered_worker` to `dispatch_issue`. It also
+registers the `remove_worker` and `remove_repo` tools. The CLI retains its
+recovery flags.
+
 ## MCP tools
 
 The server registers these tools. The listed CLI command performs the same
@@ -214,21 +228,21 @@ operation, so it is the fallback when the MCP transport is down.
 |------|---------|----------------|
 | `health` | Read-only server and configuration status. | none; `info --json` is closest |
 | `get_protocol` | Read the handoff protocol for an agent or role. | `protocol` |
-| `claim_next_task` | Claim the next eligible issue for an implementer. | `claim` |
-| `submit_for_review` | Submit an implemented issue for review. | `submit-review` |
+| `claim_next_task` | Claim the next eligible issue for an implementer. Override parameters are available with `--allow-overrides`. | `claim` |
+| `submit_for_review` | Submit an implemented issue for review. Override parameters are available with `--allow-overrides`. | `submit-review` |
 | `next_review` | Read the next issue waiting for a reviewer. | `next-review` |
 | `request_changes` | Return a review issue to its implementer with notes. | `request-changes` |
 | `approve` | Approve a review issue and complete it. | `approve` |
 | `get_issue` | Read one active or completed issue. | `show` |
-| `update_issue` | Edit title, body, appended text, priority, or dependencies. | `edit` |
+| `update_issue` | Edit title, body, appended text, priority, or dependencies. `force` is available with `--allow-overrides`. | `edit` |
 | `list_queue` | List active issues, filtered by assignee and stage. | `queue` |
 | `list_workers` | List registered workers and their roles. | `workers` |
-| `remove_worker` | Remove a registered worker. | `workers remove` |
-| `remove_repo` | Remove a repo catalog entry. | `repos remove` |
+| `remove_worker` | Remove a registered worker. Only registered with `--allow-overrides`; its `force` parameter is an emergency override. | `workers remove` |
+| `remove_repo` | Remove a repo catalog entry. Only registered with `--allow-overrides`. | `repos remove` |
 | `list_orphans` | List implementing claims whose worker is gone or silent. | `orphans` |
-| `reclaim_issue` | Return an orphaned claim to the implement pool. | `reclaim` |
+| `reclaim_issue` | Return an orphaned claim to the implement pool. `force` is available with `--allow-overrides`. | `reclaim` |
 | `readdress_issue` | Return a directed issue to the repo pool. | `readdress` |
-| `dispatch_issue` | Direct an issue to a registered worker. | `dispatch` |
+| `dispatch_issue` | Direct an issue to a registered worker. `allow_unregistered_worker` is available with `--allow-overrides`. | `dispatch` |
 | `list_project_profiles` | List stored project capability profiles. | `profile --all` |
 | `propose` | Send a proposal to another project's inbox. | `propose` |
 | `list_incoming` | List pending incoming proposals. | `incoming` |

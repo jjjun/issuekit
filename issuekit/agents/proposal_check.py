@@ -23,6 +23,7 @@ from issuekit.prompts import (
     PROPOSAL_CHECK_PROMPT,
     ProposalCheckParseError,
     canonical_contract_token,
+    fence_untrusted,
 )
 from issuekit.proposals.api import (
     AdoptedIssueHoldError,
@@ -524,9 +525,11 @@ def _render_check_prompt(
         check_id=check["id"],
         target_project=check.get("target_project", ""),
         proposal_id=proposal.get("id", ""),
-        title=proposal.get("title", ""),
-        origin=proposal.get("origin", ""),
+        title=fence_untrusted("title", str(proposal.get("title", ""))),
+        origin=fence_untrusted("origin", str(proposal.get("origin", ""))),
         blocking=bool(proposal.get("blocking", False)),
-        depends_on=proposal_dependencies_text(proposal),
-        proposal_body=proposal.get("body", ""),
+        depends_on=fence_untrusted("depends_on", proposal_dependencies_text(proposal)),
+        proposal_body=fence_untrusted(
+            "proposal_body", str(proposal.get("body", ""))
+        ),
     )
