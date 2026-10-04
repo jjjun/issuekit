@@ -8,7 +8,6 @@ import warnings
 from dataclasses import dataclass, field, fields, replace
 from pathlib import Path, PureWindowsPath
 from string import Formatter
-from urllib.parse import urlparse
 
 from issuekit.agentrun.config import AgentRunConfig
 from issuekit.coerce import optional_int, optional_str
@@ -22,6 +21,7 @@ from issuekit.core import (
 )
 from issuekit.encoding import has_non_ascii
 from issuekit.gitutil import run_git
+from issuekit.urls import api_url_origin
 from issuekit.worker_constants import WORKER_HEARTBEAT_INTERVAL_SEC
 
 from .dotenv import is_loaded_from_dotenv, load_dotenv
@@ -704,21 +704,6 @@ def _int_config_value(name: str, value: object) -> int:
         return int(value)
     except (TypeError, ValueError) as exc:
         raise ValueError(f"{name}: {exc}") from exc
-
-
-def api_url_origin(api_url: str) -> str | None:
-    """Return the API URL origin without userinfo, path, query, or fragment."""
-    try:
-        parsed = urlparse(api_url)
-        hostname = parsed.hostname
-        port = parsed.port
-    except ValueError:
-        return None
-    if not parsed.scheme or not hostname:
-        return None
-    host = f"[{hostname}]" if ":" in hostname else hostname
-    netloc = host if port is None else f"{host}:{port}"
-    return f"{parsed.scheme}://{netloc}"
 
 
 def _discard_unsupported_machine_config(

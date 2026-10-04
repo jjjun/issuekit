@@ -26,6 +26,7 @@ from issuekit.prompts import (
     canonical_contract_token,
     fence_untrusted,
 )
+from issuekit.prompts.fields import require_nonempty_text, require_str
 from issuekit.proposals.api import (
     AdoptedIssueHoldError,
     adopt_proposal_with_append,
@@ -406,18 +407,25 @@ def parse_proposal_check_output(stdout: str) -> dict[str, str]:
         raise ProposalCheckParseError(
             f"Invalid proposal-check verdict: {raw_verdict!r}"
         )
-    comment = raw.get("comment")
-    if not isinstance(comment, str) or not comment.strip():
-        raise ProposalCheckParseError("Proposal-check verdict requires a non-empty comment.")
-    comment = comment.strip()
+    comment = require_nonempty_text(
+        raw.get("comment"),
+        error=ProposalCheckParseError,
+        message="Proposal-check verdict requires a non-empty comment.",
+    )
     if len(comment) > PROPOSAL_CHECK_COMMENT_MAX:
         raise ProposalCheckParseError(
             f"Proposal-check comment must be at most {PROPOSAL_CHECK_COMMENT_MAX} characters."
         )
     spec_markdown = raw.get("spec_markdown")
-    if spec_markdown is not None and not isinstance(spec_markdown, str):
-        raise ProposalCheckParseError("Proposal-check spec_markdown must be a string.")
-    spec = str(spec_markdown or "").strip()
+    spec = (
+        require_str(
+            spec_markdown,
+            error=ProposalCheckParseError,
+            message="Proposal-check spec_markdown must be a string.",
+        ).strip()
+        if spec_markdown is not None
+        else ""
+    )
     if has_non_ascii("\n".join((verdict, comment, spec))):
         raise ProposalCheckParseError("Proposal-check fields must be ASCII-only.")
     parsed = {"verdict": verdict, "comment": comment}

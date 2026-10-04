@@ -6,6 +6,7 @@ import pytest
 
 from issuekit.agents.readonly import repository_fingerprint
 from issuekit.gitutil import (
+    GitResult,
     changed_file_count,
     git_current_branch,
     git_origin_url,
@@ -13,9 +14,38 @@ from issuekit.gitutil import (
     git_short_head,
     git_status_entries,
     git_status_short,
+    git_stdout,
     parse_git_status_z,
     run_git,
 )
+
+
+def test_git_stdout_returns_stdout_and_passes_timeout(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_run_git(args, cwd, *, timeout):
+        captured["args"] = args
+        captured["cwd"] = cwd
+        captured["timeout"] = timeout
+        return GitResult(returncode=0, stdout="output\n", stderr="")
+
+    monkeypatch.setattr("issuekit.gitutil.run_git", fake_run_git)
+
+    assert git_stdout(["status"], tmp_path, timeout=5) == "output\n"
+    assert captured == {"args": ["status"], "cwd": tmp_path, "timeout": 5}
+
+
+@pytest.mark.parametrize(
+    "result",
+    (None, GitResult(returncode=1, stdout="partial", stderr="failed")),
+)
+def test_git_stdout_returns_none_on_failure(tmp_path: Path, monkeypatch, result) -> None:
+    monkeypatch.setattr("issuekit.gitutil.run_git", lambda *args, **kwargs: result)
+
+    assert git_stdout(["status"], tmp_path) is None
 
 
 def test_run_git_redirects_stdin_and_normalizes_result(

@@ -5,12 +5,13 @@ from __future__ import annotations
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from pathlib import Path
 
+from issuekit.coerce import strip_or_empty
 from issuekit.config import IssuekitConfig, parse_bool_value
 from issuekit.config.local import LocalConfigError, read_local_config, write_local_config
 from issuekit.errors import WorkflowError
+from issuekit.timestamps import utc_now_iso
 
 STOP_SENTINEL = "STOP_NOW"
 REQUIRED_NEXT_ACTION = "STOP"
@@ -73,7 +74,7 @@ def create_author_guard(
         author_agent=(author_agent or "unknown").strip() or "unknown",
         author_session=(author_session or "").strip(),
         worker=config.worker_key() or "",
-        created=datetime.now(UTC).replace(microsecond=0).isoformat(),
+        created=utc_now_iso(),
     )
     local_config = read_local_config(cwd)
     write_local_config(
@@ -233,21 +234,21 @@ def _orchestration_rejection_detail(
 def _guard_from_mapping(raw: Mapping[str, object] | None) -> AuthorGuard | None:
     if raw is None:
         return None
-    project = _string(raw.get("project"))
-    kind = _string(raw.get("kind"))
+    project = strip_or_empty(raw.get("project"))
+    kind = strip_or_empty(raw.get("kind"))
     if not project or not kind:
         return None
     return AuthorGuard(
         project=project,
         kind=kind,
-        id=_string(raw.get("id")),
-        ref=_string(raw.get("ref")),
-        target_project=_string(raw.get("target_project")),
-        author_agent=_string(raw.get("author_agent")) or "unknown",
-        author_session=_string(raw.get("author_session")),
-        worker=_string(raw.get("worker")),
-        created=_string(raw.get("created")),
-        required_next_action=_string(raw.get("required_next_action")) or REQUIRED_NEXT_ACTION,
+        id=strip_or_empty(raw.get("id")),
+        ref=strip_or_empty(raw.get("ref")),
+        target_project=strip_or_empty(raw.get("target_project")),
+        author_agent=strip_or_empty(raw.get("author_agent")) or "unknown",
+        author_session=strip_or_empty(raw.get("author_session")),
+        worker=strip_or_empty(raw.get("worker")),
+        created=strip_or_empty(raw.get("created")),
+        required_next_action=strip_or_empty(raw.get("required_next_action")) or REQUIRED_NEXT_ACTION,
     )
 
 
@@ -269,10 +270,6 @@ def _with_author_guard(
     if not replaced:
         guards.append(guard_mapping)
     return tuple(guards)
-
-
-def _string(value: object) -> str:
-    return "" if value is None else str(value).strip()
 
 
 def author_handoff_enforced() -> bool:

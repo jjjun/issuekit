@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +14,7 @@ from issuekit.config import IssuekitConfig
 from issuekit.file_permissions import write_owner_only_text
 from issuekit.gitutil import git_short_head
 from issuekit.proposals import ProposalError
+from issuekit.timestamps import utc_now_iso
 
 STATE_FILENAME = "pm-requests.json"
 PROPOSAL_REF_PATTERN = re.compile(
@@ -53,7 +53,7 @@ def save_state(cwd: Path, state: dict[str, dict[str, Any]]) -> None:
 
 
 def now() -> str:
-    return datetime.now(UTC).replace(microsecond=0).isoformat()
+    return utc_now_iso()
 
 
 def status_record(
@@ -158,7 +158,10 @@ def refs_by_target_index(targets: list[dict[str, Any]]) -> dict[int, str]:
 
 
 def target_clarifications(target: dict[str, Any]) -> list[dict[str, str]]:
-    raw = target.get("clarifications") or []
+    return _qa_pairs(target.get("clarifications"))
+
+
+def _qa_pairs(raw: object) -> list[dict[str, str]]:
     if not isinstance(raw, list):
         return []
     clarifications: list[dict[str, str]] = []
@@ -243,18 +246,7 @@ def amended_origin(
 
 
 def qa_rounds(record: dict[str, Any]) -> list[dict[str, str]]:
-    raw = record.get("qa") or []
-    if not isinstance(raw, list):
-        return []
-    rounds: list[dict[str, str]] = []
-    for item in raw:
-        if not isinstance(item, dict):
-            continue
-        question = str(item.get("question") or "").strip()
-        answer = str(item.get("answer") or "").strip()
-        if question and answer:
-            rounds.append({"question": question, "answer": answer})
-    return rounds
+    return _qa_pairs(record.get("qa"))
 
 
 def state_targets(record: dict[str, Any]) -> list[dict[str, Any]]:

@@ -4,17 +4,17 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
-from datetime import UTC, datetime
 from pathlib import Path
 
 from issuekit.agentrun.run_dir import prepare_run_dir
 from issuekit.file_permissions import write_owner_only_text
+from issuekit.timestamps import utc_now_iso
 
 STATE_FILENAME = "triage-author-state.json"
 
 
 def now() -> str:
-    return datetime.now(UTC).replace(microsecond=0).isoformat()
+    return utc_now_iso()
 
 
 def state_path(cwd: Path) -> Path:

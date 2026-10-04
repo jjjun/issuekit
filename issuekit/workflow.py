@@ -22,7 +22,7 @@ from issuekit.guards.author import (
 from issuekit.guards.branch import enforce_work_branch
 from issuekit.guards.claim_sync import enforce_claim_sync
 from issuekit.inputs import require_ascii
-from issuekit.issues.session import current_session_token, validate_session_token
+from issuekit.session import current_session_token, validate_session_token
 from issuekit.store import managed_issue_store
 
 

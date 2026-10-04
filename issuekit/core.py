@@ -7,6 +7,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
+from issuekit.coerce import strip_or_empty
+
 VALID_ISSUE_PRIORITIES = {"high", "medium", "low"}
 WORKFLOW_TOKEN_MAX_LEN = 32
 WORKFLOW_TOKEN_PATTERN = re.compile(
@@ -124,7 +126,7 @@ def worker_display_from_parts(repo_id: str, worker_name: str) -> str:
 
 
 def worker_display_from_row(row: Mapping[str, object]) -> str:
-    repo_id = _string(row.get("repo_id"))
+    repo_id = strip_or_empty(row.get("repo_id"))
     worker_name = _worker_name(row)
     if repo_id and worker_name:
         return worker_display_from_parts(repo_id, worker_name)
@@ -133,8 +135,8 @@ def worker_display_from_row(row: Mapping[str, object]) -> str:
 
 def worker_keys_from_row(row: Mapping[str, object]) -> set[str]:
     keys: set[str] = set()
-    machine_id = _string(row.get("machine_id"))
-    repo_id = _string(row.get("repo_id"))
+    machine_id = strip_or_empty(row.get("machine_id"))
+    repo_id = strip_or_empty(row.get("repo_id"))
     worker_name = _worker_name(row)
     if repo_id and worker_name:
         keys.add(worker_key(repo_id, worker_name))
@@ -215,11 +217,7 @@ def _worker_key_parts_match(
 
 
 def _worker_name(row: Mapping[str, object]) -> str:
-    return _string(row.get("worker_name"))
-
-
-def _string(value: object) -> str:
-    return "" if value is None else str(value).strip()
+    return strip_or_empty(row.get("worker_name"))
 
 
 def _worker_key_parts(value: str) -> _WorkerKeyParts | None:

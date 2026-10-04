@@ -26,7 +26,7 @@ from issuekit.encoding import sanitize_to_ascii
 from issuekit.errors import AGENT_RUN_ERRORS
 from issuekit.guards.author import AuthorOrchestrationContext, read_author_guards
 from issuekit.inputs import active_issue_not_found
-from issuekit.issues.session import new_session_token
+from issuekit.session import new_session_token
 from issuekit.store import get_store
 from issuekit.workflow import claim_issue, require_implementer
 

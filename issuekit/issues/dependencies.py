@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping, Sequence
 
+from issuekit.coerce import first_text
 from issuekit.errors import WorkflowError
 
 DEPENDENCY_REF_PATTERN = re.compile(
@@ -22,7 +23,7 @@ def dependency_refs(value: str | Sequence[str] | None) -> tuple[str, ...]:
         raw_items = []
         for item in value:
             raw_items.extend(_split_dependency_refs(str(item)))
-    return _dedupe_refs(raw_items)
+    return tuple(dict.fromkeys(raw_items))
 
 
 def dependency_refs_or_workflow_error(
@@ -48,24 +49,13 @@ def _split_dependency_refs(value: str) -> list[str]:
     return refs
 
 
-def _dedupe_refs(refs: Sequence[str]) -> tuple[str, ...]:
-    seen: set[str] = set()
-    deduped: list[str] = []
-    for ref in refs:
-        if ref in seen:
-            continue
-        seen.add(ref)
-        deduped.append(ref)
-    return tuple(deduped)
-
-
 def bare_ref_collision_warnings(rows: Sequence[Mapping[str, object]]) -> tuple[str, ...]:
     warnings: list[str] = []
     for row in rows:
-        ref = _dependency_row_text(row, "ref", "depends_on", "dependency", "target_ref")
+        ref = first_text(row, "ref", "depends_on", "dependency", "target_ref")
         if not ref or not _is_bare_dependency_ref(ref):
             continue
-        state = _dependency_row_text(row, "state", "dependency_state", "resolution_state")
+        state = first_text(row, "state", "dependency_state", "resolution_state")
         if state != "attention":
             continue
         if not (_has_issue_resolution(row) and _has_proposal_resolution(row)):
@@ -77,7 +67,7 @@ def bare_ref_collision_warnings(rows: Sequence[Mapping[str, object]]) -> tuple[s
             f"{project}#proposal:{raw_number}; for pending proposals prefer "
             f"{project}#proposal:{raw_number}."
         )
-    return _dedupe_refs(warnings)
+    return tuple(dict.fromkeys(warnings))
 
 
 def _is_bare_dependency_ref(ref: str) -> bool:
@@ -120,14 +110,3 @@ def _row_value_present(value: object) -> bool:
     if isinstance(value, Mapping | Sequence) and not isinstance(value, (str, bytes, bytearray)):
         return bool(value)
     return True
-
-
-def _dependency_row_text(row: Mapping[str, object], *keys: str) -> str:
-    for key in keys:
-        value = row.get(key)
-        if value is None:
-            continue
-        text = str(value).strip()
-        if text:
-            return text
-    return ""

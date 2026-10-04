@@ -17,6 +17,7 @@ from typing import TypeVar
 from issuekit.config import IssuekitConfig, has_local_project_context, load_config
 from issuekit.core import is_valid_workflow_token
 from issuekit.errors import WorkflowError
+from issuekit.signals import installed_signal_handlers
 
 T = TypeVar("T")
 CommandError = type[BaseException]
@@ -205,17 +206,8 @@ def _interrupt_on_sigterm():
         yield
         return
 
-    try:
-        previous_handler = signal.getsignal(signal.SIGTERM)
-        signal.signal(signal.SIGTERM, _handle_sigterm)
-    except (ValueError, OSError, AttributeError):
+    with installed_signal_handlers({signal.SIGTERM: _handle_sigterm}):
         yield
-        return
-
-    try:
-        yield
-    finally:
-        signal.signal(signal.SIGTERM, previous_handler)
 
 
 def _handle_sigterm(_signum: int, _frame: FrameType | None) -> None:

@@ -73,6 +73,23 @@ def test_api_import_does_not_import_workflow() -> None:
     assert result.returncode == 0, result.stderr
 
 
+def test_api_import_does_not_import_config() -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import sys\nimport issuekit.api\n"
+            "assert 'issuekit.config' not in sys.modules\n",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        cwd=Path(__file__).parents[1],
+    )
+
+    assert result.returncode == 0, result.stderr
+
+
 def test_errors_module_imports_only_standard_library_and_separation_guard() -> None:
     errors_path = Path(__file__).parents[1] / "issuekit" / "errors.py"
     tree = ast.parse(errors_path.read_text(encoding="utf-8"), filename=str(errors_path))
@@ -150,6 +167,10 @@ def test_leaf_modules_import_only_standard_library_and_other_leaves() -> None:
         "issuekit.coerce": package_dir / "coerce.py",
         "issuekit.file_permissions": package_dir / "file_permissions.py",
         "issuekit.gitutil": package_dir / "gitutil.py",
+        "issuekit.paths": package_dir / "paths.py",
+        "issuekit.signals": package_dir / "signals.py",
+        "issuekit.session": package_dir / "session.py",
+        "issuekit.urls": package_dir / "urls.py",
     }
     violations: list[str] = []
 
@@ -186,6 +207,10 @@ def test_agentrun_imports_only_runtime_modules_and_leaf_modules() -> None:
         "issuekit.coerce",
         "issuekit.file_permissions",
         "issuekit.gitutil",
+        "issuekit.paths",
+        "issuekit.signals",
+        "issuekit.session",
+        "issuekit.urls",
     }
     violations: list[str] = []
 

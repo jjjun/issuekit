@@ -8,9 +8,9 @@ from urllib.parse import urljoin
 
 import httpx
 
-from issuekit.config.settings import api_url_origin
 from issuekit.core import drop_none
 from issuekit.errors import WorkflowError
+from issuekit.urls import api_url_origin
 
 from .security import (
     is_expired,

@@ -15,6 +15,7 @@ from issuekit.encoding.detect import (
     newline_offsets,
 )
 from issuekit.gitutil import GitResult, GitStatusEntry, run_git
+from issuekit.paths import is_readable_regular_file
 
 HitClass = Literal["confirmed", "unconfirmed"]
 LineScope = Literal["whole-file", "changed-lines"]
@@ -90,7 +91,7 @@ def scan_mojibake(
     whole_file_path_set = set(whole_file_paths)
     for rel_path in paths:
         file = rel_path.as_posix()
-        if options.source_extensions is not None and not _has_source_extension(
+        if options.source_extensions is not None and not has_source_extension(
             file, options.source_extensions
         ):
             continue
@@ -100,7 +101,7 @@ def scan_mojibake(
         try:
             content = (repo / rel_path).read_bytes()
             if (
-                not _has_source_extension(file, SOURCE_EXTENSIONS)
+                not has_source_extension(file, SOURCE_EXTENSIONS)
                 and b"\0" in content[:BINARY_SNIFF_BYTES]
             ):
                 continue
@@ -161,7 +162,7 @@ def changed_readable_paths(
         if readable_path_set is not None:
             if path not in readable_path_set:
                 continue
-        elif not _is_readable_regular_file(repo / path):
+        elif not is_readable_regular_file(repo / path):
             continue
         paths.append(path)
     return tuple(paths)
@@ -235,17 +236,6 @@ def _invalid_utf8_hit(file: str) -> dict[str, int | str]:
     }
 
 
-def _has_source_extension(file: str, source_extensions: Collection[str]) -> bool:
+def has_source_extension(file: str, source_extensions: Collection[str]) -> bool:
     suffix = Path(file).suffix
     return bool(suffix) and suffix[1:].lower() in source_extensions
-
-
-def _is_readable_regular_file(path: Path) -> bool:
-    if path.is_symlink() or not path.is_file():
-        return False
-    try:
-        with path.open("rb") as stream:
-            stream.read(0)
-    except OSError:
-        return False
-    return True

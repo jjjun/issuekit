@@ -12,6 +12,7 @@ from pathlib import Path
 
 from issuekit.config import load_config
 from issuekit.config.local import ensure_gitignore_entries
+from issuekit.paths import display_path
 
 CODEX_MCP_HEADER = "[mcp_servers.issuekit]"
 HANDOFF_HEADER = "## Handoff protocol"
@@ -91,11 +92,11 @@ def _write_template(
     result: InitResult,
 ) -> None:
     if path.exists() and not force:
-        result.skipped.append(_display_path(cwd, path))
+        result.skipped.append(display_path(path, cwd))
         return
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(_template_text(template_name), encoding="utf-8", newline="\n")
-    result.written.append(_display_path(cwd, path))
+    result.written.append(display_path(path, cwd))
 
 
 def _write_pre_commit(cwd: Path, result: InitResult) -> None:
@@ -173,7 +174,7 @@ def _write_codex_config(cwd: Path, force: bool, result: InitResult) -> None:
     if not path.exists():
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(f"{block}\n", encoding="utf-8", newline="\n")
-        result.written.append(_display_path(cwd, path))
+        result.written.append(display_path(path, cwd))
         return
 
     content = path.read_text(encoding="utf-8-sig", errors="ignore")
@@ -191,7 +192,7 @@ def _write_codex_config(cwd: Path, force: bool, result: InitResult) -> None:
             if force or not isinstance(issuekit_server, dict) or "env_vars" not in issuekit_server:
                 _add_codex_config_guidance(cwd, path, result)
             else:
-                result.skipped.append(_display_path(cwd, path))
+                result.skipped.append(display_path(path, cwd))
             return
 
         start, end = table_bounds
@@ -208,7 +209,7 @@ def _write_codex_config(cwd: Path, force: bool, result: InitResult) -> None:
                     f"{content[header_end + 1:]}"
                 )
         else:
-            result.skipped.append(_display_path(cwd, path))
+            result.skipped.append(display_path(path, cwd))
             return
 
         try:
@@ -217,7 +218,7 @@ def _write_codex_config(cwd: Path, force: bool, result: InitResult) -> None:
             _add_codex_config_guidance(cwd, path, result)
             return
         path.write_text(updated, encoding="utf-8", newline="\n")
-        result.written.append(_display_path(cwd, path))
+        result.written.append(display_path(path, cwd))
         return
 
     updated = append_codex_issuekit_table(content, block)
@@ -227,7 +228,7 @@ def _write_codex_config(cwd: Path, force: bool, result: InitResult) -> None:
         _add_codex_config_guidance(cwd, path, result)
         return
     path.write_text(updated, encoding="utf-8", newline="\n")
-    result.written.append(_display_path(cwd, path))
+    result.written.append(display_path(path, cwd))
 
 
 def find_codex_issuekit_table(content: str) -> tuple[int, int] | None:
@@ -271,7 +272,7 @@ def _codex_env_vars_line() -> str:
 
 
 def _add_codex_config_guidance(cwd: Path, path: Path, result: InitResult) -> None:
-    result.skipped.append(_display_path(cwd, path))
+    result.skipped.append(display_path(path, cwd))
     result.guidance.append(
         "Could not merge .codex/config.toml automatically. Add or refresh this "
         "issuekit server manually:\n\n"
@@ -283,33 +284,33 @@ def _write_handoff_reference(cwd: Path, path: Path, result: InitResult) -> None:
     reference = _template_text("handoff_reference.md").rstrip()
     if not path.exists():
         path.write_text(f"# {path.name}\n\n{reference}\n", encoding="utf-8", newline="\n")
-        result.written.append(_display_path(cwd, path))
+        result.written.append(display_path(path, cwd))
         return
 
     content = path.read_text(encoding="utf-8-sig", errors="ignore")
     if HANDOFF_HEADER in content:
-        result.skipped.append(_display_path(cwd, path))
+        result.skipped.append(display_path(path, cwd))
         return
 
     prefix = "\n" if content.endswith("\n") else "\n\n"
     with path.open("a", encoding="utf-8", newline="\n") as handle:
         handle.write(f"{prefix}{reference}\n")
-    result.written.append(_display_path(cwd, path))
+    result.written.append(display_path(path, cwd))
 
 
 def _write_claude_agents_import(cwd: Path, result: InitResult) -> None:
     path = cwd / "CLAUDE.md"
     if not path.exists():
         path.write_text(f"{CLAUDE_AGENTS_IMPORT}\n", encoding="utf-8", newline="\n")
-        result.written.append(_display_path(cwd, path))
+        result.written.append(display_path(path, cwd))
         return
 
     content = path.read_text(encoding="utf-8-sig", errors="ignore")
     if any(line.strip() == CLAUDE_AGENTS_IMPORT for line in content.splitlines()):
-        result.skipped.append(_display_path(cwd, path))
+        result.skipped.append(display_path(path, cwd))
         return
 
-    result.skipped.append(_display_path(cwd, path))
+    result.skipped.append(display_path(path, cwd))
     result.guidance.append(
         "CLAUDE.md does not import AGENTS.md. Add `@AGENTS.md` so Claude Code "
         "reads the shared repository guidance."
@@ -318,10 +319,3 @@ def _write_claude_agents_import(cwd: Path, result: InitResult) -> None:
 
 def _template_text(template_name: str) -> str:
     return resources.files("issuekit.templates").joinpath(template_name).read_text(encoding="utf-8")
-
-
-def _display_path(cwd: Path, path: Path) -> str:
-    try:
-        return path.relative_to(cwd).as_posix()
-    except ValueError:
-        return path.as_posix()

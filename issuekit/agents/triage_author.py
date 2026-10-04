@@ -45,6 +45,7 @@ from issuekit.prompts import (
     canonical_contract_token,
     fence_untrusted,
 )
+from issuekit.prompts.fields import require_nonempty_text
 from issuekit.proposals import origin_destination
 from issuekit.proposals.api import (
     AdoptedIssueHoldError,
@@ -119,24 +120,28 @@ def _decision_from_json(raw: dict[str, object]) -> dict[str, str]:
     if decision is None:
         raise TriageAuthorParseError(f"Invalid triage decision: {raw_decision!r}")
     field = _DECISION_FIELD[decision]
-    value = raw.get(field)
-    if not isinstance(value, str) or not value.strip():
-        raise TriageAuthorParseError(
-            f"Triage decision '{decision}' requires a non-empty '{field}'."
-        )
-    if has_non_ascii(f"{decision}\n{value}"):
+    raw_value = raw.get(field)
+    value = require_nonempty_text(
+        raw_value,
+        error=TriageAuthorParseError,
+        message=f"Triage decision '{decision}' requires a non-empty '{field}'.",
+    )
+    if has_non_ascii(f"{decision}\n{raw_value}"):
         raise TriageAuthorParseError("Triage fields must be ASCII-only.")
-    parsed = {"decision": decision, field: value.strip()}
+    parsed = {"decision": decision, field: value}
     if decision == "adopt_and_reply":
-        reply_markdown = raw.get("reply_markdown")
-        if not isinstance(reply_markdown, str) or not reply_markdown.strip():
-            raise TriageAuthorParseError(
+        raw_reply_markdown = raw.get("reply_markdown")
+        reply_markdown = require_nonempty_text(
+            raw_reply_markdown,
+            error=TriageAuthorParseError,
+            message=(
                 "Triage decision 'adopt_and_reply' requires a non-empty "
                 "'reply_markdown'."
-            )
-        if has_non_ascii(reply_markdown):
+            ),
+        )
+        if has_non_ascii(f"{raw_reply_markdown}"):
             raise TriageAuthorParseError("Triage fields must be ASCII-only.")
-        parsed["reply_markdown"] = reply_markdown.strip()
+        parsed["reply_markdown"] = reply_markdown
     return parsed
 
 

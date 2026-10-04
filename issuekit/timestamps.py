@@ -9,6 +9,10 @@ def utcnow() -> datetime:
     return datetime.now(UTC)
 
 
+def utc_now_iso() -> str:
+    return datetime.now(UTC).replace(microsecond=0).isoformat()
+
+
 def parse_timestamp(value: object) -> datetime | None:
     if not isinstance(value, str) or not value.strip():
         return None

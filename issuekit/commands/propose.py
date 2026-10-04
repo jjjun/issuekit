@@ -22,7 +22,6 @@ from issuekit.config.refs import (
 from issuekit.core import VALID_ISSUE_PRIORITIES
 from issuekit.errors import WorkflowError
 from issuekit.guards.author import guard_dict, stop_message
-from issuekit.issues.session import resolved_or_new_session_token
 from issuekit.proposals import ProposalError
 from issuekit.proposals.api import (
     ProposalAppendError,
@@ -36,6 +35,7 @@ from issuekit.proposals.service import (
     list_incoming_proposals,
     propose_with_guard,
 )
+from issuekit.session import resolved_or_new_session_token
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:

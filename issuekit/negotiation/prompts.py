@@ -7,13 +7,14 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any, TextIO
 
-from issuekit.encoding import has_non_ascii, sanitize_to_ascii
+from issuekit.encoding import has_non_ascii
 from issuekit.negotiation import NegotiationEntry, Verdict
 from issuekit.prompts import (
     NEGOTIATION_ROUND_PROMPT,
     NegotiationParseError,
     fence_untrusted,
 )
+from issuekit.prompts.fields import require_str, sanitize_ascii_field
 
 NEGOTIATION_OUTPUT_KEYS = NEGOTIATION_ROUND_PROMPT.required_keys
 
@@ -76,10 +77,22 @@ def _parsed_round_from_json(raw: dict[str, Any], *, err: TextIO) -> ParsedRound:
             f"Negotiation block is missing required key: {', '.join(missing)}."
         )
 
-    side = _required_string(raw["side"], "side")
-    verdict_raw = _required_string(raw["verdict"], "verdict")
+    side = require_str(
+        raw["side"],
+        error=NegotiationParseError,
+        message="Negotiation key side must be a string.",
+    )
+    verdict_raw = require_str(
+        raw["verdict"],
+        error=NegotiationParseError,
+        message="Negotiation key verdict must be a string.",
+    )
     contract = _optional_string(raw["contract"], "contract")
-    notes = _required_string(raw["notes"], "notes")
+    notes = require_str(
+        raw["notes"],
+        error=NegotiationParseError,
+        message="Negotiation key notes must be a string.",
+    )
 
     try:
         verdict = Verdict(verdict_raw)
@@ -89,16 +102,22 @@ def _parsed_round_from_json(raw: dict[str, Any], *, err: TextIO) -> ParsedRound:
     if has_non_ascii(side) or has_non_ascii(verdict.value):
         raise NegotiationParseError("Negotiation fields must be ASCII-only.")
     if contract is not None:
-        contract = _sanitize_negotiation_field("contract", contract, err=err)
-    notes = _sanitize_negotiation_field("notes", notes, err=err)
+        contract = sanitize_ascii_field(
+            "contract",
+            contract,
+            err=err,
+            actor="negotiation",
+            recording="round",
+        )
+    notes = sanitize_ascii_field(
+        "notes",
+        notes,
+        err=err,
+        actor="negotiation",
+        recording="round",
+    )
 
     return ParsedRound(side=side, verdict=verdict, contract=contract, notes=notes)
-
-
-def _required_string(value: object, key: str) -> str:
-    if not isinstance(value, str):
-        raise NegotiationParseError(f"Negotiation key {key} must be a string.")
-    return value
 
 
 def _optional_string(value: object, key: str) -> str | None:
@@ -106,22 +125,11 @@ def _optional_string(value: object, key: str) -> str | None:
         return None
     if not isinstance(value, str):
         raise NegotiationParseError(f"Negotiation key {key} must be a string or null.")
-    return value
-
-
-def _sanitize_negotiation_field(key: str, value: str, *, err: TextIO) -> str:
-    if not has_non_ascii(value):
-        return value
-    sanitized = sanitize_to_ascii(value).strip()
-    marker = f"[{key} sanitized from non-ASCII]"
-    print(
-        f"WARNING: negotiation agent field {key} contained non-ASCII text; "
-        "sanitized before recording round.",
-        file=err,
+    return require_str(
+        value,
+        error=NegotiationParseError,
+        message=f"Negotiation key {key} must be a string or null.",
     )
-    if not sanitized:
-        return marker
-    return f"{sanitized}\n\n{marker}"
 
 
 def provider_issue_body(

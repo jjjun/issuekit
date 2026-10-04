@@ -1,5 +1,7 @@
 """Configuration loading for issuekit."""
 
+from issuekit.urls import api_url_origin
+
 from .root import has_config_candidate, resolve_repository_root
 from .settings import (
     DEFAULT_PROFILE_FILE,
@@ -16,7 +18,6 @@ from .settings import (
     RouterPolicy,
     TriagePolicy,
     WorkerIdentity,
-    api_url_origin,
     has_local_project_context,
     load_config,
     parse_bool_value,

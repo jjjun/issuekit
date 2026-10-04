@@ -60,6 +60,19 @@ def run_git(
     )
 
 
+def git_stdout(
+    args: Sequence[str],
+    cwd: Path | str,
+    *,
+    timeout: float = 30,
+) -> str | None:
+    """Return Git stdout on success, or None when the command fails."""
+    result = run_git(args, cwd, timeout=timeout)
+    if result is None or result.returncode != 0:
+        return None
+    return result.stdout
+
+
 def _decode_stream(value: Any) -> str:
     if value is None:
         return ""
@@ -86,10 +99,10 @@ def git_status_short(
     ]
     if untracked_files is not None:
         args.append(f"--untracked-files={untracked_files}")
-    result = run_git(args, cwd, timeout=timeout)
-    if result is None or result.returncode != 0:
+    output = git_stdout(args, cwd, timeout=timeout)
+    if output is None:
         return None
-    return result.stdout.strip() if strip else result.stdout
+    return output.strip() if strip else output
 
 
 def parse_git_status_z(output: str) -> tuple[GitStatusEntry, ...]:
@@ -131,7 +144,7 @@ def git_status_entries(
 ) -> tuple[GitStatusEntry, ...] | None:
     """Return authoritative porcelain status entries, or None on failure."""
 
-    result = run_git(
+    output = git_stdout(
         [
             "--no-optional-locks",
             "--no-pager",
@@ -143,37 +156,41 @@ def git_status_entries(
         cwd,
         timeout=timeout,
     )
-    if result is None or result.returncode != 0:
+    if output is None:
         return None
     try:
-        return parse_git_status_z(result.stdout)
+        return parse_git_status_z(output)
     except ValueError:
         return None
 
 
 def git_root(cwd: Path | str, *, timeout: float = 30) -> Path | None:
     """Return the repository root for cwd, or None when cwd is not in a repo."""
-    result = run_git(["rev-parse", "--show-toplevel"], cwd, timeout=timeout)
-    if result is None or result.returncode != 0:
+    output = git_stdout(
+        ["rev-parse", "--show-toplevel"], cwd, timeout=timeout
+    )
+    if output is None:
         return None
-    root = result.stdout.strip()
+    root = output.strip()
     return Path(root).resolve() if root else None
 
 
 def git_short_head(cwd: Path | str, *, timeout: float = 5) -> str | None:
     """Return the short HEAD commit hash, or None on failure."""
-    result = run_git(["rev-parse", "--short", "HEAD"], cwd, timeout=timeout)
-    if result is None or result.returncode != 0:
+    output = git_stdout(["rev-parse", "--short", "HEAD"], cwd, timeout=timeout)
+    if output is None:
         return None
-    return result.stdout.strip() or None
+    return output.strip() or None
 
 
 def git_current_branch(cwd: Path | str, *, timeout: float = 5) -> str | None:
     """Return the current branch name, or None outside a branch checkout."""
-    result = run_git(["rev-parse", "--abbrev-ref", "HEAD"], cwd, timeout=timeout)
-    if result is None or result.returncode != 0:
+    output = git_stdout(
+        ["rev-parse", "--abbrev-ref", "HEAD"], cwd, timeout=timeout
+    )
+    if output is None:
         return None
-    branch = result.stdout.strip()
+    branch = output.strip()
     if not branch or branch == "HEAD":
         return None
     return branch
@@ -181,10 +198,12 @@ def git_current_branch(cwd: Path | str, *, timeout: float = 5) -> str | None:
 
 def git_origin_url(cwd: Path | str, *, timeout: float = 5) -> str | None:
     """Return remote.origin.url, or None when it is unavailable."""
-    result = run_git(["config", "--get", "remote.origin.url"], cwd, timeout=timeout)
-    if result is None or result.returncode != 0:
+    output = git_stdout(
+        ["config", "--get", "remote.origin.url"], cwd, timeout=timeout
+    )
+    if output is None:
         return None
-    return result.stdout.strip() or None
+    return output.strip() or None
 
 
 def changed_file_count(cwd: Path | str, *, timeout: float = 5) -> int:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
+from issuekit.coerce import first_text
 from issuekit.core import Issue
 
 ATTENTION_DEPENDENCY_STATES = {"waiting", "attention"}
@@ -27,26 +28,19 @@ def dependency_detail_lines(issue: Issue) -> list[str]:
 
 
 def _dependency_row(row: Mapping[str, object]) -> str:
-    ref = _text(row, "ref", "depends_on", "dependency", "target_ref") or "-"
-    state = _text(row, "state", "dependency_state", "resolution_state") or "-"
+    ref = first_text(row, "ref", "depends_on", "dependency", "target_ref") or "-"
+    state = first_text(row, "state", "dependency_state", "resolution_state") or "-"
     status = (
-        _text(row, "status", "issue_status", "target_status")
+        first_text(row, "status", "issue_status", "target_status")
         or _nested_text(row, "issue", "status")
         or "-"
     )
-    stage = _text(row, "stage", "target_stage") or _nested_text(row, "issue", "stage") or "-"
+    stage = (
+        first_text(row, "stage", "target_stage")
+        or _nested_text(row, "issue", "stage")
+        or "-"
+    )
     return f"depends_on={ref} state={state} status={status} stage={stage}"
-
-
-def _text(row: Mapping[str, object], *keys: str) -> str:
-    for key in keys:
-        value = row.get(key)
-        if value is None:
-            continue
-        text = str(value).strip()
-        if text:
-            return text
-    return ""
 
 
 def _nested_text(row: Mapping[str, object], key: str, nested_key: str) -> str:

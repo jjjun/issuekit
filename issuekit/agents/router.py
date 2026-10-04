@@ -21,6 +21,7 @@ from issuekit.prompts import (
     canonical_contract_token,
     fence_untrusted,
 )
+from issuekit.prompts.fields import require_nonempty_text
 from issuekit.proposals.api import api_client
 
 _DECISIONS = {"route", "clarify", "reject"}
@@ -205,10 +206,18 @@ def _decision_from_json(
     if decision is None:
         raise RouterParseError(f"Invalid route decision: {raw_decision!r}")
     if decision == "clarify":
-        question = _required_text(raw, "question", decision)
+        question = require_nonempty_text(
+            raw.get("question"),
+            error=RouterParseError,
+            message=f"Route decision '{decision}' requires a non-empty 'question'.",
+        )
         return RouterDecision(decision="clarify", question=question)
     if decision == "reject":
-        reason = _required_text(raw, "reason", decision)
+        reason = require_nonempty_text(
+            raw.get("reason"),
+            error=RouterParseError,
+            message=f"Route decision '{decision}' requires a non-empty 'reason'.",
+        )
         return RouterDecision(decision="reject", reason=reason)
 
     raw_targets = raw.get("targets")
@@ -222,11 +231,23 @@ def _decision_from_json(
     for index, raw_target in enumerate(raw_targets):
         if not isinstance(raw_target, dict):
             raise RouterParseError("Each route target must be an object.")
-        project = _required_text(raw_target, "project", "route target")
+        project = require_nonempty_text(
+            raw_target.get("project"),
+            error=RouterParseError,
+            message="Route decision 'route target' requires a non-empty 'project'.",
+        )
         if project not in candidate_projects:
             raise RouterParseError(f"Route target project has no candidate profile: {project}")
-        title = _required_text(raw_target, "title", "route target")
-        body = _required_text(raw_target, "body", "route target")
+        title = require_nonempty_text(
+            raw_target.get("title"),
+            error=RouterParseError,
+            message="Route decision 'route target' requires a non-empty 'title'.",
+        )
+        body = require_nonempty_text(
+            raw_target.get("body"),
+            error=RouterParseError,
+            message="Route decision 'route target' requires a non-empty 'body'.",
+        )
         blocking = raw_target.get("blocking", False)
         if not isinstance(blocking, bool):
             raise RouterParseError("Route target blocking must be a JSON boolean.")
@@ -243,15 +264,6 @@ def _decision_from_json(
     return RouterDecision(decision="route", targets=tuple(targets))
 
 
-def _required_text(raw: Mapping[str, object], field: str, decision: str) -> str:
-    value = raw.get(field)
-    if not isinstance(value, str) or not value.strip():
-        raise RouterParseError(
-            f"Route decision '{decision}' requires a non-empty '{field}'."
-        )
-    return value.strip()
-
-
 def _parse_dependency_tuple(value: object, *, target_index: int) -> tuple[str, ...]:
     if value is None:
         return ()
@@ -264,9 +276,11 @@ def _parse_dependency_tuple(value: object, *, target_index: int) -> tuple[str, .
 
     refs: list[str] = []
     for raw_item in items:
-        if not isinstance(raw_item, str) or not raw_item.strip():
-            raise RouterParseError("depends_on entries must be non-empty strings.")
-        item = raw_item.strip()
+        item = require_nonempty_text(
+            raw_item,
+            error=RouterParseError,
+            message="depends_on entries must be non-empty strings.",
+        )
         placeholder = _TARGET_PLACEHOLDER_PATTERN.match(item)
         if placeholder is not None:
             referenced = int(placeholder.group("index"))
@@ -282,18 +296,7 @@ def _parse_dependency_tuple(value: object, *, target_index: int) -> tuple[str, .
                 f"Expected {DEPENDENCY_REF_EXPECTED} or target:<earlier-index>."
             )
         refs.append(item)
-    return tuple(_dedupe(refs))
-
-
-def _dedupe(refs: Sequence[str]) -> tuple[str, ...]:
-    seen: set[str] = set()
-    deduped: list[str] = []
-    for ref in refs:
-        if ref in seen:
-            continue
-        seen.add(ref)
-        deduped.append(ref)
-    return tuple(deduped)
+    return tuple(dict.fromkeys(refs))
 
 
 def _render_router_prompt(

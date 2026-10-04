@@ -21,9 +21,14 @@ from issuekit.agents.readonly import (
 from issuekit.agents.registry import resolve_adapter
 from issuekit.config import IssuekitConfig
 from issuekit.core import Issue, worker_keys_match
-from issuekit.encoding import ASCII_ONLY_HINT, has_non_ascii, sanitize_to_ascii
+from issuekit.encoding import ASCII_ONLY_HINT, has_non_ascii
 from issuekit.errors import WorkflowError
-from issuekit.gitutil import GitStatusEntry, git_status_entries, git_status_short, run_git
+from issuekit.gitutil import (
+    GitStatusEntry,
+    git_status_entries,
+    git_status_short,
+    git_stdout,
+)
 from issuekit.issues.service import approve_issue
 from issuekit.prompts import (
     REVIEW_PROMPT,
@@ -31,6 +36,7 @@ from issuekit.prompts import (
     canonical_contract_token,
     fence_untrusted,
 )
+from issuekit.prompts.fields import require_str, sanitize_ascii_field
 from issuekit.store import managed_issue_store
 from issuekit.workflow import ensure_assigned_reviewer, request_changes
 
@@ -245,19 +251,27 @@ def _review_verdict_from_json(
     if missing:
         raise ReviewParseError(f"Review block is missing required key: {', '.join(missing)}.")
 
-    raw_verdict = _required_string(raw["verdict"], "verdict")
+    raw_verdict = require_str(
+        raw["verdict"],
+        error=ReviewParseError,
+        message="Review key verdict must be a string.",
+    )
     verdict = canonical_contract_token(raw_verdict, _REVIEW_VERDICTS)
     if verdict is None:
         raise ReviewParseError(f"Invalid review verdict: {raw_verdict}")
-    verification = _sanitize_review_field(
+    verification = sanitize_ascii_field(
         "verification",
         _required_review_text(raw["verification"], "verification").strip(),
         err=err,
+        actor="reviewer",
+        recording="verdict",
     )
-    notes = _sanitize_review_field(
+    notes = sanitize_ascii_field(
         "notes",
         _required_review_text(raw["notes"], "notes").strip(),
         err=err,
+        actor="reviewer",
+        recording="verdict",
     )
     if verdict == "approve" and not verification:
         raise ReviewParseError("Approved review verdict requires verification.")
@@ -265,12 +279,6 @@ def _review_verdict_from_json(
         raise ReviewParseError("Request-changes review verdict requires notes.")
     _validate_ascii_review_field("verdict", verdict)
     return ReviewVerdict(verdict=verdict, verification=verification, notes=notes)
-
-
-def _required_string(value: object, key: str) -> str:
-    if not isinstance(value, str):
-        raise ReviewParseError(f"Review key {key} must be a string.")
-    return value
 
 
 def _required_review_text(value: object, key: str) -> str:
@@ -289,7 +297,11 @@ def _required_review_text(value: object, key: str) -> str:
         return "\n".join(
             f"{entry_key}: {entry_value}" for entry_key, entry_value in value.items()
         )
-    return _required_string(value, key)
+    return require_str(
+        value,
+        error=ReviewParseError,
+        message=f"Review key {key} must be a string.",
+    )
 
 
 def _validate_ascii_review_field(key: str, value: str) -> None:
@@ -297,21 +309,6 @@ def _validate_ascii_review_field(key: str, value: str) -> None:
         raise ReviewParseError(
             f"Review field {key} must be ASCII-only. {ASCII_ONLY_HINT}"
         )
-
-
-def _sanitize_review_field(key: str, value: str, *, err: TextIO) -> str:
-    if not has_non_ascii(value):
-        return value
-    sanitized = sanitize_to_ascii(value).strip()
-    marker = f"[{key} sanitized from non-ASCII]"
-    print(
-        f"WARNING: reviewer agent field {key} contained non-ASCII text; "
-        "sanitized before recording verdict.",
-        file=err,
-    )
-    if not sanitized:
-        return marker
-    return f"{sanitized}\n\n{marker}"
 
 
 def _ensure_registered_distinct_worker(
@@ -630,10 +627,7 @@ def _untracked_diff_section(cwd: Path, rel_path: Path) -> str:
 
 
 def _git_stdout(args: list[str], cwd: Path) -> str:
-    result = run_git(args, cwd)
-    if result is None or result.returncode != 0:
-        return ""
-    return result.stdout
+    return git_stdout(args, cwd) or ""
 
 
 def _empty_verdict() -> ReviewVerdict:

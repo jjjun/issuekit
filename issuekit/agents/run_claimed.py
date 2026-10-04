@@ -37,6 +37,7 @@ from issuekit.encoding import (
 )
 from issuekit.gitutil import GitStatusEntry, git_root, git_status_entries, run_git
 from issuekit.guards.author import AuthorOrchestrationContext
+from issuekit.paths import display_path, is_readable_regular_file
 from issuekit.prompts import render_review_feedback_prompt
 from issuekit.store import managed_issue_store
 from issuekit.workflow import reclaim_issue, submit_for_review
@@ -351,7 +352,7 @@ def run_and_submit(
             if not allow_missing_report:
                 print(
                     "ERROR: implementer report missing; not submitting for review. "
-                    f"Expected a report at {_display_path(result.report_path, cwd)}. "
+                    f"Expected a report at {display_path(result.report_path, cwd)}. "
                     "The agent must await every verification command it starts and "
                     "write its closing implementation and verification report before "
                     "the run ends.",
@@ -456,7 +457,7 @@ def _submission_summary(
     *,
     no_implementation_changes: bool = False,
 ) -> str:
-    run_log = sanitize_to_ascii(_display_path(result.stdout_path, cwd))
+    run_log = sanitize_to_ascii(display_path(result.stdout_path, cwd))
     summary = f"{prefix}\nRun log: `{run_log}`"
     if no_implementation_changes:
         summary = f"{summary}\n{NO_IMPLEMENTATION_CHANGES_MARKER}"
@@ -545,13 +546,6 @@ def _has_report_content(path: Path) -> bool:
     except OSError:
         return False
     return bool(text.strip())
-
-
-def _display_path(path: Path, cwd: Path) -> str:
-    try:
-        return path.resolve().relative_to(cwd.resolve()).as_posix()
-    except ValueError:
-        return path.as_posix()
 
 
 ISSUEKIT_BODY_SECTION_HEADINGS = (
@@ -708,7 +702,7 @@ def _implementation_change_snapshot(
                 seen_changed.add(path)
                 changed_paths.append(path)
         current = repo / entry.path
-        if entry.path not in seen_readable and _is_readable_regular_file(current):
+        if entry.path not in seen_readable and is_readable_regular_file(current):
             seen_readable.add(entry.path)
             readable_paths.append(entry.path)
     return ImplementationChangeSnapshot(
@@ -738,17 +732,6 @@ def _attributable_entries(
             or before_entry[3] != after_entry[3]
         )
     )
-
-
-def _is_readable_regular_file(path: Path) -> bool:
-    if path.is_symlink() or not path.is_file():
-        return False
-    try:
-        with path.open("rb") as stream:
-            stream.read(0)
-    except OSError:
-        return False
-    return True
 
 
 def _implementation_entries(

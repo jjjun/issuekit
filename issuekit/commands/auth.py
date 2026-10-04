@@ -11,8 +11,9 @@ from pathlib import Path
 
 from issuekit.api.factory import client_for
 from issuekit.api.security import warn_insecure_api_url
-from issuekit.config import api_url_origin, load_config
+from issuekit.config import load_config
 from issuekit.errors import WorkflowError
+from issuekit.urls import api_url_origin
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:

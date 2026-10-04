@@ -18,7 +18,6 @@ from issuekit.agents.proposal_check import list_worker_proposal_checks
 from issuekit.api.token_cache import read_cached_token
 from issuekit.config import (
     IssuekitConfig,
-    api_url_origin,
     has_config_candidate,
     load_config,
     resolve_machine_config_path,
@@ -39,7 +38,6 @@ from issuekit.issues.orphans import (
 )
 from issuekit.issues.service import approve_issue, edit_issue
 from issuekit.issues.service import dispatch_issue as issue_dispatch
-from issuekit.issues.session import new_session_token
 from issuekit.negotiation import ThreadStatus, get_negotiation_store
 from issuekit.negotiation.engine import inspect_thread
 from issuekit.prompts.protocol import render_protocol, render_server_instructions
@@ -51,7 +49,9 @@ from issuekit.proposals.api import (
 from issuekit.proposals.checks import request_proposal_check
 from issuekit.proposals.service import discard_proposal as discard_proposal_service
 from issuekit.proposals.service import list_incoming_proposals, propose_with_guard
+from issuekit.session import new_session_token
 from issuekit.store import get_store
+from issuekit.urls import api_url_origin
 from issuekit.workers.registry import list_api_workers, remove_api_repo, remove_api_worker
 from issuekit.workflow import (
     claim_next,

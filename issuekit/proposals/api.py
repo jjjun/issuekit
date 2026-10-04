@@ -168,7 +168,7 @@ def send_proposal(config: IssuekitConfig, proposal: Proposal) -> dict:
         *bare_ref_collision_warnings(_dependency_rows_from_response(result)),
     ]
     if warnings:
-        result["warnings"] = list(_dedupe_refs(warnings))
+        result["warnings"] = list(dict.fromkeys(warnings))
     if deduplicated:
         result["idempotent_existing"] = True
     mismatched = proposal_payload_mismatch(proposal, created)
@@ -746,7 +746,7 @@ def _proposal_dependency_refs(
     body: str,
 ) -> tuple[str, ...]:
     refs = [*_dependency_tuple(explicit), *_structured_dependency_refs(body)]
-    return _dedupe_refs(refs)
+    return tuple(dict.fromkeys(refs))
 
 
 def _dependency_tuple(value: object) -> tuple[str, ...]:
@@ -764,18 +764,7 @@ def _structured_dependency_refs(body: str) -> tuple[str, ...]:
     refs: list[str] = []
     for match in STRUCTURED_DEPENDENCY_PATTERN.finditer(body):
         refs.extend(DEPENDENCY_REF_TOKEN_PATTERN.findall(match.group("refs")))
-    return _dedupe_refs(refs)
-
-
-def _dedupe_refs(refs: Sequence[str]) -> tuple[str, ...]:
-    seen: set[str] = set()
-    deduped: list[str] = []
-    for ref in refs:
-        if ref in seen:
-            continue
-        seen.add(ref)
-        deduped.append(ref)
-    return tuple(deduped)
+    return tuple(dict.fromkeys(refs))
 
 
 def _dependency_rows_from_response(raw: Mapping[str, Any]) -> tuple[dict[str, object], ...]:

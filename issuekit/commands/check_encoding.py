@@ -15,6 +15,7 @@ from issuekit.encoding import (
     MojibakeScanOptions,
     changed_line_numbers,
     changed_readable_paths,
+    has_source_extension,
     is_encoding_excluded_path,
     print_mojibake_hit,
     scan_mojibake,
@@ -133,7 +134,7 @@ def run(args) -> int:
         source_files = [
             file
             for file in changed_files
-            if _has_source_extension(file)
+            if has_source_extension(file, SOURCE_EXTENSIONS)
             and not is_encoding_excluded_path(file, exclude_patterns)
         ]
         crlf_paths: list[str] | None = [
@@ -147,7 +148,7 @@ def run(args) -> int:
         source_files = [
             file
             for file in tracked_files
-            if _has_source_extension(file)
+            if has_source_extension(file, SOURCE_EXTENSIONS)
             and not is_encoding_excluded_path(file, exclude_patterns)
         ]
         crlf_paths = None
@@ -475,11 +476,6 @@ def _format_git_argv(args: list[str]) -> str:
         f"{preview!r} ... "
         f"({len(argv)} arguments, {total_length} characters total)"
     )
-
-
-def _has_source_extension(file: str) -> bool:
-    suffix = Path(file).suffix
-    return bool(suffix) and suffix[1:].lower() in SOURCE_EXTENSIONS
 
 
 def _stray_carriage_return_lines(content: bytes) -> list[int]:

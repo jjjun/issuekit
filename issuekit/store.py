@@ -8,6 +8,7 @@ from typing import Any, Protocol
 
 from issuekit.api import IssuekitClient
 from issuekit.api.factory import OwnedApiClient, require_api_url
+from issuekit.coerce import strip_or_empty
 from issuekit.config import IssuekitConfig
 from issuekit.core import (
     Issue,
@@ -483,24 +484,24 @@ class ApiStore(OwnedApiClient):
         body = _body(raw.get("body"))
         metadata = {
             "id": str(issue_id),
-            "status": _string(raw.get("status")),
-            "priority": _string(raw.get("priority")),
-            "created": _string(raw.get("created")),
-            "completed": _string(raw.get("completed")),
-            "assignee": _string(raw.get("assignee")),
-            "stage": _string(raw.get("stage")),
-            "implementer": _string(raw.get("implementer")),
-            "author": _string(raw.get("author")),
-            "worker": _string(raw.get("worker")),
-            "target_worker": _string(raw.get("target_worker")),
-            "author_session": _string(raw.get("author_session")),
-            "implementer_session": _string(raw.get("implementer_session")),
-            "reviewer_session": _string(raw.get("reviewer_session")),
-            "origin": _string(raw.get("origin")),
+            "status": strip_or_empty(raw.get("status")),
+            "priority": strip_or_empty(raw.get("priority")),
+            "created": strip_or_empty(raw.get("created")),
+            "completed": strip_or_empty(raw.get("completed")),
+            "assignee": strip_or_empty(raw.get("assignee")),
+            "stage": strip_or_empty(raw.get("stage")),
+            "implementer": strip_or_empty(raw.get("implementer")),
+            "author": strip_or_empty(raw.get("author")),
+            "worker": strip_or_empty(raw.get("worker")),
+            "target_worker": strip_or_empty(raw.get("target_worker")),
+            "author_session": strip_or_empty(raw.get("author_session")),
+            "implementer_session": strip_or_empty(raw.get("implementer_session")),
+            "reviewer_session": strip_or_empty(raw.get("reviewer_session")),
+            "origin": strip_or_empty(raw.get("origin")),
             "title": _title(raw, body, issue_id),
         }
         for field in OPTIONAL_API_METADATA_FIELDS:
-            value = _string(raw.get(field))
+            value = strip_or_empty(raw.get(field))
             if value:
                 metadata[field] = value
         depends_on = _string_tuple(raw.get("depends_on"))
@@ -511,7 +512,7 @@ class ApiStore(OwnedApiClient):
                 for ref in (_dependency_ref(row) for row in dependencies)
                 if ref
             )
-        dependency_state = _string(raw.get("dependency_state"))
+        dependency_state = strip_or_empty(raw.get("dependency_state"))
         warning = _issue_warning(raw)
         if depends_on:
             metadata["depends_on"] = list(depends_on)
@@ -563,15 +564,11 @@ def get_store(config: IssuekitConfig) -> IssueStore:
     return ApiStore(config)
 
 
-def _string(value: object) -> str:
-    return "" if value is None else str(value).strip()
-
-
 def _issue_warning(raw: dict[str, Any]) -> str:
     warnings = _string_tuple(raw.get("warnings"))
     if warnings:
         return "\n".join(warnings)
-    return _string(raw.get("warning"))
+    return strip_or_empty(raw.get("warning"))
 
 
 def _string_tuple(value: object) -> tuple[str, ...]:
@@ -583,7 +580,7 @@ def _string_tuple(value: object) -> tuple[str, ...]:
         items = list(value)
     else:
         items = [value]
-    return tuple(text for text in (_string(item) for item in items) if text)
+    return tuple(text for text in (strip_or_empty(item) for item in items) if text)
 
 
 def _dependency_rows(raw: dict[str, Any]) -> tuple[dict[str, object], ...]:
@@ -599,7 +596,7 @@ def _dependency_rows(raw: dict[str, Any]) -> tuple[dict[str, object], ...]:
 
 def _dependency_ref(row: dict[str, object]) -> str:
     for key in ("ref", "depends_on", "dependency", "target_ref"):
-        value = _string(row.get(key))
+        value = strip_or_empty(row.get(key))
         if value:
             return value
     return ""
@@ -621,7 +618,7 @@ def _partition_issues(issues: list[Issue]) -> tuple[list[Issue], list[Issue]]:
 
 
 def _title(raw: dict[str, Any], body: str, issue_id: int) -> str:
-    raw_title = _string(raw.get("title"))
+    raw_title = strip_or_empty(raw.get("title"))
     if raw_title:
         return raw_title
     heading = get_issue_heading(body)

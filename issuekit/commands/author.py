@@ -34,7 +34,7 @@ from issuekit.issues.dependencies import (
     bare_ref_collision_warnings,
     dependency_refs_or_workflow_error,
 )
-from issuekit.issues.session import resolved_or_new_session_token
+from issuekit.session import resolved_or_new_session_token
 from issuekit.workers.addressing import target_worker_repo_id, validate_target_worker
 from issuekit.workflow import validate_assignee
 
@@ -262,7 +262,7 @@ def _author_warnings(authored: Issue) -> tuple[str, ...]:
     if authored.warning:
         warnings.extend(line for line in authored.warning.splitlines() if line.strip())
     warnings.extend(bare_ref_collision_warnings(authored.dependencies))
-    return _dedupe_warnings(warnings)
+    return tuple(dict.fromkeys(warnings))
 
 
 def _format_author_warning(authored: Issue, warning: str) -> str:
@@ -279,17 +279,6 @@ def _format_author_warning(authored: Issue, warning: str) -> str:
             f"pool with issuekit readdress {authored.id}."
         )
     return warning
-
-
-def _dedupe_warnings(warnings: list[str]) -> tuple[str, ...]:
-    seen: set[str] = set()
-    deduped: list[str] = []
-    for warning in warnings:
-        if warning in seen:
-            continue
-        seen.add(warning)
-        deduped.append(warning)
-    return tuple(deduped)
 
 
 def _require_local_author_context(

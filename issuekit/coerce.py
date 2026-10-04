@@ -2,6 +2,23 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
+
+def strip_or_empty(value: object) -> str:
+    return "" if value is None else str(value).strip()
+
+
+def first_text(row: Mapping[str, object], *keys: str) -> str:
+    for key in keys:
+        value = row.get(key)
+        if value is None:
+            continue
+        text = str(value).strip()
+        if text:
+            return text
+    return ""
+
 
 def optional_str(value: object) -> str | None:
     if value is None:

@@ -6,7 +6,7 @@ import argparse
 from pathlib import Path
 
 from issuekit.commands._common import add_json_flag, print_json
-from issuekit.config import api_url_origin, load_config, resolve_repository_root
+from issuekit.config import load_config, resolve_repository_root
 from issuekit.core import issue_dict
 from issuekit.errors import WorkflowError
 from issuekit.guards.author import (
@@ -21,6 +21,7 @@ from issuekit.proposals.api import api_client
 from issuekit.proposals.model import ProposalError
 from issuekit.proposals.service import list_incoming_proposals
 from issuekit.store import get_store
+from issuekit.urls import api_url_origin
 from issuekit.workflow import resolve_implementer
 
 

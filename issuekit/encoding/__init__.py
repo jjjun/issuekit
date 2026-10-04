@@ -27,6 +27,7 @@ from issuekit.encoding.scan import (
     added_line_numbers,
     changed_line_numbers,
     changed_readable_paths,
+    has_source_extension,
     scan_mojibake,
 )
 
@@ -48,6 +49,7 @@ __all__ = [
     "code_point_text",
     "find_encoding_artifacts",
     "has_non_ascii",
+    "has_source_extension",
     "is_encoding_excluded_path",
     "line_number_at",
     "newline_offsets",

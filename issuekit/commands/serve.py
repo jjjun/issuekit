@@ -62,6 +62,7 @@ from issuekit.proposals.api import (
     auto_adopt_incoming_proposals,
     hold_adopted_issue,
 )
+from issuekit.signals import installed_signal_handlers
 from issuekit.store import get_store
 from issuekit.workers.registry import WorkerHeartbeat
 from issuekit.workflow import claim_next, next_review, require_implementer
@@ -1004,18 +1005,10 @@ def _worker_heartbeat(
 
 @contextmanager
 def _signal_handlers(controller: ShutdownController) -> Iterator[None]:
-    previous: dict[int, signal.Handlers] = {}
-    for signum in (signal.SIGINT, signal.SIGTERM):
-        try:
-            previous[signum] = signal.getsignal(signum)
-            signal.signal(signum, controller.handle_signal)
-        except (ValueError, OSError, AttributeError):
-            pass
-    try:
+    with installed_signal_handlers(
+        {
+            signal.SIGINT: controller.handle_signal,
+            signal.SIGTERM: controller.handle_signal,
+        }
+    ):
         yield
-    finally:
-        for signum, handler in previous.items():
-            try:
-                signal.signal(signum, handler)
-            except (ValueError, OSError, AttributeError):
-                pass

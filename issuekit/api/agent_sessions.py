@@ -8,7 +8,7 @@ from typing import Any
 
 from issuekit.core import drop_none
 from issuekit.errors import WorkflowError
-from issuekit.issues.session import validate_session_token
+from issuekit.session import validate_session_token
 
 from .base import JsonDict, ensure_dict
 
