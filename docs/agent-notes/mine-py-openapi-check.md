@@ -28,7 +28,7 @@ Response shape - fetch any issue and look at its keys:
 ```python
 from pathlib import Path
 from issuekit.config.settings import load_config
-from issuekit.proposals.api import api_client
+from issuekit.proposals.client import api_client
 with api_client(load_config(Path("."))) as client:
     print(sorted(client.get_issue(<id>).keys()))
 ```

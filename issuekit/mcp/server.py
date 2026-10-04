@@ -41,14 +41,13 @@ from issuekit.issues.service import dispatch_issue as issue_dispatch
 from issuekit.negotiation import ThreadStatus, get_negotiation_store
 from issuekit.negotiation.engine import inspect_thread
 from issuekit.prompts.protocol import render_protocol, render_server_instructions
-from issuekit.proposals.api import (
-    adopt_proposal_with_append,
-    api_client,
-    list_outgoing_proposals,
-)
+from issuekit.proposals.adopt import adopt_proposal_with_append
 from issuekit.proposals.checks import request_proposal_check
-from issuekit.proposals.service import discard_proposal as discard_proposal_service
-from issuekit.proposals.service import list_incoming_proposals, propose_with_guard
+from issuekit.proposals.client import api_client
+from issuekit.proposals.outgoing import list_outgoing_proposals
+from issuekit.proposals.send import discard_proposal as discard_proposal_service
+from issuekit.proposals.send import propose_with_guard
+from issuekit.proposals.service import list_incoming_proposals
 from issuekit.session import new_session_token
 from issuekit.store import get_store
 from issuekit.urls import api_url_origin

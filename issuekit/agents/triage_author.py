@@ -46,17 +46,16 @@ from issuekit.prompts import (
     fence_untrusted,
 )
 from issuekit.prompts.fields import require_nonempty_text
-from issuekit.proposals import origin_destination
-from issuekit.proposals.api import (
+from issuekit.proposals import ProposalError, origin_destination
+from issuekit.proposals.adopt import (
     AdoptedIssueHoldError,
-    ProposalError,
     adopt_proposal_with_append,
-    api_client,
-    build_proposal,
     hold_adopted_issue,
     matches_triage_policy,
-    send_proposal,
 )
+from issuekit.proposals.build import build_proposal
+from issuekit.proposals.client import api_client
+from issuekit.proposals.send import send_proposal
 from issuekit.proposals.service import list_incoming_proposals
 
 _DECISIONS = {"adopt", "adopt_and_reply", "reply", "discard"}

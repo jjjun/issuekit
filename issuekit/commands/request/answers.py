@@ -7,7 +7,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
-import issuekit.proposals.api as proposals_api
+import issuekit.proposals.send as proposals_send
 from issuekit.agentrun import AgentRunner
 from issuekit.agents.router import run_router
 from issuekit.commands.request.inbox import ambiguous_answer_message, matched_inbox_questions
@@ -28,6 +28,8 @@ from issuekit.commands.request.state import (
 )
 from issuekit.config import IssuekitConfig
 from issuekit.proposals import ProposalError
+from issuekit.proposals.build import build_proposal
+from issuekit.proposals.client import api_client
 
 
 def run_answer(
@@ -196,7 +198,7 @@ def run_target_reply_answer(
         target_depends_on(target),
         refs_by_target_index(targets),
     )
-    proposal = proposals_api.build_proposal(
+    proposal = build_proposal(
         cwd,
         to=str(target["project"]),
         title=str(target.get("title") or ""),
@@ -218,7 +220,7 @@ def run_target_reply_answer(
             round_count=len(clarifications),
         ),
     )
-    sent = proposals_api.send_proposal(config, proposal)
+    sent = proposals_send.send_proposal(config, proposal)
     if sent.get("payload_mismatch"):
         raise ProposalError(str(sent.get("warning") or "Proposal payload mismatch."))
 
@@ -240,7 +242,7 @@ def run_target_reply_answer(
     state[str(request_id)] = record
     save_state(cwd, state)
 
-    with proposals_api.api_client(config) as client:
+    with api_client(config) as client:
         client.discard_proposal(int(pending_question["reply_proposal_id"]))
 
     payload = {

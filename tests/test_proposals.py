@@ -6,13 +6,15 @@ from pathlib import Path
 
 import pytest
 
-import issuekit.proposals.api as proposals_api
+import issuekit.proposals.adopt as proposals_adopt
+import issuekit.proposals.outgoing as proposals_outgoing
 from issuekit import cli
 from issuekit.api.client import BURST_HTTP_LIMITS
 from issuekit.config import IssuekitConfig, TriagePolicy
 from issuekit.guards.author import read_author_guards
 from issuekit.proposals import ProposalError, origin_destination
-from issuekit.proposals.api import _git_commit, api_client
+from issuekit.proposals.build import _git_commit
+from issuekit.proposals.client import api_client
 from issuekit.testing import FakeIssuekitClient
 from tests.issue_helpers import api_issue
 
@@ -61,7 +63,7 @@ def test_matches_triage_policy_skips_pending_threaded_proposal_from_trusted_orig
         ),
     )
 
-    assert not proposals_api.matches_triage_policy(
+    assert not proposals_adopt.matches_triage_policy(
         {
             "id": 8,
             "status": "pending",
@@ -1620,7 +1622,7 @@ def test_list_outgoing_proposals_reuses_client_and_preserves_order(
     monkeypatch.setattr(client, "list_proposal_checks_for_proposal", delayed_list_checks)
     config = IssuekitConfig(api_url="https://mine.example", project="source")
 
-    outgoing = proposals_api.list_outgoing_proposals(config, to="target")
+    outgoing = proposals_outgoing.list_outgoing_proposals(config, to="target")
 
     assert created_projects == ["target"]
     assert [proposal["id"] for proposal in outgoing] == list(range(1, 13))
@@ -1864,7 +1866,7 @@ def test_api_cli_adopt_append_retries_not_found_and_reports_verified_output(
     append_file = tmp_path / "plan.md"
     append_file.write_text("\n## Implementation Plan\n\nDo this.\n", encoding="utf-8", newline="\n")
     fake_api.install_client(client)
-    monkeypatch.setattr(proposals_api, "_sleep", lambda _delay: None)
+    monkeypatch.setattr(proposals_adopt, "_sleep", lambda _delay: None)
     monkeypatch.chdir(tmp_path)
 
     assert cli.main(["adopt", "1", "--append-file", str(append_file), "--json"]) == 0
@@ -1885,7 +1887,7 @@ def test_api_cli_adopt_append_reports_persistent_not_found(
         proposals=[
             {"id": 1, "origin": "source#1@abc123", "title": "Adopt", "body": "Adopt body."},
         ],
-        adopt_not_found_attempts=len(proposals_api.ADOPT_APPEND_RETRY_DELAYS) + 1,
+        adopt_not_found_attempts=len(proposals_adopt.ADOPT_APPEND_RETRY_DELAYS) + 1,
     )
     (tmp_path / "issuekit.toml").write_text(
         "api_url = 'https://mine.example'\nproject = 'target'\n",
@@ -1895,7 +1897,7 @@ def test_api_cli_adopt_append_reports_persistent_not_found(
     append_file = tmp_path / "plan.md"
     append_file.write_text("## Implementation Plan\n\nDo this.\n", encoding="utf-8", newline="\n")
     fake_api.install_client(client)
-    monkeypatch.setattr(proposals_api, "_sleep", lambda _delay: None)
+    monkeypatch.setattr(proposals_adopt, "_sleep", lambda _delay: None)
     monkeypatch.chdir(tmp_path)
 
     assert cli.main(["adopt", "1", "--append-file", str(append_file), "--json"]) == 1
@@ -1928,7 +1930,7 @@ def test_api_cli_adopt_append_fails_when_patch_body_is_not_visible(
     append_file = tmp_path / "plan.md"
     append_file.write_text("## Implementation Plan\n\nDo this.\n", encoding="utf-8", newline="\n")
     fake_api.install_client(client)
-    monkeypatch.setattr(proposals_api, "_sleep", lambda _delay: None)
+    monkeypatch.setattr(proposals_adopt, "_sleep", lambda _delay: None)
     monkeypatch.chdir(tmp_path)
 
     assert cli.main(["adopt", "1", "--append-file", str(append_file), "--json"]) == 1
@@ -2109,7 +2111,7 @@ def test_auto_adopt_incoming_proposals_filters_policy_and_caps(fake_api, monkeyp
     )
     fake_api.install_client(client)
 
-    adopted = proposals_api.auto_adopt_incoming_proposals(config)
+    adopted = proposals_adopt.auto_adopt_incoming_proposals(config)
 
     assert [item["proposal_id"] for item in adopted] == ["1"]
     assert adopted[0]["auto_adopted"] is True
@@ -2148,7 +2150,7 @@ def test_auto_adopt_skips_pending_threaded_proposal_from_trusted_origin(fake_api
     )
     fake_api.install_client(client)
 
-    assert proposals_api.auto_adopt_incoming_proposals(config) == []
+    assert proposals_adopt.auto_adopt_incoming_proposals(config) == []
     assert client.get_proposal(1)["status"] == "pending"
     assert not any(call["method"] == "adopt_proposal" for call in client.calls)
 
@@ -2186,7 +2188,7 @@ def test_auto_adopt_incoming_proposals_does_not_discard_superseded_refs(
     )
     fake_api.install_client(client)
 
-    adopted = proposals_api.auto_adopt_incoming_proposals(config)
+    adopted = proposals_adopt.auto_adopt_incoming_proposals(config)
 
     assert [item["proposal_id"] for item in adopted] == ["1", "2"]
     assert client.get_proposal(1)["status"] == "adopted"
@@ -2220,7 +2222,7 @@ def test_auto_adopt_incoming_proposals_can_skip_holds(fake_api, monkeypatch) -> 
     )
     fake_api.install_client(client)
 
-    adopted = proposals_api.auto_adopt_incoming_proposals(config)
+    adopted = proposals_adopt.auto_adopt_incoming_proposals(config)
 
     assert adopted[0]["issue_id"] == 1
     assert "held" not in adopted[0]

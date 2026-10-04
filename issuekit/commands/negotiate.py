@@ -41,7 +41,7 @@ from issuekit.negotiation.engine import (
     inspect_thread,
     run_negotiation,
 )
-from issuekit.proposals.api import validate_target_project
+from issuekit.proposals.client import validate_target_project
 from issuekit.store import get_store
 from issuekit.workflow import require_implementer
 

@@ -27,12 +27,12 @@ from issuekit.prompts import (
     fence_untrusted,
 )
 from issuekit.prompts.fields import require_nonempty_text, require_str
-from issuekit.proposals.api import (
+from issuekit.proposals.adopt import (
     AdoptedIssueHoldError,
     adopt_proposal_with_append,
-    api_client,
     hold_adopted_issue,
 )
+from issuekit.proposals.client import api_client
 
 PROPOSAL_CHECK_VERDICTS = {"approve", "reject", "revise"}
 PROPOSAL_CHECK_COMMENT_MAX = 100000

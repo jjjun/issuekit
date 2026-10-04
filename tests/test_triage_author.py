@@ -11,7 +11,6 @@ from pathlib import Path
 import pytest
 
 import issuekit.file_permissions as file_permissions
-import issuekit.proposals.api as proposals_api
 from issuekit import cli
 from issuekit.agentrun import AgentPrompt, AgentResult
 from issuekit.agents import triage_author, triage_state
@@ -22,6 +21,7 @@ from issuekit.agents.triage_author import (
 )
 from issuekit.config import load_config
 from issuekit.errors import WorkflowError
+from issuekit.proposals import ProposalError
 from issuekit.testing import FakeIssuekitClient
 from tests.agent_fakes import FakeRunner, fenced_block
 from tests.git_helpers import init_git_repo
@@ -749,7 +749,7 @@ def test_triage_author_adopt_keeps_adoption_when_superseded_discard_fails(
 
     def fail_old_discard(proposal_id: int):
         if proposal_id == 10:
-            raise proposals_api.ProposalError("discard unavailable")
+            raise ProposalError("discard unavailable")
         return original_discard(proposal_id)
 
     monkeypatch.setattr(client, "discard_proposal", fail_old_discard)

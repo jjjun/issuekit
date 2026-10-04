@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from datetime import datetime
 
 from issuekit.config import IssuekitConfig
-from issuekit.proposals.api import api_client
+from issuekit.proposals.client import api_client
 from issuekit.timestamps import parse_timestamp, utcnow
 from issuekit.workers.addressing import (
     registered_worker_row,

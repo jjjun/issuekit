@@ -57,7 +57,7 @@ from issuekit.core import Issue
 from issuekit.errors import AGENT_RUN_ERRORS, WorkflowError
 from issuekit.issues.orphans import DEFAULT_STALE_AFTER_SEC
 from issuekit.proposals import ProposalError
-from issuekit.proposals.api import (
+from issuekit.proposals.adopt import (
     AdoptedIssueHoldError,
     auto_adopt_incoming_proposals,
     hold_adopted_issue,

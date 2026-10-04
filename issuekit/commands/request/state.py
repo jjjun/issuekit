@@ -8,13 +8,17 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
-import issuekit.proposals.api as proposals_api
 from issuekit.agentrun.run_dir import prepare_run_dir
 from issuekit.agents.router import RouteTarget
 from issuekit.config import IssuekitConfig
 from issuekit.file_permissions import write_owner_only_text
 from issuekit.gitutil import git_short_head
 from issuekit.proposals import ProposalError
+from issuekit.proposals.client import api_client
+from issuekit.proposals.outgoing import (
+    OUTGOING_PROPOSAL_STATUSES,
+    list_outgoing_proposal_rows,
+)
 from issuekit.timestamps import utc_now_iso
 
 STATE_FILENAME = "pm-requests.json"
@@ -80,11 +84,11 @@ def status_records(
             if project in outgoing_by_project:
                 continue
             by_id: dict[int, dict[str, Any]] = {}
-            with proposals_api.api_client(config, project=project) as client:
-                proposals = proposals_api.list_outgoing_proposal_rows(
+            with api_client(config, project=project) as client:
+                proposals = list_outgoing_proposal_rows(
                     client,
                     project=config.project,
-                    statuses=proposals_api.OUTGOING_PROPOSAL_STATUSES,
+                    statuses=OUTGOING_PROPOSAL_STATUSES,
                 )
             for proposal in proposals:
                 try:

@@ -14,7 +14,7 @@ if os.environ.get("ISSUEKIT_REQUIRE_MCP") == "1":
 else:
     pytest.importorskip("mcp")
 
-import issuekit.proposals.api as proposals_api
+import issuekit.proposals.adopt as proposals_adopt
 from issuekit import cli
 from issuekit.api import token_cache as token_cache_module
 from issuekit.api.client import BURST_HTTP_LIMITS
@@ -2225,7 +2225,7 @@ def test_mcp_adopt_proposal_raises_for_persistent_append_failure(
         proposals=[
             {"id": 10, "origin": "source#10@abc123", "title": "Adopt", "body": "Adopt body."},
         ],
-        adopt_not_found_attempts=len(proposals_api.ADOPT_APPEND_RETRY_DELAYS) + 1,
+        adopt_not_found_attempts=len(proposals_adopt.ADOPT_APPEND_RETRY_DELAYS) + 1,
     )
     (tmp_path / "issuekit.toml").write_text(
         "api_url = 'https://mine.example'\nproject = 'target'\n",
@@ -2233,7 +2233,7 @@ def test_mcp_adopt_proposal_raises_for_persistent_append_failure(
         newline="\n",
     )
     fake_api.install_client(client)
-    monkeypatch.setattr(proposals_api, "_sleep", lambda _delay: None)
+    monkeypatch.setattr(proposals_adopt, "_sleep", lambda _delay: None)
     server = create_server(tmp_path)
 
     with pytest.raises(Exception, match="append failed"):

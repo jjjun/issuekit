@@ -22,7 +22,7 @@ from issuekit.prompts import (
     fence_untrusted,
 )
 from issuekit.prompts.fields import require_nonempty_text
-from issuekit.proposals.api import api_client
+from issuekit.proposals.client import api_client
 
 _DECISIONS = {"route", "clarify", "reject"}
 _TARGET_PLACEHOLDER_PATTERN = re.compile(r"^target:(?P<index>[0-9]+)$")

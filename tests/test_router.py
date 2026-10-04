@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-import issuekit.proposals.api as proposals_api
+import issuekit.proposals.send as proposals_send
 from issuekit import cli
 from issuekit.agentrun import AgentPrompt
 from issuekit.agents import router
@@ -389,7 +389,7 @@ def test_request_stops_on_send_failure_and_resume_skips_sent_target(
             ),
         ],
     )
-    original_send = proposals_api.send_proposal
+    original_send = proposals_send.send_proposal
     failures_left = {"count": 1}
 
     def flaky_send(config, proposal):
@@ -398,7 +398,7 @@ def test_request_stops_on_send_failure_and_resume_skips_sent_target(
             raise ProposalError("ui unavailable")
         return original_send(config, proposal)
 
-    monkeypatch.setattr(proposals_api, "send_proposal", flaky_send)
+    monkeypatch.setattr(proposals_send, "send_proposal", flaky_send)
 
     assert cli.main(["request", "Add export UI", "--json"]) == 1
     assert "ui unavailable" in capsys.readouterr().err
@@ -454,7 +454,7 @@ def test_request_resume_matches_saved_targets_by_project_after_reordering(
             ),
         ],
     )
-    original_send = proposals_api.send_proposal
+    original_send = proposals_send.send_proposal
     failures_left = {"count": 1}
 
     def flaky_send(config, proposal):
@@ -463,7 +463,7 @@ def test_request_resume_matches_saved_targets_by_project_after_reordering(
             raise ProposalError("ui unavailable")
         return original_send(config, proposal)
 
-    monkeypatch.setattr(proposals_api, "send_proposal", flaky_send)
+    monkeypatch.setattr(proposals_send, "send_proposal", flaky_send)
 
     assert cli.main(["request", "Add export UI", "--json"]) == 1
     assert "ui unavailable" in capsys.readouterr().err
@@ -1220,14 +1220,14 @@ def test_request_answer_send_failure_keeps_old_state_and_reply_pending(
         title="Re: api#1: Add endpoint",
         body="Which endpoint path?",
     )
-    original_send = proposals_api.send_proposal
+    original_send = proposals_send.send_proposal
 
     def fail_amended(config, proposal):
         if proposal.to == "api" and "Supersedes:" in proposal.body:
             raise ProposalError("api unavailable")
         return original_send(config, proposal)
 
-    monkeypatch.setattr(proposals_api, "send_proposal", fail_amended)
+    monkeypatch.setattr(proposals_send, "send_proposal", fail_amended)
 
     assert cli.main(["request", "--answer", "1", "Use /exports.csv.", "--json"]) == 1
     assert "api unavailable" in capsys.readouterr().err

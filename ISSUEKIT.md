@@ -113,8 +113,9 @@ the PM request command.
   list_project_profiles, propose, list_incoming/outgoing,
   list_negotiation_threads, adopt/discard_proposal, create_proposal_check,
   list_proposal_checks.
-- Library modules: `workflow`, `proposals/api.py`, `api/`, `config`,
-  `agentrun/runner.py`, `agents/` (review, triage_author),
+- Library modules: `workflow`, `proposals/client.py`, `proposals/build.py`,
+  `proposals/send.py`, `proposals/adopt.py`, `proposals/outgoing.py`, `api/`,
+  `config`, `agentrun/runner.py`, `agents/` (review, triage_author),
   `config/project_profile.py`.
 
 ## Example in-scope requests

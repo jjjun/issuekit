@@ -7,7 +7,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
-import issuekit.proposals.api as proposals_api
+import issuekit.proposals.send as proposals_send
 from issuekit.agentrun import AgentRunner
 from issuekit.agents.router import RouterDecision, RouteTarget, run_router
 from issuekit.commands.request.output import print_payload
@@ -28,6 +28,8 @@ from issuekit.commands.request.state import (
 from issuekit.config import IssuekitConfig
 from issuekit.errors import WorkflowError
 from issuekit.proposals import ProposalError
+from issuekit.proposals.build import build_proposal
+from issuekit.proposals.client import api_client
 
 
 def run_link(
@@ -79,7 +81,7 @@ def run_link(
         )
 
     try:
-        with proposals_api.api_client(config, project=target_project) as client:
+        with api_client(config, project=target_project) as client:
             proposal = client.get_proposal(proposal_id)
     except WorkflowError as exc:
         if exc.code in {"not_found", "http_404"}:
@@ -307,7 +309,7 @@ def send_route_targets(
             )
             resolved_depends_on = resolve_depends_on(target.depends_on, refs_by_index)
             project = target.project
-            proposal = proposals_api.build_proposal(
+            proposal = build_proposal(
                 cwd,
                 to=project,
                 title=target.title,
@@ -328,7 +330,7 @@ def send_route_targets(
                     target_project=project,
                 ),
             )
-            sent = proposals_api.send_proposal(config, proposal)
+            sent = proposals_send.send_proposal(config, proposal)
             if sent.get("payload_mismatch"):
                 save_state(cwd, state)
                 raise ProposalError(
