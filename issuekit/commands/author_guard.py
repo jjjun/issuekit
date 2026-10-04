@@ -66,7 +66,6 @@ def run_show(args) -> int:
         if getattr(args, "json", False):
             print_json(
                 {
-                    "authorGuard": guards[0].to_dict() if guards else None,
                     "authorGuards": guards_dict(guards),
                 }
             )
@@ -92,7 +91,6 @@ def run_check(args) -> int:
                 {
                     "ok": not blocking,
                     "blocking": blocking,
-                    "authorGuard": guards[0].to_dict() if guards else None,
                     "authorGuards": guards_dict(guards),
                 }
             )

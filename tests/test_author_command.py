@@ -174,6 +174,7 @@ def test_author_json_formats_directed_expired_heartbeat_warning(
     payload = json.loads(captured.out)
     assert payload["warning"] == warning
     assert payload["target_worker"] == "checkout.demo@machine"
+    assert payload["authorGuard"]["kind"] == "issue"
     assert captured.err == (
         "Warning (directed_expired_heartbeat): target worker checkout.demo@machine "
         "has no recent heartbeat; issue 1 waits for that worker. Return it to the "
@@ -1037,7 +1038,7 @@ def test_author_command_allows_local_when_worker_repo_id_differs_from_project(
         "[worker]\n"
         'machine_id = "machine"\n'
         'repo_id = "py-mine"\n'
-        'worker_id = "checkout"\n',
+        'worker_name = "checkout"\n',
         encoding="utf-8",
         newline="\n",
     )

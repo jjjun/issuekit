@@ -1,7 +1,11 @@
 from pathlib import Path
 
+import pytest
+
 from issuekit.config.local import (
     LOCAL_CONFIG_NAME,
+    LocalConfigError,
+    local_config_text,
     missing_gitignore_entries,
     read_local_config,
     write_local_config,
@@ -50,13 +54,13 @@ def test_local_config_round_trips_non_bmp_and_del_in_worker_metadata(
     assert read_local_config(tmp_path).worker == worker
 
 
-def test_local_config_reads_legacy_worker_id(tmp_path: Path) -> None:
+def test_local_config_reads_worker_name(tmp_path: Path) -> None:
     (tmp_path / LOCAL_CONFIG_NAME).write_text(
         (
             "[worker]\n"
             'machine_id = "machine"\n'
             'repo_id = "repo"\n'
-            'worker_id = "checkout"\n'
+            'worker_name = "checkout"\n'
             "\n"
             "[refs]\n"
         ),
@@ -67,8 +71,27 @@ def test_local_config_reads_legacy_worker_id(tmp_path: Path) -> None:
     assert read_local_config(tmp_path).worker == {
         "machine_id": "machine",
         "repo_id": "repo",
-        "worker_id": "checkout",
+        "worker_name": "checkout",
     }
+
+
+def test_local_config_writer_ignores_worker_id_alias() -> None:
+    content = local_config_text(
+        worker={
+            "machine_id": "machine",
+            "repo_id": "repo",
+            "worker_id": "checkout",
+        },
+        refs={},
+    )
+
+    assert content == (
+        "[worker]\n"
+        'machine_id = "machine"\n'
+        'repo_id = "repo"\n'
+        "\n"
+        "[refs]\n"
+    )
 
 
 def test_local_config_reads_disabled_agents(tmp_path: Path) -> None:
@@ -85,11 +108,16 @@ def test_local_config_reads_disabled_agents(tmp_path: Path) -> None:
     assert read_local_config(tmp_path).disabled_agents == ("kimi", "old_agent")
 
 
-def test_local_config_reads_tool_issuekit_disabled_agents(tmp_path: Path) -> None:
+def test_local_config_ignores_nested_tool_issuekit_values(tmp_path: Path) -> None:
     (tmp_path / LOCAL_CONFIG_NAME).write_text(
         (
             "[tool.issuekit]\n"
             'disabled_agents = ["kimi"]\n'
+            "\n"
+            "[tool.issuekit.worker]\n"
+            'machine_id = "machine"\n'
+            'repo_id = "repo"\n'
+            'worker_name = "checkout"\n'
             "\n"
             "[refs]\n"
         ),
@@ -97,7 +125,9 @@ def test_local_config_reads_tool_issuekit_disabled_agents(tmp_path: Path) -> Non
         newline="\n",
     )
 
-    assert read_local_config(tmp_path).disabled_agents == ("kimi",)
+    local_config = read_local_config(tmp_path)
+    assert local_config.worker is None
+    assert local_config.disabled_agents is None
 
 
 def test_local_config_preserves_disabled_agents_when_rewriting_refs(tmp_path: Path) -> None:
@@ -170,7 +200,7 @@ def test_local_config_round_trips_author_guards(tmp_path: Path) -> None:
     ) == 2
 
 
-def test_local_config_reads_legacy_author_guard(tmp_path: Path) -> None:
+def test_local_config_rejects_legacy_author_guard(tmp_path: Path) -> None:
     (tmp_path / LOCAL_CONFIG_NAME).write_text(
         (
             "[author_guard]\n"
@@ -187,11 +217,8 @@ def test_local_config_reads_legacy_author_guard(tmp_path: Path) -> None:
         newline="\n",
     )
 
-    guards = read_local_config(tmp_path).author_guards
-
-    assert len(guards) == 1
-    assert guards[0]["kind"] == "issue"
-    assert guards[0]["ref"] == "demo#12"
+    with pytest.raises(LocalConfigError, match=r"\[\[author_guards\]\]"):
+        read_local_config(tmp_path)
 
 
 def test_missing_gitignore_entries_accepts_agent_runs_without_slash() -> None:

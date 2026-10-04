@@ -61,7 +61,7 @@ def _write_config(tmp_path: Path) -> None:
             "[worker]\n"
             "machine_id = 'machine'\n"
             "repo_id = 'target'\n"
-            "worker_id = 'worker'\n"
+            "worker_name = 'worker'\n"
         ),
         encoding="utf-8",
         newline="\n",

@@ -281,9 +281,9 @@ def test_health_tool_reports_config_and_local_state(
             "[worker]\n"
             "machine_id = 'machine'\n"
             "repo_id = 'demo'\n"
-            "worker_id = 'checkout'\n"
+            "worker_name = 'checkout'\n"
             "\n"
-            "[author_guard]\n"
+            "[[author_guards]]\n"
             "project = 'demo'\n"
             "kind = 'issue'\n"
             "id = '7'\n"
@@ -320,8 +320,36 @@ def test_health_tool_reports_config_and_local_state(
     assert status["worker_present"] is True
     assert status["worker"] == "checkout.demo"
     assert status["author_guard_active"] is True
-    assert status["author_guard"]["ref"] == "demo#7"
+    assert status["author_guards"][0]["ref"] == "demo#7"
+    assert "author_guard" not in status
     assert status["errors"] == []
+
+
+def test_health_reports_removed_legacy_author_guard_table(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "issuekit.local.toml").write_text(
+        '[author_guard]\nkind = "issue"\n',
+        encoding="utf-8",
+        newline="\n",
+    )
+    server = create_server(tmp_path)
+
+    status = _call(server, "health", {})
+
+    assert status["ok"] is False
+    assert any(
+        error.startswith(
+            "local_config: issuekit.local.toml uses the removed [author_guard] table."
+        )
+        for error in status["errors"]
+    )
+    assert any(
+        "Rename the header to [[author_guards]] (keys unchanged) to keep the guard"
+        in error
+        for error in status["errors"]
+    )
+    assert "author_guard" not in status
 
 
 def test_health_tool_reports_token_cache_miss_for_resolved_url(
@@ -440,7 +468,7 @@ def test_list_proposal_checks_tool_returns_raw_checks(
             "[worker]\n"
             "machine_id = 'machine'\n"
             "repo_id = 'demo'\n"
-            "worker_id = 'worker'\n"
+            "worker_name = 'worker'\n"
         ),
         encoding="utf-8",
         newline="\n",
@@ -849,7 +877,7 @@ def test_readdress_issue_tool_returns_directed_issue_to_pool(
             "[worker]\n"
             "machine_id = 'machine'\n"
             "repo_id = 'demo'\n"
-            "worker_id = 'operator'\n"
+            "worker_name = 'operator'\n"
         ),
     )
     server = create_server(tmp_path)

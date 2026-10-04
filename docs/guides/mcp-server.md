@@ -130,7 +130,7 @@ object has `ok`, `version`, `cwd`, `project`, `api_url_configured`,
 `api_url_source`, `api_url_trusted_by`, `api_url_origin`,
 `repo_config_source`, `machine_config_path`, `machine_config_status`,
 `env_present`, `token_cached`, `token_expires_at`,
-`worker_present`, `worker`, `author_guard_active`, `author_guard`, and `errors`.
+`worker_present`, `worker`, `author_guard_active`, `author_guards`, and `errors`.
 `api_url_origin` includes only the URL scheme, host, and port.
 `machine_config_status` is `missing`, `readable`, or
 `unreadable: <ExceptionClass>`. `env_present` maps selected `ISSUEKIT_*` names

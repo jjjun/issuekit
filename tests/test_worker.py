@@ -9,6 +9,7 @@ from issuekit.config.refs import add_ref
 from issuekit.workers.identity import (
     WorkerRegistrationError,
     canonicalize_remote_url,
+    load_local_worker,
     parse_repo_id_from_remote,
     register_worker,
     worker_key,
@@ -195,7 +196,7 @@ def test_config_reads_local_worker_without_unrelated_local_overrides(
             "issues_dir = \"committed/issues\"\n"
             "worker.machine_id = \"committed-machine\"\n"
             "worker.repo_id = \"committed-repo\"\n"
-            "worker.worker_id = \"committed-worker\"\n"
+            "worker.worker_name = \"committed-worker\"\n"
         ),
         encoding="utf-8",
         newline="\n",
@@ -207,7 +208,7 @@ def test_config_reads_local_worker_without_unrelated_local_overrides(
             "[worker]\n"
             "machine_id = \"local-machine\"\n"
             "repo_id = \"local-repo\"\n"
-            "worker_id = \"local-worker\"\n"
+            "worker_name = \"local-worker\"\n"
         ),
         encoding="utf-8",
         newline="\n",
@@ -230,7 +231,7 @@ def test_config_uses_worker_repo_id_as_project_when_project_unset(tmp_path: Path
             "[worker]\n"
             "machine_id = \"machine\"\n"
             "repo_id = \"local-repo\"\n"
-            "worker_id = \"checkout\"\n"
+            "worker_name = \"checkout\"\n"
         ),
         encoding="utf-8",
         newline="\n",
@@ -240,6 +241,39 @@ def test_config_uses_worker_repo_id_as_project_when_project_unset(tmp_path: Path
 
     assert config.project == "local-repo"
     assert config.worker == WorkerIdentity("machine", "local-repo", "checkout")
+
+
+def test_config_ignores_legacy_local_worker_id(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("ISSUEKIT_CONFIG", "")
+    (tmp_path / "issuekit.local.toml").write_text(
+        (
+            "[worker]\n"
+            'machine_id = "machine"\n'
+            'repo_id = "local-repo"\n'
+            'worker_id = "checkout"\n'
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    assert load_local_worker(tmp_path) is None
+    assert load_config(tmp_path).worker is None
+
+
+def test_config_ignores_legacy_repo_worker_id(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("ISSUEKIT_CONFIG", "")
+    (tmp_path / "pyproject.toml").write_text(
+        (
+            "[tool.issuekit]\n"
+            'worker.machine_id = "machine"\n'
+            'worker.repo_id = "repo"\n'
+            'worker.worker_id = "checkout"\n'
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    assert load_config(tmp_path).worker is None
 
 
 def test_worker_and_refs_share_local_config_without_clobbering(tmp_path: Path) -> None:

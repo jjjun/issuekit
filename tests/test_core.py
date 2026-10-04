@@ -29,3 +29,10 @@ def test_parse_issue_id_arg() -> None:
     assert core.parse_issue_id_arg("42") == 42
     with pytest.raises(ValueError, match="Invalid issue id: not-a-number"):
         core.parse_issue_id_arg("not-a-number")
+
+
+def test_worker_row_requires_worker_name() -> None:
+    row = {"repo_id": "repo", "worker_id": "legacy-checkout"}
+
+    assert core.worker_display_from_row(row) == "?.?"
+    assert core.worker_keys_from_row(row) == set()

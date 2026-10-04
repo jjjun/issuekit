@@ -47,7 +47,7 @@ def _worker(worker: str, last_seen: str | None) -> dict[str, object]:
     return {
         "machine_id": machine,
         "repo_id": repo,
-        "worker_id": wid,
+        "worker_name": wid,
         "last_seen": last_seen,
     }
 

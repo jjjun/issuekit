@@ -197,7 +197,7 @@ def _configure_registered_api(
             "[worker]\n"
             "machine_id = 'machine'\n"
             "repo_id = 'demo'\n"
-            "worker_id = 'checkout'\n"
+            "worker_name = 'checkout'\n"
         ),
         encoding="utf-8",
         newline="\n",
@@ -1544,7 +1544,7 @@ def test_serve_requires_api_url_for_registered_worker(
             "[worker]\n"
             "machine_id = 'machine'\n"
             "repo_id = 'demo'\n"
-            "worker_id = 'checkout'\n"
+            "worker_name = 'checkout'\n"
         ),
         encoding="utf-8",
         newline="\n",

@@ -10,7 +10,6 @@ from issuekit.config import api_url_origin, load_config, resolve_repository_root
 from issuekit.core import issue_dict
 from issuekit.guards.author import (
     STOP_SENTINEL,
-    guard_dict,
     guards_dict,
     read_author_guards,
     stop_message,
@@ -116,7 +115,6 @@ def run(args) -> int:
             }
             for proposal in incoming_proposals
         ],
-        "authorGuard": guard_dict(author_guards[0] if author_guards else None),
         "authorGuards": guards_dict(author_guards),
     }
 

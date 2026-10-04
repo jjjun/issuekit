@@ -181,7 +181,7 @@ def _configure_registered_api(tmp_path: Path, monkeypatch, client: FakeIssuekitC
             "[worker]\n"
             "machine_id = 'machine'\n"
             "repo_id = 'demo'\n"
-            "worker_id = 'reviewer'\n"
+            "worker_name = 'reviewer'\n"
         ),
         encoding="utf-8",
         newline="\n",

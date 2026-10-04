@@ -122,7 +122,7 @@ def load_local_worker(cwd: Path | str = ".") -> WorkerIdentity | None:
         return None
     machine_id = str(worker.get("machine_id", "")).strip()
     repo_id = str(worker.get("repo_id", "")).strip()
-    worker_id = str(worker.get("worker_name") or worker.get("worker_id") or "").strip()
+    worker_id = str(worker.get("worker_name") or "").strip()
     if not (machine_id and repo_id and worker_id):
         return None
     return WorkerIdentity(machine_id=machine_id, repo_id=repo_id, worker_id=worker_id)

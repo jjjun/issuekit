@@ -635,6 +635,11 @@ be addressed individually with the machine-qualified `worker.repo@machine` form
 issue/proposal namespace, so an explicitly configured `project` is not
 overwritten by a remote name or `--repo-id`.
 
+The registered worker name is stored as `worker_name` in `issuekit.local.toml`.
+If an older local file has `worker_id` but no `worker_name`, issuekit treats the
+checkout as unregistered. Run `issuekit add` to register it and write the current
+key.
+
 A repo can advertise its role so agents in other projects recognize peers when
 choosing proposal or negotiation targets. Set `repo_description` (max 500
 chars), `repo_metadata`, `worker_metadata`, `worker_role` (max 80 chars), and

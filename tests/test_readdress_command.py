@@ -26,7 +26,7 @@ def _configure_api(
             "[worker]\n"
             "machine_id = 'machine'\n"
             "repo_id = 'issuekit'\n"
-            "worker_id = 'operator'\n"
+            "worker_name = 'operator'\n"
         ),
         encoding="utf-8",
         newline="\n",

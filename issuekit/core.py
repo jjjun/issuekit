@@ -244,7 +244,7 @@ def _worker_key_parts_match(
 
 
 def _worker_name(row: Mapping[str, object]) -> str:
-    return _string(row.get("worker_name") or row.get("worker_id"))
+    return _string(row.get("worker_name"))
 
 
 def _string(value: object) -> str:

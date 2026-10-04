@@ -1349,7 +1349,7 @@ def test_client_list_workers_parses_array_and_sends_filters() -> None:
         {
             "machine_id": "machine",
             "repo_id": "mine-py",
-            "worker_id": "checkout",
+            "worker_name": "checkout",
             "path": "/repo",
             "role": "api-server",
             "description": "Hosts the API.",
@@ -1374,7 +1374,7 @@ def test_client_list_workers_parses_array_and_sends_filters() -> None:
 
 
 def test_client_list_workers_parses_paginated_items_envelope() -> None:
-    rows = [{"machine_id": "m", "repo_id": "r", "worker_id": "w"}]
+    rows = [{"machine_id": "m", "repo_id": "r", "worker_name": "w"}]
 
     def handler(request: httpx.Request) -> httpx.Response:
         assert dict(request.url.params) == {}

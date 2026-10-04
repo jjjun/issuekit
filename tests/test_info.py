@@ -161,6 +161,8 @@ def test_info_json_output(tmp_path: Path, monkeypatch, capsys) -> None:
     assert payload["activeIssues"][0]["ref"] == "demo#1"
     assert payload["activeIssues"][0]["stage"] is None
     assert payload["incomingProposals"] == []
+    assert "authorGuard" not in payload
+    assert payload["authorGuards"] == []
     assert payload["defaultReviewer"] == "auto"
     assert payload["configuredDefaultImplementer"] is None
     assert payload["defaultImplementer"] is None
@@ -443,7 +445,7 @@ def test_info_reports_pending_proposal_check_count(
     )
     _configure_api(tmp_path, monkeypatch, client)
     (tmp_path / "issuekit.local.toml").write_text(
-        "[worker]\nmachine_id = 'machine'\nrepo_id = 'demo'\nworker_id = 'worker'\n",
+        "[worker]\nmachine_id = 'machine'\nrepo_id = 'demo'\nworker_name = 'worker'\n",
         encoding="utf-8",
         newline="\n",
     )
@@ -645,3 +647,8 @@ def test_info_surfaces_author_guard(tmp_path: Path, monkeypatch, capsys) -> None
     text = capsys.readouterr().out
 
     assert "Author guard: STOP_NOW issue demo#7" in text
+
+    cli.main(["info", "--json"])
+    payload = json.loads(capsys.readouterr().out)
+    assert "authorGuard" not in payload
+    assert [guard["ref"] for guard in payload["authorGuards"]] == ["demo#7"]

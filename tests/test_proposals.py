@@ -73,6 +73,7 @@ def test_api_cli_propose_posts_expected_body_and_dedupes(
     assert first["deduplicated"] is False
     assert "Proposal target#1 sent to target." in first["stop"]
     assert "STOP_NOW" not in first["stop"]
+    assert first["authorGuard"]["kind"] == "proposal"
     guard = read_author_guards(tmp_path)[0]
     assert guard.kind == "proposal"
     assert guard.project == "source"
@@ -413,7 +414,7 @@ def test_api_cli_propose_allows_registered_target_with_repo_id_mismatch(
             "[worker]\n"
             "machine_id = \"machine\"\n"
             "repo_id = \"physical-repo\"\n"
-            "worker_id = \"checkout\"\n"
+            "worker_name = \"checkout\"\n"
         ),
         encoding="utf-8",
         newline="\n",
@@ -458,7 +459,7 @@ def test_api_cli_propose_accepts_worker_project_catalog(
                 {
                     "machine_id": "machine",
                     "repo_id": "physical-repo",
-                    "worker_id": "checkout",
+                    "worker_name": "checkout",
                     "project": "registered-target",
                 }
             ]

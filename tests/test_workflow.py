@@ -432,7 +432,7 @@ def test_author_guard_blocks_claim_in_same_checkout(tmp_path, monkeypatch) -> No
     assert issue.id == 1
 
 
-def test_legacy_author_guard_table_still_blocks_claim(tmp_path, monkeypatch) -> None:
+def test_legacy_author_guard_table_refuses_claim(tmp_path, monkeypatch) -> None:
     client = FakeIssuekitClient([api_issue(1, "Ready", author="claude")])
     config = _config(client, monkeypatch)
     (tmp_path / "issuekit.local.toml").write_text(
@@ -451,7 +451,7 @@ def test_legacy_author_guard_table_still_blocks_claim(tmp_path, monkeypatch) -> 
         newline="\n",
     )
 
-    with pytest.raises(WorkflowError, match="STOP_NOW"):
+    with pytest.raises(WorkflowError, match=r"removed \[author_guard\] table"):
         claim_issue(1, "codex", config=config, cwd=tmp_path)
 
     assert client.calls == []

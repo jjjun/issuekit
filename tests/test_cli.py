@@ -171,8 +171,27 @@ def test_author_guard_bare_command_accepts_json(
     captured = capsys.readouterr()
 
     assert exit_code == 0
-    assert json.loads(captured.out) == {"authorGuard": None, "authorGuards": []}
+    assert json.loads(captured.out) == {"authorGuards": []}
     assert captured.err == ""
+
+
+def test_author_guard_check_rejects_legacy_table_without_traceback(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "issuekit.local.toml").write_text(
+        '[author_guard]\nkind = "issue"\n',
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    assert cli.main(["author-guard", "check"]) == 1
+    captured = capsys.readouterr()
+    assert "issuekit.local.toml uses the removed [author_guard] table." in captured.err
+    assert "Rename the header to [[author_guards]]" in captured.err
+    assert "Traceback" not in captured.out + captured.err
 
 
 @pytest.mark.parametrize(
@@ -297,6 +316,17 @@ def test_author_guard_show_check_and_clear_cover_all_guards(
     assert cli.main(["author-guard", "show", "--json"]) == 0
     shown = json.loads(capsys.readouterr().out)
     assert [guard["ref"] for guard in shown["authorGuards"]] == ["demo#1", "other#2"]
+    assert "authorGuard" not in shown
+
+    assert cli.main(["author-guard", "check", "--json"]) == 1
+    blocking = json.loads(capsys.readouterr().out)
+    assert blocking["ok"] is False
+    assert blocking["blocking"] is True
+    assert "authorGuard" not in blocking
+    assert [guard["ref"] for guard in blocking["authorGuards"]] == [
+        "demo#1",
+        "other#2",
+    ]
 
     assert cli.main(["author-guard", "clear", "--ref", "demo#1"]) == 0
     capsys.readouterr()
@@ -304,12 +334,17 @@ def test_author_guard_show_check_and_clear_cover_all_guards(
     checked = json.loads(capsys.readouterr().out)
     assert checked["ok"] is True
     assert checked["blocking"] is False
+    assert "authorGuard" not in checked
     assert [guard["kind"] for guard in checked["authorGuards"]] == ["proposal"]
 
-    assert cli.main(["author-guard", "clear"]) == 0
-    capsys.readouterr()
+    assert cli.main(["author-guard", "clear", "--json"]) == 0
+    cleared = json.loads(capsys.readouterr().out)
+    assert cleared["cleared"] is True
+    assert "authorGuard" not in cleared
     assert cli.main(["author-guard", "show", "--json"]) == 0
-    assert json.loads(capsys.readouterr().out)["authorGuards"] == []
+    empty = json.loads(capsys.readouterr().out)
+    assert empty["authorGuards"] == []
+    assert "authorGuard" not in empty
 
 
 def test_author_guard_help_lists_separation_guards(capsys: pytest.CaptureFixture[str]) -> None:

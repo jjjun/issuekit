@@ -849,7 +849,6 @@ async def _health_status(root: Path, ctx: Context | None = None) -> dict[str, An
         "worker_present": False,
         "worker": None,
         "author_guard_active": False,
-        "author_guard": None,
         "author_guards": [],
         "errors": [],
     }
@@ -862,7 +861,6 @@ async def _health_status(root: Path, ctx: Context | None = None) -> dict[str, An
     if local_config is not None:
         if local_config.author_guards:
             payload["author_guard_active"] = True
-            payload["author_guard"] = dict(local_config.author_guards[0])
             payload["author_guards"] = [dict(guard) for guard in local_config.author_guards]
 
     try:

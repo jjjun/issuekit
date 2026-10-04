@@ -1188,9 +1188,7 @@ def _load_worker(raw: object) -> WorkerIdentity | None:
         return None
     machine_id = _required_worker_value(raw, "machine_id")
     repo_id = _required_worker_value(raw, "repo_id")
-    worker_id = _required_worker_value(raw, "worker_name") or _required_worker_value(
-        raw, "worker_id"
-    )
+    worker_id = _required_worker_value(raw, "worker_name")
     if not (machine_id and repo_id and worker_id):
         return None
     return WorkerIdentity(machine_id=machine_id, repo_id=repo_id, worker_id=worker_id)

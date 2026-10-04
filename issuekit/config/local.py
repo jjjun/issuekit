@@ -60,6 +60,12 @@ def read_local_config(cwd: Path | str = ".") -> LocalConfig:
             author_guards=(),
         )
     data = load_toml(path)
+    if "author_guard" in data:
+        raise LocalConfigError(
+            "issuekit.local.toml uses the removed [author_guard] table. Rename the "
+            "header to [[author_guards]] (keys unchanged) to keep the guard, or delete "
+            "the table if the authored issue was already handed off."
+        )
     refs = data.get("refs", {})
     if not isinstance(refs, dict):
         raise LocalConfigError(f"{LOCAL_CONFIG_NAME} must contain a [refs] table.")
@@ -160,8 +166,6 @@ def _local_config_text(
         lines.append("[worker]")
         for key in ("machine_id", "repo_id", "worker_name"):
             value = worker.get(key)
-            if key == "worker_name" and value is None:
-                value = worker.get("worker_id")
             if value is not None:
                 lines.append(f"{key} = {toml_basic_string(str(value))}")
         lines.append("")
@@ -190,28 +194,13 @@ def _local_config_text(
 
 def _worker_table(data: dict[str, object]) -> dict[str, object] | None:
     worker = data.get("worker")
-    if isinstance(worker, dict):
-        return worker
-    tool = data.get("tool")
-    if not isinstance(tool, dict):
-        return None
-    issuekit = tool.get("issuekit")
-    if not isinstance(issuekit, dict):
-        return None
-    worker = issuekit.get("worker")
     return worker if isinstance(worker, dict) else None
 
 
 def _disabled_agents(data: dict[str, object]) -> tuple[str, ...] | None:
     if "disabled_agents" in data:
         return _string_tuple(data["disabled_agents"])
-    tool = data.get("tool")
-    if not isinstance(tool, dict):
-        return None
-    issuekit = tool.get("issuekit")
-    if not isinstance(issuekit, dict) or "disabled_agents" not in issuekit:
-        return None
-    return _string_tuple(issuekit["disabled_agents"])
+    return None
 
 
 def _string_tuple(value: object) -> tuple[str, ...]:
@@ -221,11 +210,7 @@ def _string_tuple(value: object) -> tuple[str, ...]:
 
 
 def _author_guard_tables(data: dict[str, object]) -> tuple[dict[str, object], ...]:
-    guards: list[dict[str, object]] = []
-    legacy_guard = data.get("author_guard")
-    if isinstance(legacy_guard, dict):
-        guards.append(legacy_guard)
     author_guards = data.get("author_guards", [])
     if isinstance(author_guards, list):
-        guards.extend(guard for guard in author_guards if isinstance(guard, dict))
-    return tuple(guards)
+        return tuple(guard for guard in author_guards if isinstance(guard, dict))
+    return ()
