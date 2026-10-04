@@ -619,6 +619,48 @@ def test_app_server_runner_fails_fast_when_server_exits_mid_turn(
     assert "fake server exploded" in str(exc_info.value)
 
 
+def test_retry_once_retries_request_failed_once() -> None:
+    retry_calls = 0
+
+    def retry_then_succeed() -> str:
+        nonlocal retry_calls
+        retry_calls += 1
+        if retry_calls == 1:
+            raise WorkflowError("temporary failure", code="request_failed")
+        return "succeeded"
+
+    assert app_server_runtime._retry_once(retry_then_succeed) == "succeeded"
+    assert retry_calls == 2
+
+    non_retryable = WorkflowError("not found", code="not_found")
+    non_retryable_calls = 0
+
+    def fail_without_retry() -> None:
+        nonlocal non_retryable_calls
+        non_retryable_calls += 1
+        raise non_retryable
+
+    with pytest.raises(WorkflowError) as exc_info:
+        app_server_runtime._retry_once(fail_without_retry)
+    assert exc_info.value is non_retryable
+    assert non_retryable_calls == 1
+
+    retry_failure = WorkflowError("retry also failed", code="request_failed")
+    retry_failure_calls = 0
+
+    def retry_then_fail() -> None:
+        nonlocal retry_failure_calls
+        retry_failure_calls += 1
+        if retry_failure_calls == 1:
+            raise WorkflowError("temporary failure", code="request_failed")
+        raise retry_failure
+
+    with pytest.raises(WorkflowError) as exc_info:
+        app_server_runtime._retry_once(retry_then_fail)
+    assert exc_info.value is retry_failure
+    assert retry_failure_calls == 2
+
+
 def test_app_server_runner_retries_one_transient_heartbeat_failure() -> None:
     class RetryStop:
         waits = 0
