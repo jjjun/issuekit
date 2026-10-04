@@ -1,7 +1,5 @@
 import json
 import subprocess
-import threading
-import time
 from pathlib import Path
 
 import pytest
@@ -1421,10 +1419,11 @@ def test_api_cli_outgoing_lists_own_proposals(
 ) -> None:
     client = FakeIssuekitClient(
         proposals=[
-            {"id": 1, "origin": "source#1@abc", "title": "Mine pending", "body": "b", "status": "pending"},
-            {"id": 2, "origin": "other#1@abc", "title": "Not mine", "body": "b", "status": "pending"},
+            {"id": 1, "target_project": "target", "origin": "source#1@abc", "title": "Mine pending", "body": "b", "status": "pending"},
+            {"id": 2, "target_project": "target", "origin": "other#1@abc", "title": "Not mine", "body": "b", "status": "pending"},
             {
                 "id": 3,
+                "target_project": "target",
                 "origin": "source#2@abc",
                 "title": "Mine adopted",
                 "body": "b",
@@ -1448,6 +1447,12 @@ def test_api_cli_outgoing_lists_own_proposals(
     monkeypatch.chdir(tmp_path)
     client.register_catalog_project("target")
 
+    def fail_if_called(*_args, **_kwargs):
+        pytest.fail("outgoing fetched proposal enrichment separately")
+
+    monkeypatch.setattr(client, "get_issue", fail_if_called)
+    monkeypatch.setattr(client, "list_proposal_checks_for_proposal", fail_if_called)
+
     assert cli.main(["outgoing", "--to", "target", "--json"]) == 0
     outgoing = json.loads(capsys.readouterr().out)
     assert [proposal["id"] for proposal in outgoing] == [1, 3]
@@ -1456,6 +1461,9 @@ def test_api_cli_outgoing_lists_own_proposals(
     assert outgoing[1]["adopted_issue_status"] is None
     assert outgoing[1]["adopted_issue_stage"] is None
     assert created_projects == ["target"]
+    assert [
+        call["method"] for call in client.calls if call["method"] == "list_proposals_board"
+    ] == ["list_proposals_board"]
 
     assert cli.main(["outgoing", "--to", "target", "--status", "adopted", "--json"]) == 0
     adopted = json.loads(capsys.readouterr().out)
@@ -1484,6 +1492,7 @@ def test_api_cli_outgoing_includes_adopted_issue_state(
         proposals=[
             {
                 "id": 3,
+                "target_project": "target",
                 "origin": "source#2@abc",
                 "title": "Mine adopted",
                 "body": "b",
@@ -1500,6 +1509,12 @@ def test_api_cli_outgoing_includes_adopted_issue_state(
     fake_api.install_client(client)
     monkeypatch.chdir(tmp_path)
     client.register_catalog_project("target")
+
+    def fail_if_called(*_args, **_kwargs):
+        pytest.fail("outgoing fetched proposal enrichment separately")
+
+    monkeypatch.setattr(client, "get_issue", fail_if_called)
+    monkeypatch.setattr(client, "list_proposal_checks_for_proposal", fail_if_called)
 
     assert cli.main(["outgoing", "--to", "target", "--json"]) == 0
 
@@ -1518,6 +1533,7 @@ def test_api_cli_outgoing_includes_pending_check_wait_time(
         proposals=[
             {
                 "id": 3,
+                "target_project": "target",
                 "origin": "source#2@abc",
                 "title": "Mine pending",
                 "body": "b",
@@ -1550,13 +1566,14 @@ def test_api_cli_outgoing_includes_pending_check_wait_time(
     assert "check=#1 status=pending" in capsys.readouterr().out
 
 
-def test_list_outgoing_proposals_reuses_client_and_preserves_order(
+def test_list_outgoing_proposals_uses_embedded_data_in_one_board_request(
     fake_api,
     monkeypatch,
 ) -> None:
     proposals = [
         {
             "id": proposal_id,
+            "target_project": "target",
             "origin": f"source#{proposal_id}@abc",
             "title": f"Proposal {proposal_id}",
             "body": "Body.",
@@ -1574,6 +1591,7 @@ def test_list_outgoing_proposals_reuses_client_and_preserves_order(
     proposals.append(
         {
             "id": 13,
+            "target_project": "target",
             "origin": "another-source#13@abc",
             "title": "Foreign proposal",
             "body": "Body.",
@@ -1592,6 +1610,12 @@ def test_list_outgoing_proposals_reuses_client_and_preserves_order(
             project="target",
         )
         client._proposal_checks[check["id"]]["created_at"] = "2026-07-30T00:00:00Z"
+    expected_outgoing = client.list_proposals_board(
+        projects=["target"],
+        statuses=["pending", "adopted", "discarded"],
+        origin_project="source",
+    )
+    client.calls.clear()
 
     created_projects: list[str] = []
 
@@ -1600,31 +1624,20 @@ def test_list_outgoing_proposals_reuses_client_and_preserves_order(
         return client
 
     fake_api.install_factory(fake_client)
-    lock = threading.Lock()
-    active = 0
-    maximum_active = 0
-    worker_threads: set[int] = set()
-    original_list_checks = client.list_proposal_checks_for_proposal
 
-    def delayed_list_checks(proposal_id: int, *args, **kwargs):
-        nonlocal active, maximum_active
-        with lock:
-            active += 1
-            maximum_active = max(maximum_active, active)
-            worker_threads.add(threading.get_ident())
-        try:
-            time.sleep((13 - proposal_id) * 0.002)
-            return original_list_checks(proposal_id, *args, **kwargs)
-        finally:
-            with lock:
-                active -= 1
+    def fail_if_called(*_args, **_kwargs):
+        pytest.fail("outgoing fetched proposal enrichment separately")
 
-    monkeypatch.setattr(client, "list_proposal_checks_for_proposal", delayed_list_checks)
+    monkeypatch.setattr(client, "get_issue", fail_if_called)
+    monkeypatch.setattr(client, "list_proposal_checks_for_proposal", fail_if_called)
     config = IssuekitConfig(api_url="https://mine.example", project="source")
 
     outgoing = proposals_outgoing.list_outgoing_proposals(config, to="target")
 
     assert created_projects == ["target"]
+    assert [
+        call["method"] for call in client.calls if call["method"] == "list_proposals_board"
+    ] == ["list_proposals_board"]
     assert [proposal["id"] for proposal in outgoing] == list(range(1, 13))
     assert [proposal["status"] for proposal in outgoing] == [
         "pending",
@@ -1642,18 +1655,18 @@ def test_list_outgoing_proposals_reuses_client_and_preserves_order(
     ]
     assert [
         {
-            key: value
-            for key, value in proposal.items()
-            if key not in {"adopted_issue_status", "adopted_issue_stage", "proposal_checks"}
+            **proposal,
+            "proposal_checks": [
+                {key: value for key, value in check.items() if key != "waiting_seconds"}
+                for check in proposal["proposal_checks"]
+            ],
         }
         for proposal in outgoing
-    ] == [client._proposals[proposal_id] for proposal_id in range(1, 13)]
+    ] == expected_outgoing
     assert outgoing[4]["adopted_issue_status"] == "completed"
     assert outgoing[4]["adopted_issue_stage"] == "done"
     assert outgoing[0]["proposal_checks"][0]["waiting_seconds"] > 0
     assert outgoing[1]["proposal_checks"][0]["waiting_seconds"] > 0
-    assert 1 < maximum_active <= 4
-    assert len(worker_threads) > 1
 
 
 def test_api_cli_outgoing_rejects_foreign_and_invalid_lookups(

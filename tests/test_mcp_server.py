@@ -2431,10 +2431,11 @@ def test_mcp_propose_rejects_non_ascii_body(fake_api, tmp_path: Path, monkeypatc
 def test_mcp_list_outgoing_scopes_to_own_origin(fake_api, tmp_path: Path, monkeypatch) -> None:
     client = FakeIssuekitClient(
         proposals=[
-            {"id": 1, "origin": "target#1@abc", "title": "Mine", "body": "b", "status": "pending"},
-            {"id": 2, "origin": "other#1@abc", "title": "Not mine", "body": "b", "status": "pending"},
+            {"id": 1, "target_project": "other_project", "origin": "target#1@abc", "title": "Mine", "body": "b", "status": "pending"},
+            {"id": 2, "target_project": "other_project", "origin": "other#1@abc", "title": "Not mine", "body": "b", "status": "pending"},
             {
                 "id": 3,
+                "target_project": "other_project",
                 "origin": "target#2@abc",
                 "title": "Mine adopted",
                 "body": "b",

@@ -68,6 +68,29 @@ class ProposalResourceMixin:
             )
         )
 
+    def list_proposals_board(
+        self,
+        *,
+        projects: Sequence[str] | None = None,
+        statuses: Sequence[str] | None = None,
+        origin_project: str | None = None,
+        page_size: int = 500,
+    ) -> list[JsonDict]:
+        return list(
+            self._paginate(
+                "/api/issues/proposals/board",
+                collection=None,
+                params={
+                    "projects": projects,
+                    "status": statuses,
+                    "origin_project": origin_project,
+                },
+                page_label="Proposal board response",
+                item_label="Proposal response",
+                page_size=page_size,
+            )
+        )
+
     def reply_proposal(
         self,
         proposal_id: int,

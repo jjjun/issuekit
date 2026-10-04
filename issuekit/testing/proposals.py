@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from copy import deepcopy
 from datetime import date
 from typing import Any
@@ -59,7 +60,7 @@ class FakeProposalSurface:
                     if proposal.get("origin") == origin and proposal.get("status") == "pending":
                         existing = deepcopy(proposal)
                         existing["was_created"] = False
-                        return existing
+                        return self._proposal_response(existing)
             if has_thread_fields and thread_id is None:
                 request["thread_id"] = self._allocate_thread()["id"]
             elif thread_id is not None:
@@ -67,7 +68,7 @@ class FakeProposalSurface:
                 self._ensure_unique_thread_origin(thread_id, origin)
             created = deepcopy(self._store_proposal(request, allocate=True))
             created["was_created"] = True
-            return created
+            return self._proposal_response(created)
 
     def list_proposals(
         self,
@@ -107,13 +108,54 @@ class FakeProposalSurface:
                 if (status or "pending") == proposal.get("status")
                 and (thread_id is None or proposal.get("thread_id") == thread_id)
             ]
-            items = deepcopy(filtered[offset : offset + limit])
+            items = [
+                self._proposal_response(proposal)
+                for proposal in filtered[offset : offset + limit]
+            ]
             return {
                 "items": items,
                 "total": len(filtered),
                 "limit": limit,
                 "offset": offset,
             }
+
+    def list_proposals_board(
+        self,
+        *,
+        projects: Sequence[str] | None = None,
+        statuses: Sequence[str] | None = None,
+        origin_project: str | None = None,
+        page_size: int = 500,
+    ) -> list[JsonDict]:
+        if page_size <= 0:
+            raise ValueError("page_size must be greater than zero")
+        selected_statuses = set(statuses) if statuses is not None else {"pending"}
+        selected_projects = set(projects) if projects is not None else None
+        with self._lock:
+            self._record(
+                "list_proposals_board",
+                body={
+                    "projects": list(projects) if projects is not None else None,
+                    "statuses": list(statuses) if statuses is not None else None,
+                    "origin_project": origin_project,
+                    "page_size": page_size,
+                },
+            )
+            proposals = [
+                proposal
+                for proposal in sorted(self._proposals.values(), key=lambda item: int(item["id"]))
+                if proposal.get("status") in selected_statuses
+                and (
+                    selected_projects is None
+                    or proposal.get("target_project") in selected_projects
+                )
+                and (
+                    origin_project is None
+                    or str(proposal.get("origin", "")).partition("#")[0]
+                    == origin_project
+                )
+            ]
+            return [self._proposal_response(proposal) for proposal in proposals]
 
     def reply_proposal(
         self,
@@ -152,7 +194,7 @@ class FakeProposalSurface:
             self._ensure_unique_thread_origin(thread_id, origin)
             request["thread_id"] = thread_id
             request["reply_to"] = str(proposal_id)
-            return deepcopy(self._store_proposal(request, allocate=True))
+            return self._proposal_response(self._store_proposal(request, allocate=True))
 
     def get_thread(self, thread_id: int) -> JsonDict:
         with self._lock:
@@ -162,7 +204,7 @@ class FakeProposalSurface:
                 for proposal in sorted(self._proposals.values(), key=lambda item: int(item["id"]))
                 if proposal.get("thread_id") == thread_id
             ]
-            thread["items"] = deepcopy(items)
+            thread["items"] = [self._proposal_response(proposal) for proposal in items]
             thread["total"] = len(items)
             thread["limit"] = len(items)
             thread["offset"] = 0
@@ -263,7 +305,7 @@ class FakeProposalSurface:
 
     def get_proposal(self, proposal_id: int) -> JsonDict:
         with self._lock:
-            return deepcopy(self._find_proposal(proposal_id))
+            return self._proposal_response(self._find_proposal(proposal_id))
 
     def adopt_proposal(self, proposal_id: int, *, priority: str | None = None) -> JsonDict:
         with self._lock:
@@ -305,13 +347,55 @@ class FakeProposalSurface:
                 )
             proposal["status"] = "discarded"
             proposal["updated"] = date.today().isoformat()
-            return deepcopy(proposal)
+            return self._proposal_response(proposal)
 
     def _find_proposal(self, proposal_id: int) -> JsonDict:
         proposal = self._proposals.get(proposal_id)
         if proposal is None:
             raise WorkflowError(f"Proposal #{proposal_id} was not found.", code="not_found")
         return proposal
+
+    def _proposal_response(self, proposal: JsonDict) -> JsonDict:
+        response = deepcopy(proposal)
+        adopted_issue_number = proposal.get("adopted_issue_number")
+        adopted_issue = None
+        if proposal.get("status") == "adopted" and adopted_issue_number is not None:
+            try:
+                adopted_issue = self._issues.get(int(adopted_issue_number))
+            except (TypeError, ValueError):
+                pass
+        response["adopted_issue_status"] = (
+            adopted_issue.get("status") if adopted_issue is not None else None
+        )
+        response["adopted_issue_stage"] = (
+            adopted_issue.get("stage") if adopted_issue is not None else None
+        )
+        proposal_id = int(proposal["id"])
+        response["proposal_checks"] = [
+            {
+                key: check.get(key)
+                for key in (
+                    "id",
+                    "target_project",
+                    "proposal_id",
+                    "target_worker",
+                    "claimed_worker",
+                    "claimed_at",
+                    "status",
+                    "verdict",
+                    "comment",
+                    "adopted_issue_ref",
+                    "answered_at",
+                    "created_at",
+                    "updated_at",
+                )
+            }
+            for check in sorted(
+                self._proposal_checks.values(), key=lambda item: int(item["id"])
+            )
+            if int(check.get("proposal_id", 0)) == proposal_id
+        ]
+        return response
 
 
     def _find_thread(self, thread_id: int) -> JsonDict:

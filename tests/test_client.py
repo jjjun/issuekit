@@ -1738,6 +1738,65 @@ def test_client_list_proposals_pages_wrapped_response() -> None:
     assert seen_pages == [(2, 0, "pending", "8"), (2, 2, "pending", "8"), (2, 4, "pending", "8")]
 
 
+def test_client_list_proposals_board_uses_repeated_filters_and_paginates() -> None:
+    proposals = [{"id": proposal_id, "status": "adopted"} for proposal_id in range(1, 4)]
+    seen_pages: list[tuple[str, int, int, list[str], list[str], str]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        limit = int(request.url.params["limit"])
+        offset = int(request.url.params["offset"])
+        seen_pages.append(
+            (
+                request.url.path,
+                limit,
+                offset,
+                request.url.params.get_list("projects"),
+                request.url.params.get_list("status"),
+                request.url.params["origin_project"],
+            )
+        )
+        return httpx.Response(
+            200,
+            json={
+                "items": proposals[offset : offset + limit],
+                "total": len(proposals),
+                "limit": limit,
+                "offset": offset,
+            },
+        )
+
+    client = IssuekitClient(
+        "https://mine.example",
+        token="static-token",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    assert client.list_proposals_board(
+        projects=["target"],
+        statuses=["pending", "adopted", "discarded"],
+        origin_project="source",
+        page_size=2,
+    ) == proposals
+    assert seen_pages == [
+        (
+            "/api/issues/proposals/board",
+            2,
+            0,
+            ["target"],
+            ["pending", "adopted", "discarded"],
+            "source",
+        ),
+        (
+            "/api/issues/proposals/board",
+            2,
+            2,
+            ["target"],
+            ["pending", "adopted", "discarded"],
+            "source",
+        ),
+    ]
+
+
 def test_client_proposal_thread_methods_use_expected_paths() -> None:
     seen: list[tuple[str, str, object]] = []
     threads = [{"id": thread_id, "status": "negotiating"} for thread_id in range(1, 5)]
