@@ -4,38 +4,13 @@ from pathlib import Path
 import pytest
 
 from issuekit import cli
-from issuekit import store as store_module
 from issuekit.testing import FakeIssuekitClient
+from tests.api_helpers import configure_api
 from tests.issue_helpers import api_issue
 
 
-def _configure_api(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    client: FakeIssuekitClient,
-    *,
-    project: str = "issuekit",
-) -> None:
-    (tmp_path / "issuekit.toml").write_text(
-        f"api_url = 'https://mine.example'\nproject = '{project}'\n",
-        encoding="utf-8",
-        newline="\n",
-    )
-    (tmp_path / "issuekit.local.toml").write_text(
-        (
-            "[worker]\n"
-            "machine_id = 'machine'\n"
-            "repo_id = 'issuekit'\n"
-            "worker_name = 'operator'\n"
-        ),
-        encoding="utf-8",
-        newline="\n",
-    )
-    monkeypatch.setattr(store_module, "IssuekitClient", lambda *a, **k: client)
-    monkeypatch.chdir(tmp_path)
-
-
 def test_readdress_returns_directed_issue_to_repo_pool(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -43,7 +18,7 @@ def test_readdress_returns_directed_issue_to_repo_pool(
     client = FakeIssuekitClient(
         [api_issue(5, "Directed", target_worker="checkout.issuekit")]
     )
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client, project="issuekit", worker=True)
 
     assert cli.main(["readdress", "5", "--reason", "stale directed checkout", "--json"]) == 0
 
@@ -69,6 +44,7 @@ def test_readdress_returns_directed_issue_to_repo_pool(
 
 
 def test_readdress_rejects_non_ascii_reason(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -76,7 +52,7 @@ def test_readdress_rejects_non_ascii_reason(
     client = FakeIssuekitClient(
         [api_issue(5, "Directed", target_worker="checkout.issuekit")]
     )
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client, project="issuekit", worker=True)
 
     assert cli.main(["readdress", "5", "--reason", "stale \u2603"]) == 1
 

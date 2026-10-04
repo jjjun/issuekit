@@ -10,7 +10,6 @@ from pathlib import Path
 
 import pytest
 
-import issuekit.proposals.api as proposals_api
 from issuekit import cli
 from issuekit.agentrun import AgentPrompt, AgentResult
 from issuekit.agents import proposal_check
@@ -84,7 +83,7 @@ def _init_git_repo(path: Path) -> None:
         assert result.returncode == 0
 
 
-def _setup(monkeypatch, tmp_path: Path, *, output: str):
+def _setup(fake_api, monkeypatch, tmp_path: Path, *, output: str):
     _write_config(tmp_path)
     _init_git_repo(tmp_path)
     client = FakeIssuekitClient(
@@ -104,7 +103,7 @@ def _setup(monkeypatch, tmp_path: Path, *, output: str):
     )
     client.calls.clear()
     runner = FakeRunner([output])
-    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *a, **k: client)
+    fake_api.install_client(client)
     monkeypatch.setattr(proposal_check, "resolve_adapter", lambda *a, **k: object())
     monkeypatch.chdir(tmp_path)
     return client, runner, load_config(tmp_path)
@@ -128,8 +127,9 @@ def test_proposal_checks_rejects_unknown_agent_without_traceback(
     assert "Traceback" not in captured
 
 
-def test_proposal_check_forwards_model_to_adapter(monkeypatch, tmp_path) -> None:
+def test_proposal_check_forwards_model_to_adapter(fake_api, monkeypatch, tmp_path) -> None:
     _client, runner, config = _setup(
+        fake_api,
         monkeypatch,
         tmp_path,
         output=_check_block(verdict="reject", comment="Out of scope."),
@@ -153,8 +153,9 @@ def test_proposal_check_forwards_model_to_adapter(monkeypatch, tmp_path) -> None
     assert seen["model"] == "gpt-5.6"
 
 
-def test_proposal_check_uses_triage_role_overlay(monkeypatch, tmp_path) -> None:
+def test_proposal_check_uses_triage_role_overlay(fake_api, monkeypatch, tmp_path) -> None:
     _client, runner, config = _setup(
+        fake_api,
         monkeypatch,
         tmp_path,
         output=_check_block(verdict="reject", comment="Out of scope."),
@@ -217,8 +218,9 @@ def test_proposal_check_uses_triage_role_overlay(monkeypatch, tmp_path) -> None:
     ]
 
 
-def test_proposal_check_approve_adopts_and_posts_issue_ref(monkeypatch, tmp_path) -> None:
+def test_proposal_check_approve_adopts_and_posts_issue_ref(fake_api, monkeypatch, tmp_path) -> None:
     client, runner, config = _setup(
+        fake_api,
         monkeypatch,
         tmp_path,
         output=_check_block(
@@ -266,10 +268,12 @@ def test_proposal_check_approve_adopts_and_posts_issue_ref(monkeypatch, tmp_path
 
 
 def test_proposal_check_target_project_mismatch_skips_evaluation_and_adoption(
+    fake_api,
     monkeypatch,
     tmp_path: Path,
 ) -> None:
     client, runner, config = _setup(
+        fake_api,
         monkeypatch,
         tmp_path,
         output=_check_block(verdict="approve", comment="Looks good."),
@@ -293,8 +297,9 @@ def test_proposal_check_target_project_mismatch_skips_evaluation_and_adoption(
     )
 
 
-def test_proposal_check_approval_skips_hold_when_disabled(monkeypatch, tmp_path) -> None:
+def test_proposal_check_approval_skips_hold_when_disabled(fake_api, monkeypatch, tmp_path) -> None:
     client, runner, config = _setup(
+        fake_api,
         monkeypatch,
         tmp_path,
         output=_check_block(verdict="approve", comment="Feasible."),
@@ -317,11 +322,13 @@ def test_proposal_check_approval_skips_hold_when_disabled(monkeypatch, tmp_path)
 
 
 def test_proposal_check_command_exits_one_when_adopted_issue_hold_fails(
+    fake_api,
     monkeypatch,
     tmp_path: Path,
     capsys,
 ) -> None:
     client, runner, _config = _setup(
+        fake_api,
         monkeypatch,
         tmp_path,
         output=_check_block(verdict="approve", comment="Feasible."),
@@ -347,10 +354,12 @@ def test_proposal_check_command_exits_one_when_adopted_issue_hold_fails(
 
 
 def test_proposal_check_retries_result_after_successful_adoption(
+    fake_api,
     monkeypatch,
     tmp_path,
 ) -> None:
     client, runner, config = _setup(
+        fake_api,
         monkeypatch,
         tmp_path,
         output=_check_block(verdict="approve", comment="Feasible."),
@@ -386,8 +395,9 @@ def test_proposal_check_retries_result_after_successful_adoption(
     assert sum(call["method"] == "adopt_proposal" for call in client.calls) == 1
 
 
-def test_proposal_check_revise_posts_without_adopting(monkeypatch, tmp_path) -> None:
+def test_proposal_check_revise_posts_without_adopting(fake_api, monkeypatch, tmp_path) -> None:
     client, runner, config = _setup(
+        fake_api,
         monkeypatch,
         tmp_path,
         output=_check_block(
@@ -410,10 +420,12 @@ def test_proposal_check_revise_posts_without_adopting(monkeypatch, tmp_path) -> 
 
 
 def test_duplicate_pollers_report_already_decided_from_result_guard(
+    fake_api,
     monkeypatch,
     tmp_path,
 ) -> None:
     client, runner, config = _setup(
+        fake_api,
         monkeypatch,
         tmp_path,
         output=_check_block(verdict="reject", comment="Out of scope for this repo."),
@@ -454,10 +466,12 @@ def test_duplicate_pollers_report_already_decided_from_result_guard(
 
 
 def test_already_decided_outside_result_post_is_an_error(
+    fake_api,
     monkeypatch,
     tmp_path,
 ) -> None:
     _client, runner, config = _setup(
+        fake_api,
         monkeypatch,
         tmp_path,
         output=_check_block(verdict="reject", comment="Not used."),
@@ -500,11 +514,12 @@ def test_parse_proposal_check_output_normalizes_ok_alias() -> None:
     assert parsed["verdict"] == "approve"
 
 
-def test_cli_proposal_checks_prints_json(monkeypatch, tmp_path, capsys) -> None:
+def test_cli_proposal_checks_prints_json(fake_api, monkeypatch, tmp_path, capsys) -> None:
     from issuekit import cli
     from issuekit.commands import proposal_checks as proposal_checks_cmd
 
     client, runner, _config = _setup(
+        fake_api,
         monkeypatch,
         tmp_path,
         output=_check_block(verdict="reject", comment="Out of scope for this repo."),
@@ -519,11 +534,12 @@ def test_cli_proposal_checks_prints_json(monkeypatch, tmp_path, capsys) -> None:
     assert client._proposal_checks[1]["status"] == "answered"
 
 
-def test_cli_proposal_checks_selects_exact_check(monkeypatch, tmp_path, capsys) -> None:
+def test_cli_proposal_checks_selects_exact_check(fake_api, monkeypatch, tmp_path, capsys) -> None:
     from issuekit import cli
     from issuekit.commands import proposal_checks as proposal_checks_cmd
 
     client, runner, _config = _setup(
+        fake_api,
         monkeypatch,
         tmp_path,
         output=_check_block(verdict="reject", comment="Selected check only."),
@@ -544,6 +560,7 @@ def test_cli_proposal_checks_selects_exact_check(monkeypatch, tmp_path, capsys) 
 
 
 def test_cli_proposal_checks_refuses_check_for_another_worker(
+    fake_api,
     monkeypatch,
     tmp_path,
     capsys,
@@ -552,6 +569,7 @@ def test_cli_proposal_checks_refuses_check_for_another_worker(
     from issuekit.commands import proposal_checks as proposal_checks_cmd
 
     client, runner, _config = _setup(
+        fake_api,
         monkeypatch,
         tmp_path,
         output=_check_block(verdict="reject", comment="Must not run."),
@@ -569,10 +587,11 @@ def test_cli_proposal_checks_refuses_check_for_another_worker(
     assert runner.calls == []
 
 
-def test_cli_proposal_checks_rejects_offset_with_once(monkeypatch, tmp_path, capsys) -> None:
+def test_cli_proposal_checks_rejects_offset_with_once(fake_api, monkeypatch, tmp_path, capsys) -> None:
     from issuekit import cli
 
     _setup(
+        fake_api,
         monkeypatch,
         tmp_path,
         output=_check_block(verdict="reject", comment="Must not run."),
@@ -584,6 +603,7 @@ def test_cli_proposal_checks_rejects_offset_with_once(monkeypatch, tmp_path, cap
 
 
 def test_cli_proposal_checks_list_prints_table_without_agent(
+    fake_api,
     monkeypatch,
     tmp_path,
     capsys,
@@ -592,6 +612,7 @@ def test_cli_proposal_checks_list_prints_table_without_agent(
     from issuekit.commands import proposal_checks as proposal_checks_cmd
 
     client, _runner, _config = _setup(
+        fake_api,
         monkeypatch,
         tmp_path,
         output=_check_block(verdict="reject", comment="Not used."),
@@ -619,6 +640,7 @@ def test_cli_proposal_checks_list_prints_table_without_agent(
 
 
 def test_cli_proposal_checks_list_status_json_uses_limit_offset(
+    fake_api,
     monkeypatch,
     tmp_path,
     capsys,
@@ -626,6 +648,7 @@ def test_cli_proposal_checks_list_status_json_uses_limit_offset(
     from issuekit import cli
 
     client, _runner, _config = _setup(
+        fake_api,
         monkeypatch,
         tmp_path,
         output=_check_block(verdict="reject", comment="Not used."),
@@ -677,10 +700,12 @@ def test_cli_proposal_checks_list_status_json_uses_limit_offset(
 
 
 def test_proposal_check_filtered_pagination_is_global_across_worker_keys(
+    fake_api,
     monkeypatch,
     tmp_path,
 ) -> None:
     client, _runner, config = _setup(
+        fake_api,
         monkeypatch,
         tmp_path,
         output=_check_block(verdict="reject", comment="Not used."),
@@ -702,10 +727,12 @@ def test_proposal_check_filtered_pagination_is_global_across_worker_keys(
 
 
 def test_proposal_check_stops_before_next_item_when_aborted(
+    fake_api,
     monkeypatch,
     tmp_path,
 ) -> None:
     client, _runner, config = _setup(
+        fake_api,
         monkeypatch,
         tmp_path,
         output=_check_block(verdict="reject", comment="Not used."),
@@ -748,11 +775,13 @@ def test_cli_proposal_checks_list_and_once_are_mutually_exclusive(capsys) -> Non
 
 @pytest.mark.parametrize("filename", ["code.py", "変更.py"])
 def test_proposal_check_allows_change_to_already_dirty_worktree_path(
+    fake_api,
     monkeypatch,
     tmp_path,
     filename,
 ) -> None:
     _client, _runner, config = _setup(
+        fake_api,
         monkeypatch,
         tmp_path,
         output=_check_block(verdict="reject", comment="Out of scope."),

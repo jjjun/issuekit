@@ -1439,11 +1439,11 @@ def test_api_issue_creator_closes_stores_on_success_and_error(monkeypatch) -> No
 
 
 def test_negotiate_cli_closes_issue_and_negotiation_stores_on_error(
+    fake_api,
     tmp_path,
     monkeypatch,
     capsys,
 ) -> None:
-    from issuekit import store as store_module
     from issuekit.commands import negotiate
 
     client = CloseTrackingClient(
@@ -1455,7 +1455,7 @@ def test_negotiate_cli_closes_issue_and_negotiation_stores_on_error(
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     monkeypatch.setattr(negotiate, "get_negotiation_store", lambda *args, **kwargs: store)
 
     def fail_negotiation(**_kwargs):
@@ -1571,8 +1571,7 @@ def test_threads_cli_closes_negotiation_store(tmp_path, monkeypatch, capsys) -> 
     assert store.close_count == 1
 
 
-def test_negotiate_cli_json_uses_mock_store_and_api_issue(tmp_path, monkeypatch, capsys) -> None:
-    from issuekit import store as store_module
+def test_negotiate_cli_json_uses_mock_store_and_api_issue(fake_api, tmp_path, monkeypatch, capsys) -> None:
     from issuekit.commands import negotiate
 
     client = FakeIssuekitClient(
@@ -1583,7 +1582,7 @@ def test_negotiate_cli_json_uses_mock_store_and_api_issue(tmp_path, monkeypatch,
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     fake_runner = CannedRunner(
         [
             _block(side="consumer", verdict="propose", contract="GET /items"),

@@ -5,7 +5,6 @@ from pathlib import Path
 import pytest
 
 from issuekit import cli
-from issuekit import store as store_module
 from issuekit.agentrun import AgentPrompt
 from issuekit.agents import review as review_agent
 from issuekit.agents.handoff import NO_IMPLEMENTATION_CHANGES_MARKER
@@ -170,7 +169,7 @@ class CloseTrackingClient(FakeIssuekitClient):
         self.close_count += 1
 
 
-def _configure_registered_api(tmp_path: Path, monkeypatch, client: FakeIssuekitClient) -> None:
+def _configure_registered_api(fake_api, tmp_path: Path, monkeypatch, client: FakeIssuekitClient) -> None:
     (tmp_path / "issuekit.toml").write_text(
         "api_url = 'https://mine.example'\nproject = 'demo'\n",
         encoding="utf-8",
@@ -186,7 +185,7 @@ def _configure_registered_api(tmp_path: Path, monkeypatch, client: FakeIssuekitC
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     monkeypatch.chdir(tmp_path)
 
 
@@ -205,12 +204,13 @@ def _init_git_repo(path: Path) -> None:
 
 
 def test_review_command_closes_lookup_store_when_issue_is_missing(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
     client = CloseTrackingClient()
-    _configure_registered_api(tmp_path, monkeypatch, client)
+    _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
 
     exit_code = cli.main(["review", "99", "--agent", "codex"])
 
@@ -246,6 +246,7 @@ def _issue() -> Issue:
 
 
 def test_review_command_approves_with_distinct_worker_identity(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -265,7 +266,7 @@ def test_review_command_approves_with_distinct_worker_identity(
         ]
     )
     ApprovingRunner.calls.clear()
-    _configure_registered_api(tmp_path, monkeypatch, client)
+    _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
     _create_reviewable_diff(tmp_path)
     monkeypatch.setattr("issuekit.commands.review.AgentRunner", ApprovingRunner)
 
@@ -301,6 +302,7 @@ def test_review_command_approves_with_distinct_worker_identity(
 
 
 def test_review_command_rejects_zero_exit_error_envelope_before_verdict(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -319,7 +321,7 @@ def test_review_command_rejects_zero_exit_error_envelope_before_verdict(
             )
         ]
     )
-    _configure_registered_api(tmp_path, monkeypatch, client)
+    _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
     _create_reviewable_diff(tmp_path)
     monkeypatch.setattr("issuekit.commands.review.AgentRunner", ErrorEnvelopeReviewRunner)
 
@@ -334,6 +336,7 @@ def test_review_command_rejects_zero_exit_error_envelope_before_verdict(
 
 
 def test_review_command_parses_codex_jsonl_review_block(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -352,7 +355,7 @@ def test_review_command_parses_codex_jsonl_review_block(
             )
         ]
     )
-    _configure_registered_api(tmp_path, monkeypatch, client)
+    _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
     _create_reviewable_diff(tmp_path)
     monkeypatch.setattr("issuekit.commands.review.AgentRunner", CodexJsonlReviewRunner)
 
@@ -367,6 +370,7 @@ def test_review_command_parses_codex_jsonl_review_block(
 
 
 def test_review_command_approves_with_sanitized_non_ascii_verification(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -385,7 +389,7 @@ def test_review_command_approves_with_sanitized_non_ascii_verification(
             )
         ]
     )
-    _configure_registered_api(tmp_path, monkeypatch, client)
+    _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
     _create_reviewable_diff(tmp_path)
     monkeypatch.setattr("issuekit.commands.review.AgentRunner", NonAsciiApprovingRunner)
 
@@ -402,6 +406,7 @@ def test_review_command_approves_with_sanitized_non_ascii_verification(
 
 
 def test_review_command_records_mapping_valued_verification(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -419,7 +424,7 @@ def test_review_command_records_mapping_valued_verification(
             )
         ]
     )
-    _configure_registered_api(tmp_path, monkeypatch, client)
+    _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
     _create_reviewable_diff(tmp_path)
     monkeypatch.setattr(
         "issuekit.commands.review.AgentRunner",
@@ -432,7 +437,7 @@ def test_review_command_records_mapping_valued_verification(
     )
 
 
-def test_review_command_sends_runtime_on_both_verdicts(tmp_path: Path, monkeypatch) -> None:
+def test_review_command_sends_runtime_on_both_verdicts(fake_api, tmp_path: Path, monkeypatch) -> None:
     client = FakeIssuekitClient(
         [
             api_issue(
@@ -457,7 +462,7 @@ def test_review_command_sends_runtime_on_both_verdicts(tmp_path: Path, monkeypat
             ),
         ]
     )
-    _configure_registered_api(tmp_path, monkeypatch, client)
+    _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
     _create_reviewable_diff(tmp_path)
     monkeypatch.setattr("issuekit.commands.review.AgentRunner", ApprovingRunner)
 
@@ -476,6 +481,7 @@ def test_review_command_sends_runtime_on_both_verdicts(tmp_path: Path, monkeypat
 
 
 def test_review_command_requests_changes(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -494,7 +500,7 @@ def test_review_command_requests_changes(
             )
         ]
     )
-    _configure_registered_api(tmp_path, monkeypatch, client)
+    _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
     _create_reviewable_diff(tmp_path)
     monkeypatch.setattr("issuekit.commands.review.AgentRunner", RequestChangesRunner)
 
@@ -516,6 +522,7 @@ def test_review_command_requests_changes(
 
 
 def test_review_command_requests_changes_with_sanitized_non_ascii_notes(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -534,7 +541,7 @@ def test_review_command_requests_changes_with_sanitized_non_ascii_notes(
             )
         ]
     )
-    _configure_registered_api(tmp_path, monkeypatch, client)
+    _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
     _create_reviewable_diff(tmp_path)
     monkeypatch.setattr(
         "issuekit.commands.review.AgentRunner",
@@ -555,6 +562,7 @@ def test_review_command_requests_changes_with_sanitized_non_ascii_notes(
 
 
 def test_review_command_rejects_same_worker_self_review(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -574,7 +582,7 @@ def test_review_command_rejects_same_worker_self_review(
         ]
     )
     ApprovingRunner.calls.clear()
-    _configure_registered_api(tmp_path, monkeypatch, client)
+    _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
     monkeypatch.setattr("issuekit.commands.review.AgentRunner", ApprovingRunner)
 
     exit_code = cli.main(["review", "1", "--agent", "codex"])
@@ -585,6 +593,7 @@ def test_review_command_rejects_same_worker_self_review(
 
 
 def test_review_command_reports_discarded_decision_for_malformed_review_output(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -603,7 +612,7 @@ def test_review_command_reports_discarded_decision_for_malformed_review_output(
             )
         ]
     )
-    _configure_registered_api(tmp_path, monkeypatch, client)
+    _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
     _create_reviewable_diff(tmp_path)
     monkeypatch.setattr("issuekit.commands.review.AgentRunner", MalformedReviewRunner)
 
@@ -624,6 +633,7 @@ def test_review_command_reports_discarded_decision_for_malformed_review_output(
 
 
 def test_review_command_reports_no_decision_for_timed_out_review(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -642,7 +652,7 @@ def test_review_command_reports_no_decision_for_timed_out_review(
             )
         ]
     )
-    _configure_registered_api(tmp_path, monkeypatch, client)
+    _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
     _create_reviewable_diff(tmp_path)
     monkeypatch.setattr("issuekit.commands.review.AgentRunner", TimedOutReviewRunner)
 
@@ -655,6 +665,7 @@ def test_review_command_reports_no_decision_for_timed_out_review(
 
 
 def test_review_command_discards_fenced_non_json_review_output(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -673,7 +684,7 @@ def test_review_command_discards_fenced_non_json_review_output(
             )
         ]
     )
-    _configure_registered_api(tmp_path, monkeypatch, client)
+    _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
     _create_reviewable_diff(tmp_path)
     monkeypatch.setattr("issuekit.commands.review.AgentRunner", NonJsonReviewRunner)
 
@@ -692,6 +703,7 @@ def test_review_command_discards_fenced_non_json_review_output(
 
 
 def test_review_command_self_review_names_no_eligible_reviewer(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -710,7 +722,7 @@ def test_review_command_self_review_names_no_eligible_reviewer(
             )
         ]
     )
-    _configure_registered_api(tmp_path, monkeypatch, client)
+    _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
     (tmp_path / "issuekit.toml").write_text(
         "api_url = 'https://mine.example'\n"
         "project = 'demo'\n"
@@ -728,6 +740,7 @@ def test_review_command_self_review_names_no_eligible_reviewer(
 
 
 def test_review_command_self_review_keeps_plain_message_when_another_agent_exists(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -746,7 +759,7 @@ def test_review_command_self_review_keeps_plain_message_when_another_agent_exist
             )
         ]
     )
-    _configure_registered_api(tmp_path, monkeypatch, client)
+    _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
 
     exit_code = cli.main(["review", "1", "--agent", "codex"])
 
@@ -757,6 +770,7 @@ def test_review_command_self_review_keeps_plain_message_when_another_agent_exist
 
 
 def test_review_command_rejects_empty_implementation_diff_before_agent(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -776,7 +790,7 @@ def test_review_command_rejects_empty_implementation_diff_before_agent(
         ]
     )
     ApprovingRunner.calls.clear()
-    _configure_registered_api(tmp_path, monkeypatch, client)
+    _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
     (tmp_path / ".gitignore").write_text(".agent-runs/\n", encoding="utf-8", newline="\n")
     (tmp_path / "code.py").write_text("value = 1\n", encoding="utf-8", newline="\n")
     _init_git_repo(tmp_path)
@@ -792,6 +806,7 @@ def test_review_command_rejects_empty_implementation_diff_before_agent(
 
 
 def test_review_command_rejects_agent_run_without_local_changes(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -813,7 +828,7 @@ def test_review_command_rejects_agent_run_without_local_changes(
     )
     client = FakeIssuekitClient([raw_issue])
     ApprovingRunner.calls.clear()
-    _configure_registered_api(tmp_path, monkeypatch, client)
+    _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
     (tmp_path / ".gitignore").write_text(".agent-runs/\n", encoding="utf-8", newline="\n")
     (tmp_path / "code.py").write_text("value = 1\n", encoding="utf-8", newline="\n")
     _init_git_repo(tmp_path)
@@ -835,6 +850,7 @@ def test_review_command_rejects_agent_run_without_local_changes(
 
 
 def test_review_command_allows_no_changes_handoff_without_local_diff(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -857,7 +873,7 @@ def test_review_command_allows_no_changes_handoff_without_local_diff(
     )
     client = FakeIssuekitClient([raw_issue])
     ApprovingRunner.calls.clear()
-    _configure_registered_api(tmp_path, monkeypatch, client)
+    _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
     (tmp_path / ".gitignore").write_text(".agent-runs/\n", encoding="utf-8", newline="\n")
     (tmp_path / "code.py").write_text("value = 1\n", encoding="utf-8", newline="\n")
     _init_git_repo(tmp_path)
@@ -876,6 +892,7 @@ def test_review_command_allows_no_changes_handoff_without_local_diff(
 
 
 def test_review_command_allows_handoff_evidence_without_local_diff(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -904,7 +921,7 @@ def test_review_command_allows_handoff_evidence_without_local_diff(
     )
     client = FakeIssuekitClient([raw_issue])
     ApprovingRunner.calls.clear()
-    _configure_registered_api(tmp_path, monkeypatch, client)
+    _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
     (tmp_path / ".gitignore").write_text(".agent-runs/\n", encoding="utf-8", newline="\n")
     (tmp_path / "code.py").write_text("value = 1\n", encoding="utf-8", newline="\n")
     _init_git_repo(tmp_path)
@@ -1256,6 +1273,7 @@ def test_parse_review_output_rejects_json_fallback_without_required_keys() -> No
 
 @pytest.mark.parametrize("filename", ["code.py", "変更.py"])
 def test_review_command_allows_change_to_already_dirty_worktree_path(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -1275,7 +1293,7 @@ def test_review_command_allows_change_to_already_dirty_worktree_path(
             )
         ]
     )
-    _configure_registered_api(tmp_path, monkeypatch, client)
+    _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
     (tmp_path / ".gitignore").write_text(".agent-runs/\n", encoding="utf-8", newline="\n")
     code_path = tmp_path / filename
     code_path.write_text("value = 1\n", encoding="utf-8", newline="\n")

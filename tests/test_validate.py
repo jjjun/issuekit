@@ -3,7 +3,6 @@ from pathlib import Path
 import pytest
 
 from issuekit import cli
-from issuekit import store as store_module
 from issuekit.commands import validate
 from issuekit.errors import WorkflowError
 from issuekit.testing import FakeIssuekitClient
@@ -31,6 +30,7 @@ def test_validate_requires_api_url_by_default(tmp_path: Path, monkeypatch, capsy
 
 
 def test_validate_api_mode_checks_connectivity_and_shape(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -41,7 +41,7 @@ def test_validate_api_mode_checks_connectivity_and_shape(
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     monkeypatch.chdir(tmp_path)
 
     exit_code = cli.main(["validate"])
@@ -53,6 +53,7 @@ def test_validate_api_mode_checks_connectivity_and_shape(
 
 
 def test_validate_api_mode_fails_on_malformed_issue_response(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -67,7 +68,7 @@ def test_validate_api_mode_fails_on_malformed_issue_response(
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     monkeypatch.chdir(tmp_path)
 
     exit_code = cli.main(["validate"])
@@ -80,6 +81,7 @@ def test_validate_api_mode_fails_on_malformed_issue_response(
 
 
 def test_validate_api_mode_fails_when_health_revision_is_missing(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -94,7 +96,7 @@ def test_validate_api_mode_fails_when_health_revision_is_missing(
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     monkeypatch.chdir(tmp_path)
 
     exit_code = cli.main(["validate"])
@@ -135,6 +137,7 @@ def test_validate_health_non_object_payload_uses_invalid_response_code() -> None
 
 
 def test_validate_api_mode_reports_health_request_errors(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -149,7 +152,7 @@ def test_validate_api_mode_reports_health_request_errors(
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     monkeypatch.chdir(tmp_path)
 
     exit_code = cli.main(["validate"])

@@ -327,6 +327,7 @@ def test_mock_store_rejects_invalid_verdict(tmp_path) -> None:
 
 
 def test_negotiation_store_context_managers_close_only_owned_clients(
+    fake_api,
     tmp_path,
     monkeypatch,
 ) -> None:
@@ -339,10 +340,7 @@ def test_negotiation_store_context_managers_close_only_owned_clients(
             self.close_count += 1
 
     owned_client = CloseTrackingClient()
-    monkeypatch.setattr(
-        "issuekit.negotiation.api_store.IssuekitClient",
-        lambda *args, **kwargs: owned_client,
-    )
+    fake_api.install_client(owned_client)
     with ApiNegotiationStore(
         IssuekitConfig(api_url="https://mine.example", project="target")
     ):

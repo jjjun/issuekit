@@ -55,7 +55,7 @@ def _write_config(tmp_path: Path, *, extra_router: str = "") -> None:
     )
 
 
-def _clients(monkeypatch, profiles: list[dict]) -> dict[str, FakeIssuekitClient]:
+def _clients(fake_api, monkeypatch, profiles: list[dict]) -> dict[str, FakeIssuekitClient]:
     clients: dict[str, FakeIssuekitClient] = {}
     pm = FakeIssuekitClient()
     pm._profiles = {str(profile["project"]): dict(profile) for profile in profiles}
@@ -70,7 +70,7 @@ def _clients(monkeypatch, profiles: list[dict]) -> dict[str, FakeIssuekitClient]
         client.project = project
         return client
 
-    monkeypatch.setattr(proposals_api, "IssuekitClient", fake_client)
+    fake_api.install_factory(fake_client)
     return clients
 
 
@@ -81,7 +81,7 @@ def _register_catalog_projects(
         clients["pm"].register_catalog_project(project)
 
 
-def _setup(monkeypatch, tmp_path, outputs, *, profiles=None, extra_router: str = ""):
+def _setup(fake_api, monkeypatch, tmp_path, outputs, *, profiles=None, extra_router: str = ""):
     _write_config(tmp_path, extra_router=extra_router)
     _init_git_repo(tmp_path)
     profiles = profiles or [
@@ -98,7 +98,7 @@ def _setup(monkeypatch, tmp_path, outputs, *, profiles=None, extra_router: str =
             "profile_md": "Owns the web UI.",
         },
     ]
-    clients = _clients(monkeypatch, profiles)
+    clients = _clients(fake_api, monkeypatch, profiles)
     fake_runner = FakeRunner(outputs)
     monkeypatch.setattr(router, "resolve_adapter", lambda *a, **k: object())
     from issuekit.commands.request import answers, routing
@@ -164,9 +164,11 @@ def test_router_role_overlay_and_explicit_model_override(tmp_path: Path) -> None
 
 
 def test_request_passes_overrides_to_each_pre_routing_router_run(
+    fake_api,
     monkeypatch, tmp_path, capsys
 ) -> None:
     _clients, _runner = _setup(
+        fake_api,
         monkeypatch,
         tmp_path,
         [
@@ -307,8 +309,9 @@ def test_parse_router_output_requires_boolean_blocking(blocking: object) -> None
         )
 
 
-def test_request_routes_single_target(monkeypatch, tmp_path, capsys) -> None:
+def test_request_routes_single_target(fake_api, monkeypatch, tmp_path, capsys) -> None:
     clients, runner = _setup(
+        fake_api,
         monkeypatch,
         tmp_path,
         [
@@ -340,11 +343,13 @@ def test_request_routes_single_target(monkeypatch, tmp_path, capsys) -> None:
 
 
 def test_request_routes_multi_target_and_resolves_target_dependency(
+    fake_api,
     monkeypatch,
     tmp_path,
     capsys,
 ) -> None:
     clients, _runner = _setup(
+        fake_api,
         monkeypatch,
         tmp_path,
         [
@@ -373,11 +378,13 @@ def test_request_routes_multi_target_and_resolves_target_dependency(
 
 
 def test_request_stops_on_send_failure_and_resume_skips_sent_target(
+    fake_api,
     monkeypatch,
     tmp_path,
     capsys,
 ) -> None:
     clients, _runner = _setup(
+        fake_api,
         monkeypatch,
         tmp_path,
         [
@@ -437,11 +444,13 @@ def test_request_stops_on_send_failure_and_resume_skips_sent_target(
 
 
 def test_request_resume_matches_saved_targets_by_project_after_reordering(
+    fake_api,
     monkeypatch,
     tmp_path,
     capsys,
 ) -> None:
     clients, _runner = _setup(
+        fake_api,
         monkeypatch,
         tmp_path,
         [
@@ -513,11 +522,13 @@ def test_request_resume_matches_saved_targets_by_project_after_reordering(
 
 
 def test_request_resume_sends_only_new_projects_and_resolves_saved_indexes(
+    fake_api,
     monkeypatch,
     tmp_path,
     capsys,
 ) -> None:
     clients, _runner = _setup(
+        fake_api,
         monkeypatch,
         tmp_path,
         [
@@ -597,11 +608,13 @@ def test_request_resume_sends_only_new_projects_and_resolves_saved_indexes(
 
 
 def test_request_rejects_duplicate_route_projects_before_sending(
+    fake_api,
     monkeypatch,
     tmp_path,
     capsys,
 ) -> None:
     clients, _runner = _setup(
+        fake_api,
         monkeypatch,
         tmp_path,
         [
@@ -646,8 +659,9 @@ def _forget_sent_target(tmp_path: Path, request_id: str) -> None:
     state_path.write_text(json.dumps(state, indent=2), encoding="utf-8", newline="\n")
 
 
-def test_request_routes_distinct_requests_to_same_target(monkeypatch, tmp_path, capsys) -> None:
+def test_request_routes_distinct_requests_to_same_target(fake_api, monkeypatch, tmp_path, capsys) -> None:
     clients, _runner = _setup(
+        fake_api,
         monkeypatch,
         tmp_path,
         [
@@ -670,12 +684,13 @@ def test_request_routes_distinct_requests_to_same_target(monkeypatch, tmp_path, 
 
 
 def test_request_rerun_dedupes_against_its_own_sent_proposal(
+    fake_api,
     monkeypatch,
     tmp_path,
     capsys,
 ) -> None:
     route = _single_api_route("Add export endpoint", "Add a CSV export endpoint.")
-    clients, _runner = _setup(monkeypatch, tmp_path, [route, route])
+    clients, _runner = _setup(fake_api, monkeypatch, tmp_path, [route, route])
 
     assert cli.main(["request", "Add CSV export", "--json"]) == 0
     capsys.readouterr()
@@ -692,11 +707,13 @@ def test_request_rerun_dedupes_against_its_own_sent_proposal(
 
 
 def test_request_rerun_payload_mismatch_suggests_link_or_discard(
+    fake_api,
     monkeypatch,
     tmp_path,
     capsys,
 ) -> None:
     clients, _runner = _setup(
+        fake_api,
         monkeypatch,
         tmp_path,
         [
@@ -719,12 +736,13 @@ def test_request_rerun_payload_mismatch_suggests_link_or_discard(
 
 
 def test_request_link_records_existing_proposal_for_unsent_target(
+    fake_api,
     monkeypatch,
     tmp_path,
     capsys,
 ) -> None:
     _write_config(tmp_path)
-    clients = _clients(monkeypatch, [])
+    clients = _clients(fake_api, monkeypatch, [])
     _register_catalog_projects(clients, "api", "ui")
     ui_client = FakeIssuekitClient()
     clients["ui"] = ui_client
@@ -780,9 +798,9 @@ def test_request_link_records_existing_proposal_for_unsent_target(
     assert status[0]["targets"][1]["status"] == "pending"
 
 
-def test_request_link_rejects_unknown_request_id(monkeypatch, tmp_path, capsys) -> None:
+def test_request_link_rejects_unknown_request_id(fake_api, monkeypatch, tmp_path, capsys) -> None:
     _write_config(tmp_path)
-    _clients(monkeypatch, [])
+    _clients(fake_api, monkeypatch, [])
     _write_request_state(tmp_path, {})
     monkeypatch.chdir(tmp_path)
 
@@ -792,12 +810,13 @@ def test_request_link_rejects_unknown_request_id(monkeypatch, tmp_path, capsys) 
 
 
 def test_request_link_requires_matching_unsent_target_project(
+    fake_api,
     monkeypatch,
     tmp_path,
     capsys,
 ) -> None:
     _write_config(tmp_path)
-    _clients(monkeypatch, [])
+    _clients(fake_api, monkeypatch, [])
     _write_request_state(
         tmp_path,
         {
@@ -815,9 +834,9 @@ def test_request_link_requires_matching_unsent_target_project(
     assert "PM request 1 has no target for project ui." in capsys.readouterr().err
 
 
-def test_request_link_rejects_project_mismatch(monkeypatch, tmp_path, capsys) -> None:
+def test_request_link_rejects_project_mismatch(fake_api, monkeypatch, tmp_path, capsys) -> None:
     _write_config(tmp_path)
-    _clients(monkeypatch, [])
+    _clients(fake_api, monkeypatch, [])
     _write_request_state(
         tmp_path,
         {
@@ -835,9 +854,9 @@ def test_request_link_rejects_project_mismatch(monkeypatch, tmp_path, capsys) ->
     assert "Proposal ref ui#1 targets ui, not api." in capsys.readouterr().err
 
 
-def test_request_link_reports_missing_proposal(monkeypatch, tmp_path, capsys) -> None:
+def test_request_link_reports_missing_proposal(fake_api, monkeypatch, tmp_path, capsys) -> None:
     _write_config(tmp_path)
-    _clients(monkeypatch, [])
+    _clients(fake_api, monkeypatch, [])
     _write_request_state(
         tmp_path,
         {
@@ -855,9 +874,9 @@ def test_request_link_reports_missing_proposal(monkeypatch, tmp_path, capsys) ->
     assert "Proposal api#99 was not found in api." in capsys.readouterr().err
 
 
-def test_request_link_rejects_already_sent_target(monkeypatch, tmp_path, capsys) -> None:
+def test_request_link_rejects_already_sent_target(fake_api, monkeypatch, tmp_path, capsys) -> None:
     _write_config(tmp_path)
-    clients = _clients(monkeypatch, [])
+    clients = _clients(fake_api, monkeypatch, [])
     api_client = FakeIssuekitClient()
     clients["api"] = api_client
     api_client.project = "api"
@@ -887,11 +906,13 @@ def test_request_link_rejects_already_sent_target(monkeypatch, tmp_path, capsys)
 
 
 def test_request_filters_stale_and_own_project_profiles_from_prompt(
+    fake_api,
     monkeypatch,
     tmp_path,
     capsys,
 ) -> None:
     _clients, runner = _setup(
+        fake_api,
         monkeypatch,
         tmp_path,
         [_route_block({"decision": "reject", "reason": "No owner."})],
@@ -912,11 +933,13 @@ def test_request_filters_stale_and_own_project_profiles_from_prompt(
 
 
 def test_request_clarify_answer_round_cap_turns_second_clarify_into_reject(
+    fake_api,
     monkeypatch,
     tmp_path,
     capsys,
 ) -> None:
     _clients, _runner = _setup(
+        fake_api,
         monkeypatch,
         tmp_path,
         [
@@ -938,11 +961,13 @@ def test_request_clarify_answer_round_cap_turns_second_clarify_into_reject(
 
 
 def test_request_zero_clarify_round_cap_rejects_initial_clarify(
+    fake_api,
     monkeypatch,
     tmp_path,
     capsys,
 ) -> None:
     _clients, _runner = _setup(
+        fake_api,
         monkeypatch,
         tmp_path,
         [_route_block({"decision": "clarify", "question": "Which format?"})],
@@ -956,8 +981,9 @@ def test_request_zero_clarify_round_cap_rejects_initial_clarify(
     assert "Clarification limit reached" in payload["reason"]
 
 
-def test_request_reject_and_dry_run(monkeypatch, tmp_path, capsys) -> None:
+def test_request_reject_and_dry_run(fake_api, monkeypatch, tmp_path, capsys) -> None:
     clients, _runner = _setup(
+        fake_api,
         monkeypatch,
         tmp_path,
         [_route_block({"decision": "reject", "reason": "No profiled owner."})],
@@ -971,8 +997,9 @@ def test_request_reject_and_dry_run(monkeypatch, tmp_path, capsys) -> None:
     assert not (tmp_path / ".agent-runs" / "pm-requests.json").exists()
 
 
-def test_request_status_maps_outgoing_status(monkeypatch, tmp_path, capsys) -> None:
+def test_request_status_maps_outgoing_status(fake_api, monkeypatch, tmp_path, capsys) -> None:
     clients, _runner = _setup(
+        fake_api,
         monkeypatch,
         tmp_path,
         [
@@ -999,11 +1026,13 @@ def test_request_status_maps_outgoing_status(monkeypatch, tmp_path, capsys) -> N
 
 
 def test_request_inbox_lists_matched_and_unmatched_replies(
+    fake_api,
     monkeypatch,
     tmp_path,
     capsys,
 ) -> None:
     clients, _runner = _setup(
+        fake_api,
         monkeypatch,
         tmp_path,
         [
@@ -1051,11 +1080,13 @@ def test_request_inbox_lists_matched_and_unmatched_replies(
 
 
 def test_request_answer_resends_amended_proposal_and_discards_reply(
+    fake_api,
     monkeypatch,
     tmp_path,
     capsys,
 ) -> None:
     clients, runner = _setup(
+        fake_api,
         monkeypatch,
         tmp_path,
         [
@@ -1105,11 +1136,13 @@ def test_request_answer_resends_amended_proposal_and_discards_reply(
 
 
 def test_request_answer_send_failure_keeps_old_state_and_reply_pending(
+    fake_api,
     monkeypatch,
     tmp_path,
     capsys,
 ) -> None:
     clients, _runner = _setup(
+        fake_api,
         monkeypatch,
         tmp_path,
         [
@@ -1149,11 +1182,13 @@ def test_request_answer_send_failure_keeps_old_state_and_reply_pending(
 
 
 def test_request_answer_requires_target_when_multiple_replies_are_pending(
+    fake_api,
     monkeypatch,
     tmp_path,
     capsys,
 ) -> None:
     clients, _runner = _setup(
+        fake_api,
         monkeypatch,
         tmp_path,
         [
@@ -1188,11 +1223,13 @@ def test_request_answer_requires_target_when_multiple_replies_are_pending(
 
 
 def test_request_answer_accumulates_multiple_clarification_rounds(
+    fake_api,
     monkeypatch,
     tmp_path,
     capsys,
 ) -> None:
     clients, _runner = _setup(
+        fake_api,
         monkeypatch,
         tmp_path,
         [
@@ -1245,9 +1282,11 @@ def test_request_requires_router_agent(monkeypatch, tmp_path, capsys) -> None:
 
 @pytest.mark.parametrize("filename", ["code.py", "変更.py"])
 def test_router_allows_change_to_already_dirty_worktree_path(
+    fake_api,
     monkeypatch, tmp_path, filename
 ) -> None:
     _clients, _runner = _setup(
+        fake_api,
         monkeypatch,
         tmp_path,
         [_route_block({"decision": "reject", "reason": "Not applicable."})],

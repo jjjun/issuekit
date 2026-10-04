@@ -2,28 +2,19 @@ import json
 from pathlib import Path
 
 from issuekit import cli
-from issuekit import store as store_module
 from issuekit.testing import FakeIssuekitClient
+from tests.api_helpers import configure_api
 from tests.issue_helpers import api_issue
 
 
-def _configure_api(tmp_path: Path, monkeypatch, client: FakeIssuekitClient) -> None:
-    (tmp_path / "issuekit.toml").write_text(
-        "api_url = 'https://mine.example'\nproject = 'demo'\n",
-        encoding="utf-8",
-        newline="\n",
-    )
-    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
-    monkeypatch.chdir(tmp_path)
-
-
 def test_edit_command_updates_title_body_priority_and_prints_json(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
     client = FakeIssuekitClient([api_issue(1, "Old title", body="Old body")])
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client)
 
     exit_code = cli.main(
         [
@@ -54,12 +45,13 @@ def test_edit_command_updates_title_body_priority_and_prints_json(
 
 
 def test_edit_command_replaces_dependency_refs(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
     client = FakeIssuekitClient([api_issue(1, "Depends", depends_on=["old#1"])])
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client)
 
     exit_code = cli.main(["edit", "1", "--depends-on", "mine-py#42", "--json"])
 
@@ -76,6 +68,7 @@ def test_edit_command_replaces_dependency_refs(
 
 
 def test_edit_command_append_file_preserves_original_body(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -83,7 +76,7 @@ def test_edit_command_append_file_preserves_original_body(
     client = FakeIssuekitClient([api_issue(1, "Append", body="Original body")])
     append_file = tmp_path / "plan.md"
     append_file.write_text("## Implementation Plan\n\nDo this.\n", encoding="utf-8", newline="\n")
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client)
 
     exit_code = cli.main(["edit", "1", "--append-file", str(append_file)])
 
@@ -93,6 +86,7 @@ def test_edit_command_append_file_preserves_original_body(
 
 
 def test_edit_command_append_uses_stored_body_without_rendered_workflow_sections(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -114,7 +108,7 @@ def test_edit_command_append_uses_stored_body_without_rendered_workflow_sections
         ],
         rendered_issue_suffixes={1: rendered_suffix},
     )
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client)
 
     exit_code = cli.main(
         ["edit", "1", "--append", "## Plan correction\n\nUpdated plan.", "--force"]
@@ -134,12 +128,13 @@ def test_edit_command_append_uses_stored_body_without_rendered_workflow_sections
 
 
 def test_edit_command_title_only_does_not_read_stored_body(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
     client = FakeIssuekitClient([api_issue(1, "Old title", body="Original body")])
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client)
 
     exit_code = cli.main(["edit", "1", "--title", "New title"])
 
@@ -154,9 +149,9 @@ def test_fake_client_preserves_null_issue_body_without_rendered_suffix() -> None
     assert client.get_issue(1)["body"] is None
 
 
-def test_edit_command_reports_missing_issue(tmp_path: Path, monkeypatch, capsys) -> None:
+def test_edit_command_reports_missing_issue(fake_api, tmp_path: Path, monkeypatch, capsys) -> None:
     client = FakeIssuekitClient()
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client)
 
     exit_code = cli.main(["edit", "99", "--title", "Missing"])
 
@@ -164,9 +159,9 @@ def test_edit_command_reports_missing_issue(tmp_path: Path, monkeypatch, capsys)
     assert "Active issue #99 was not found." in capsys.readouterr().err
 
 
-def test_edit_command_requires_a_field(tmp_path: Path, monkeypatch, capsys) -> None:
+def test_edit_command_requires_a_field(fake_api, tmp_path: Path, monkeypatch, capsys) -> None:
     client = FakeIssuekitClient([api_issue(1, "No-op")])
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client)
 
     exit_code = cli.main(["edit", "1"])
 
@@ -175,9 +170,9 @@ def test_edit_command_requires_a_field(tmp_path: Path, monkeypatch, capsys) -> N
     assert client.calls == []
 
 
-def test_edit_command_rejects_non_ascii_input(tmp_path: Path, monkeypatch, capsys) -> None:
+def test_edit_command_rejects_non_ascii_input(fake_api, tmp_path: Path, monkeypatch, capsys) -> None:
     client = FakeIssuekitClient([api_issue(1, "ASCII")])
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client)
 
     exit_code = cli.main(["edit", "1", "--body", "snowman \u2603"])
 
@@ -186,7 +181,7 @@ def test_edit_command_rejects_non_ascii_input(tmp_path: Path, monkeypatch, capsy
     assert client.calls == []
 
 
-def test_edit_command_requires_force_after_todo(tmp_path: Path, monkeypatch, capsys) -> None:
+def test_edit_command_requires_force_after_todo(fake_api, tmp_path: Path, monkeypatch, capsys) -> None:
     client = FakeIssuekitClient(
         [
             api_issue(
@@ -199,7 +194,7 @@ def test_edit_command_requires_force_after_todo(tmp_path: Path, monkeypatch, cap
             )
         ]
     )
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client)
 
     assert cli.main(["edit", "1", "--title", "Blocked"]) == 1
     assert "pass --force" in capsys.readouterr().err
@@ -211,12 +206,13 @@ def test_edit_command_requires_force_after_todo(tmp_path: Path, monkeypatch, cap
 
 
 def test_edit_command_allows_planned_issue_without_force(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
     client = FakeIssuekitClient([api_issue(1, "Planned", stage="planned")])
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client)
 
     assert cli.main(["edit", "1", "--title", "Updated plan"]) == 0
 
@@ -226,6 +222,7 @@ def test_edit_command_allows_planned_issue_without_force(
 
 
 def test_edit_command_refuses_completed_even_with_force(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -233,7 +230,7 @@ def test_edit_command_refuses_completed_even_with_force(
     client = FakeIssuekitClient(
         [api_issue(1, "Done", status="completed", stage="done", completed="2026-01-02")]
     )
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client)
 
     exit_code = cli.main(["edit", "1", "--title", "History rewrite", "--force"])
 

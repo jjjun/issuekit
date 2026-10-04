@@ -4,23 +4,9 @@ from pathlib import Path
 import pytest
 
 from issuekit import cli
-from issuekit import store as store_module
 from issuekit.testing import FakeIssuekitClient
+from tests.api_helpers import configure_api
 from tests.issue_helpers import api_issue
-
-
-def _configure_api(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    client: FakeIssuekitClient,
-) -> None:
-    (tmp_path / "issuekit.toml").write_text(
-        "api_url = 'https://mine.example'\nproject = 'demo'\n",
-        encoding="utf-8",
-        newline="\n",
-    )
-    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
-    monkeypatch.chdir(tmp_path)
 
 
 def _register_worker(client: FakeIssuekitClient, *, machine: str = "machine") -> None:
@@ -34,6 +20,7 @@ def _register_worker(client: FakeIssuekitClient, *, machine: str = "machine") ->
 
 
 def test_dispatch_directs_ready_issue_and_reports_stored_target(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -43,7 +30,7 @@ def test_dispatch_directs_ready_issue_and_reports_stored_target(
         stored_target_worker_override="server-stored.synthetic@response",
     )
     _register_worker(client)
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client)
 
     assert (
         cli.main(
@@ -84,13 +71,14 @@ def test_dispatch_directs_ready_issue_and_reports_stored_target(
 
 
 def test_dispatch_rejects_unregistered_worker_before_mutation(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     client = FakeIssuekitClient([api_issue(5, "Ready", stage="todo")])
     _register_worker(client, machine="other")
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client)
 
     assert (
         cli.main(
@@ -109,11 +97,12 @@ def test_dispatch_rejects_unregistered_worker_before_mutation(
 
 
 def test_dispatch_allows_explicit_unregistered_override(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     client = FakeIssuekitClient([api_issue(5, "Ready", stage="todo")])
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client)
 
     assert (
         cli.main(
@@ -131,6 +120,7 @@ def test_dispatch_allows_explicit_unregistered_override(
 
 
 def test_dispatch_refuses_implementing_issue(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -139,7 +129,7 @@ def test_dispatch_refuses_implementing_issue(
         [api_issue(5, "Held", stage="implementing", worker="checkout.demo")]
     )
     _register_worker(client)
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client)
 
     assert (
         cli.main(["dispatch", "5", "--target-worker", "checkout.demo@machine"])

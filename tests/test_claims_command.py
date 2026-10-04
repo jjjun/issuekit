@@ -4,21 +4,12 @@ from pathlib import Path
 import pytest
 
 from issuekit import cli
-from issuekit import store as store_module
+from tests.api_helpers import configure_api
 from tests.issue_helpers import api_issue
 
 
-def _configure_api(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, client) -> None:
-    (tmp_path / "issuekit.toml").write_text(
-        "api_url = 'https://mine.example'\nproject = 'demo'\n",
-        encoding="utf-8",
-        newline="\n",
-    )
-    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
-    monkeypatch.chdir(tmp_path)
-
-
 def test_claims_command_lists_active_claims_json(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -59,7 +50,7 @@ def test_claims_command_lists_active_claims_json(
             ),
         ]
     )
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client)
 
     assert cli.main(["claims", "--json"]) == 0
 
@@ -95,6 +86,7 @@ def test_claims_command_lists_active_claims_json(
 
 
 def test_claims_command_filters_worker_with_qualified_match(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -119,7 +111,7 @@ def test_claims_command_filters_worker_with_qualified_match(
             ),
         ]
     )
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client)
 
     assert cli.main(["claims", "--worker", "bob.mine-py", "--json"]) == 0
 
@@ -128,6 +120,7 @@ def test_claims_command_filters_worker_with_qualified_match(
 
 
 def test_claims_command_filters_worker_with_review_implementation_worker(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -153,7 +146,7 @@ def test_claims_command_filters_worker_with_review_implementation_worker(
     other["worker"] = None
     other["implementation_worker"] = "ann.mine-py@pike3"
     client = FakeIssuekitClient([review, other])
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client)
 
     assert cli.main(["claims", "--worker", "bob.mine-py", "--json"]) == 0
 
@@ -172,6 +165,7 @@ def test_claims_command_filters_worker_with_review_implementation_worker(
 
 
 def test_claims_command_lists_changes_requested_implementation_worker(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -197,7 +191,7 @@ def test_claims_command_lists_changes_requested_implementation_worker(
     other["worker"] = None
     other["implementation_worker"] = "ann.mine-py@pike3"
     client = FakeIssuekitClient([changes_requested, other])
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client)
 
     assert cli.main(["claims", "--json"]) == 0
 
@@ -213,6 +207,7 @@ def test_claims_command_lists_changes_requested_implementation_worker(
 
 
 def test_claims_command_filters_stage(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -239,7 +234,7 @@ def test_claims_command_filters_stage(
             review,
         ]
     )
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client)
 
     assert cli.main(["claims", "--stage", "review"]) == 0
 
@@ -258,13 +253,14 @@ def test_claims_stage_argument_rejects_unknown_stage(capsys) -> None:
 
 
 def test_claims_command_handles_empty_result(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     from issuekit.testing import FakeIssuekitClient
 
-    _configure_api(tmp_path, monkeypatch, FakeIssuekitClient())
+    configure_api(tmp_path, monkeypatch, fake_api, FakeIssuekitClient())
 
     assert cli.main(["claims"]) == 0
 

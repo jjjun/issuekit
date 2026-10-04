@@ -4,27 +4,9 @@ from pathlib import Path
 import pytest
 
 from issuekit import cli
-from issuekit import store as store_module
 from issuekit.testing import FakeIssuekitClient
-from issuekit.workers import registry as worker_registry
+from tests.api_helpers import configure_api
 from tests.issue_helpers import api_issue
-
-
-def _configure_api(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    client: FakeIssuekitClient,
-    *,
-    project: str = "issuekit",
-) -> None:
-    (tmp_path / "issuekit.toml").write_text(
-        f"api_url = 'https://mine.example'\nproject = '{project}'\n",
-        encoding="utf-8",
-        newline="\n",
-    )
-    monkeypatch.setattr(store_module, "IssuekitClient", lambda *a, **k: client)
-    monkeypatch.setattr(worker_registry, "IssuekitClient", lambda *a, **k: client)
-    monkeypatch.chdir(tmp_path)
 
 
 def _implementing(issue_id: int, worker: str, *, assignee: str = "claude") -> dict:
@@ -40,6 +22,7 @@ def _implementing(issue_id: int, worker: str, *, assignee: str = "claude") -> di
 
 
 def test_reclaim_refuses_healthy_claim_without_force(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -49,7 +32,7 @@ def test_reclaim_refuses_healthy_claim_without_force(
         machine_id="machine", repo_id="issuekit", worker_name="live", path="/repo"
     )
     client.calls.clear()
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client, project="issuekit")
 
     assert cli.main(["reclaim", "5", "--stale-after-sec", "999999999999"]) == 1
 
@@ -60,12 +43,13 @@ def test_reclaim_refuses_healthy_claim_without_force(
 
 
 def test_reclaim_force_proceeds_for_healthy_claim(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     client = FakeIssuekitClient([_implementing(5, "live.issuekit@machine")])
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client, project="issuekit")
 
     assert cli.main(["reclaim", "5", "--force"]) == 0
 
@@ -89,12 +73,13 @@ def test_reclaim_force_proceeds_for_healthy_claim(
 
 
 def test_reclaim_proceeds_for_stale_claim_with_expected_worker(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     client = FakeIssuekitClient([_implementing(6, "machine/issuekit/dead")])
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client, project="issuekit")
 
     assert cli.main(["reclaim", "6", "--json"]) == 0
 
@@ -125,11 +110,12 @@ def test_reclaim_proceeds_for_stale_claim_with_expected_worker(
 
 
 def test_reclaim_forwards_reason(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     client = FakeIssuekitClient([_implementing(6, "machine/issuekit/dead")])
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client, project="issuekit")
 
     assert cli.main(["reclaim", "6", "--force", "--reason", "stale checkout"]) == 0
 
@@ -147,12 +133,13 @@ def test_reclaim_forwards_reason(
 
 
 def test_reclaim_rejects_non_ascii_reason(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     client = FakeIssuekitClient([_implementing(6, "machine/issuekit/dead")])
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client, project="issuekit")
 
     assert cli.main(["reclaim", "6", "--force", "--reason", "stale \u2603"]) == 1
 
@@ -161,6 +148,7 @@ def test_reclaim_rejects_non_ascii_reason(
 
 
 def test_reclaim_rejects_non_implementing_target_even_with_force(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -177,7 +165,7 @@ def test_reclaim_rejects_non_implementing_target_even_with_force(
             )
         ]
     )
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client, project="issuekit")
 
     assert cli.main(["reclaim", "7", "--force"]) == 1
 

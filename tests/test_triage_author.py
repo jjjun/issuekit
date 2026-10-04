@@ -14,7 +14,6 @@ import pytest
 import issuekit.file_permissions as file_permissions
 import issuekit.proposals.api as proposals_api
 from issuekit import cli
-from issuekit import store as store_module
 from issuekit.agentrun import AgentPrompt, AgentResult
 from issuekit.agents import triage_author, triage_state
 from issuekit.agents.triage_author import (
@@ -95,13 +94,13 @@ def _init_git_repo(path: Path) -> None:
         assert result.returncode == 0
 
 
-def _setup(monkeypatch, tmp_path, *, proposals, outputs, author_agent="codex", extra=""):
+def _setup(fake_api, monkeypatch, tmp_path, *, proposals, outputs, author_agent="codex", extra=""):
     _write_config(tmp_path, author_agent=author_agent, extra=extra)
     _init_git_repo(tmp_path)
     client = FakeIssuekitClient(proposals=proposals)
     client.register_catalog_project("mine-py")
-    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *a, **k: client)
-    monkeypatch.setattr(store_module, "IssuekitClient", lambda *a, **k: client)
+    fake_api.install_client(client)
+    fake_api.install_client(client)
     monkeypatch.setattr(triage_author, "resolve_adapter", lambda *a, **k: object())
     runner = FakeRunner(outputs)
     monkeypatch.chdir(tmp_path)
@@ -163,8 +162,9 @@ def test_parse_triage_output_rejects_non_ascii() -> None:
 # --- decision application ---------------------------------------------------
 
 
-def test_triage_author_adopt_appends_spec(monkeypatch, tmp_path) -> None:
+def test_triage_author_adopt_appends_spec(fake_api, monkeypatch, tmp_path) -> None:
     client, runner, config, events, log = _setup(
+        fake_api,
         monkeypatch,
         tmp_path,
         proposals=[
@@ -188,8 +188,9 @@ def test_triage_author_adopt_appends_spec(monkeypatch, tmp_path) -> None:
     assert ("triage_author_decision", {"proposal": 5, "decision": "adopt", "issue": issue_id}) in events
 
 
-def test_triage_author_adoption_skips_hold_when_disabled(monkeypatch, tmp_path) -> None:
+def test_triage_author_adoption_skips_hold_when_disabled(fake_api, monkeypatch, tmp_path) -> None:
     client, runner, config, _events, log = _setup(
+        fake_api,
         monkeypatch,
         tmp_path,
         proposals=[
@@ -211,8 +212,9 @@ def test_triage_author_adoption_skips_hold_when_disabled(monkeypatch, tmp_path) 
     assert not any(call["method"] == "plan" for call in client.calls)
 
 
-def test_triage_author_records_adopted_issue_when_hold_fails(monkeypatch, tmp_path) -> None:
+def test_triage_author_records_adopted_issue_when_hold_fails(fake_api, monkeypatch, tmp_path) -> None:
     client, runner, config, _events, log = _setup(
+        fake_api,
         monkeypatch,
         tmp_path,
         proposals=[
@@ -237,11 +239,13 @@ def test_triage_author_records_adopted_issue_when_hold_fails(monkeypatch, tmp_pa
 
 
 def test_triage_command_exits_one_when_adopted_issue_hold_fails(
+    fake_api,
     monkeypatch,
     tmp_path,
     capsys,
 ) -> None:
     client, runner, _config, _events, _log = _setup(
+        fake_api,
         monkeypatch,
         tmp_path,
         proposals=[
@@ -263,8 +267,9 @@ def test_triage_command_exits_one_when_adopted_issue_hold_fails(
     assert json.loads(capsys.readouterr().out)[0]["hold_error"] is True
 
 
-def test_triage_author_adopt_and_reply_sends_linked_follow_up(monkeypatch, tmp_path) -> None:
+def test_triage_author_adopt_and_reply_sends_linked_follow_up(fake_api, monkeypatch, tmp_path) -> None:
     client, runner, config, events, log = _setup(
+        fake_api,
         monkeypatch,
         tmp_path,
         proposals=[
@@ -296,8 +301,9 @@ def test_triage_author_adopt_and_reply_sends_linked_follow_up(monkeypatch, tmp_p
     ) in events
 
 
-def test_triage_author_adopt_and_reply_does_not_reply_to_a_reply(monkeypatch, tmp_path) -> None:
+def test_triage_author_adopt_and_reply_does_not_reply_to_a_reply(fake_api, monkeypatch, tmp_path) -> None:
     client, runner, config, events, log = _setup(
+        fake_api,
         monkeypatch,
         tmp_path,
         proposals=[
@@ -331,9 +337,11 @@ def test_triage_author_adopt_and_reply_does_not_reply_to_a_reply(monkeypatch, tm
 
 
 def test_triage_author_adopt_and_reply_uses_each_proposal_as_origin(
+    fake_api,
     monkeypatch, tmp_path
 ) -> None:
     client, runner, config, _events, log = _setup(
+        fake_api,
         monkeypatch,
         tmp_path,
         proposals=[
@@ -370,8 +378,9 @@ def test_triage_author_adopt_and_reply_uses_each_proposal_as_origin(
     ]
 
 
-def test_triage_author_reply_uses_each_proposal_as_origin(monkeypatch, tmp_path) -> None:
+def test_triage_author_reply_uses_each_proposal_as_origin(fake_api, monkeypatch, tmp_path) -> None:
     client, runner, config, _events, log = _setup(
+        fake_api,
         monkeypatch,
         tmp_path,
         proposals=[
@@ -404,8 +413,9 @@ def test_triage_author_reply_uses_each_proposal_as_origin(monkeypatch, tmp_path)
     ]
 
 
-def test_triage_author_reply_to_reply_is_suppressed(monkeypatch, tmp_path) -> None:
+def test_triage_author_reply_to_reply_is_suppressed(fake_api, monkeypatch, tmp_path) -> None:
     client, runner, config, events, log = _setup(
+        fake_api,
         monkeypatch,
         tmp_path,
         proposals=[
@@ -431,8 +441,9 @@ def test_triage_author_reply_to_reply_is_suppressed(monkeypatch, tmp_path) -> No
     assert ("triage_author_reply_suppressed", {"proposal": 8}) in events
 
 
-def test_triage_author_skips_suppressed_reply_next_cycle(monkeypatch, tmp_path) -> None:
+def test_triage_author_skips_suppressed_reply_next_cycle(fake_api, monkeypatch, tmp_path) -> None:
     client, runner, config, events, log = _setup(
+        fake_api,
         monkeypatch,
         tmp_path,
         proposals=[
@@ -472,9 +483,11 @@ def test_triage_author_skips_suppressed_reply_next_cycle(monkeypatch, tmp_path) 
 
 
 def test_triage_author_adopt_and_reply_reports_idempotent_reply_as_error(
+    fake_api,
     monkeypatch, tmp_path
 ) -> None:
     client, runner, config, events, log = _setup(
+        fake_api,
         monkeypatch,
         tmp_path,
         proposals=[
@@ -514,8 +527,9 @@ def test_triage_author_adopt_and_reply_reports_idempotent_reply_as_error(
     assert ("triage_author_error", {"proposal": 5, "error": "Proposal was not sent."}) in events
 
 
-def test_triage_author_forwards_model_to_adapter(monkeypatch, tmp_path) -> None:
+def test_triage_author_forwards_model_to_adapter(fake_api, monkeypatch, tmp_path) -> None:
     _client, runner, config, _events, log = _setup(
+        fake_api,
         monkeypatch,
         tmp_path,
         proposals=[],
@@ -537,12 +551,14 @@ def test_triage_author_forwards_model_to_adapter(monkeypatch, tmp_path) -> None:
 
 
 def test_triage_author_adopt_discards_superseded_pending_proposal(
+    fake_api,
     monkeypatch,
     tmp_path,
 ) -> None:
     old_body = "Needs clarification."
     new_body = "Clear now.\n\nSupersedes: issuekit#10"
     client, runner, config, events, log = _setup(
+        fake_api,
         monkeypatch,
         tmp_path,
         proposals=[
@@ -573,10 +589,12 @@ def test_triage_author_adopt_discards_superseded_pending_proposal(
 
 
 def test_triage_author_ignores_superseded_proposal_from_another_origin(
+    fake_api,
     monkeypatch,
     tmp_path,
 ) -> None:
     client, runner, config, events, log = _setup(
+        fake_api,
         monkeypatch,
         tmp_path,
         proposals=[
@@ -630,6 +648,7 @@ def test_triage_author_ignores_superseded_proposal_from_another_origin(
     ],
 )
 def test_triage_author_non_adopt_decisions_do_not_touch_superseded_ref(
+    fake_api,
     monkeypatch,
     tmp_path,
     decision_block,
@@ -638,6 +657,7 @@ def test_triage_author_non_adopt_decisions_do_not_touch_superseded_ref(
     old_body = "Needs clarification."
     new_body = "Clear now.\n\nSupersedes: issuekit#10"
     client, runner, config, events, log = _setup(
+        fake_api,
         monkeypatch,
         tmp_path,
         proposals=[
@@ -670,12 +690,14 @@ def test_triage_author_non_adopt_decisions_do_not_touch_superseded_ref(
     ],
 )
 def test_triage_author_adopt_ignores_unusable_supersedes_refs(
+    fake_api,
     monkeypatch,
     tmp_path,
     body,
     reason,
 ) -> None:
     client, runner, config, events, log = _setup(
+        fake_api,
         monkeypatch,
         tmp_path,
         proposals=[
@@ -698,11 +720,13 @@ def test_triage_author_adopt_ignores_unusable_supersedes_refs(
 
 
 def test_triage_author_adopt_ignores_non_pending_superseded_ref(
+    fake_api,
     monkeypatch,
     tmp_path,
 ) -> None:
     body = "Clear now.\n\nSupersedes: issuekit#10"
     client, runner, config, events, log = _setup(
+        fake_api,
         monkeypatch,
         tmp_path,
         proposals=[
@@ -735,12 +759,14 @@ def test_triage_author_adopt_ignores_non_pending_superseded_ref(
 
 
 def test_triage_author_adopt_keeps_adoption_when_superseded_discard_fails(
+    fake_api,
     monkeypatch,
     tmp_path,
 ) -> None:
     old_body = "Needs clarification."
     new_body = "Clear now.\n\nSupersedes: issuekit#10"
     client, runner, config, events, log = _setup(
+        fake_api,
         monkeypatch,
         tmp_path,
         proposals=[
@@ -780,8 +806,9 @@ def test_triage_author_adopt_keeps_adoption_when_superseded_discard_fails(
     )
 
 
-def test_triage_author_discard(monkeypatch, tmp_path) -> None:
+def test_triage_author_discard(fake_api, monkeypatch, tmp_path) -> None:
     client, runner, config, events, log = _setup(
+        fake_api,
         monkeypatch,
         tmp_path,
         proposals=[
@@ -799,8 +826,9 @@ def test_triage_author_discard(monkeypatch, tmp_path) -> None:
     assert client.get_proposal(7)["status"] == "discarded"
 
 
-def test_triage_author_reply_sends_and_skips_next_cycle(monkeypatch, tmp_path) -> None:
+def test_triage_author_reply_sends_and_skips_next_cycle(fake_api, monkeypatch, tmp_path) -> None:
     client, runner, config, events, log = _setup(
+        fake_api,
         monkeypatch,
         tmp_path,
         proposals=[
@@ -838,8 +866,9 @@ def test_triage_author_reply_sends_and_skips_next_cycle(monkeypatch, tmp_path) -
     assert ("triage_author_skip", {"proposal": 8, "reason": "replied"}) in events
 
 
-def test_triage_author_reply_reruns_when_body_changes(monkeypatch, tmp_path) -> None:
+def test_triage_author_reply_reruns_when_body_changes(fake_api, monkeypatch, tmp_path) -> None:
     client, runner, config, events, log = _setup(
+        fake_api,
         monkeypatch,
         tmp_path,
         proposals=[
@@ -872,12 +901,14 @@ def test_triage_author_reply_reruns_when_body_changes(monkeypatch, tmp_path) -> 
     ],
 )
 def test_triage_author_reply_reruns_when_prompt_field_changes(
+    fake_api,
     monkeypatch,
     tmp_path,
     field,
     value,
 ) -> None:
     client, runner, config, _events, log = _setup(
+        fake_api,
         monkeypatch,
         tmp_path,
         proposals=[
@@ -903,11 +934,13 @@ def test_triage_author_reply_reruns_when_prompt_field_changes(
 
 
 def test_triage_author_migrates_matching_legacy_reply_state(
+    fake_api,
     monkeypatch,
     tmp_path,
 ) -> None:
     body = "help"
     _client, runner, config, _events, log = _setup(
+        fake_api,
         monkeypatch,
         tmp_path,
         proposals=[
@@ -934,10 +967,12 @@ def test_triage_author_migrates_matching_legacy_reply_state(
 
 
 def test_triage_author_stops_before_next_item_when_aborted(
+    fake_api,
     monkeypatch,
     tmp_path,
 ) -> None:
     _client, _runner, config, _events, log = _setup(
+        fake_api,
         monkeypatch,
         tmp_path,
         proposals=[
@@ -992,8 +1027,9 @@ def test_triage_state_save_is_atomic_and_skips_unchanged_write(
     assert not list(replacements[0][1].parent.glob(".triage-author-state.json.*"))
 
 
-def test_triage_author_parse_failure_leaves_pending(monkeypatch, tmp_path) -> None:
+def test_triage_author_parse_failure_leaves_pending(fake_api, monkeypatch, tmp_path) -> None:
     client, runner, config, events, log = _setup(
+        fake_api,
         monkeypatch,
         tmp_path,
         proposals=[
@@ -1011,8 +1047,9 @@ def test_triage_author_parse_failure_leaves_pending(monkeypatch, tmp_path) -> No
     assert any(event == "triage_author_error" for event, _ in events)
 
 
-def test_triage_author_policy_gate_runs_before_agent(monkeypatch, tmp_path) -> None:
+def test_triage_author_policy_gate_runs_before_agent(fake_api, monkeypatch, tmp_path) -> None:
     client, runner, config, events, log = _setup(
+        fake_api,
         monkeypatch,
         tmp_path,
         proposals=[
@@ -1036,8 +1073,9 @@ def test_triage_author_policy_gate_runs_before_agent(monkeypatch, tmp_path) -> N
     assert client.get_proposal(3)["status"] == "pending"
 
 
-def test_triage_author_caps_evaluations_per_cycle(monkeypatch, tmp_path) -> None:
+def test_triage_author_caps_evaluations_per_cycle(fake_api, monkeypatch, tmp_path) -> None:
     client, runner, config, events, log = _setup(
+        fake_api,
         monkeypatch,
         tmp_path,
         proposals=[
@@ -1091,11 +1129,12 @@ def test_cli_triage_once_requires_author_agent(monkeypatch, tmp_path, capsys) ->
     assert "author_agent" in capsys.readouterr().err
 
 
-def test_cli_triage_once_prints_json_decisions(monkeypatch, tmp_path, capsys) -> None:
+def test_cli_triage_once_prints_json_decisions(fake_api, monkeypatch, tmp_path, capsys) -> None:
     from issuekit import cli
     from issuekit.commands import triage as triage_cmd
 
     client, runner, _config, _events, _log = _setup(
+        fake_api,
         monkeypatch,
         tmp_path,
         proposals=[
@@ -1113,12 +1152,14 @@ def test_cli_triage_once_prints_json_decisions(monkeypatch, tmp_path, capsys) ->
 
 
 def test_cli_triage_once_returns_failure_for_failed_decision(
+    fake_api,
     monkeypatch, tmp_path, capsys
 ) -> None:
     from issuekit import cli
     from issuekit.commands import triage as triage_cmd
 
     _client, runner, _config, _events, _log = _setup(
+        fake_api,
         monkeypatch,
         tmp_path,
         proposals=[
@@ -1138,11 +1179,13 @@ def test_cli_triage_once_returns_failure_for_failed_decision(
 
 @pytest.mark.parametrize("filename", ["code.py", "変更.py"])
 def test_triage_author_allows_change_to_already_dirty_worktree_path(
+    fake_api,
     monkeypatch,
     tmp_path,
     filename,
 ) -> None:
     _client, _runner, config, _events, log = _setup(
+        fake_api,
         monkeypatch,
         tmp_path,
         proposals=[

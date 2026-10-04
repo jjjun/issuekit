@@ -3,37 +3,13 @@ import subprocess
 from pathlib import Path
 
 from issuekit import cli
-from issuekit import store as store_module
 from issuekit.commands import info as info_command
 from issuekit.config import load_config
 from issuekit.errors import WorkflowError
 from issuekit.guards.author import create_author_guard
 from issuekit.testing import FakeIssuekitClient
+from tests.api_helpers import configure_api
 from tests.issue_helpers import api_issue
-
-
-def _configure_api(
-    tmp_path: Path,
-    monkeypatch,
-    client: FakeIssuekitClient,
-    *,
-    project: str = "demo",
-) -> None:
-    machine_path = tmp_path / "machine.toml"
-    machine_path.write_text(
-        "trusted_api_origins = ['https://mine.example']\n",
-        encoding="utf-8",
-        newline="\n",
-    )
-    monkeypatch.setenv("ISSUEKIT_CONFIG", str(machine_path))
-    (tmp_path / "issuekit.toml").write_text(
-        f"api_url = 'https://mine.example'\nproject = '{project}'\n",
-        encoding="utf-8",
-        newline="\n",
-    )
-    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
-    monkeypatch.setattr(info_command, "api_client", lambda config: client)
-    monkeypatch.chdir(tmp_path)
 
 
 def _issue_client() -> FakeIssuekitClient:
@@ -45,8 +21,27 @@ def _issue_client() -> FakeIssuekitClient:
     )
 
 
-def test_info_json_shape(tmp_path: Path, monkeypatch) -> None:
-    _configure_api(tmp_path, monkeypatch, _issue_client())
+def configure_info_api(
+    tmp_path: Path,
+    monkeypatch,
+    fake_api,
+    client: FakeIssuekitClient,
+    *,
+    project: str = "demo",
+) -> None:
+    machine_path = tmp_path / "machine.toml"
+    machine_path.write_text(
+        "trusted_api_origins = ['https://mine.example']\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setenv("ISSUEKIT_CONFIG", str(machine_path))
+    configure_api(tmp_path, monkeypatch, fake_api, client, project=project)
+    monkeypatch.setattr(info_command, "api_client", lambda config: client)
+
+
+def test_info_json_shape(fake_api, tmp_path: Path, monkeypatch) -> None:
+    configure_info_api(tmp_path, monkeypatch, fake_api, _issue_client())
 
     exit_code = cli.main(["info", "--json"])
 
@@ -54,10 +49,11 @@ def test_info_json_shape(tmp_path: Path, monkeypatch) -> None:
 
 
 def test_info_from_subdirectory_uses_root_config_and_worker(
+    fake_api,
     tmp_path: Path, monkeypatch, capsys
 ) -> None:
     subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
-    _configure_api(tmp_path, monkeypatch, _issue_client())
+    configure_info_api(tmp_path, monkeypatch, fake_api, _issue_client())
     (tmp_path / "issuekit.local.toml").write_text(
         "[worker]\nmachine_id = 'machine'\nrepo_id = 'demo'\nworker_name = 'checkout'\n",
         encoding="utf-8",
@@ -144,8 +140,8 @@ def _info_json_payload(monkeypatch, cwd: Path, capsys) -> dict:
     return json.loads(capsys.readouterr().out)
 
 
-def test_info_json_output(tmp_path: Path, monkeypatch, capsys) -> None:
-    _configure_api(tmp_path, monkeypatch, _issue_client())
+def test_info_json_output(fake_api, tmp_path: Path, monkeypatch, capsys) -> None:
+    configure_info_api(tmp_path, monkeypatch, fake_api, _issue_client())
 
     cli.main(["info", "--json"])
     payload = json.loads(capsys.readouterr().out)
@@ -174,9 +170,10 @@ def test_info_json_output(tmp_path: Path, monkeypatch, capsys) -> None:
 
 
 def test_info_surfaces_implementer_policy_and_agent_roles(
+    fake_api,
     tmp_path: Path, monkeypatch, capsys
 ) -> None:
-    _configure_api(tmp_path, monkeypatch, _issue_client())
+    configure_info_api(tmp_path, monkeypatch, fake_api, _issue_client())
     with (tmp_path / "issuekit.toml").open("a", encoding="utf-8", newline="\n") as handle:
         handle.write(
             "assignees = ['codex']\ndefault_implementer = 'codex'\n"
@@ -196,9 +193,10 @@ def test_info_surfaces_implementer_policy_and_agent_roles(
 
 
 def test_info_surfaces_single_assignee_implementer_fallback(
+    fake_api,
     tmp_path: Path, monkeypatch, capsys
 ) -> None:
-    _configure_api(tmp_path, monkeypatch, _issue_client())
+    configure_info_api(tmp_path, monkeypatch, fake_api, _issue_client())
     with (tmp_path / "issuekit.toml").open("a", encoding="utf-8", newline="\n") as handle:
         handle.write("assignees = ['codex']\n")
 
@@ -210,8 +208,8 @@ def test_info_surfaces_single_assignee_implementer_fallback(
     assert "Agent roles\n- kimi: implementer\n- codex: implementer\n- claude: reviewer" in text
 
 
-def test_info_json_surfaces_enabled_agents(tmp_path: Path, monkeypatch, capsys) -> None:
-    _configure_api(tmp_path, monkeypatch, _issue_client())
+def test_info_json_surfaces_enabled_agents(fake_api, tmp_path: Path, monkeypatch, capsys) -> None:
+    configure_info_api(tmp_path, monkeypatch, fake_api, _issue_client())
     with (tmp_path / "issuekit.toml").open("a", encoding="utf-8", newline="\n") as handle:
         handle.write("disabled_agents = ['kimi']\n")
 
@@ -223,9 +221,10 @@ def test_info_json_surfaces_enabled_agents(tmp_path: Path, monkeypatch, capsys) 
 
 
 def test_info_surfaces_effective_agent_config_and_sources(
+    fake_api,
     tmp_path: Path, monkeypatch, capsys
 ) -> None:
-    _configure_api(tmp_path, monkeypatch, _issue_client())
+    configure_info_api(tmp_path, monkeypatch, fake_api, _issue_client())
     machine_path = tmp_path / "machine.toml"
     machine_path.write_text(
         "trusted_api_origins = ['https://mine.example']\n"
@@ -267,9 +266,10 @@ def test_info_surfaces_effective_agent_config_and_sources(
 
 
 def test_info_surfaces_resolved_agent_role_overlays(
+    fake_api,
     tmp_path: Path, monkeypatch, capsys
 ) -> None:
-    _configure_api(tmp_path, monkeypatch, _issue_client())
+    configure_info_api(tmp_path, monkeypatch, fake_api, _issue_client())
     with (tmp_path / "issuekit.toml").open("a", encoding="utf-8", newline="\n") as handle:
         handle.write(
             "[agents.claude]\nmodel = 'claude-sonnet-5'\nreasoning_effort = 'medium'\n"
@@ -286,9 +286,10 @@ def test_info_surfaces_resolved_agent_role_overlays(
 
 
 def test_info_text_surfaces_effective_agent_config_and_sources(
+    fake_api,
     tmp_path: Path, monkeypatch, capsys
 ) -> None:
-    _configure_api(tmp_path, monkeypatch, _issue_client())
+    configure_info_api(tmp_path, monkeypatch, fake_api, _issue_client())
     machine_path = tmp_path / "machine.toml"
     machine_path.write_text(
         "trusted_api_origins = ['https://mine.example']\n"
@@ -314,9 +315,10 @@ def test_info_text_surfaces_effective_agent_config_and_sources(
 
 
 def test_info_json_surfaces_machine_config_path(
+    fake_api,
     tmp_path: Path, monkeypatch, capsys
 ) -> None:
-    _configure_api(tmp_path, monkeypatch, _issue_client())
+    configure_info_api(tmp_path, monkeypatch, fake_api, _issue_client())
     machine_path = tmp_path / "machine.toml"
     machine_path.write_text(
         "trusted_api_origins = ['https://mine.example']\n",
@@ -331,9 +333,10 @@ def test_info_json_surfaces_machine_config_path(
 
 
 def test_info_json_api_url_origin_strips_credentials_and_path(
+    fake_api,
     tmp_path: Path, monkeypatch, capsys
 ) -> None:
-    _configure_api(tmp_path, monkeypatch, _issue_client())
+    configure_info_api(tmp_path, monkeypatch, fake_api, _issue_client())
     monkeypatch.setenv(
         "ISSUEKIT_API_URL",
         "https://user:secret@mine.example:8443/private/path?token=hidden#fragment",
@@ -351,7 +354,7 @@ def test_info_json_api_url_origin_strips_credentials_and_path(
     assert "token=hidden" not in output
 
 
-def test_info_reads_issue_list_once_for_counts(tmp_path: Path, monkeypatch, capsys) -> None:
+def test_info_reads_issue_list_once_for_counts(fake_api, tmp_path: Path, monkeypatch, capsys) -> None:
     class RecordingClient(FakeIssuekitClient):
         def __init__(self, *args, **kwargs) -> None:
             super().__init__(*args, **kwargs)
@@ -377,7 +380,7 @@ def test_info_reads_issue_list_once_for_counts(tmp_path: Path, monkeypatch, caps
             api_issue(2, "Done", status="completed", completed="2026-01-02"),
         ]
     )
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_info_api(tmp_path, monkeypatch, fake_api, client)
 
     cli.main(["info", "--json"])
     payload = json.loads(capsys.readouterr().out)
@@ -389,7 +392,7 @@ def test_info_reads_issue_list_once_for_counts(tmp_path: Path, monkeypatch, caps
     assert client.count_calls == [{"status": "completed", "include_completed": True}]
 
 
-def test_info_json_lists_incoming_proposals(tmp_path: Path, monkeypatch, capsys) -> None:
+def test_info_json_lists_incoming_proposals(fake_api, tmp_path: Path, monkeypatch, capsys) -> None:
     client = FakeIssuekitClient(
         [
             api_issue(1, "First", priority="high"),
@@ -405,7 +408,7 @@ def test_info_json_lists_incoming_proposals(tmp_path: Path, monkeypatch, capsys)
             }
         ],
     )
-    _configure_api(tmp_path, monkeypatch, client, project="issuekit")
+    configure_info_api(tmp_path, monkeypatch, fake_api, client, project="issuekit")
 
     cli.main(["info", "--json"])
     payload = json.loads(capsys.readouterr().out)
@@ -422,6 +425,7 @@ def test_info_json_lists_incoming_proposals(tmp_path: Path, monkeypatch, capsys)
 
 
 def test_info_reports_pending_proposal_check_count(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -441,7 +445,7 @@ def test_info_reports_pending_proposal_check_count(
         target_worker="worker.demo@machine",
         project="demo",
     )
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_info_api(tmp_path, monkeypatch, fake_api, client)
     (tmp_path / "issuekit.local.toml").write_text(
         "[worker]\nmachine_id = 'machine'\nrepo_id = 'demo'\nworker_name = 'worker'\n",
         encoding="utf-8",
@@ -454,7 +458,7 @@ def test_info_reports_pending_proposal_check_count(
     assert payload["pendingProposalChecks"] == 1
 
 
-def test_info_text_lists_incoming_proposals(tmp_path: Path, monkeypatch, capsys) -> None:
+def test_info_text_lists_incoming_proposals(fake_api, tmp_path: Path, monkeypatch, capsys) -> None:
     client = FakeIssuekitClient(
         proposals=[
             {
@@ -466,7 +470,7 @@ def test_info_text_lists_incoming_proposals(tmp_path: Path, monkeypatch, capsys)
             }
         ]
     )
-    _configure_api(tmp_path, monkeypatch, client, project="issuekit")
+    configure_info_api(tmp_path, monkeypatch, fake_api, client, project="issuekit")
 
     exit_code = cli.main(["info"])
 
@@ -476,7 +480,7 @@ def test_info_text_lists_incoming_proposals(tmp_path: Path, monkeypatch, capsys)
     assert "Incoming proposals\n- #9 mine-js-monorepo#0@f8b6c5b3: Show Pending Proposal" in captured.out
 
 
-def test_info_ignores_triaged_incoming_proposals(tmp_path: Path, monkeypatch, capsys) -> None:
+def test_info_ignores_triaged_incoming_proposals(fake_api, tmp_path: Path, monkeypatch, capsys) -> None:
     client = FakeIssuekitClient(
         proposals=[
             {
@@ -489,7 +493,7 @@ def test_info_ignores_triaged_incoming_proposals(tmp_path: Path, monkeypatch, ca
             }
         ]
     )
-    _configure_api(tmp_path, monkeypatch, client, project="issuekit")
+    configure_info_api(tmp_path, monkeypatch, fake_api, client, project="issuekit")
 
     cli.main(["info", "--json"])
     payload = json.loads(capsys.readouterr().out)
@@ -497,8 +501,8 @@ def test_info_ignores_triaged_incoming_proposals(tmp_path: Path, monkeypatch, ca
     assert payload["incomingProposals"] == []
 
 
-def test_info_text_omits_retired_index_status(tmp_path: Path, monkeypatch, capsys) -> None:
-    _configure_api(tmp_path, monkeypatch, _issue_client())
+def test_info_text_omits_retired_index_status(fake_api, tmp_path: Path, monkeypatch, capsys) -> None:
+    configure_info_api(tmp_path, monkeypatch, fake_api, _issue_client())
 
     exit_code = cli.main(["info"])
 
@@ -510,7 +514,7 @@ def test_info_text_omits_retired_index_status(tmp_path: Path, monkeypatch, capsy
     assert "\nIncoming proposals\n" not in captured.out
 
 
-def test_info_json_includes_stage_when_present(tmp_path: Path, monkeypatch, capsys) -> None:
+def test_info_json_includes_stage_when_present(fake_api, tmp_path: Path, monkeypatch, capsys) -> None:
     client = FakeIssuekitClient(
         [
             api_issue(1, "First", priority="high"),
@@ -518,7 +522,7 @@ def test_info_json_includes_stage_when_present(tmp_path: Path, monkeypatch, caps
             api_issue(2, "Done", status="completed", completed="2026-01-02"),
         ]
     )
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_info_api(tmp_path, monkeypatch, fake_api, client)
 
     cli.main(["info", "--json"])
     payload = json.loads(capsys.readouterr().out)
@@ -528,7 +532,7 @@ def test_info_json_includes_stage_when_present(tmp_path: Path, monkeypatch, caps
     assert review_issue["stage"] == "review"
 
 
-def test_info_json_includes_worker_when_present(tmp_path: Path, monkeypatch, capsys) -> None:
+def test_info_json_includes_worker_when_present(fake_api, tmp_path: Path, monkeypatch, capsys) -> None:
     client = FakeIssuekitClient(
         [
             api_issue(
@@ -540,7 +544,7 @@ def test_info_json_includes_worker_when_present(tmp_path: Path, monkeypatch, cap
             )
         ]
     )
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_info_api(tmp_path, monkeypatch, fake_api, client)
 
     cli.main(["info", "--json"])
     payload = json.loads(capsys.readouterr().out)
@@ -548,7 +552,7 @@ def test_info_json_includes_worker_when_present(tmp_path: Path, monkeypatch, cap
     assert payload["activeIssues"][0]["worker"] == "checkout.demo"
 
 
-def test_info_json_includes_dependency_fields(tmp_path: Path, monkeypatch, capsys) -> None:
+def test_info_json_includes_dependency_fields(fake_api, tmp_path: Path, monkeypatch, capsys) -> None:
     client = FakeIssuekitClient(
         [
             api_issue(
@@ -567,7 +571,7 @@ def test_info_json_includes_dependency_fields(tmp_path: Path, monkeypatch, capsy
             )
         ]
     )
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_info_api(tmp_path, monkeypatch, fake_api, client)
 
     cli.main(["info", "--json"])
     payload = json.loads(capsys.readouterr().out)
@@ -578,9 +582,9 @@ def test_info_json_includes_dependency_fields(tmp_path: Path, monkeypatch, capsy
     assert issue["dependencies"][0]["status"] == "in_progress"
 
 
-def test_info_text_renders_stage_when_present(tmp_path: Path, monkeypatch, capsys) -> None:
+def test_info_text_renders_stage_when_present(fake_api, tmp_path: Path, monkeypatch, capsys) -> None:
     client = FakeIssuekitClient([api_issue(3, "Review", status="in_progress", stage="review")])
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_info_api(tmp_path, monkeypatch, fake_api, client)
 
     exit_code = cli.main(["info"])
     captured = capsys.readouterr()
@@ -589,7 +593,7 @@ def test_info_text_renders_stage_when_present(tmp_path: Path, monkeypatch, capsy
     assert "[in_progress, stage=review]" in captured.out
 
 
-def test_info_text_renders_dependency_details(tmp_path: Path, monkeypatch, capsys) -> None:
+def test_info_text_renders_dependency_details(fake_api, tmp_path: Path, monkeypatch, capsys) -> None:
     client = FakeIssuekitClient(
         [
             api_issue(
@@ -608,7 +612,7 @@ def test_info_text_renders_dependency_details(tmp_path: Path, monkeypatch, capsy
             )
         ]
     )
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_info_api(tmp_path, monkeypatch, fake_api, client)
 
     exit_code = cli.main(["info"])
     captured = capsys.readouterr()
@@ -618,9 +622,9 @@ def test_info_text_renders_dependency_details(tmp_path: Path, monkeypatch, capsy
     assert "depends_on=mine-py#42 state=waiting status=in_progress stage=review" in captured.out
 
 
-def test_info_text_renders_status_only_when_no_stage(tmp_path: Path, monkeypatch, capsys) -> None:
+def test_info_text_renders_status_only_when_no_stage(fake_api, tmp_path: Path, monkeypatch, capsys) -> None:
     client = FakeIssuekitClient([api_issue(1, "First", stage="")])
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_info_api(tmp_path, monkeypatch, fake_api, client)
 
     exit_code = cli.main(["info"])
     captured = capsys.readouterr()
@@ -630,8 +634,8 @@ def test_info_text_renders_status_only_when_no_stage(tmp_path: Path, monkeypatch
     assert "stage=" not in captured.out
 
 
-def test_info_surfaces_author_guard(tmp_path: Path, monkeypatch, capsys) -> None:
-    _configure_api(tmp_path, monkeypatch, _issue_client())
+def test_info_surfaces_author_guard(fake_api, tmp_path: Path, monkeypatch, capsys) -> None:
+    configure_info_api(tmp_path, monkeypatch, fake_api, _issue_client())
     create_author_guard(
         tmp_path,
         config=load_config(tmp_path),

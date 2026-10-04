@@ -4,33 +4,20 @@ from pathlib import Path
 import pytest
 
 from issuekit import cli
-from issuekit import store as store_module
 from issuekit.errors import WorkflowError
 from issuekit.testing import FakeIssuekitClient
+from tests.api_helpers import configure_api
 from tests.issue_helpers import api_issue
 
 
-def _configure_api(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    client: FakeIssuekitClient,
-) -> None:
-    (tmp_path / "issuekit.toml").write_text(
-        "api_url = 'https://mine.example'\nproject = 'demo'\n",
-        encoding="utf-8",
-        newline="\n",
-    )
-    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
-    monkeypatch.chdir(tmp_path)
-
-
 def test_plan_holds_issue_by_default_and_excludes_it_from_claims(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     client = FakeIssuekitClient([api_issue(5, "Ready", stage="todo")])
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client)
 
     assert cli.main(["plan", "5", "--json"]) == 0
 
@@ -46,12 +33,13 @@ def test_plan_holds_issue_by_default_and_excludes_it_from_claims(
 
 
 def test_plan_releases_issue_to_todo_with_note(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     client = FakeIssuekitClient([api_issue(5, "Held", stage="planned")])
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client)
 
     assert cli.main(["plan", "5", "--stage", "todo", "--note", "human release"]) == 0
 
@@ -67,12 +55,13 @@ def test_plan_releases_issue_to_todo_with_note(
 
 
 def test_plan_rejects_other_stages(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     client = FakeIssuekitClient([api_issue(5, "Held", stage="planned")])
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client)
 
     assert cli.main(["plan", "5", "--stage", "review"]) == 2
 

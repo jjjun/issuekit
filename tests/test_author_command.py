@@ -16,6 +16,7 @@ from issuekit.config.refs import RefError
 from issuekit.errors import WorkflowError
 from issuekit.guards.author import read_author_guards
 from issuekit.testing import FakeIssuekitClient
+from tests.api_helpers import configure_api
 
 
 class CloseTrackingClient(FakeIssuekitClient):
@@ -38,33 +39,7 @@ class WarningClient(FakeIssuekitClient):
         return created
 
 
-def _configure_api(tmp_path: Path, monkeypatch, client: FakeIssuekitClient) -> None:
-    (tmp_path / "issuekit.toml").write_text(
-        "api_url = 'https://mine.example'\nproject = 'demo'\n",
-        encoding="utf-8",
-        newline="\n",
-    )
-    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
-    monkeypatch.chdir(tmp_path)
-
-
-def _configure_api_project(
-    repo: Path,
-    monkeypatch,
-    client: FakeIssuekitClient,
-    *,
-    project: str,
-) -> None:
-    (repo / "issuekit.toml").write_text(
-        f"api_url = 'https://mine.example'\nproject = '{project}'\n",
-        encoding="utf-8",
-        newline="\n",
-    )
-    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
-    monkeypatch.chdir(repo)
-
-
-def test_author_command_creates_issue_via_api(tmp_path: Path, monkeypatch, capsys) -> None:
+def test_author_command_creates_issue_via_api(fake_api, tmp_path: Path, monkeypatch, capsys) -> None:
     client = CloseTrackingClient()
     body_file = tmp_path / "plan.md"
     body_file.write_text(
@@ -72,7 +47,7 @@ def test_author_command_creates_issue_via_api(tmp_path: Path, monkeypatch, capsy
         encoding="utf-8",
         newline="\n",
     )
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client)
 
     exit_code = cli.main(
         [
@@ -112,12 +87,13 @@ def test_author_command_creates_issue_via_api(tmp_path: Path, monkeypatch, capsy
 
 
 def test_author_commands_keep_each_issue_guard_and_block_both_claims(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
     client = FakeIssuekitClient()
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client)
 
     for title in ("First authored issue", "Second authored issue"):
         assert cli.main(
@@ -139,6 +115,7 @@ def test_author_commands_keep_each_issue_guard_and_block_both_claims(
 
 
 def test_author_json_formats_directed_expired_heartbeat_warning(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -152,7 +129,7 @@ def test_author_json_formats_directed_expired_heartbeat_warning(
         project="demo",
     )
     client.calls.clear()
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client)
 
     exit_code = cli.main(
         [
@@ -183,12 +160,13 @@ def test_author_json_formats_directed_expired_heartbeat_warning(
 
 
 def test_author_text_formats_directed_no_worker_warning(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
     client = WarningClient("directed_no_worker")
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client)
 
     exit_code = cli.main(
         [
@@ -216,6 +194,7 @@ def test_author_text_formats_directed_no_worker_warning(
 
 
 def test_author_command_directs_issue_to_registered_worker(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -230,7 +209,7 @@ def test_author_command_directs_issue_to_registered_worker(
         project="demo",
     )
     client.calls.clear()
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client)
 
     exit_code = cli.main(
         [
@@ -258,12 +237,13 @@ def test_author_command_directs_issue_to_registered_worker(
 
 
 def test_author_command_rejects_unregistered_worker(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
     client = FakeIssuekitClient()
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client)
 
     exit_code = cli.main(
         [
@@ -317,6 +297,7 @@ def test_author_resolves_session_before_opening_store(tmp_path: Path, monkeypatc
 
 
 def test_author_closes_store_when_create_fails(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -326,7 +307,7 @@ def test_author_closes_store_when_create_fails(
             raise WorkflowError("create failed", code="request_failed")
 
     client = FailingClient()
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client)
 
     exit_code = cli.main(
         [
@@ -373,6 +354,7 @@ def test_author_command_requires_local_project_context(
 
 
 def test_author_command_project_override_allows_scratch_cwd(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -381,7 +363,7 @@ def test_author_command_project_override_allows_scratch_cwd(
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("ISSUEKIT_API_URL", "https://mine.example")
     monkeypatch.setenv("ISSUEKIT_PROJECT", "wrong-project")
-    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
 
     exit_code = cli.main(
         [
@@ -406,12 +388,13 @@ def test_author_command_project_override_allows_scratch_cwd(
 
 
 def test_author_command_can_assign_explicit_implementer(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
     client = FakeIssuekitClient()
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client)
 
     exit_code = cli.main(
         [
@@ -434,12 +417,13 @@ def test_author_command_can_assign_explicit_implementer(
 
 
 def test_author_command_attaches_dependency_refs_and_prints_json(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
     client = FakeIssuekitClient()
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client)
 
     exit_code = cli.main(
         [
@@ -464,12 +448,13 @@ def test_author_command_attaches_dependency_refs_and_prints_json(
 
 
 def test_author_command_accepts_explicit_dependency_refs(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
     client = FakeIssuekitClient()
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client)
 
     exit_code = cli.main(
         [
@@ -499,12 +484,13 @@ def test_author_command_accepts_explicit_dependency_refs(
 
 
 def test_author_command_rejects_malformed_dependency_prefix(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
     client = FakeIssuekitClient()
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client)
 
     exit_code = cli.main(
         [
@@ -528,6 +514,7 @@ def test_author_command_rejects_malformed_dependency_prefix(
 
 
 def test_author_command_warns_for_bare_ref_collision(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -546,7 +533,7 @@ def test_author_command_warns_for_bare_ref_collision(
             return created
 
     client = CollisionClient()
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client)
 
     exit_code = cli.main(
         [
@@ -567,13 +554,14 @@ def test_author_command_warns_for_bare_ref_collision(
 
 
 def test_author_command_records_configured_session(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
     client = FakeIssuekitClient()
     monkeypatch.setenv("ISSUEKIT_SESSION", "author-123")
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client)
 
     exit_code = cli.main(
         [
@@ -596,12 +584,13 @@ def test_author_command_records_configured_session(
 
 
 def test_author_command_generates_shared_fallback_session(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
     client = FakeIssuekitClient()
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client)
 
     exit_code = cli.main(
         [
@@ -625,6 +614,7 @@ def test_author_command_generates_shared_fallback_session(
 
 
 def test_author_command_blocks_likely_cross_project_direct_authoring(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -639,7 +629,7 @@ def test_author_command_blocks_likely_cross_project_direct_authoring(
         newline="\n",
     )
     client = FakeIssuekitClient()
-    _configure_api_project(target, monkeypatch, client, project="target")
+    configure_api(target, monkeypatch, fake_api, client, project="target")
 
     exit_code = cli.main(
         [
@@ -663,6 +653,7 @@ def test_author_command_blocks_likely_cross_project_direct_authoring(
 
 
 def test_author_command_allows_short_name_dependency_ref(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -677,7 +668,7 @@ def test_author_command_allows_short_name_dependency_ref(
         newline="\n",
     )
     client = FakeIssuekitClient()
-    _configure_api_project(target, monkeypatch, client, project="target")
+    configure_api(target, monkeypatch, fake_api, client, project="target")
 
     exit_code = cli.main(
         [
@@ -698,6 +689,7 @@ def test_author_command_allows_short_name_dependency_ref(
 
 
 def test_author_command_explains_short_name_prose_ref_style_match(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -712,7 +704,7 @@ def test_author_command_explains_short_name_prose_ref_style_match(
         newline="\n",
     )
     client = FakeIssuekitClient()
-    _configure_api_project(target, monkeypatch, client, project="target")
+    configure_api(target, monkeypatch, fake_api, client, project="target")
 
     exit_code = cli.main(
         [
@@ -742,6 +734,7 @@ def test_author_command_explains_short_name_prose_ref_style_match(
     ],
 )
 def test_author_command_ignores_foreign_project_name_in_code(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -757,7 +750,7 @@ def test_author_command_ignores_foreign_project_name_in_code(
         newline="\n",
     )
     client = FakeIssuekitClient()
-    _configure_api_project(target, monkeypatch, client, project="target")
+    configure_api(target, monkeypatch, fake_api, client, project="target")
 
     exit_code = cli.main(
         [
@@ -785,6 +778,7 @@ def test_author_command_ignores_foreign_project_name_in_code(
     ],
 )
 def test_author_command_ignores_invoked_foreign_project_name(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -800,7 +794,7 @@ def test_author_command_ignores_invoked_foreign_project_name(
         newline="\n",
     )
     client = FakeIssuekitClient()
-    _configure_api_project(target, monkeypatch, client, project="target")
+    configure_api(target, monkeypatch, fake_api, client, project="target")
 
     exit_code = cli.main(
         [
@@ -951,12 +945,13 @@ def test_mentioned_related_refs_keeps_prose_match_after_dependency_line() -> Non
 
 
 def test_author_command_fails_closed_when_related_refs_cannot_be_loaded(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
     client = FakeIssuekitClient()
-    _configure_api_project(tmp_path, monkeypatch, client, project="target")
+    configure_api(tmp_path, monkeypatch, fake_api, client, project="target")
 
     def fail_related_refs(_cwd):
         raise RefError("workspace config is temporarily unavailable")
@@ -988,6 +983,7 @@ def test_author_command_fails_closed_when_related_refs_cannot_be_loaded(
 
 
 def test_author_command_direct_local_author_overrides_cross_project_preflight(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -1002,7 +998,7 @@ def test_author_command_direct_local_author_overrides_cross_project_preflight(
         newline="\n",
     )
     client = FakeIssuekitClient()
-    _configure_api_project(target, monkeypatch, client, project="target")
+    configure_api(target, monkeypatch, fake_api, client, project="target")
 
     exit_code = cli.main(
         [
@@ -1024,6 +1020,7 @@ def test_author_command_direct_local_author_overrides_cross_project_preflight(
 
 
 def test_author_command_allows_local_when_worker_repo_id_differs_from_project(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -1033,7 +1030,7 @@ def test_author_command_allows_local_when_worker_repo_id_differs_from_project(
     # without tripping the cross-project preflight. repo_id is a worker identity,
     # not the current project.
     client = FakeIssuekitClient()
-    _configure_api_project(tmp_path, monkeypatch, client, project="mine-py")
+    configure_api(tmp_path, monkeypatch, fake_api, client, project="mine-py")
     (tmp_path / "issuekit.local.toml").write_text(
         "[worker]\n"
         'machine_id = "machine"\n'
@@ -1062,12 +1059,13 @@ def test_author_command_allows_local_when_worker_repo_id_differs_from_project(
 
 
 def test_author_command_origin_project_context_requires_proposal(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
     client = FakeIssuekitClient()
-    _configure_api_project(tmp_path, monkeypatch, client, project="target")
+    configure_api(tmp_path, monkeypatch, fake_api, client, project="target")
 
     exit_code = cli.main(
         [

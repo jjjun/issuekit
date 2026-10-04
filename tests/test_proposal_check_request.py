@@ -7,12 +7,12 @@ from pathlib import Path
 
 import pytest
 
-import issuekit.proposals.api as proposals_api
 from issuekit import cli
 from issuekit.testing import FakeIssuekitClient
 
 
 def _setup(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     *,
@@ -42,17 +42,18 @@ def _setup(
             project="target",
         )
     client.calls.clear()
-    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     monkeypatch.chdir(tmp_path)
     return client
 
 
 def test_cli_request_auto_selects_single_worker(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    client = _setup(tmp_path, monkeypatch, workers=(("worker", "machine"),))
+    client = _setup(fake_api, tmp_path, monkeypatch, workers=(("worker", "machine"),))
 
     assert (
         cli.main(
@@ -84,11 +85,13 @@ def test_cli_request_auto_selects_single_worker(
 
 
 def test_cli_request_filters_workers_by_project_only(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     client = _setup(
+        fake_api,
         tmp_path,
         monkeypatch,
         workers=(("worker", "machine"),),
@@ -118,11 +121,13 @@ def test_cli_request_filters_workers_by_project_only(
 
 
 def test_cli_request_requires_worker_when_multiple_are_registered(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     client = _setup(
+        fake_api,
         tmp_path,
         monkeypatch,
         workers=(("alpha", "main1"), ("beta", "pike3")),
@@ -151,11 +156,12 @@ def test_cli_request_requires_worker_when_multiple_are_registered(
 
 
 def test_cli_request_warns_for_offline_worker_and_still_creates_check(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    client = _setup(tmp_path, monkeypatch, workers=(("worker", "machine"),))
+    client = _setup(fake_api, tmp_path, monkeypatch, workers=(("worker", "machine"),))
     client._workers["worker.target"]["status"] = "offline"
     client._workers["worker.target"]["last_seen"] = "2026-07-01T00:00:00Z"
 
@@ -183,11 +189,13 @@ def test_cli_request_warns_for_offline_worker_and_still_creates_check(
 
 
 def test_cli_request_normalizes_and_validates_explicit_worker(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     client = _setup(
+        fake_api,
         tmp_path,
         monkeypatch,
         workers=(("alpha", "main1"), ("beta", "pike3")),
@@ -234,11 +242,12 @@ def test_cli_request_normalizes_and_validates_explicit_worker(
 
 
 def test_cli_request_reports_existing_pending_check(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    _setup(tmp_path, monkeypatch, workers=(("worker", "machine"),))
+    _setup(fake_api, tmp_path, monkeypatch, workers=(("worker", "machine"),))
     argv = [
         "proposal-check-request",
         "--to",

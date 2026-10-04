@@ -1,22 +1,12 @@
 from pathlib import Path
 
 from issuekit import cli
-from issuekit import store as store_module
 from issuekit.testing import FakeIssuekitClient
+from tests.api_helpers import configure_api
 from tests.issue_helpers import api_issue
 
 
-def _configure_api(tmp_path: Path, monkeypatch, client: FakeIssuekitClient) -> None:
-    (tmp_path / "issuekit.toml").write_text(
-        "api_url = 'https://mine.example'\nproject = 'demo'\n",
-        encoding="utf-8",
-        newline="\n",
-    )
-    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
-    monkeypatch.chdir(tmp_path)
-
-
-def test_approve_completes_review_stage_issue(tmp_path: Path, monkeypatch, capsys) -> None:
+def test_approve_completes_review_stage_issue(fake_api, tmp_path: Path, monkeypatch, capsys) -> None:
     client = FakeIssuekitClient(
         [
             api_issue(
@@ -29,7 +19,7 @@ def test_approve_completes_review_stage_issue(tmp_path: Path, monkeypatch, capsy
             )
         ]
     )
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client)
 
     exit_code = cli.main(["approve", "1", "--verification", "uv run pytest"])
 
@@ -49,7 +39,7 @@ def test_approve_completes_review_stage_issue(tmp_path: Path, monkeypatch, capsy
     }
 
 
-def test_approve_warns_about_uncommitted_changes(tmp_path: Path, monkeypatch, capsys) -> None:
+def test_approve_warns_about_uncommitted_changes(fake_api, tmp_path: Path, monkeypatch, capsys) -> None:
     client = FakeIssuekitClient(
         [
             api_issue(
@@ -62,7 +52,7 @@ def test_approve_warns_about_uncommitted_changes(tmp_path: Path, monkeypatch, ca
             )
         ]
     )
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client)
     monkeypatch.setattr("issuekit.commands.approve.git_status_short", lambda cwd: " M file.py")
 
     assert cli.main(["approve", "1", "--verification", "uv run pytest"]) == 0
@@ -71,12 +61,13 @@ def test_approve_warns_about_uncommitted_changes(tmp_path: Path, monkeypatch, ca
 
 
 def test_approve_rejects_non_review_stage_issue(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
     client = FakeIssuekitClient([api_issue(1, "Anchor", stage="todo")])
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client)
 
     exit_code = cli.main(["approve", "1", "--verification", "no local code scope"])
 
@@ -97,6 +88,7 @@ def test_approve_rejects_non_review_stage_issue(
 
 
 def test_approve_accepts_explicit_summary_and_reviewer(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -113,7 +105,7 @@ def test_approve_accepts_explicit_summary_and_reviewer(
             )
         ]
     )
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client)
 
     exit_code = cli.main(
         [
@@ -134,7 +126,7 @@ def test_approve_accepts_explicit_summary_and_reviewer(
     assert client.calls[0]["body"]["reviewer"] == "codex"
 
 
-def test_approve_respects_self_review_guard(tmp_path: Path, monkeypatch, capsys) -> None:
+def test_approve_respects_self_review_guard(fake_api, tmp_path: Path, monkeypatch, capsys) -> None:
     client = FakeIssuekitClient(
         [
             api_issue(
@@ -147,7 +139,7 @@ def test_approve_respects_self_review_guard(tmp_path: Path, monkeypatch, capsys)
             )
         ]
     )
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client)
 
     exit_code = cli.main(
         ["approve", "1", "--verification", "uv run pytest", "--reviewer", "codex"]
@@ -158,8 +150,8 @@ def test_approve_respects_self_review_guard(tmp_path: Path, monkeypatch, capsys)
     assert client.get_issue(1)["status"] == "in_progress"
 
 
-def test_approve_rejects_invalid_issue_id(tmp_path: Path, monkeypatch, capsys) -> None:
-    _configure_api(tmp_path, monkeypatch, FakeIssuekitClient())
+def test_approve_rejects_invalid_issue_id(fake_api, tmp_path: Path, monkeypatch, capsys) -> None:
+    configure_api(tmp_path, monkeypatch, fake_api, FakeIssuekitClient())
 
     exit_code = cli.main(["approve", "bad-id", "--verification", "pytest"])
 

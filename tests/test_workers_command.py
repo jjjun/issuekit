@@ -5,40 +5,30 @@ from types import SimpleNamespace
 import pytest
 
 from issuekit import cli
-from issuekit import store as store_module
 from issuekit.config import IssuekitConfig
 from issuekit.testing import FakeIssuekitClient
 from issuekit.workers import registry as worker_registry
+from tests.api_helpers import configure_api
 from tests.issue_helpers import api_issue
-
-
-def _configure_api(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, client) -> None:
-    (tmp_path / "issuekit.toml").write_text(
-        "api_url = 'https://mine.example'\nproject = 'demo'\n",
-        encoding="utf-8",
-        newline="\n",
-    )
-    monkeypatch.setattr(worker_registry, "IssuekitClient", lambda *args, **kwargs: client)
-    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
-    monkeypatch.chdir(tmp_path)
 
 
 def _configure_project_api(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    fake_api,
     worker_client: FakeIssuekitClient,
     project_issues: dict[str, list[dict[str, object]]],
     project_errors: dict[str, Exception] | None = None,
 ) -> None:
-    (tmp_path / "issuekit.toml").write_text(
-        "api_url = 'https://mine.example'\nproject = 'demo'\n",
-        encoding="utf-8",
-        newline="\n",
-    )
     issue_clients = {
         project: FakeIssuekitClient(issues)
         for project, issues in project_issues.items()
     }
+    for issue_client in issue_clients.values():
+        issue_client._workers.update(worker_client._workers)
+    if "demo" in issue_clients:
+        worker_client._issues.update(issue_clients["demo"]._issues)
+        issue_clients["demo"] = worker_client
     errors = project_errors or {}
 
     def issue_client(
@@ -46,18 +36,22 @@ def _configure_project_api(
         *,
         project: str,
         timeout: float,
-        allow_insecure_api_url: bool = False,
+        **kwargs,
     ):
         if project in errors:
             raise errors[project]
-        return issue_clients.setdefault(project, FakeIssuekitClient())
+        if project not in issue_clients:
+            client = FakeIssuekitClient()
+            client._workers.update(worker_client._workers)
+            issue_clients[project] = client
+        return issue_clients[project]
 
-    monkeypatch.setattr(
-        worker_registry,
-        "IssuekitClient",
-        lambda *args, **kwargs: worker_client,
+    (tmp_path / "issuekit.toml").write_text(
+        "api_url = 'https://mine.example'\nproject = 'demo'\n",
+        encoding="utf-8",
+        newline="\n",
     )
-    monkeypatch.setattr(store_module, "IssuekitClient", issue_client)
+    fake_api.install_factory(issue_client)
     monkeypatch.chdir(tmp_path)
 
 
@@ -90,6 +84,7 @@ def test_workers_rejects_repo_filter_for_unsupported_actions(
 
 
 def test_workers_command_lists_registered_workers(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -103,7 +98,7 @@ def test_workers_command_lists_registered_workers(
         role="api-server",
         description="Hosts the mine-py issue API.",
     )
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client)
 
     assert cli.main(["workers"]) == 0
 
@@ -114,6 +109,7 @@ def test_workers_command_lists_registered_workers(
 
 
 def test_workers_command_json_and_repo_filter(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -125,7 +121,7 @@ def test_workers_command_json_and_repo_filter(
     client.upsert_worker(
         machine_id="machine", repo_id="issuekit", worker_name="c2", path="/b", role="cli"
     )
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client)
 
     assert cli.main(["workers", "--repo-id", "mine-py", "--json"]) == 0
 
@@ -138,6 +134,7 @@ def test_workers_command_json_and_repo_filter(
 
 
 def test_workers_command_prints_repo_and_worker_metadata(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -155,7 +152,7 @@ def test_workers_command_prints_repo_and_worker_metadata(
         path="/repo",
         meta={"queue": "fast"},
     )
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client)
 
     assert cli.main(["workers"]) == 0
 
@@ -182,12 +179,13 @@ def test_workers_command_reports_missing_api_url(
 
 
 def test_workers_command_handles_empty_catalog(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     client = FakeIssuekitClient()
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client)
 
     assert cli.main(["workers"]) == 0
 
@@ -195,6 +193,7 @@ def test_workers_command_handles_empty_catalog(
 
 
 def test_workers_remove_deletes_by_dotted_key(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -206,7 +205,7 @@ def test_workers_remove_deletes_by_dotted_key(
         worker_name="checkout",
         path="/repo",
     )
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client)
 
     assert cli.main(["workers", "remove", "checkout.mine-py", "--json"]) == 0
 
@@ -240,6 +239,7 @@ def test_workers_remove_ambiguity_lists_machine_qualified_addresses(
 
 
 def test_workers_remove_rejects_legacy_id(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -251,7 +251,7 @@ def test_workers_remove_rejects_legacy_id(
         worker_name="checkout",
         path="/repo",
     )
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client)
 
     assert cli.main(["workers", "remove", "machine/mine-py/checkout", "--json"]) == 1
 
@@ -259,6 +259,7 @@ def test_workers_remove_rejects_legacy_id(
 
 
 def test_workers_remove_refuses_implementing_holder_without_force(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -280,7 +281,7 @@ def test_workers_remove_refuses_implementing_holder_without_force(
         worker_name="checkout",
         path="/repo",
     )
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client)
 
     assert cli.main(["workers", "remove", "checkout.mine-py"]) == 1
 
@@ -289,6 +290,7 @@ def test_workers_remove_refuses_implementing_holder_without_force(
 
 
 def test_workers_remove_force_deletes_implementing_holder(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -310,7 +312,7 @@ def test_workers_remove_force_deletes_implementing_holder(
         worker_name="checkout",
         path="/repo",
     )
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client)
 
     assert cli.main(["workers", "remove", "checkout.mine-py", "--force", "--json"]) == 0
 
@@ -320,6 +322,7 @@ def test_workers_remove_force_deletes_implementing_holder(
 
 
 def test_workers_prune_and_remove_check_implementing_claim_in_worker_project(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -336,6 +339,7 @@ def test_workers_prune_and_remove_check_implementing_claim_in_worker_project(
     _configure_project_api(
         tmp_path,
         monkeypatch,
+        fake_api,
         client,
         {
             "demo": [],
@@ -363,6 +367,7 @@ def test_workers_prune_and_remove_check_implementing_claim_in_worker_project(
 
 
 def test_workers_prune_skips_and_remove_requires_force_when_project_is_unreadable(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -379,6 +384,7 @@ def test_workers_prune_skips_and_remove_requires_force_when_project_is_unreadabl
     _configure_project_api(
         tmp_path,
         monkeypatch,
+        fake_api,
         client,
         {"demo": []},
         {"remote": OSError("backend unavailable")},
@@ -409,6 +415,7 @@ def test_workers_prune_skips_and_remove_requires_force_when_project_is_unreadabl
 
 
 def test_workers_prune_aborts_when_candidate_ids_change_with_same_count(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -423,7 +430,7 @@ def test_workers_prune_aborts_when_candidate_ids_change_with_same_count(
             path=f"/{worker_name}",
         )
         client._workers[f"{worker_name}.demo"]["last_seen"] = "2000-01-01T00:00:00Z"
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client)
     worker_rows = [
         dict(client._workers["first.demo"]),
         dict(client._workers["second.demo"]),
@@ -446,6 +453,7 @@ def test_workers_prune_aborts_when_candidate_ids_change_with_same_count(
 
 
 def test_workers_prune_dry_run_filters_to_stale_issueless_untargeted_workers(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -478,7 +486,7 @@ def test_workers_prune_dry_run_filters_to_stale_issueless_untargeted_workers(
     client._workers["held.mine-py"]["last_seen"] = "2000-01-01T00:00:00Z"
     client._workers["targeted.mine-py"]["last_seen"] = "2000-01-01T00:00:00Z"
     client._workers["fresh.mine-py"]["last_seen"] = "2999-01-01T00:00:00Z"
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client)
 
     assert cli.main(["workers", "prune", "--dry-run", "--json"]) == 0
 
@@ -488,6 +496,7 @@ def test_workers_prune_dry_run_filters_to_stale_issueless_untargeted_workers(
 
 
 def test_workers_prune_does_not_match_qualified_claim_from_another_machine(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -503,7 +512,7 @@ def test_workers_prune_does_not_match_qualified_claim_from_another_machine(
             )
         ]
     )
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client)
     worker_rows = [
         {
             "id": "checkout.mine-py",
@@ -537,11 +546,12 @@ def test_workers_prune_does_not_match_qualified_claim_from_another_machine(
 
 
 def test_workers_prune_json_option_before_subcommand_prints_json(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    _configure_api(tmp_path, monkeypatch, FakeIssuekitClient())
+    configure_api(tmp_path, monkeypatch, fake_api, FakeIssuekitClient())
 
     assert cli.main(["workers", "--json", "prune", "--dry-run"]) == 0
 
@@ -551,11 +561,12 @@ def test_workers_prune_json_option_before_subcommand_prints_json(
 
 
 def test_workers_prune_warns_when_staleness_is_not_wider_than_heartbeat(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    _configure_api(tmp_path, monkeypatch, FakeIssuekitClient())
+    configure_api(tmp_path, monkeypatch, fake_api, FakeIssuekitClient())
 
     assert (
         cli.main(
@@ -568,6 +579,7 @@ def test_workers_prune_warns_when_staleness_is_not_wider_than_heartbeat(
 
 
 def test_workers_prune_requires_count_confirmation_before_delete(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -580,7 +592,7 @@ def test_workers_prune_requires_count_confirmation_before_delete(
         path="/stale",
     )
     client._workers["stale.mine-py"]["last_seen"] = "2000-01-01T00:00:00Z"
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client)
     monkeypatch.setattr("sys.stdin", SimpleNamespace(isatty=lambda: True))
     monkeypatch.setattr("builtins.input", lambda: "1")
 
@@ -597,6 +609,7 @@ def test_workers_prune_requires_count_confirmation_before_delete(
 
 
 def test_workers_prune_noninteractive_requires_yes(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -609,7 +622,7 @@ def test_workers_prune_noninteractive_requires_yes(
         path="/stale",
     )
     client._workers["stale.mine-py"]["last_seen"] = "2000-01-01T00:00:00Z"
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client)
 
     assert cli.main(["workers", "prune", "--json"]) == 1
 
@@ -620,6 +633,7 @@ def test_workers_prune_noninteractive_requires_yes(
 
 
 def test_workers_prune_eof_is_not_confirmation(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -632,7 +646,7 @@ def test_workers_prune_eof_is_not_confirmation(
         path="/stale",
     )
     client._workers["stale.mine-py"]["last_seen"] = "2000-01-01T00:00:00Z"
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client)
     monkeypatch.setattr("sys.stdin", SimpleNamespace(isatty=lambda: True))
 
     def end_input() -> str:
@@ -649,6 +663,7 @@ def test_workers_prune_eof_is_not_confirmation(
 
 
 def test_workers_prune_yes_allows_noninteractive_deletion(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -661,7 +676,7 @@ def test_workers_prune_yes_allows_noninteractive_deletion(
         path="/stale",
     )
     client._workers["stale.mine-py"]["last_seen"] = "2000-01-01T00:00:00Z"
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client)
 
     assert cli.main(["workers", "prune", "--json", "--yes"]) == 0
 

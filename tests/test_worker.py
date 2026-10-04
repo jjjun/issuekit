@@ -402,10 +402,10 @@ def test_add_cli_fails_in_git_checkout_without_origin_unless_repo_id_is_supplied
 
 
 def test_add_cli_best_effort_posts_worker_registry(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from issuekit.workers import registry as worker_registry
 
     client = FakeRegistryClient()
     _init_git(tmp_path)
@@ -417,7 +417,7 @@ def test_add_cli_best_effort_posts_worker_registry(
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("ISSUEKIT_WORKER_REGISTRY", str(tmp_path / "workers.toml"))
     monkeypatch.setattr("issuekit.workers.identity.platform.node", lambda: "win-desktop")
-    monkeypatch.setattr(worker_registry, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
 
     assert cli.main(["add", "--repo-id", "demo", "--worker-id", "checkout"]) == 0
 
@@ -433,10 +433,10 @@ def test_add_cli_best_effort_posts_worker_registry(
 
 
 def test_add_cli_posts_canonical_url_from_git_origin(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from issuekit.workers import registry as worker_registry
 
     client = FakeRegistryClient()
     _init_git(tmp_path, "git@github.com:Owner/demo.git")
@@ -448,7 +448,7 @@ def test_add_cli_posts_canonical_url_from_git_origin(
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("ISSUEKIT_WORKER_REGISTRY", str(tmp_path / "workers.toml"))
     monkeypatch.setattr("issuekit.workers.identity.platform.node", lambda: "win-desktop")
-    monkeypatch.setattr(worker_registry, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
 
     assert cli.main(["add", "--worker-id", "checkout"]) == 0
 
@@ -456,10 +456,10 @@ def test_add_cli_posts_canonical_url_from_git_origin(
 
 
 def test_add_cli_posts_repo_and_worker_metadata(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from issuekit.workers import registry as worker_registry
 
     client = FakeRegistryClient()
     _init_git(tmp_path)
@@ -479,7 +479,7 @@ def test_add_cli_posts_repo_and_worker_metadata(
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("ISSUEKIT_WORKER_REGISTRY", str(tmp_path / "workers.toml"))
     monkeypatch.setattr("issuekit.workers.identity.platform.node", lambda: "win-desktop")
-    monkeypatch.setattr(worker_registry, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
 
     assert (
         cli.main(
@@ -506,10 +506,10 @@ def test_add_cli_posts_repo_and_worker_metadata(
 
 
 def test_add_cli_forwards_worker_accept_directed(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from issuekit.workers import registry as worker_registry
 
     client = FakeRegistryClient()
     _init_git(tmp_path)
@@ -525,7 +525,7 @@ def test_add_cli_forwards_worker_accept_directed(
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("ISSUEKIT_WORKER_REGISTRY", str(tmp_path / "workers.toml"))
     monkeypatch.setattr("issuekit.workers.identity.platform.node", lambda: "win-desktop")
-    monkeypatch.setattr(worker_registry, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
 
     assert cli.main(["add", "--repo-id", "demo", "--worker-id", "checkout"]) == 0
 
@@ -533,11 +533,11 @@ def test_add_cli_forwards_worker_accept_directed(
 
 
 def test_add_cli_reports_repo_key_conflict(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    from issuekit.workers import registry as worker_registry
 
     _init_git(tmp_path, "https://github.com/owner/demo.git")
     (tmp_path / "issuekit.toml").write_text(
@@ -548,7 +548,7 @@ def test_add_cli_reports_repo_key_conflict(
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("ISSUEKIT_WORKER_REGISTRY", str(tmp_path / "workers.toml"))
     monkeypatch.setattr("issuekit.workers.identity.platform.node", lambda: "win-desktop")
-    monkeypatch.setattr(worker_registry, "IssuekitClient", RepoConflictRegistryClient)
+    fake_api.install_factory(RepoConflictRegistryClient)
 
     assert cli.main(["add", "--worker-id", "checkout"]) == 0
 
@@ -558,11 +558,11 @@ def test_add_cli_reports_repo_key_conflict(
 
 
 def test_add_cli_reports_duplicate_worker_name_conflict(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    from issuekit.workers import registry as worker_registry
 
     _init_git(tmp_path)
     (tmp_path / "issuekit.toml").write_text(
@@ -573,7 +573,7 @@ def test_add_cli_reports_duplicate_worker_name_conflict(
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("ISSUEKIT_WORKER_REGISTRY", str(tmp_path / "workers.toml"))
     monkeypatch.setattr("issuekit.workers.identity.platform.node", lambda: "win-desktop")
-    monkeypatch.setattr(worker_registry, "IssuekitClient", WorkerConflictRegistryClient)
+    fake_api.install_factory(WorkerConflictRegistryClient)
 
     assert cli.main(["add", "--repo-id", "demo", "--worker-id", "checkout"]) == 0
 
@@ -583,17 +583,14 @@ def test_add_cli_reports_duplicate_worker_name_conflict(
 
 
 def test_post_worker_registration_propagates_missing_repo_endpoint(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from issuekit.errors import WorkflowError
     from issuekit.workers import registry as worker_registry
 
-    monkeypatch.setattr(
-        worker_registry,
-        "IssuekitClient",
-        lambda *args, **kwargs: RepoEndpointNotFoundRegistryClient(),
-    )
+    fake_api.install_factory(lambda *args, **kwargs: RepoEndpointNotFoundRegistryClient())
 
     config = IssuekitConfig(
         api_url="https://mine.example",
@@ -608,11 +605,11 @@ def test_post_worker_registration_propagates_missing_repo_endpoint(
 
 
 def test_add_cli_ignores_worker_registry_failure(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    from issuekit.workers import registry as worker_registry
 
     (tmp_path / "issuekit.toml").write_text(
         "api_url = 'https://mine.example'\nproject = 'demo'\n",
@@ -623,7 +620,7 @@ def test_add_cli_ignores_worker_registry_failure(
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("ISSUEKIT_WORKER_REGISTRY", str(tmp_path / "workers.toml"))
     monkeypatch.setattr("issuekit.workers.identity.platform.node", lambda: "win-desktop")
-    monkeypatch.setattr(worker_registry, "IssuekitClient", FailingRegistryClient)
+    fake_api.install_factory(FailingRegistryClient)
 
     assert cli.main(["add", "--repo-id", "demo"]) == 0
 
@@ -732,10 +729,10 @@ def test_try_post_worker_registration_propagates_unexpected_exceptions(
 
 
 def test_add_cli_posts_configured_role_and_description(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from issuekit.workers import registry as worker_registry
 
     client = FakeRegistryClient()
     _init_git(tmp_path)
@@ -752,7 +749,7 @@ def test_add_cli_posts_configured_role_and_description(
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("ISSUEKIT_WORKER_REGISTRY", str(tmp_path / "workers.toml"))
     monkeypatch.setattr("issuekit.workers.identity.platform.node", lambda: "win-desktop")
-    monkeypatch.setattr(worker_registry, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
 
     assert cli.main(["add", "--repo-id", "demo", "--worker-id", "checkout"]) == 0
 
@@ -774,10 +771,10 @@ def test_add_cli_posts_configured_role_and_description(
 
 
 def test_add_cli_pushes_project_profile_when_present(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from issuekit.workers import registry as worker_registry
 
     client = FakeRegistryClient()
     _init_git(tmp_path)
@@ -797,7 +794,7 @@ def test_add_cli_pushes_project_profile_when_present(
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("ISSUEKIT_WORKER_REGISTRY", str(tmp_path / "workers.toml"))
     monkeypatch.setattr("issuekit.workers.identity.platform.node", lambda: "win-desktop")
-    monkeypatch.setattr(worker_registry, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
 
     assert cli.main(["add", "--repo-id", "demo", "--worker-id", "checkout"]) == 0
 
@@ -809,10 +806,10 @@ def test_add_cli_pushes_project_profile_when_present(
 
 
 def test_add_cli_skips_profile_push_when_absent(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from issuekit.workers import registry as worker_registry
 
     client = FakeRegistryClient()
     _init_git(tmp_path)
@@ -824,7 +821,7 @@ def test_add_cli_skips_profile_push_when_absent(
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("ISSUEKIT_WORKER_REGISTRY", str(tmp_path / "workers.toml"))
     monkeypatch.setattr("issuekit.workers.identity.platform.node", lambda: "win-desktop")
-    monkeypatch.setattr(worker_registry, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
 
     assert cli.main(["add", "--repo-id", "demo", "--worker-id", "checkout"]) == 0
 
@@ -834,11 +831,11 @@ def test_add_cli_skips_profile_push_when_absent(
 
 
 def test_add_cli_tolerates_profile_push_failure(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    from issuekit.workers import registry as worker_registry
 
     client = ProfileRejectingRegistryClient()
     _init_git(tmp_path)
@@ -851,7 +848,7 @@ def test_add_cli_tolerates_profile_push_failure(
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("ISSUEKIT_WORKER_REGISTRY", str(tmp_path / "workers.toml"))
     monkeypatch.setattr("issuekit.workers.identity.platform.node", lambda: "win-desktop")
-    monkeypatch.setattr(worker_registry, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
 
     # A backend without mine-py#172 (404) must not fail worker registration.
     assert cli.main(["add", "--repo-id", "demo", "--worker-id", "checkout"]) == 0
@@ -862,11 +859,11 @@ def test_add_cli_tolerates_profile_push_failure(
 
 
 def test_add_cli_logs_stale_project_profile_response(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    from issuekit.workers import registry as worker_registry
 
     client = StaleProfileRegistryClient()
     _init_git(tmp_path)
@@ -879,7 +876,7 @@ def test_add_cli_logs_stale_project_profile_response(
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("ISSUEKIT_WORKER_REGISTRY", str(tmp_path / "workers.toml"))
     monkeypatch.setattr("issuekit.workers.identity.platform.node", lambda: "win-desktop")
-    monkeypatch.setattr(worker_registry, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
 
     assert cli.main(["add", "--repo-id", "demo", "--worker-id", "checkout"]) == 0
 

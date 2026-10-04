@@ -422,8 +422,7 @@ def test_handlers_are_stubs(command: str) -> None:
         cli.main(argv)
 
 
-def test_proposal_cli_round_trip(tmp_path, monkeypatch, capsys) -> None:
-    import issuekit.proposals.api as proposals_api
+def test_proposal_cli_round_trip(fake_api, tmp_path, monkeypatch, capsys) -> None:
     from issuekit.testing import FakeIssuekitClient
 
     client = FakeIssuekitClient(
@@ -437,7 +436,7 @@ def test_proposal_cli_round_trip(tmp_path, monkeypatch, capsys) -> None:
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
 
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("ISSUEKIT_API_URL", "https://mine.example")
@@ -522,11 +521,11 @@ def test_add_ref_scope_workspace_fails_without_workspace(
 
 
 def test_login_command_uses_credentials_and_ignores_env_token(
+    fake_api,
     tmp_path,
     monkeypatch,
     capsys,
 ) -> None:
-    from issuekit.commands import auth
 
     (tmp_path / "issuekit.toml").write_text(
         "api_url = 'https://mine.example'\n",
@@ -554,7 +553,7 @@ def test_login_command_uses_credentials_and_ignores_env_token(
             assert force is True
             return "token"
 
-    monkeypatch.setattr(auth, "IssuekitClient", FakeClient)
+    fake_api.install_factory(FakeClient)
 
     assert cli.main(["login", "--user", "svc"]) == 0
 
@@ -568,6 +567,7 @@ def test_login_command_uses_credentials_and_ignores_env_token(
 
 
 def test_login_command_prompts_for_username_on_tty(
+    fake_api,
     tmp_path,
     monkeypatch,
     capsys,
@@ -613,7 +613,7 @@ def test_login_command_prompts_for_username_on_tty(
             assert force is True
             return "token"
 
-    monkeypatch.setattr(auth, "IssuekitClient", FakeClient)
+    fake_api.install_factory(FakeClient)
 
     assert cli.main(["login"]) == 0
 
@@ -701,6 +701,7 @@ def test_login_command_missing_api_url_fails_before_prompt(
     ],
 )
 def test_login_command_existing_username_sources_bypass_prompt(
+    fake_api,
     tmp_path,
     monkeypatch,
     argv,
@@ -747,7 +748,7 @@ def test_login_command_existing_username_sources_bypass_prompt(
             assert force is True
             return "token"
 
-    monkeypatch.setattr(auth, "IssuekitClient", FakeClient)
+    fake_api.install_factory(FakeClient)
 
     assert cli.main(argv) == 0
 
@@ -755,11 +756,11 @@ def test_login_command_existing_username_sources_bypass_prompt(
 
 
 def test_logout_command_ignores_env_token(
+    fake_api,
     tmp_path,
     monkeypatch,
     capsys,
 ) -> None:
-    from issuekit.commands import auth
 
     (tmp_path / "issuekit.toml").write_text(
         "api_url = 'https://mine.example'\n",
@@ -784,7 +785,7 @@ def test_logout_command_ignores_env_token(
         def logout(self):
             return None
 
-    monkeypatch.setattr(auth, "IssuekitClient", FakeClient)
+    fake_api.install_factory(FakeClient)
 
     assert cli.main(["logout"]) == 0
 
@@ -794,11 +795,10 @@ def test_logout_command_ignores_env_token(
 
 
 def test_workspace_refs_drive_propose_and_reply_round_trip(
+    fake_api,
     tmp_path,
     monkeypatch,
 ) -> None:
-    import issuekit.proposals.api as proposals_api
-    from issuekit import store as store_module
     from issuekit.testing import FakeIssuekitClient
     from tests.issue_helpers import api_issue
 
@@ -819,8 +819,8 @@ def test_workspace_refs_drive_propose_and_reply_round_trip(
     reply_file = tmp_path / "reply.md"
     body_file.write_text("## Suggested Change\n\nDo the thing.\n", encoding="utf-8", newline="\n")
     reply_file.write_text("## Suggested Change\n\nImplemented.\n", encoding="utf-8", newline="\n")
-    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
-    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
+    fake_api.install_client(client)
 
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("ISSUEKIT_API_URL", "https://mine.example")

@@ -260,6 +260,7 @@ def test_app_server_runner_rejects_invalid_context(
 
 
 def test_app_server_runner_returns_result_for_successful_attempt(
+    fake_api,
     tmp_path: Path, monkeypatch
 ) -> None:
     FakeAgentSessionClient.instances.clear()
@@ -271,7 +272,7 @@ def test_app_server_runner_returns_result_for_successful_attempt(
         transports.append(transport)
         return transport
 
-    monkeypatch.setattr(app_server_runtime, "IssuekitClient", FakeAgentSessionClient)
+    fake_api.install_factory(FakeAgentSessionClient)
     runner = AppServerAttemptRunner(
         make_config(), make_issue(), transport_factory=transport_factory
     )
@@ -323,11 +324,12 @@ def test_app_server_runner_returns_result_for_successful_attempt(
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX symlink behavior is required")
 def test_app_server_runner_replaces_prompt_symlink_without_writing_through_it(
+    fake_api,
     tmp_path: Path, monkeypatch
 ) -> None:
     FakeAgentSessionClient.instances.clear()
     FakeAgentSessionClient.create_error = None
-    monkeypatch.setattr(app_server_runtime, "IssuekitClient", FakeAgentSessionClient)
+    fake_api.install_factory(FakeAgentSessionClient)
     run_dir = tmp_path / "runs"
     run_dir.mkdir()
     prompt_path = run_dir / "issue-322.md"
@@ -383,11 +385,12 @@ def test_app_server_runner_refuses_a_symlinked_run_directory_before_writing(
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX mode bits are not used on Windows")
 def test_app_server_runner_creates_owner_only_artifacts(
+    fake_api,
     tmp_path: Path, monkeypatch
 ) -> None:
     FakeAgentSessionClient.instances.clear()
     FakeAgentSessionClient.create_error = None
-    monkeypatch.setattr(app_server_runtime, "IssuekitClient", FakeAgentSessionClient)
+    fake_api.install_factory(FakeAgentSessionClient)
     run_dir = tmp_path / "runs"
     result = AppServerAttemptRunner(
         make_config(), make_issue(), transport_factory=lambda *args, **kwargs: FakeTransport(
@@ -409,6 +412,7 @@ def test_app_server_runner_creates_owner_only_artifacts(
 
 
 def test_app_server_pointer_contains_one_concrete_report_instruction(
+    fake_api,
     tmp_path: Path, monkeypatch
 ) -> None:
     FakeAgentSessionClient.instances.clear()
@@ -420,7 +424,7 @@ def test_app_server_pointer_contains_one_concrete_report_instruction(
         transports.append(transport)
         return transport
 
-    monkeypatch.setattr(app_server_runtime, "IssuekitClient", FakeAgentSessionClient)
+    fake_api.install_factory(FakeAgentSessionClient)
     runner = AppServerAttemptRunner(
         make_config(), make_issue(), transport_factory=transport_factory
     )
@@ -443,13 +447,14 @@ def test_app_server_pointer_contains_one_concrete_report_instruction(
 
 @pytest.mark.parametrize("failure_point", ["session_list", "session_create"])
 def test_app_server_runner_propagates_missing_session_error(
+    fake_api,
     tmp_path: Path, monkeypatch, failure_point: str
 ) -> None:
     FakeAgentSessionClient.instances.clear()
     original_error = WorkflowError("Not found.", code="not_found")
     attribute = "list_error" if failure_point == "session_list" else "create_error"
     monkeypatch.setattr(FakeAgentSessionClient, attribute, original_error)
-    monkeypatch.setattr(app_server_runtime, "IssuekitClient", FakeAgentSessionClient)
+    fake_api.install_factory(FakeAgentSessionClient)
     runner = AppServerAttemptRunner(make_config(), make_issue())
 
     with pytest.raises(WorkflowError, match="Not found.") as exc_info:
@@ -465,6 +470,7 @@ def test_app_server_runner_propagates_missing_session_error(
 
 
 def test_app_server_runner_interrupts_turn_when_aborted(
+    fake_api,
     tmp_path: Path, monkeypatch
 ) -> None:
     FakeAgentSessionClient.instances.clear()
@@ -476,7 +482,7 @@ def test_app_server_runner_interrupts_turn_when_aborted(
         transports.append(transport)
         return transport
 
-    monkeypatch.setattr(app_server_runtime, "IssuekitClient", FakeAgentSessionClient)
+    fake_api.install_factory(FakeAgentSessionClient)
     runner = AppServerAttemptRunner(
         make_config(), make_issue(), transport_factory=transport_factory
     )
@@ -504,6 +510,7 @@ def test_app_server_runner_interrupts_turn_when_aborted(
 
 
 def test_app_server_runner_includes_failed_turn_message_in_result(
+    fake_api,
     tmp_path: Path, monkeypatch
 ) -> None:
     FakeAgentSessionClient.instances.clear()
@@ -526,7 +533,7 @@ def test_app_server_runner_includes_failed_turn_message_in_result(
             )
             return turn_id
 
-    monkeypatch.setattr(app_server_runtime, "IssuekitClient", FakeAgentSessionClient)
+    fake_api.install_factory(FakeAgentSessionClient)
     runner = AppServerAttemptRunner(
         make_config(),
         make_issue(),
@@ -550,6 +557,7 @@ def test_app_server_runner_includes_failed_turn_message_in_result(
 
 
 def test_app_server_runner_fails_fast_when_server_exits_mid_turn(
+    fake_api,
     tmp_path: Path, monkeypatch
 ) -> None:
     FakeAgentSessionClient.instances.clear()
@@ -582,7 +590,7 @@ def test_app_server_runner_fails_fast_when_server_exits_mid_turn(
         newline="\n",
     )
 
-    monkeypatch.setattr(app_server_runtime, "IssuekitClient", FakeAgentSessionClient)
+    fake_api.install_factory(FakeAgentSessionClient)
     adapter = FakeAdapter()
     adapter.run_config = AgentRunConfig(
         binary=sys.executable,

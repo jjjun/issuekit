@@ -9,7 +9,6 @@ from types import SimpleNamespace
 import pytest
 
 from issuekit import cli
-from issuekit import store as store_module
 from issuekit.agentrun import AgentBinaryNotFoundError, AgentPrompt
 from issuekit.agents import run_claimed as run_claimed_agent
 from issuekit.agents.run_claimed import review_feedback_prompt
@@ -18,6 +17,7 @@ from issuekit.core import Issue
 from issuekit.errors import WorkflowError
 from issuekit.gitutil import GitStatusEntry
 from issuekit.testing import FakeIssuekitClient
+from tests.api_helpers import configure_api
 from tests.issue_helpers import api_issue
 
 
@@ -251,30 +251,6 @@ def test_run_and_submit_selects_app_server_runner_when_opted_in(
     assert constructed == [(config, _claimed_issue(), False)]
 
 
-def _configure_api(
-    tmp_path: Path,
-    monkeypatch,
-    client: FakeIssuekitClient,
-    *,
-    extra_config: str = "",
-) -> None:
-    (tmp_path / "issuekit.toml").write_text(
-        (
-            "api_url = 'https://mine.example'\n"
-            "project = 'demo'\n"
-            f"{extra_config}"
-        ),
-        encoding="utf-8",
-        newline="\n",
-    )
-    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
-    monkeypatch.setattr(
-        "issuekit.agentrun.adapter.shutil.which",
-        lambda binary: f"/test-bin/{binary}",
-    )
-    monkeypatch.chdir(tmp_path)
-
-
 def _init_git_repo(path: Path) -> None:
     subprocess.run(["git", "init"], cwd=str(path), check=True, stdout=subprocess.DEVNULL)
     subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=str(path), check=True)
@@ -289,7 +265,29 @@ def _init_git_repo(path: Path) -> None:
     )
 
 
+def configure_implement_api(
+    tmp_path: Path,
+    monkeypatch,
+    fake_api,
+    client: FakeIssuekitClient,
+    *,
+    extra_config: str = "",
+) -> None:
+    configure_api(
+        tmp_path,
+        monkeypatch,
+        fake_api,
+        client,
+        extra_config=extra_config,
+    )
+    monkeypatch.setattr(
+        "issuekit.agentrun.adapter.shutil.which",
+        lambda binary: f"/test-bin/{binary}",
+    )
+
+
 def test_implement_command_materializes_api_issue_and_submits_review(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -297,7 +295,7 @@ def test_implement_command_materializes_api_issue_and_submits_review(
     client = FakeIssuekitClient([api_issue(1, "First", author="claude", body="# Issue #1: First\n")])
     FakeRunner.calls.clear()
     FakeRunner.issuekit_sessions.clear()
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_implement_api(tmp_path, monkeypatch, fake_api, client)
     monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", FakeRunner)
 
     exit_code = cli.main(["implement", "1", "--agent", "kimi", "--timeout-sec", "12"])
@@ -333,6 +331,7 @@ def test_implement_command_materializes_api_issue_and_submits_review(
 
 
 def test_implement_command_selects_app_server_runtime(
+    fake_api,
     tmp_path: Path, monkeypatch, capsys
 ) -> None:
     client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
@@ -354,9 +353,10 @@ def test_implement_command_selects_app_server_runtime(
         def run(self, *args, **kwargs) -> FakeResult:
             return FakeResult(exit_code=1, status_short=None)
 
-    _configure_api(
+    configure_implement_api(
         tmp_path,
         monkeypatch,
+        fake_api,
         client,
     )
     machine_path = tmp_path / "machine.toml"
@@ -449,23 +449,24 @@ def test_submission_summary_bounds_implementer_report(tmp_path: Path) -> None:
     assert included_report.endswith("[Implementer report truncated; see run log.]")
 
 
-def test_implement_command_uses_default_implementer(tmp_path: Path, monkeypatch, capsys) -> None:
+def test_implement_command_uses_default_implementer(fake_api, tmp_path: Path, monkeypatch, capsys) -> None:
     client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
     FakeRunner.calls.clear()
-    _configure_api(tmp_path, monkeypatch, client, extra_config="default_implementer = 'kimi'\n")
+    configure_implement_api(tmp_path, monkeypatch, fake_api, client, extra_config="default_implementer = 'kimi'\n")
     monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", FakeRunner)
 
     assert cli.main(["implement", "1"]) == 0
     assert "agent=kimi" in capsys.readouterr().out
 
 
-def test_implement_command_sends_effective_agent_runtime(tmp_path: Path, monkeypatch) -> None:
+def test_implement_command_sends_effective_agent_runtime(fake_api, tmp_path: Path, monkeypatch) -> None:
     client = FakeIssuekitClient(
         [api_issue(1, "First", author="claude"), api_issue(2, "Second", author="claude")]
     )
-    _configure_api(
+    configure_implement_api(
         tmp_path,
         monkeypatch,
+        fake_api,
         client,
         extra_config=(
             "[agents.codex]\n"
@@ -487,13 +488,14 @@ def test_implement_command_sends_effective_agent_runtime(tmp_path: Path, monkeyp
 
 
 def test_implement_command_blocks_wrong_work_branch_before_agent(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
     client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
     FakeRunner.calls.clear()
-    _configure_api(tmp_path, monkeypatch, client, extra_config="work_branch = 'main'\n")
+    configure_implement_api(tmp_path, monkeypatch, fake_api, client, extra_config="work_branch = 'main'\n")
     monkeypatch.setattr("issuekit.guards.branch.git_current_branch", lambda cwd: "feature")
     monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", FakeRunner)
 
@@ -506,11 +508,12 @@ def test_implement_command_blocks_wrong_work_branch_before_agent(
 
 
 def test_implement_command_does_not_commit_or_push(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
 ) -> None:
     client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_implement_api(tmp_path, monkeypatch, fake_api, client)
 
     def reject_commit_or_push(argv, *args, **kwargs):
         if list(argv[:2]) in (["git", "commit"], ["git", "push"]):
@@ -530,12 +533,13 @@ def test_implement_command_does_not_commit_or_push(
 
 
 def test_implement_command_mojibake_gate_blocks_submit(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
     client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_implement_api(tmp_path, monkeypatch, fake_api, client)
     (tmp_path / "code.py").write_text("print('clean')\n", encoding="utf-8", newline="\n")
     _init_git_repo(tmp_path)
 
@@ -561,12 +565,13 @@ def test_implement_command_mojibake_gate_blocks_submit(
 
 
 def test_implement_command_mojibake_gate_scans_full_file_when_diff_fails(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
     client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_implement_api(tmp_path, monkeypatch, fake_api, client)
     (tmp_path / "code.py").write_text("print('clean')\n", encoding="utf-8", newline="\n")
     _init_git_repo(tmp_path)
 
@@ -595,12 +600,13 @@ def test_implement_command_mojibake_gate_scans_full_file_when_diff_fails(
 
 
 def test_implement_command_mojibake_gate_blocks_non_ascii_path(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
     client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_implement_api(tmp_path, monkeypatch, fake_api, client)
     path = tmp_path / "日本語.py"
     path.write_text("print('clean')\n", encoding="utf-8", newline="\n")
     _init_git_repo(tmp_path)
@@ -620,11 +626,12 @@ def test_implement_command_mojibake_gate_blocks_non_ascii_path(
 
 
 def test_implement_command_mojibake_gate_allows_legitimate_japanese(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
 ) -> None:
     client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_implement_api(tmp_path, monkeypatch, fake_api, client)
     (tmp_path / "code.py").write_text(
         "title = '\u95be\u5024'\nvalue = 1\n", encoding="utf-8", newline="\n"
     )
@@ -644,12 +651,13 @@ def test_implement_command_mojibake_gate_allows_legitimate_japanese(
 
 
 def test_implement_command_mojibake_gate_blocks_unconfirmed_changed_text(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
     client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_implement_api(tmp_path, monkeypatch, fake_api, client)
     (tmp_path / "code.py").write_text("value = 1\n", encoding="utf-8", newline="\n")
     _init_git_repo(tmp_path)
 
@@ -673,11 +681,12 @@ def test_implement_command_mojibake_gate_blocks_unconfirmed_changed_text(
 
 
 def test_check_encoding_gate_matches_submit_gate_for_issue_308_tree(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
 ) -> None:
     client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_implement_api(tmp_path, monkeypatch, fake_api, client)
     test_path = tmp_path / "tests" / "test_gitutil.py"
     test_path.parent.mkdir()
     test_path.write_text(
@@ -706,13 +715,15 @@ def test_check_encoding_gate_matches_submit_gate_for_issue_308_tree(
 
 
 def test_implement_command_mojibake_gate_allows_excluded_legitimate_japanese(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
 ) -> None:
     client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
-    _configure_api(
+    configure_implement_api(
         tmp_path,
         monkeypatch,
+        fake_api,
         client,
         extra_config="check_encoding_exclude = ['titles/**']\n",
     )
@@ -735,14 +746,16 @@ def test_implement_command_mojibake_gate_allows_excluded_legitimate_japanese(
 
 
 def test_implement_command_mojibake_gate_blocks_confirmed_excluded_text(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
     client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
-    _configure_api(
+    configure_implement_api(
         tmp_path,
         monkeypatch,
+        fake_api,
         client,
         extra_config="check_encoding_exclude = ['titles/**']\n",
     )
@@ -770,12 +783,13 @@ def test_implement_command_mojibake_gate_blocks_confirmed_excluded_text(
 
 
 def test_implement_command_mojibake_gate_scans_file_without_source_extension(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
     client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_implement_api(tmp_path, monkeypatch, fake_api, client)
     (tmp_path / "script.sh").write_text(
         "echo clean\n",
         encoding="utf-8",
@@ -800,12 +814,13 @@ def test_implement_command_mojibake_gate_scans_file_without_source_extension(
 
 
 def test_implement_command_mojibake_gate_reports_invalid_utf8(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
     client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_implement_api(tmp_path, monkeypatch, fake_api, client)
     (tmp_path / "code.py").write_text(
         "value = 'clean'\n",
         encoding="utf-8",
@@ -826,11 +841,12 @@ def test_implement_command_mojibake_gate_reports_invalid_utf8(
 
 
 def test_implement_command_mojibake_gate_ignores_unchanged_corruption(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
 ) -> None:
     client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_implement_api(tmp_path, monkeypatch, fake_api, client)
     (tmp_path / "code.py").write_text(
         "comment = '\u8389'\nvalue = 1\n", encoding="utf-8", newline="\n"
     )
@@ -852,13 +868,15 @@ def test_implement_command_mojibake_gate_ignores_unchanged_corruption(
 
 
 def test_implement_command_mojibake_gate_allows_configured_halfwidth_kana(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
 ) -> None:
     client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
-    _configure_api(
+    configure_implement_api(
         tmp_path,
         monkeypatch,
+        fake_api,
         client,
         extra_config="gate_halfwidth_kana = false\n",
     )
@@ -885,12 +903,13 @@ def test_implement_command_mojibake_gate_allows_configured_halfwidth_kana(
 
 
 def test_implement_command_blocks_when_git_has_no_implementation_changes(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
     client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_implement_api(tmp_path, monkeypatch, fake_api, client)
     (tmp_path / ".gitignore").write_text(".agent-runs/\n", encoding="utf-8", newline="\n")
     _init_git_repo(tmp_path)
 
@@ -918,12 +937,13 @@ def test_implement_command_blocks_when_git_has_no_implementation_changes(
 
 
 def test_implement_command_prefers_failure_reason_over_last_log_line(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
     client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_implement_api(tmp_path, monkeypatch, fake_api, client)
     (tmp_path / ".gitignore").write_text(".agent-runs/\n", encoding="utf-8", newline="\n")
     _init_git_repo(tmp_path)
 
@@ -951,12 +971,13 @@ def test_implement_command_prefers_failure_reason_over_last_log_line(
 
 
 def test_implement_command_blocks_preexisting_dirty_worktree_without_agent_changes(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
     client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_implement_api(tmp_path, monkeypatch, fake_api, client)
     modified_path = tmp_path / "modified.py"
     modified_path.write_text("value = 1\n", encoding="utf-8", newline="\n")
     _init_git_repo(tmp_path)
@@ -990,6 +1011,7 @@ def test_implement_command_blocks_preexisting_dirty_worktree_without_agent_chang
 
 
 def test_implement_command_warns_before_run_when_resuming_over_stale_prior_run(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -1000,7 +1022,7 @@ def test_implement_command_warns_before_run_when_resuming_over_stale_prior_run(
 
     client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
     (tmp_path / ".gitignore").write_text(".agent-runs/\n", encoding="utf-8", newline="\n")
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_implement_api(tmp_path, monkeypatch, fake_api, client)
     modified_path = tmp_path / "modified.py"
     modified_path.write_text("value = 1\n", encoding="utf-8", newline="\n")
     _init_git_repo(tmp_path)
@@ -1046,6 +1068,7 @@ def test_implement_command_warns_before_run_when_resuming_over_stale_prior_run(
 
 
 def test_implement_command_does_not_warn_when_prior_run_is_fresh(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -1056,7 +1079,7 @@ def test_implement_command_does_not_warn_when_prior_run_is_fresh(
 
     client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
     (tmp_path / ".gitignore").write_text(".agent-runs/\n", encoding="utf-8", newline="\n")
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_implement_api(tmp_path, monkeypatch, fake_api, client)
     modified_path = tmp_path / "modified.py"
     modified_path.write_text("value = 1\n", encoding="utf-8", newline="\n")
     _init_git_repo(tmp_path)
@@ -1095,6 +1118,7 @@ def test_implement_command_does_not_warn_when_prior_run_is_fresh(
 
 
 def test_implement_command_warns_when_prior_run_already_reconciled_to_abandoned(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -1105,7 +1129,7 @@ def test_implement_command_warns_when_prior_run_already_reconciled_to_abandoned(
 
     client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
     (tmp_path / ".gitignore").write_text(".agent-runs/\n", encoding="utf-8", newline="\n")
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_implement_api(tmp_path, monkeypatch, fake_api, client)
     modified_path = tmp_path / "modified.py"
     modified_path.write_text("value = 1\n", encoding="utf-8", newline="\n")
     _init_git_repo(tmp_path)
@@ -1152,11 +1176,12 @@ def test_implement_command_warns_when_prior_run_already_reconciled_to_abandoned(
 
 
 def test_implement_command_submits_agent_change_with_preexisting_dirty_worktree(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
 ) -> None:
     client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_implement_api(tmp_path, monkeypatch, fake_api, client)
     modified_path = tmp_path / "modified.py"
     modified_path.write_text("value = 1\n", encoding="utf-8", newline="\n")
     changed_path = tmp_path / "changed.py"
@@ -1179,11 +1204,12 @@ def test_implement_command_submits_agent_change_with_preexisting_dirty_worktree(
 
 
 def test_implement_command_submits_deletion_only_change(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
 ) -> None:
     client = FakeIssuekitClient([api_issue(1, "Delete old code", author="claude")])
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_implement_api(tmp_path, monkeypatch, fake_api, client)
     deleted_path = tmp_path / "obsolete.py"
     deleted_path.write_text("obsolete = True\n", encoding="utf-8", newline="\n")
     _init_git_repo(tmp_path)
@@ -1200,12 +1226,13 @@ def test_implement_command_submits_deletion_only_change(
 
 
 def test_implement_command_accepts_agent_side_review_when_no_changes(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
     client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_implement_api(tmp_path, monkeypatch, fake_api, client)
     (tmp_path / ".gitignore").write_text(".agent-runs/\n", encoding="utf-8", newline="\n")
     _init_git_repo(tmp_path)
 
@@ -1226,12 +1253,13 @@ def test_implement_command_accepts_agent_side_review_when_no_changes(
 
 
 def test_implement_command_allows_no_change_submit_with_flag(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
     client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_implement_api(tmp_path, monkeypatch, fake_api, client)
     (tmp_path / ".gitignore").write_text(".agent-runs/\n", encoding="utf-8", newline="\n")
     _init_git_repo(tmp_path)
 
@@ -1253,12 +1281,13 @@ def test_implement_command_allows_no_change_submit_with_flag(
 
 
 def test_implement_command_blocks_submit_when_report_is_missing(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
     client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_implement_api(tmp_path, monkeypatch, fake_api, client)
     report_path = tmp_path / ".agent-runs" / "run.report.md"
 
     class NoReportRunner(FakeRunner):
@@ -1278,12 +1307,13 @@ def test_implement_command_blocks_submit_when_report_is_missing(
 
 
 def test_implement_command_blocks_submit_when_report_is_whitespace_only(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
     client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_implement_api(tmp_path, monkeypatch, fake_api, client)
     report_path = tmp_path / ".agent-runs" / "run.report.md"
     report_path.parent.mkdir()
     report_path.write_text("   \n", encoding="utf-8", newline="\n")
@@ -1304,12 +1334,13 @@ def test_implement_command_blocks_submit_when_report_is_whitespace_only(
 
 
 def test_implement_command_allows_missing_report_with_flag(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
     client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_implement_api(tmp_path, monkeypatch, fake_api, client)
     report_path = tmp_path / ".agent-runs" / "run.report.md"
 
     class NoReportRunner(FakeRunner):
@@ -1330,12 +1361,13 @@ def test_implement_command_allows_missing_report_with_flag(
 
 
 def test_implement_command_treats_already_at_review_as_submitted_without_report(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
     client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_implement_api(tmp_path, monkeypatch, fake_api, client)
     (tmp_path / ".gitignore").write_text(".agent-runs/\n", encoding="utf-8", newline="\n")
     _init_git_repo(tmp_path)
     report_path = tmp_path / ".agent-runs" / "run.report.md"
@@ -1357,6 +1389,7 @@ def test_implement_command_treats_already_at_review_as_submitted_without_report(
 
 
 def test_implement_command_keeps_review_feedback_in_plan_body(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -1377,7 +1410,7 @@ def test_implement_command_keeps_review_feedback_in_plan_body(
         ]
     )
     FakeRunner.calls.clear()
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_implement_api(tmp_path, monkeypatch, fake_api, client)
 
     class PromptCapturingRunner(FakeRunner):
         argvs: list[list[str]] = []
@@ -1408,11 +1441,12 @@ def test_implement_command_keeps_review_feedback_in_plan_body(
 
 
 def test_implement_command_does_not_submit_failed_run(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
 ) -> None:
     client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_implement_api(tmp_path, monkeypatch, fake_api, client)
 
     class FailingRunner(FakeRunner):
         def run(self, adapter, prompt: AgentPrompt, repo, timeout, **kwargs) -> FakeResult:
@@ -1425,12 +1459,13 @@ def test_implement_command_does_not_submit_failed_run(
 
 
 def test_implement_command_prints_post_run_line_on_successful_submit(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
     client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_implement_api(tmp_path, monkeypatch, fake_api, client)
     monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", FakeRunner)
 
     exit_code = cli.main(["implement", "1", "--agent", "codex"])
@@ -1445,12 +1480,13 @@ def test_implement_command_prints_post_run_line_on_successful_submit(
 
 
 def test_implement_prints_post_run_when_agent_process_cannot_launch(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
     client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_implement_api(tmp_path, monkeypatch, fake_api, client)
     real_popen = subprocess.Popen
 
     def fail_agent_launch(argv, *args, **kwargs):
@@ -1478,12 +1514,13 @@ def test_implement_prints_post_run_when_agent_process_cannot_launch(
 
 
 def test_implement_preflight_failure_does_not_claim_issue(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
     client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_implement_api(tmp_path, monkeypatch, fake_api, client)
     issue_before = client.get_issue(1)
 
     exit_code = cli.main(
@@ -1503,12 +1540,13 @@ def test_implement_preflight_failure_does_not_claim_issue(
 
 
 def test_implement_releases_claim_when_binary_disappears_after_preflight(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
     client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_implement_api(tmp_path, monkeypatch, fake_api, client)
 
     class DisappearingBinaryAdapter:
         calls = 0
@@ -1551,12 +1589,13 @@ def test_implement_releases_claim_when_binary_disappears_after_preflight(
 
 
 def test_implement_releases_claim_when_adapter_fails_after_preflight(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
     client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_implement_api(tmp_path, monkeypatch, fake_api, client)
 
     class FailingAdapter:
         def resolve_binary(self) -> Path:
@@ -1586,12 +1625,13 @@ def test_implement_releases_claim_when_adapter_fails_after_preflight(
 
 
 def test_implement_command_prints_not_submitted_reason_for_failed_run(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
     client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_implement_api(tmp_path, monkeypatch, fake_api, client)
 
     class FailingRunner(FakeRunner):
         def run(self, adapter, prompt: AgentPrompt, repo, timeout, **kwargs) -> FakeResult:
@@ -1613,12 +1653,13 @@ def test_implement_command_prints_not_submitted_reason_for_failed_run(
 
 
 def test_implement_command_rejects_zero_exit_error_envelope_and_reports_denied_tools(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
     client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_implement_api(tmp_path, monkeypatch, fake_api, client)
 
     class ErrorEnvelopeRunner(FakeRunner):
         def run(self, adapter, prompt: AgentPrompt, repo, timeout, **kwargs) -> FakeResult:
@@ -1645,12 +1686,13 @@ def test_implement_command_rejects_zero_exit_error_envelope_and_reports_denied_t
 
 @pytest.mark.skipif(os.name == "nt", reason="SIGINT behavior is POSIX-specific")
 def test_implement_command_reports_sigint_as_interrupted(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
     client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_implement_api(tmp_path, monkeypatch, fake_api, client)
 
     def interrupt_run(*args, **kwargs):
         signal.raise_signal(signal.SIGINT)
@@ -1669,12 +1711,13 @@ def test_implement_command_reports_sigint_as_interrupted(
 
 
 def test_implement_command_prints_not_submitted_reason_for_no_changes(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
     client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_implement_api(tmp_path, monkeypatch, fake_api, client)
     (tmp_path / ".gitignore").write_text(".agent-runs/\n", encoding="utf-8", newline="\n")
     _init_git_repo(tmp_path)
 
@@ -1696,12 +1739,13 @@ def test_implement_command_prints_not_submitted_reason_for_no_changes(
 
 
 def test_implement_command_prints_final_message_tail_and_hint_for_no_changes(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
     client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_implement_api(tmp_path, monkeypatch, fake_api, client)
     (tmp_path / ".gitignore").write_text(".agent-runs/\n", encoding="utf-8", newline="\n")
     _init_git_repo(tmp_path)
 
@@ -1738,12 +1782,13 @@ def test_implement_command_prints_final_message_tail_and_hint_for_no_changes(
 
 
 def test_implement_command_prints_final_message_tail_for_missing_report(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
     client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_implement_api(tmp_path, monkeypatch, fake_api, client)
     report_path = tmp_path / ".agent-runs" / "run.report.md"
 
     class StalledNoReportRunner(FakeRunner):
@@ -1770,12 +1815,13 @@ def test_implement_command_prints_final_message_tail_for_missing_report(
 
 
 def test_implement_command_truncates_long_final_message_tail(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
     client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_implement_api(tmp_path, monkeypatch, fake_api, client)
     (tmp_path / ".gitignore").write_text(".agent-runs/\n", encoding="utf-8", newline="\n")
     _init_git_repo(tmp_path)
     long_message = "x" * 500
@@ -1795,12 +1841,13 @@ def test_implement_command_truncates_long_final_message_tail(
 
 
 def test_implement_command_sanitizes_non_ascii_final_message_tail(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
     client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_implement_api(tmp_path, monkeypatch, fake_api, client)
     (tmp_path / ".gitignore").write_text(".agent-runs/\n", encoding="utf-8", newline="\n")
     _init_git_repo(tmp_path)
 
@@ -1822,12 +1869,13 @@ def test_implement_command_sanitizes_non_ascii_final_message_tail(
 
 
 def test_implement_command_omits_final_message_tail_when_not_stall_shaped(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
     client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_implement_api(tmp_path, monkeypatch, fake_api, client)
 
     class FailingRunner(FakeRunner):
         def run(self, adapter, prompt: AgentPrompt, repo, timeout, **kwargs) -> FakeResult:
@@ -1848,12 +1896,13 @@ def test_implement_command_omits_final_message_tail_when_not_stall_shaped(
 
 
 def test_implement_command_prints_submit_error_reason_when_guard_blocks_submit(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
     client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_implement_api(tmp_path, monkeypatch, fake_api, client)
     monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", FakeRunner)
 
     def raise_guard_error(*args, **kwargs):
@@ -1877,6 +1926,7 @@ def test_implement_command_prints_submit_error_reason_when_guard_blocks_submit(
 
 
 def test_implement_command_prints_unknown_stage_when_stage_lookup_also_fails(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -1890,7 +1940,7 @@ def test_implement_command_prints_unknown_stage_when_stage_lookup_also_fails(
             return super().get_issue(number)
 
     client = FlakyAfterSubmitClient([api_issue(1, "First", author="claude")])
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_implement_api(tmp_path, monkeypatch, fake_api, client)
     monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", FakeRunner)
 
     def raise_guard_error(*args, **kwargs):
@@ -1915,12 +1965,13 @@ def test_implement_command_prints_unknown_stage_when_stage_lookup_also_fails(
 
 
 def test_implement_command_prints_recovery_hint_for_startup_failure(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
     client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_implement_api(tmp_path, monkeypatch, fake_api, client)
 
     class StartupFailureRunner(FakeRunner):
         def run(self, adapter, prompt: AgentPrompt, repo, timeout, **kwargs) -> FakeResult:
@@ -1948,12 +1999,13 @@ def test_implement_command_prints_recovery_hint_for_startup_failure(
 
 
 def test_implement_command_omits_recovery_hint_when_usage_is_nonzero(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
     client = FakeIssuekitClient([api_issue(1, "First", author="claude")])
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_implement_api(tmp_path, monkeypatch, fake_api, client)
 
     class RealFailureRunner(FakeRunner):
         def run(self, adapter, prompt: AgentPrompt, repo, timeout, **kwargs) -> FakeResult:
@@ -1976,13 +2028,14 @@ def test_implement_command_omits_recovery_hint_when_usage_is_nonzero(
 
 
 def test_implement_command_reports_author_self_assignment(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
     client = FakeIssuekitClient([api_issue(1, "First", assignee="codex", author="codex")])
     FakeRunner.calls.clear()
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_implement_api(tmp_path, monkeypatch, fake_api, client)
     monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", FakeRunner)
 
     exit_code = cli.main(["implement", "1", "--agent", "codex"])
@@ -1993,12 +2046,13 @@ def test_implement_command_reports_author_self_assignment(
 
 
 def test_implement_command_reports_missing_issue(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
     client = CloseTrackingClient()
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_implement_api(tmp_path, monkeypatch, fake_api, client)
 
     exit_code = cli.main(["implement", "99", "--agent", "kimi"])
 
@@ -2007,8 +2061,8 @@ def test_implement_command_reports_missing_issue(
     assert client.close_count == 1
 
 
-def test_implement_rejects_invalid_issue_id(tmp_path: Path, monkeypatch, capsys) -> None:
-    _configure_api(tmp_path, monkeypatch, FakeIssuekitClient())
+def test_implement_rejects_invalid_issue_id(fake_api, tmp_path: Path, monkeypatch, capsys) -> None:
+    configure_implement_api(tmp_path, monkeypatch, fake_api, FakeIssuekitClient())
 
     exit_code = cli.main(["implement", "bad-id", "--agent", "codex"])
 

@@ -4,27 +4,9 @@ from pathlib import Path
 import pytest
 
 from issuekit import cli
-from issuekit import store as store_module
 from issuekit.testing import FakeIssuekitClient
-from issuekit.workers import registry as worker_registry
+from tests.api_helpers import configure_api
 from tests.issue_helpers import api_issue
-
-
-def _configure_api(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    client: FakeIssuekitClient,
-    *,
-    project: str = "issuekit",
-) -> None:
-    (tmp_path / "issuekit.toml").write_text(
-        f"api_url = 'https://mine.example'\nproject = '{project}'\n",
-        encoding="utf-8",
-        newline="\n",
-    )
-    monkeypatch.setattr(store_module, "IssuekitClient", lambda *a, **k: client)
-    monkeypatch.setattr(worker_registry, "IssuekitClient", lambda *a, **k: client)
-    monkeypatch.chdir(tmp_path)
 
 
 def _implementing(issue_id: int, worker: str, *, assignee: str = "claude") -> dict:
@@ -40,12 +22,13 @@ def _implementing(issue_id: int, worker: str, *, assignee: str = "claude") -> di
 
 
 def test_orphans_flags_claim_without_live_worker(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     client = FakeIssuekitClient([_implementing(5, "dead.issuekit@machine")])
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client, project="issuekit")
 
     assert cli.main(["orphans"]) == 0
 
@@ -57,12 +40,13 @@ def test_orphans_flags_claim_without_live_worker(
 
 
 def test_orphans_json_shape(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     client = FakeIssuekitClient([_implementing(5, "dead.issuekit@machine")])
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client, project="issuekit")
 
     assert cli.main(["orphans", "--json"]) == 0
 
@@ -82,6 +66,7 @@ def test_orphans_json_shape(
 
 
 def test_orphans_json_includes_stale_directed_issue(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -89,7 +74,7 @@ def test_orphans_json_includes_stale_directed_issue(
     client = FakeIssuekitClient(
         [api_issue(8, "Directed", stage="todo", target_worker="checkout.issuekit")]
     )
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client, project="issuekit")
 
     assert cli.main(["orphans", "--json"]) == 0
 
@@ -110,6 +95,7 @@ def test_orphans_json_includes_stale_directed_issue(
 
 
 def test_orphans_flags_expired_heartbeat(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -119,7 +105,7 @@ def test_orphans_flags_expired_heartbeat(
     client.upsert_worker(
         machine_id="machine", repo_id="issuekit", worker_name="slow", path="/repo"
     )
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client, project="issuekit")
 
     assert cli.main(["orphans", "--json"]) == 0
 
@@ -131,6 +117,7 @@ def test_orphans_flags_expired_heartbeat(
 
 
 def test_orphans_healthy_worker_within_window_is_not_flagged(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -139,7 +126,7 @@ def test_orphans_healthy_worker_within_window_is_not_flagged(
     client.upsert_worker(
         machine_id="machine", repo_id="issuekit", worker_name="slow", path="/repo"
     )
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client, project="issuekit")
 
     # A huge window keeps the fixed 2026-01-01 heartbeat inside the live window.
     assert cli.main(["orphans", "--stale-after-sec", "999999999999"]) == 0
@@ -148,11 +135,12 @@ def test_orphans_healthy_worker_within_window_is_not_flagged(
 
 
 def test_orphans_warns_when_staleness_is_not_wider_than_heartbeat(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    _configure_api(tmp_path, monkeypatch, FakeIssuekitClient())
+    configure_api(tmp_path, monkeypatch, fake_api, FakeIssuekitClient(), project="issuekit")
 
     assert cli.main(["orphans", "--stale-after-sec", "60"]) == 0
 
@@ -160,6 +148,7 @@ def test_orphans_warns_when_staleness_is_not_wider_than_heartbeat(
 
 
 def test_orphans_ignores_non_implementing_and_unclaimed(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -171,7 +160,7 @@ def test_orphans_ignores_non_implementing_and_unclaimed(
             _implementing(2, ""),  # implementing but no recorded worker
         ]
     )
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client, project="issuekit")
 
     assert cli.main(["orphans"]) == 0
 

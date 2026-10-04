@@ -6,27 +6,18 @@ import pytest
 from issuekit import cli
 from issuekit.errors import WorkflowError
 from issuekit.testing import FakeIssuekitClient
-from issuekit.workers import registry as worker_registry
-
-
-def _configure_api(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, client) -> None:
-    (tmp_path / "issuekit.toml").write_text(
-        "api_url = 'https://mine.example'\nproject = 'demo'\n",
-        encoding="utf-8",
-        newline="\n",
-    )
-    monkeypatch.setattr(worker_registry, "IssuekitClient", lambda *args, **kwargs: client)
-    monkeypatch.chdir(tmp_path)
+from tests.api_helpers import configure_api
 
 
 def test_repos_remove_deletes_repo(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     client = FakeIssuekitClient()
     client.upsert_repo(repo_key="mine-py")
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client)
 
     assert cli.main(["repos", "remove", "mine-py", "--json"]) == 0
 
@@ -42,6 +33,7 @@ def test_repos_remove_deletes_repo(
 
 
 def test_repos_remove_reports_reference_counts_on_conflict(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -54,7 +46,7 @@ def test_repos_remove_reports_reference_counts_on_conflict(
                 details={"reference_counts": {"workers": 2, "issues": 1}},
             )
 
-    _configure_api(tmp_path, monkeypatch, ConflictClient())
+    configure_api(tmp_path, monkeypatch, fake_api, ConflictClient())
 
     assert cli.main(["repos", "remove", "mine-py"]) == 1
 
@@ -65,6 +57,7 @@ def test_repos_remove_reports_reference_counts_on_conflict(
 
 
 def test_repos_remove_reports_nested_reference_counts_on_repo_referenced(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -85,7 +78,7 @@ def test_repos_remove_reports_nested_reference_counts_on_repo_referenced(
                 },
             )
 
-    _configure_api(tmp_path, monkeypatch, ConflictClient())
+    configure_api(tmp_path, monkeypatch, fake_api, ConflictClient())
 
     assert cli.main(["repos", "remove", "issuekit"]) == 1
 

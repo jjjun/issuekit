@@ -4,7 +4,6 @@ from pathlib import Path
 
 import issuekit.proposals.api as proposals_api
 from issuekit import cli
-from issuekit import store as store_module
 from issuekit.config import IssuekitConfig, TriagePolicy
 from issuekit.guards.author import read_author_guards
 from issuekit.proposals import ProposalError, origin_destination
@@ -51,6 +50,7 @@ def test_matches_triage_policy_skips_pending_threaded_proposal_from_trusted_orig
 
 
 def test_api_cli_propose_posts_expected_body_and_dedupes(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -67,7 +67,7 @@ def test_api_cli_propose_posts_expected_body_and_dedupes(
         created_projects.append(kwargs["project"])
         return client
 
-    monkeypatch.setattr(proposals_api, "IssuekitClient", fake_client)
+    fake_api.install_factory(fake_client)
     monkeypatch.chdir(tmp_path)
     client.register_catalog_project("target")
 
@@ -123,6 +123,7 @@ def test_api_cli_propose_posts_expected_body_and_dedupes(
 
 
 def test_issue_guard_survives_proposal_and_blocks_claim_of_authored_issue(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -134,8 +135,8 @@ def test_issue_guard_survives_proposal_and_blocks_claim_of_authored_issue(
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
-    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
+    fake_api.install_client(client)
     monkeypatch.chdir(tmp_path)
 
     assert cli.main(
@@ -192,6 +193,7 @@ def test_api_cli_propose_requires_local_project_context(
 
 
 def test_api_cli_propose_project_override_allows_scratch_cwd(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -207,7 +209,7 @@ def test_api_cli_propose_project_override_allows_scratch_cwd(
         created_projects.append(kwargs["project"])
         return client
 
-    monkeypatch.setattr(proposals_api, "IssuekitClient", fake_client)
+    fake_api.install_factory(fake_client)
 
     assert (
         cli.main(
@@ -234,6 +236,7 @@ def test_api_cli_propose_project_override_allows_scratch_cwd(
 
 
 def test_api_cli_propose_accepts_worker_repo_target(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -250,7 +253,7 @@ def test_api_cli_propose_accepts_worker_repo_target(
         created_projects.append(kwargs["project"])
         return client
 
-    monkeypatch.setattr(proposals_api, "IssuekitClient", fake_client)
+    fake_api.install_factory(fake_client)
     monkeypatch.chdir(tmp_path)
     client.register_catalog_project("target")
 
@@ -285,6 +288,7 @@ def test_api_cli_propose_accepts_worker_repo_target(
 
 
 def test_api_cli_propose_sends_machine_qualified_target_worker(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -296,7 +300,7 @@ def test_api_cli_propose_sends_machine_qualified_target_worker(
     )
     client = FakeIssuekitClient()
 
-    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     monkeypatch.chdir(tmp_path)
     client.register_catalog_project("target")
 
@@ -384,6 +388,7 @@ def test_api_cli_propose_rejects_invalid_worker_repo_target(
 
 
 def test_api_cli_propose_rejects_unknown_target_when_profile_catalog_exists(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -396,7 +401,7 @@ def test_api_cli_propose_rejects_unknown_target_when_profile_catalog_exists(
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     monkeypatch.chdir(tmp_path)
 
     assert (
@@ -419,6 +424,7 @@ def test_api_cli_propose_rejects_unknown_target_when_profile_catalog_exists(
 
 
 def test_api_cli_propose_allows_registered_target_with_repo_id_mismatch(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -441,7 +447,7 @@ def test_api_cli_propose_allows_registered_target_with_repo_id_mismatch(
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     monkeypatch.chdir(tmp_path)
 
     assert (
@@ -466,6 +472,7 @@ def test_api_cli_propose_allows_registered_target_with_repo_id_mismatch(
 
 
 def test_api_cli_propose_accepts_worker_project_catalog(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -490,7 +497,7 @@ def test_api_cli_propose_accepts_worker_project_catalog(
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     monkeypatch.chdir(tmp_path)
 
     assert (
@@ -513,6 +520,7 @@ def test_api_cli_propose_accepts_worker_project_catalog(
 
 
 def test_api_cli_propose_accepts_worker_project_when_profiles_exist(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -531,7 +539,7 @@ def test_api_cli_propose_accepts_worker_project_when_profiles_exist(
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     monkeypatch.chdir(tmp_path)
 
     assert (
@@ -555,6 +563,7 @@ def test_api_cli_propose_accepts_worker_project_when_profiles_exist(
 
 
 def test_api_cli_propose_surfaces_worker_catalog_error(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -574,7 +583,7 @@ def test_api_cli_propose_surfaces_worker_catalog_error(
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     monkeypatch.chdir(tmp_path)
 
     assert (
@@ -597,6 +606,7 @@ def test_api_cli_propose_surfaces_worker_catalog_error(
 
 
 def test_api_cli_propose_surfaces_profile_catalog_error(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -616,7 +626,7 @@ def test_api_cli_propose_surfaces_profile_catalog_error(
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     monkeypatch.chdir(tmp_path)
 
     assert (
@@ -639,6 +649,7 @@ def test_api_cli_propose_surfaces_profile_catalog_error(
 
 
 def test_api_cli_propose_can_mark_blocking(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -649,7 +660,7 @@ def test_api_cli_propose_can_mark_blocking(
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     monkeypatch.chdir(tmp_path)
     client.register_catalog_project("target")
 
@@ -684,6 +695,7 @@ def test_api_cli_propose_can_mark_blocking(
 
 
 def test_api_cli_propose_attaches_dependency_refs(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -694,7 +706,7 @@ def test_api_cli_propose_attaches_dependency_refs(
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     monkeypatch.chdir(tmp_path)
     client.register_catalog_project("mine-js-monorepo")
 
@@ -732,6 +744,7 @@ def test_api_cli_propose_attaches_dependency_refs(
 
 
 def test_api_cli_propose_reads_structured_dependency_body_refs(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -742,7 +755,7 @@ def test_api_cli_propose_reads_structured_dependency_body_refs(
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     monkeypatch.chdir(tmp_path)
     client.register_catalog_project("mine-js-monorepo")
 
@@ -768,6 +781,7 @@ def test_api_cli_propose_reads_structured_dependency_body_refs(
 
 
 def test_api_cli_propose_accepts_explicit_dependency_refs(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -778,7 +792,7 @@ def test_api_cli_propose_accepts_explicit_dependency_refs(
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     monkeypatch.chdir(tmp_path)
     client.register_catalog_project("target")
 
@@ -810,6 +824,7 @@ def test_api_cli_propose_accepts_explicit_dependency_refs(
 
 
 def test_api_cli_propose_warns_for_unreferenced_upstream_dependency(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -821,7 +836,7 @@ def test_api_cli_propose_warns_for_unreferenced_upstream_dependency(
         newline="\n",
     )
     _write_workspace_refs(tmp_path / "issuekit.workspace.toml", "mine-js-monorepo", "mine-py")
-    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     monkeypatch.chdir(tmp_path)
     client.register_catalog_project("dashboard-ui")
 
@@ -857,6 +872,7 @@ def test_api_cli_propose_warns_for_unreferenced_upstream_dependency(
 
 
 def test_api_cli_propose_warns_instead_of_rejecting_freeform_dependency_line(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -868,7 +884,7 @@ def test_api_cli_propose_warns_instead_of_rejecting_freeform_dependency_line(
         newline="\n",
     )
     _write_workspace_refs(tmp_path / "issuekit.workspace.toml", "mine-js-monorepo", "mine-py")
-    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     monkeypatch.chdir(tmp_path)
     client.register_catalog_project("dashboard-ui")
 
@@ -892,6 +908,7 @@ def test_api_cli_propose_warns_instead_of_rejecting_freeform_dependency_line(
 
 
 def test_api_cli_propose_does_not_warn_for_target_owned_query_param_contract(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -904,7 +921,7 @@ def test_api_cli_propose_does_not_warn_for_target_owned_query_param_contract(
         newline="\n",
     )
     _write_workspace_refs(tmp_path / "issuekit.workspace.toml", "mine-js-monorepo", "mine-py")
-    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     monkeypatch.chdir(tmp_path)
 
     assert (
@@ -929,6 +946,7 @@ def test_api_cli_propose_does_not_warn_for_target_owned_query_param_contract(
 
 
 def test_api_cli_propose_warns_for_self_target_without_reply(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -940,7 +958,7 @@ def test_api_cli_propose_warns_for_self_target_without_reply(
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     monkeypatch.chdir(tmp_path)
 
     assert cli.main(["propose", "--to", "source", "--title", "Local", "--body", "Body."]) == 0
@@ -1017,6 +1035,7 @@ def test_api_cli_propose_rejects_malformed_dependency_prefix(
 
 
 def test_api_cli_propose_warns_for_bare_ref_collision(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -1040,7 +1059,7 @@ def test_api_cli_propose_warns_for_bare_ref_collision(
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     monkeypatch.chdir(tmp_path)
     client.register_catalog_project("target")
 
@@ -1137,6 +1156,7 @@ def test_api_cli_propose_rejects_non_ascii_title(
 
 
 def test_api_cli_propose_from_issue_reads_api_store(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -1160,8 +1180,8 @@ def test_api_cli_propose_from_issue_reads_api_store(
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
-    monkeypatch.setattr("issuekit.store.IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
+    fake_api.install_client(client)
     monkeypatch.chdir(tmp_path)
 
     assert cli.main(["propose", "--to", "target", "--from-issue", "7", "--json"]) == 0
@@ -1173,6 +1193,7 @@ def test_api_cli_propose_from_issue_reads_api_store(
 
 
 def test_api_cli_propose_same_origin_payload_mismatch_fails(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -1194,7 +1215,7 @@ def test_api_cli_propose_same_origin_payload_mismatch_fails(
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     monkeypatch.chdir(tmp_path)
 
     argv = ["propose", "--to", "target", "--title", "New title", "--body", "New body."]
@@ -1217,6 +1238,7 @@ def test_api_cli_propose_same_origin_payload_mismatch_fails(
 
 
 def test_api_cli_propose_nonzero_origin_payload_mismatch_guidance(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -1228,8 +1250,8 @@ def test_api_cli_propose_nonzero_origin_payload_mismatch_guidance(
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
-    monkeypatch.setattr("issuekit.store.IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
+    fake_api.install_client(client)
     monkeypatch.chdir(tmp_path)
 
     first_argv = [
@@ -1274,6 +1296,7 @@ def test_api_cli_propose_nonzero_origin_payload_mismatch_guidance(
 
 
 def test_api_cli_propose_deduplicated_matching_payload_reports_deduplicated(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -1295,7 +1318,7 @@ def test_api_cli_propose_deduplicated_matching_payload_reports_deduplicated(
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     monkeypatch.chdir(tmp_path)
 
     argv = ["propose", "--to", "target", "--title", "Shared title", "--body", "Shared body."]
@@ -1316,6 +1339,7 @@ def test_api_cli_propose_deduplicated_matching_payload_reports_deduplicated(
 
 
 def test_api_cli_propose_deduplicated_response_with_stale_origin_still_reports_mismatch(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -1348,7 +1372,7 @@ def test_api_cli_propose_deduplicated_response_with_stale_origin_still_reports_m
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     monkeypatch.chdir(tmp_path)
 
     argv = ["propose", "--to", "target", "--title", "New title", "--body", "New body."]
@@ -1364,6 +1388,7 @@ def test_api_cli_propose_deduplicated_response_with_stale_origin_still_reports_m
 
 
 def test_api_cli_outgoing_lists_own_proposals(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -1393,7 +1418,7 @@ def test_api_cli_outgoing_lists_own_proposals(
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(proposals_api, "IssuekitClient", fake_client)
+    fake_api.install_factory(fake_client)
     monkeypatch.chdir(tmp_path)
     client.register_catalog_project("target")
 
@@ -1423,6 +1448,7 @@ def test_api_cli_outgoing_lists_own_proposals(
 
 
 def test_api_cli_outgoing_includes_adopted_issue_state(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -1445,7 +1471,7 @@ def test_api_cli_outgoing_includes_adopted_issue_state(
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     monkeypatch.chdir(tmp_path)
     client.register_catalog_project("target")
 
@@ -1457,6 +1483,7 @@ def test_api_cli_outgoing_includes_adopted_issue_state(
 
 
 def test_api_cli_outgoing_includes_pending_check_wait_time(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -1483,7 +1510,7 @@ def test_api_cli_outgoing_includes_pending_check_wait_time(
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     monkeypatch.chdir(tmp_path)
     client.register_catalog_project("target")
 
@@ -1498,6 +1525,7 @@ def test_api_cli_outgoing_includes_pending_check_wait_time(
 
 
 def test_api_cli_outgoing_rejects_foreign_and_invalid_lookups(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -1512,7 +1540,7 @@ def test_api_cli_outgoing_rejects_foreign_and_invalid_lookups(
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     monkeypatch.chdir(tmp_path)
     client.register_catalog_project("target")
 
@@ -1524,6 +1552,7 @@ def test_api_cli_outgoing_rejects_foreign_and_invalid_lookups(
 
 
 def test_api_cli_incoming_lists_pending_large_inbox(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -1545,7 +1574,7 @@ def test_api_cli_incoming_lists_pending_large_inbox(
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     monkeypatch.chdir(tmp_path)
 
     assert cli.main(["incoming", "--json"]) == 0
@@ -1557,6 +1586,7 @@ def test_api_cli_incoming_lists_pending_large_inbox(
 
 
 def test_api_cli_adopt_and_discard_use_proposal_ids(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -1572,7 +1602,7 @@ def test_api_cli_adopt_and_discard_use_proposal_ids(
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     monkeypatch.chdir(tmp_path)
     append_file = tmp_path / "plan.md"
     append_file.write_text("## Implementation Plan\n\nDo this.\n", encoding="utf-8", newline="\n")
@@ -1599,6 +1629,7 @@ def test_api_cli_adopt_and_discard_use_proposal_ids(
 
 
 def test_api_cli_adopt_missing_append_file_leaves_proposal_pending(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -1614,7 +1645,7 @@ def test_api_cli_adopt_missing_append_file_leaves_proposal_pending(
         newline="\n",
     )
     append_file = tmp_path / "missing.md"
-    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     monkeypatch.chdir(tmp_path)
 
     assert cli.main(["adopt", "1", "--append-file", str(append_file), "--json"]) == 1
@@ -1625,6 +1656,7 @@ def test_api_cli_adopt_missing_append_file_leaves_proposal_pending(
 
 
 def test_api_cli_adopt_non_ascii_append_file_leaves_proposal_pending(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -1641,7 +1673,7 @@ def test_api_cli_adopt_non_ascii_append_file_leaves_proposal_pending(
     )
     append_file = tmp_path / "plan.md"
     append_file.write_text("caf\u00e9\n", encoding="utf-8", newline="\n")
-    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     monkeypatch.chdir(tmp_path)
 
     assert cli.main(["adopt", "1", "--append-file", str(append_file), "--json"]) == 1
@@ -1655,6 +1687,7 @@ def test_api_cli_adopt_non_ascii_append_file_leaves_proposal_pending(
 
 
 def test_api_cli_adopt_empty_append_file_leaves_proposal_pending(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -1671,7 +1704,7 @@ def test_api_cli_adopt_empty_append_file_leaves_proposal_pending(
     )
     append_file = tmp_path / "plan.md"
     append_file.write_text(" \n\t\n", encoding="utf-8", newline="\n")
-    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     monkeypatch.chdir(tmp_path)
 
     assert cli.main(["adopt", "1", "--append-file", str(append_file), "--json"]) == 1
@@ -1682,6 +1715,7 @@ def test_api_cli_adopt_empty_append_file_leaves_proposal_pending(
 
 
 def test_api_cli_adopt_append_retries_not_found_and_reports_verified_output(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -1699,7 +1733,7 @@ def test_api_cli_adopt_append_retries_not_found_and_reports_verified_output(
     )
     append_file = tmp_path / "plan.md"
     append_file.write_text("\n## Implementation Plan\n\nDo this.\n", encoding="utf-8", newline="\n")
-    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     monkeypatch.setattr(proposals_api, "_sleep", lambda _delay: None)
     monkeypatch.chdir(tmp_path)
 
@@ -1712,6 +1746,7 @@ def test_api_cli_adopt_append_retries_not_found_and_reports_verified_output(
 
 
 def test_api_cli_adopt_append_reports_persistent_not_found(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -1729,7 +1764,7 @@ def test_api_cli_adopt_append_reports_persistent_not_found(
     )
     append_file = tmp_path / "plan.md"
     append_file.write_text("## Implementation Plan\n\nDo this.\n", encoding="utf-8", newline="\n")
-    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     monkeypatch.setattr(proposals_api, "_sleep", lambda _delay: None)
     monkeypatch.chdir(tmp_path)
 
@@ -1744,6 +1779,7 @@ def test_api_cli_adopt_append_reports_persistent_not_found(
 
 
 def test_api_cli_adopt_append_fails_when_patch_body_is_not_visible(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -1761,7 +1797,7 @@ def test_api_cli_adopt_append_fails_when_patch_body_is_not_visible(
     )
     append_file = tmp_path / "plan.md"
     append_file.write_text("## Implementation Plan\n\nDo this.\n", encoding="utf-8", newline="\n")
-    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     monkeypatch.setattr(proposals_api, "_sleep", lambda _delay: None)
     monkeypatch.chdir(tmp_path)
 
@@ -1776,6 +1812,7 @@ def test_api_cli_adopt_append_fails_when_patch_body_is_not_visible(
 
 
 def test_api_cli_discard_to_addresses_target_inbox(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -1797,7 +1834,7 @@ def test_api_cli_discard_to_addresses_target_inbox(
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(proposals_api, "IssuekitClient", fake_client)
+    fake_api.install_factory(fake_client)
     monkeypatch.chdir(tmp_path)
     client.register_catalog_project("target")
 
@@ -1814,6 +1851,7 @@ def test_api_cli_discard_to_addresses_target_inbox(
 
 
 def test_api_cli_discard_to_rejects_foreign_origin(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -1828,7 +1866,7 @@ def test_api_cli_discard_to_rejects_foreign_origin(
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     monkeypatch.chdir(tmp_path)
     client.register_catalog_project("target")
 
@@ -1838,6 +1876,7 @@ def test_api_cli_discard_to_rejects_foreign_origin(
 
 
 def test_api_cli_discard_without_to_addresses_local_inbox(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -1858,7 +1897,7 @@ def test_api_cli_discard_without_to_addresses_local_inbox(
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(proposals_api, "IssuekitClient", fake_client)
+    fake_api.install_factory(fake_client)
     monkeypatch.chdir(tmp_path)
 
     assert cli.main(["discard", "7", "--json"]) == 0
@@ -1870,6 +1909,7 @@ def test_api_cli_discard_without_to_addresses_local_inbox(
 
 
 def test_api_cli_adopt_normal_output_includes_next_step(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -1884,7 +1924,7 @@ def test_api_cli_adopt_normal_output_includes_next_step(
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     monkeypatch.chdir(tmp_path)
 
     assert cli.main(["adopt", "1", "--priority", "high"]) == 0
@@ -1894,7 +1934,7 @@ def test_api_cli_adopt_normal_output_includes_next_step(
     assert "Next: issuekit claim --id 1 --assignee <agent>" in out
 
 
-def test_auto_adopt_incoming_proposals_filters_policy_and_caps(monkeypatch) -> None:
+def test_auto_adopt_incoming_proposals_filters_policy_and_caps(fake_api, monkeypatch) -> None:
     client = FakeIssuekitClient(
         proposals=[
             {
@@ -1937,7 +1977,7 @@ def test_auto_adopt_incoming_proposals_filters_policy_and_caps(monkeypatch) -> N
             max_adoptions_per_cycle=1,
         ),
     )
-    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
 
     adopted = proposals_api.auto_adopt_incoming_proposals(config)
 
@@ -1955,7 +1995,7 @@ def test_auto_adopt_incoming_proposals_filters_policy_and_caps(monkeypatch) -> N
     assert client.get_proposal(4)["status"] == "pending"
 
 
-def test_auto_adopt_skips_pending_threaded_proposal_from_trusted_origin(monkeypatch) -> None:
+def test_auto_adopt_skips_pending_threaded_proposal_from_trusted_origin(fake_api, monkeypatch) -> None:
     client = FakeIssuekitClient(
         proposals=[
             {
@@ -1976,7 +2016,7 @@ def test_auto_adopt_skips_pending_threaded_proposal_from_trusted_origin(monkeypa
             require_blocking=True,
         ),
     )
-    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
 
     assert proposals_api.auto_adopt_incoming_proposals(config) == []
     assert client.get_proposal(1)["status"] == "pending"
@@ -1984,6 +2024,7 @@ def test_auto_adopt_skips_pending_threaded_proposal_from_trusted_origin(monkeypa
 
 
 def test_auto_adopt_incoming_proposals_does_not_discard_superseded_refs(
+    fake_api,
     monkeypatch,
 ) -> None:
     client = FakeIssuekitClient(
@@ -2013,7 +2054,7 @@ def test_auto_adopt_incoming_proposals_does_not_discard_superseded_refs(
             max_adoptions_per_cycle=2,
         ),
     )
-    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
 
     adopted = proposals_api.auto_adopt_incoming_proposals(config)
 
@@ -2028,7 +2069,7 @@ def test_auto_adopt_incoming_proposals_does_not_discard_superseded_refs(
     ]
 
 
-def test_auto_adopt_incoming_proposals_can_skip_holds(monkeypatch) -> None:
+def test_auto_adopt_incoming_proposals_can_skip_holds(fake_api, monkeypatch) -> None:
     client = FakeIssuekitClient(
         proposals=[
             {
@@ -2047,7 +2088,7 @@ def test_auto_adopt_incoming_proposals_can_skip_holds(monkeypatch) -> None:
             hold_auto_adopted=False,
         ),
     )
-    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
 
     adopted = proposals_api.auto_adopt_incoming_proposals(config)
 

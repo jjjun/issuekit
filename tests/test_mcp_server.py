@@ -16,7 +16,6 @@ else:
 
 import issuekit.proposals.api as proposals_api
 from issuekit import cli
-from issuekit import store as store_module
 from issuekit.api import token_cache as token_cache_module
 from issuekit.config import load_config
 from issuekit.mcp import server as mcp_server
@@ -24,7 +23,7 @@ from issuekit.mcp.server import create_server
 from issuekit.negotiation import MockNegotiationStore, ThreadStatus, Verdict
 from issuekit.prompts.protocol import render_protocol
 from issuekit.testing import FakeIssuekitClient
-from issuekit.workers import registry as worker_registry
+from tests.api_helpers import configure_api
 from tests.issue_helpers import api_issue
 
 
@@ -100,21 +99,6 @@ def _tool_schema_digest(server) -> str:
         return hashlib.sha256(encoded).hexdigest()
 
     return asyncio.run(run())
-
-
-def _configure_api(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    client: FakeIssuekitClient,
-    *,
-    extra_config: str = "",
-) -> None:
-    (tmp_path / "issuekit.toml").write_text(
-        "api_url = 'https://mine.example'\nproject = 'demo'\n" + extra_config,
-        encoding="utf-8",
-        newline="\n",
-    )
-    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
 
 
 def test_importing_cli_does_not_import_mcp() -> None:
@@ -441,6 +425,7 @@ def test_health_reports_redacted_api_url_origin_and_environment_presence(
 
 
 def test_list_proposal_checks_tool_returns_raw_checks(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -476,7 +461,7 @@ def test_list_proposal_checks_tool_returns_raw_checks(
         newline="\n",
     )
     client.calls.clear()
-    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     server = create_server(tmp_path)
 
     checks = _call(
@@ -511,6 +496,7 @@ def test_list_proposal_checks_tool_returns_raw_checks(
 
 
 def test_create_proposal_check_tool_matches_cli_json(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -537,7 +523,7 @@ def test_create_proposal_check_tool_matches_cli_json(
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     monkeypatch.setattr(
         "issuekit.commands.proposal_check_request.utcnow",
         lambda: datetime(2026, 1, 1, 6, 0, 0, tzinfo=UTC),
@@ -668,7 +654,7 @@ def test_list_negotiation_threads_closes_store(
     assert store.closed is True
 
 
-def test_list_workers_returns_catalog(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_list_workers_returns_catalog(fake_api, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     client = FakeIssuekitClient()
     client.upsert_worker(
         machine_id="machine",
@@ -678,8 +664,8 @@ def test_list_workers_returns_catalog(tmp_path: Path, monkeypatch: pytest.Monkey
         role="api-server",
         description="Hosts the API.",
     )
-    _configure_api(tmp_path, monkeypatch, client)
-    monkeypatch.setattr(worker_registry, "IssuekitClient", lambda *args, **kwargs: client)
+    configure_api(tmp_path, monkeypatch, fake_api, client, chdir=False)
+    fake_api.install_client(client)
     server = create_server(tmp_path)
 
     workers = _call(server, "list_workers", {"repo_id": "mine-py"})
@@ -692,6 +678,7 @@ def test_list_workers_returns_catalog(tmp_path: Path, monkeypatch: pytest.Monkey
 
 
 def test_list_workers_preserves_target_worker_when_set(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -703,8 +690,8 @@ def test_list_workers_preserves_target_worker_when_set(
         path="/repo",
     )
     client._workers["checkout.mine-py"]["target_worker"] = "checkout.mine-py"
-    _configure_api(tmp_path, monkeypatch, client)
-    monkeypatch.setattr(worker_registry, "IssuekitClient", lambda *args, **kwargs: client)
+    configure_api(tmp_path, monkeypatch, fake_api, client, chdir=False)
+    fake_api.install_client(client)
     server = create_server(tmp_path)
 
     workers = _call(server, "list_workers", {"repo_id": "mine-py"})
@@ -713,6 +700,7 @@ def test_list_workers_preserves_target_worker_when_set(
 
 
 def test_remove_worker_tool_rejects_legacy_id(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -723,8 +711,8 @@ def test_remove_worker_tool_rejects_legacy_id(
         worker_name="checkout",
         path="/repo",
     )
-    _configure_api(tmp_path, monkeypatch, client)
-    monkeypatch.setattr(worker_registry, "IssuekitClient", lambda *args, **kwargs: client)
+    configure_api(tmp_path, monkeypatch, fake_api, client, chdir=False)
+    fake_api.install_client(client)
     server = create_server(tmp_path, allow_overrides=True)
 
     with pytest.raises(Exception, match="Worker was not found"):
@@ -736,6 +724,7 @@ def test_remove_worker_tool_rejects_legacy_id(
 
 
 def test_remove_worker_tool_force_allows_implementing_holder(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -756,8 +745,8 @@ def test_remove_worker_tool_force_allows_implementing_holder(
         worker_name="checkout",
         path="/repo",
     )
-    _configure_api(tmp_path, monkeypatch, client)
-    monkeypatch.setattr(worker_registry, "IssuekitClient", lambda *args, **kwargs: client)
+    configure_api(tmp_path, monkeypatch, fake_api, client, chdir=False)
+    fake_api.install_client(client)
     server = create_server(tmp_path, allow_overrides=True)
 
     result = _call(
@@ -771,13 +760,14 @@ def test_remove_worker_tool_force_allows_implementing_holder(
 
 
 def test_remove_repo_tool_deletes_repo(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     client = FakeIssuekitClient()
     client.upsert_repo(repo_key="mine-py")
-    _configure_api(tmp_path, monkeypatch, client)
-    monkeypatch.setattr(worker_registry, "IssuekitClient", lambda *args, **kwargs: client)
+    configure_api(tmp_path, monkeypatch, fake_api, client, chdir=False)
+    fake_api.install_client(client)
     server = create_server(tmp_path, allow_overrides=True)
 
     result = _call(server, "remove_repo", {"repo": "mine-py"})
@@ -789,6 +779,7 @@ def test_remove_repo_tool_deletes_repo(
 
 
 def test_list_orphans_flags_dead_worker_claim(
+    fake_api,
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     client = FakeIssuekitClient(
@@ -804,8 +795,8 @@ def test_list_orphans_flags_dead_worker_claim(
             )
         ]
     )
-    _configure_api(tmp_path, monkeypatch, client)
-    monkeypatch.setattr(worker_registry, "IssuekitClient", lambda *args, **kwargs: client)
+    configure_api(tmp_path, monkeypatch, fake_api, client, chdir=False)
+    fake_api.install_client(client)
     server = create_server(tmp_path)
 
     orphans = _call(server, "list_orphans", {})
@@ -817,6 +808,7 @@ def test_list_orphans_flags_dead_worker_claim(
 
 
 def test_reclaim_issue_tool_returns_stale_claim_to_pool(
+    fake_api,
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     client = FakeIssuekitClient(
@@ -832,8 +824,8 @@ def test_reclaim_issue_tool_returns_stale_claim_to_pool(
             )
         ]
     )
-    _configure_api(tmp_path, monkeypatch, client)
-    monkeypatch.setattr(worker_registry, "IssuekitClient", lambda *args, **kwargs: client)
+    configure_api(tmp_path, monkeypatch, fake_api, client, chdir=False)
+    fake_api.install_client(client)
     server = create_server(tmp_path)
 
     reclaimed = _call(server, "reclaim_issue", {"id": 5, "reason": "stale checkout"})
@@ -865,14 +857,16 @@ def test_reclaim_issue_tool_returns_stale_claim_to_pool(
 
 
 def test_readdress_issue_tool_returns_directed_issue_to_pool(
+    fake_api,
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     client = FakeIssuekitClient(
         [api_issue(6, "Directed", target_worker="checkout.demo")]
     )
-    _configure_api(
+    configure_api(
         tmp_path,
         monkeypatch,
+        fake_api,
         client,
         extra_config=(
             "[worker]\n"
@@ -880,6 +874,7 @@ def test_readdress_issue_tool_returns_directed_issue_to_pool(
             "repo_id = 'demo'\n"
             "worker_name = 'operator'\n"
         ),
+        chdir=False,
     )
     server = create_server(tmp_path)
 
@@ -898,6 +893,7 @@ def test_readdress_issue_tool_returns_directed_issue_to_pool(
 
 
 def test_dispatch_issue_tool_directs_issue_to_registered_worker(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -909,7 +905,7 @@ def test_dispatch_issue_tool_directs_issue_to_registered_worker(
         project="demo",
     )
     client.calls.clear()
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client, chdir=False)
     server = create_server(tmp_path)
 
     result = _call(
@@ -945,6 +941,7 @@ def test_dispatch_issue_tool_directs_issue_to_registered_worker(
 
 
 def test_list_project_profiles_returns_stored_profiles(
+    fake_api,
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     client = FakeIssuekitClient()
@@ -952,8 +949,8 @@ def test_list_project_profiles_returns_stored_profiles(
     client.put_project_profile(summary="Workflow CLI.", profile_md="# issuekit\n")
     client.project = "mine-py"
     client.put_project_profile(summary="Issue API.", profile_md="# mine-py\n")
-    _configure_api(tmp_path, monkeypatch, client)
-    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    configure_api(tmp_path, monkeypatch, fake_api, client, chdir=False)
+    fake_api.install_client(client)
     server = create_server(tmp_path)
 
     profiles = _call(server, "list_project_profiles", {})
@@ -1034,9 +1031,9 @@ def test_get_protocol_discovers_client_workspace_root(
     assert _call(server, "get_protocol", {"agent": "claude"}) == render_protocol("codex")
 
 
-def test_claim_next_task_claims_only_once(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_claim_next_task_claims_only_once(fake_api, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     client = FakeIssuekitClient([api_issue(1, "First")])
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client, chdir=False)
     server = create_server(tmp_path)
 
     first = _call(server, "claim_next_task", {"assignee": "codex"})
@@ -1050,14 +1047,17 @@ def test_claim_next_task_claims_only_once(tmp_path: Path, monkeypatch: pytest.Mo
 
 
 def test_claim_next_task_uses_default_implementer(
+    fake_api,
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     client = FakeIssuekitClient([api_issue(1, "First")])
-    _configure_api(
+    configure_api(
         tmp_path,
         monkeypatch,
+        fake_api,
         client,
         extra_config="default_implementer = 'claude'\n",
+        chdir=False,
     )
     server = create_server(tmp_path)
 
@@ -1067,10 +1067,11 @@ def test_claim_next_task_uses_default_implementer(
 
 
 def test_claim_next_task_requires_assignee_without_default_implementer(
+    fake_api,
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     client = FakeIssuekitClient([api_issue(1, "First")])
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client, chdir=False)
     server = create_server(tmp_path)
 
     with pytest.raises(Exception, match="No implementer is configured"):
@@ -1080,6 +1081,7 @@ def test_claim_next_task_requires_assignee_without_default_implementer(
 
 
 def test_submit_for_review_without_reviewer_uses_open_pool_and_approve(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1095,7 +1097,7 @@ def test_submit_for_review_without_reviewer_uses_open_pool_and_approve(
             )
         ]
     )
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client, chdir=False)
     server = create_server(tmp_path)
 
     submitted = _call(
@@ -1120,6 +1122,7 @@ def test_submit_for_review_without_reviewer_uses_open_pool_and_approve(
 
 
 def test_submit_for_review_tool_defaults_branch_to_current_checkout(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1135,7 +1138,7 @@ def test_submit_for_review_tool_defaults_branch_to_current_checkout(
             )
         ]
     )
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client, chdir=False)
     monkeypatch.setattr("issuekit.workflow.git_current_branch", lambda cwd: "feature")
     server = create_server(tmp_path)
 
@@ -1157,6 +1160,7 @@ def test_submit_for_review_tool_defaults_branch_to_current_checkout(
 
 
 def test_mcp_lifecycle_tools_discover_client_workspace_root(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1181,7 +1185,7 @@ def test_mcp_lifecycle_tools_discover_client_workspace_root(
             )
         ]
     )
-    _configure_api(repo_root, monkeypatch, client)
+    configure_api(repo_root, monkeypatch, fake_api, client, chdir=False)
 
     async def fake_client_roots(ctx):
         return (repo_root,)
@@ -1353,6 +1357,7 @@ def test_unreadable_machine_config_is_reported_without_crashing_root_resolution(
 
 
 def test_mcp_lifecycle_tools_reuse_one_process_session(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1370,7 +1375,7 @@ def test_mcp_lifecycle_tools_reuse_one_process_session(
             ),
         ]
     )
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client, chdir=False)
     server = create_server(tmp_path)
 
     _call(server, "claim_next_task", {"assignee": "codex"})
@@ -1381,7 +1386,7 @@ def test_mcp_lifecycle_tools_reuse_one_process_session(
     assert sessions == [sessions[0], sessions[0]]
 
 
-def test_review_can_be_routed_to_codex(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_review_can_be_routed_to_codex(fake_api, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     client = FakeIssuekitClient(
         [
             api_issue(
@@ -1394,7 +1399,7 @@ def test_review_can_be_routed_to_codex(tmp_path: Path, monkeypatch: pytest.Monke
             )
         ]
     )
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client, chdir=False)
     server = create_server(tmp_path)
 
     submitted = _call(
@@ -1422,6 +1427,7 @@ def test_review_can_be_routed_to_codex(tmp_path: Path, monkeypatch: pytest.Monke
 
 
 def test_submit_for_review_rejects_explicit_self_assignment(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1437,7 +1443,7 @@ def test_submit_for_review_rejects_explicit_self_assignment(
             )
         ]
     )
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client, chdir=False)
     server = create_server(tmp_path)
 
     with pytest.raises(Exception, match="self-review is not allowed"):
@@ -1453,13 +1459,14 @@ def test_submit_for_review_rejects_explicit_self_assignment(
 
 
 def test_next_review_uses_explicit_reviewer(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     client = FakeIssuekitClient(
         [api_issue(1, "First", status="in_progress", assignee="codex", stage="review")]
     )
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client, chdir=False)
     server = create_server(tmp_path)
 
     review = _call(server, "next_review", {"reviewer": "codex"})
@@ -1468,11 +1475,12 @@ def test_next_review_uses_explicit_reviewer(
 
 
 def test_next_review_rejects_unknown_reviewer(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     client = FakeIssuekitClient()
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client, chdir=False)
     server = create_server(tmp_path)
 
     with pytest.raises(Exception, match="Unknown assignee: nobody"):
@@ -1480,6 +1488,7 @@ def test_next_review_rejects_unknown_reviewer(
 
 
 def test_next_review_without_reviewer_uses_open_pool_for_cli_and_mcp(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -1487,7 +1496,7 @@ def test_next_review_without_reviewer_uses_open_pool_for_cli_and_mcp(
     client = FakeIssuekitClient(
         [api_issue(1, "First", status="in_progress", assignee="", stage="review")]
     )
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client, chdir=False)
     monkeypatch.chdir(tmp_path)
     server = create_server(tmp_path)
 
@@ -1501,6 +1510,7 @@ def test_next_review_without_reviewer_uses_open_pool_for_cli_and_mcp(
 
 
 def test_read_only_cli_payloads_match_mcp_tools(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -1525,7 +1535,7 @@ def test_read_only_cli_payloads_match_mcp_tools(
         "reviewer_session": "reviewer-session",
     }
     client = FakeIssuekitClient([raw_issue])
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client, chdir=False)
     monkeypatch.chdir(tmp_path)
     server = create_server(tmp_path)
     before = client.get_issue(1)
@@ -1545,12 +1555,13 @@ def test_read_only_cli_payloads_match_mcp_tools(
 
 
 def test_read_only_cli_empty_payloads_match_mcp_tools(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     client = FakeIssuekitClient()
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client, chdir=False)
     monkeypatch.chdir(tmp_path)
     server = create_server(tmp_path)
 
@@ -1571,6 +1582,7 @@ def test_read_only_cli_empty_payloads_match_mcp_tools(
 
 
 def test_read_only_cli_text_output_and_help_are_clear(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -1587,7 +1599,7 @@ def test_read_only_cli_text_output_and_help_are_clear(
             )
         ]
     )
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client, chdir=False)
     monkeypatch.chdir(tmp_path)
 
     assert cli.main(["show", "1"]) == 0
@@ -1609,6 +1621,7 @@ def test_read_only_cli_text_output_and_help_are_clear(
 
 
 def test_request_changes_returns_issue_to_codex(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1624,7 +1637,7 @@ def test_request_changes_returns_issue_to_codex(
             )
         ]
     )
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client, chdir=False)
     server = create_server(tmp_path)
 
     returned = _call(server, "request_changes", {"id": 1, "notes": "Add tests."})
@@ -1638,11 +1651,11 @@ def test_request_changes_returns_issue_to_codex(
     assert "body" in issue
 
 
-def test_list_queue_includes_target_worker(tmp_path: Path, monkeypatch) -> None:
+def test_list_queue_includes_target_worker(fake_api, tmp_path: Path, monkeypatch) -> None:
     client = FakeIssuekitClient(
         [api_issue(1, "Directed", assignee="codex", target_worker="checkout.demo")]
     )
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client, chdir=False)
     server = create_server(tmp_path)
 
     queue = _call(server, "list_queue", {"assignee": "codex"})
@@ -1663,9 +1676,9 @@ def test_list_queue_includes_target_worker(tmp_path: Path, monkeypatch) -> None:
     ]
 
 
-def test_list_queue_can_include_body(tmp_path: Path, monkeypatch) -> None:
+def test_list_queue_can_include_body(fake_api, tmp_path: Path, monkeypatch) -> None:
     client = FakeIssuekitClient([api_issue(1, "Directed", body="Issue body.")])
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client, chdir=False)
     server = create_server(tmp_path)
 
     queue = _call(server, "list_queue", {"with_body": True})
@@ -1674,11 +1687,12 @@ def test_list_queue_can_include_body(tmp_path: Path, monkeypatch) -> None:
 
 
 def test_list_queue_rejects_done_stage_with_show_guidance(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
 ) -> None:
     client = FakeIssuekitClient()
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client, chdir=False)
     server = create_server(tmp_path)
 
     with pytest.raises(
@@ -1691,6 +1705,7 @@ def test_list_queue_rejects_done_stage_with_show_guidance(
 
 
 def test_request_changes_defaults_to_recorded_implementer(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1706,7 +1721,7 @@ def test_request_changes_defaults_to_recorded_implementer(
             )
         ]
     )
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client, chdir=False)
     server = create_server(tmp_path)
 
     returned = _call(server, "request_changes", {"id": 1, "notes": "Add tests.", "reviewer": "codex"})
@@ -1715,7 +1730,7 @@ def test_request_changes_defaults_to_recorded_implementer(
     assert returned["stage"] == "changes_requested"
 
 
-def test_mcp_read_tools_use_api_store_when_configured(tmp_path: Path, monkeypatch) -> None:
+def test_mcp_read_tools_use_api_store_when_configured(fake_api, tmp_path: Path, monkeypatch) -> None:
     client = FakeIssuekitClient(
         [
             api_issue(
@@ -1735,7 +1750,7 @@ def test_mcp_read_tools_use_api_store_when_configured(tmp_path: Path, monkeypatc
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     server = create_server(tmp_path)
 
     review = _call(server, "next_review", {})
@@ -1749,14 +1764,14 @@ def test_mcp_read_tools_use_api_store_when_configured(tmp_path: Path, monkeypatc
     assert issue["ref"] == "demo#1"
 
 
-def test_mcp_update_issue_edits_and_appends(tmp_path: Path, monkeypatch) -> None:
+def test_mcp_update_issue_edits_and_appends(fake_api, tmp_path: Path, monkeypatch) -> None:
     client = FakeIssuekitClient([api_issue(1, "Old", body="Original body")])
     (tmp_path / "issuekit.toml").write_text(
         "api_url = 'https://mine.example'\nproject = 'demo'\n",
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     server = create_server(tmp_path)
 
     updated = _call(
@@ -1789,6 +1804,7 @@ def test_mcp_update_issue_edits_and_appends(tmp_path: Path, monkeypatch) -> None
 
 
 def test_mcp_update_issue_append_uses_stored_body_without_rendered_workflow_sections(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1809,7 +1825,7 @@ def test_mcp_update_issue_append_uses_stored_body_without_rendered_workflow_sect
         ],
         rendered_issue_suffixes={1: rendered_suffix},
     )
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client, chdir=False)
     server = create_server(tmp_path, allow_overrides=True)
 
     _call(
@@ -1829,14 +1845,14 @@ def test_mcp_update_issue_append_uses_stored_body_without_rendered_workflow_sect
     assert [call["method"] for call in client.calls] == ["get_issue_edit", "update_issue"]
 
 
-def test_mcp_update_issue_accepts_dependency_refs(tmp_path: Path, monkeypatch) -> None:
+def test_mcp_update_issue_accepts_dependency_refs(fake_api, tmp_path: Path, monkeypatch) -> None:
     client = FakeIssuekitClient([api_issue(1, "Old", body="Original body")])
     (tmp_path / "issuekit.toml").write_text(
         "api_url = 'https://mine.example'\nproject = 'demo'\n",
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     server = create_server(tmp_path)
 
     updated = _call(
@@ -1855,7 +1871,7 @@ def test_mcp_update_issue_accepts_dependency_refs(tmp_path: Path, monkeypatch) -
     ]
 
 
-def test_mcp_get_issue_includes_dependency_state_and_rows(tmp_path: Path, monkeypatch) -> None:
+def test_mcp_get_issue_includes_dependency_state_and_rows(fake_api, tmp_path: Path, monkeypatch) -> None:
     client = FakeIssuekitClient(
         [
             api_issue(
@@ -1879,7 +1895,7 @@ def test_mcp_get_issue_includes_dependency_state_and_rows(tmp_path: Path, monkey
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     server = create_server(tmp_path)
 
     issue = _call(server, "get_issue", {"id": 1})
@@ -1890,6 +1906,7 @@ def test_mcp_get_issue_includes_dependency_state_and_rows(tmp_path: Path, monkey
 
 
 def test_mcp_update_issue_requires_force_for_in_flight_issue(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -1910,7 +1927,7 @@ def test_mcp_update_issue_requires_force_for_in_flight_issue(
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     server = create_server(tmp_path)
 
     with pytest.raises(Exception, match="pass --force"):
@@ -1927,6 +1944,7 @@ def test_mcp_update_issue_requires_force_for_in_flight_issue(
 
 
 def test_omitted_reviewer_opens_review_pool(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1942,7 +1960,7 @@ def test_omitted_reviewer_opens_review_pool(
             )
         ]
     )
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client, chdir=False)
     server = create_server(tmp_path)
 
     submitted = _call(server, "submit_for_review", {"id": 1, "summary": "Implemented."})
@@ -1959,6 +1977,7 @@ def test_omitted_reviewer_opens_review_pool(
 
 
 def test_open_pool_submission_omits_reviewer(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1974,7 +1993,7 @@ def test_open_pool_submission_omits_reviewer(
             )
         ]
     )
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client, chdir=False)
     server = create_server(tmp_path)
 
     submitted = _call(server, "submit_for_review", {"id": 1, "summary": "Implemented."})
@@ -1985,6 +2004,7 @@ def test_open_pool_submission_omits_reviewer(
 
 
 def test_open_review_allows_any_agent_to_approve(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2000,7 +2020,7 @@ def test_open_review_allows_any_agent_to_approve(
             )
         ]
     )
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client, chdir=False)
     server = create_server(tmp_path)
 
     submitted = _call(server, "submit_for_review", {"id": 1, "summary": "Implemented."})
@@ -2011,6 +2031,7 @@ def test_open_review_allows_any_agent_to_approve(
 
 
 def test_open_review_always_rejects_self_review(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2026,7 +2047,7 @@ def test_open_review_always_rejects_self_review(
             )
         ]
     )
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client, chdir=False)
     server = create_server(tmp_path)
 
     _call(server, "submit_for_review", {"id": 1, "summary": "Implemented."})
@@ -2036,6 +2057,7 @@ def test_open_review_always_rejects_self_review(
 
 
 def test_approve_allows_different_reviewer(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2051,7 +2073,7 @@ def test_approve_allows_different_reviewer(
             )
         ]
     )
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client, chdir=False)
     server = create_server(tmp_path)
 
     approved = _call(
@@ -2064,6 +2086,7 @@ def test_approve_allows_different_reviewer(
 
 
 def test_approve_always_rejects_self_review(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2079,7 +2102,7 @@ def test_approve_always_rejects_self_review(
             )
         ]
     )
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client, chdir=False)
     server = create_server(tmp_path)
 
     with pytest.raises(Exception, match="self-review is not allowed"):
@@ -2087,6 +2110,7 @@ def test_approve_always_rejects_self_review(
 
 
 def test_approve_rejects_unassigned_reviewer_with_clear_message(
+    fake_api,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2102,7 +2126,7 @@ def test_approve_rejects_unassigned_reviewer_with_clear_message(
             )
         ]
     )
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client, chdir=False)
     server = create_server(tmp_path)
 
     with pytest.raises(Exception) as excinfo:
@@ -2115,6 +2139,7 @@ def test_approve_rejects_unassigned_reviewer_with_clear_message(
 
 
 def test_api_proposal_tools_send_list_adopt_and_discard(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -2130,7 +2155,7 @@ def test_api_proposal_tools_send_list_adopt_and_discard(
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     server = create_server(tmp_path)
 
     sent = _call(
@@ -2164,6 +2189,7 @@ def test_api_proposal_tools_send_list_adopt_and_discard(
 
 
 def test_mcp_adopt_proposal_raises_for_persistent_append_failure(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -2178,7 +2204,7 @@ def test_mcp_adopt_proposal_raises_for_persistent_append_failure(
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     monkeypatch.setattr(proposals_api, "_sleep", lambda _delay: None)
     server = create_server(tmp_path)
 
@@ -2191,6 +2217,7 @@ def test_mcp_adopt_proposal_raises_for_persistent_append_failure(
 
 
 def test_api_discard_proposal_to_addresses_target_inbox_and_rejects_foreign_origin(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -2206,7 +2233,7 @@ def test_api_discard_proposal_to_addresses_target_inbox_and_rejects_foreign_orig
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     server = create_server(tmp_path)
 
     discarded = _call(server, "discard_proposal", {"proposal_id": 20, "to": "target"})
@@ -2220,6 +2247,7 @@ def test_api_discard_proposal_to_addresses_target_inbox_and_rejects_foreign_orig
 
 
 def test_mcp_propose_accepts_worker_repo_target(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -2230,7 +2258,7 @@ def test_mcp_propose_accepts_worker_repo_target(
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     server = create_server(tmp_path)
 
     sent = _call(
@@ -2248,6 +2276,7 @@ def test_mcp_propose_accepts_worker_repo_target(
 
 
 def test_mcp_propose_flags_same_origin_payload_mismatch(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -2268,7 +2297,7 @@ def test_mcp_propose_flags_same_origin_payload_mismatch(
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     server = create_server(tmp_path)
 
     sent = _call(
@@ -2291,6 +2320,7 @@ def test_mcp_propose_flags_same_origin_payload_mismatch(
 
 
 def test_mcp_propose_rejects_unknown_target_when_profile_catalog_exists(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -2302,7 +2332,7 @@ def test_mcp_propose_rejects_unknown_target_when_profile_catalog_exists(
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     server = create_server(tmp_path)
 
     with pytest.raises(Exception, match="Unknown target project 'missing'"):
@@ -2311,7 +2341,7 @@ def test_mcp_propose_rejects_unknown_target_when_profile_catalog_exists(
     assert not any(call["method"] == "create_proposal" for call in client.calls)
 
 
-def test_mcp_propose_attaches_dependency_refs(tmp_path: Path, monkeypatch) -> None:
+def test_mcp_propose_attaches_dependency_refs(fake_api, tmp_path: Path, monkeypatch) -> None:
     client = FakeIssuekitClient()
     client.register_catalog_project("other_project")
     (tmp_path / "issuekit.toml").write_text(
@@ -2319,7 +2349,7 @@ def test_mcp_propose_attaches_dependency_refs(tmp_path: Path, monkeypatch) -> No
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     server = create_server(tmp_path)
 
     sent = _call(
@@ -2338,14 +2368,14 @@ def test_mcp_propose_attaches_dependency_refs(tmp_path: Path, monkeypatch) -> No
     assert _proposal_call(client)["body"]["depends_on"] == ["mine-py#42"]
 
 
-def test_mcp_propose_rejects_non_ascii_body(tmp_path: Path, monkeypatch) -> None:
+def test_mcp_propose_rejects_non_ascii_body(fake_api, tmp_path: Path, monkeypatch) -> None:
     client = FakeIssuekitClient()
     (tmp_path / "issuekit.toml").write_text(
         "api_url = 'https://mine.example'\nproject = 'target'\n",
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     server = create_server(tmp_path)
 
     with pytest.raises(Exception, match="must be ASCII-only"):
@@ -2363,7 +2393,7 @@ def test_mcp_propose_rejects_non_ascii_body(tmp_path: Path, monkeypatch) -> None
     assert client.calls == []
 
 
-def test_mcp_list_outgoing_scopes_to_own_origin(tmp_path: Path, monkeypatch) -> None:
+def test_mcp_list_outgoing_scopes_to_own_origin(fake_api, tmp_path: Path, monkeypatch) -> None:
     client = FakeIssuekitClient(
         proposals=[
             {"id": 1, "origin": "target#1@abc", "title": "Mine", "body": "b", "status": "pending"},
@@ -2383,7 +2413,7 @@ def test_mcp_list_outgoing_scopes_to_own_origin(tmp_path: Path, monkeypatch) -> 
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     client.register_catalog_project("other_project")
     server = create_server(tmp_path)
 
@@ -2394,7 +2424,7 @@ def test_mcp_list_outgoing_scopes_to_own_origin(tmp_path: Path, monkeypatch) -> 
     assert [proposal["id"] for proposal in adopted_only] == [3]
 
 
-def test_cli_proposal_json_matches_mcp_output(tmp_path: Path, monkeypatch, capsys) -> None:
+def test_cli_proposal_json_matches_mcp_output(fake_api, tmp_path: Path, monkeypatch, capsys) -> None:
     client = FakeIssuekitClient()
     client.register_catalog_project("target")
     (tmp_path / "issuekit.toml").write_text(
@@ -2402,7 +2432,7 @@ def test_cli_proposal_json_matches_mcp_output(tmp_path: Path, monkeypatch, capsy
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
 
     # propose via MCP and via CLI: same source/title/body -> identical API proposal
     source_server = create_server(tmp_path)

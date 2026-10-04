@@ -5,7 +5,22 @@ from pathlib import Path
 
 import pytest
 
+from issuekit import store as store_module
+from issuekit.agents import app_server_runtime
+from issuekit.commands import auth as auth_module
+from issuekit.negotiation import api_store as api_store_module
+from issuekit.proposals import api as proposals_api
+from issuekit.workers import registry as worker_registry
+
 _REPO_LOCAL_CONFIG = Path(__file__).resolve().parents[1] / "issuekit.local.toml"
+_API_CLIENT_MODULES = (
+    store_module,
+    proposals_api,
+    worker_registry,
+    app_server_runtime,
+    auth_module,
+    api_store_module,
+)
 _ISSUEKIT_ENV_KEYS = (
     "ISSUEKIT_API_PASSWORD",
     "ISSUEKIT_API_TIMEOUT",
@@ -19,6 +34,28 @@ _ISSUEKIT_ENV_KEYS = (
     "ISSUEKIT_TOKEN_CACHE",
     "ISSUEKIT_WORKSPACE",
 )
+
+
+class FakeApi:
+    def __init__(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self.monkeypatch = monkeypatch
+
+    def install_client(self, client: object) -> None:
+        self.install_factory(lambda *args, **kwargs: client)
+
+    def install_factory(self, factory: object) -> None:
+        for module in _API_CLIENT_MODULES:
+            self.monkeypatch.setattr(
+                module,
+                "IssuekitClient",
+                factory,
+                raising=True,
+            )
+
+
+@pytest.fixture
+def fake_api(monkeypatch: pytest.MonkeyPatch) -> FakeApi:
+    return FakeApi(monkeypatch)
 
 
 @pytest.fixture(scope="session")

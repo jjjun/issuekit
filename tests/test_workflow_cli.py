@@ -4,7 +4,6 @@ from pathlib import Path
 import pytest
 
 from issuekit import cli
-from issuekit import store as store_module
 from issuekit.commands.approve import approve_issue
 from issuekit.commands.complete import complete_issue
 from issuekit.config import IssuekitConfig
@@ -15,6 +14,7 @@ from tests.issue_helpers import api_issue
 
 
 def test_lifecycle_commands_allow_unlaunchable_agent_effort_config(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -55,7 +55,7 @@ def test_lifecycle_commands_allow_unlaunchable_agent_effort_config(
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     monkeypatch.chdir(tmp_path)
 
     assert cli.main(["submit-review", "1", "--summary", "Implemented."]) == 0
@@ -65,6 +65,7 @@ def test_lifecycle_commands_allow_unlaunchable_agent_effort_config(
 
 
 def test_queue_command_uses_api_store_when_configured(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -80,7 +81,7 @@ def test_queue_command_uses_api_store_when_configured(
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     monkeypatch.chdir(tmp_path)
 
     exit_code = cli.main(["queue", "--assignee", "claude", "--stage", "review"])
@@ -93,6 +94,7 @@ def test_queue_command_uses_api_store_when_configured(
 
 
 def test_queue_rejects_done_stage_with_show_guidance(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -103,7 +105,7 @@ def test_queue_rejects_done_stage_with_show_guidance(
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     monkeypatch.chdir(tmp_path)
 
     assert cli.main(["queue", "--stage", "done", "--json"]) == 1
@@ -140,6 +142,7 @@ def test_queue_help_lists_valid_stages(capsys) -> None:
 
 
 def test_queue_treats_empty_project_environment_as_unset(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -151,7 +154,7 @@ def test_queue_treats_empty_project_environment_as_unset(
         newline="\n",
     )
     monkeypatch.setenv("ISSUEKIT_PROJECT", "")
-    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     monkeypatch.chdir(tmp_path)
 
     assert cli.main(["queue", "--json"]) == 0
@@ -159,6 +162,7 @@ def test_queue_treats_empty_project_environment_as_unset(
 
 
 def test_queue_command_marks_waiting_dependencies(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -171,7 +175,7 @@ def test_queue_command_marks_waiting_dependencies(
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     monkeypatch.chdir(tmp_path)
 
     exit_code = cli.main(["queue", "--assignee", "codex"])
@@ -182,6 +186,7 @@ def test_queue_command_marks_waiting_dependencies(
 
 
 def test_queue_command_lists_all_issues_as_json_with_bodies(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -197,7 +202,7 @@ def test_queue_command_lists_all_issues_as_json_with_bodies(
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     monkeypatch.chdir(tmp_path)
 
     exit_code = cli.main(["queue", "--json", "--with-body"])
@@ -226,6 +231,7 @@ def test_queue_command_rejects_with_body_without_json(
 
 
 def test_queue_command_treats_empty_assignee_as_unfiltered(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -236,7 +242,7 @@ def test_queue_command_treats_empty_assignee_as_unfiltered(
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     monkeypatch.chdir(tmp_path)
 
     assert cli.main(["queue", "--json"]) == 0
@@ -246,6 +252,7 @@ def test_queue_command_treats_empty_assignee_as_unfiltered(
 
 
 def test_author_command_uses_api_allocated_id(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -256,7 +263,7 @@ def test_author_command_uses_api_allocated_id(
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     monkeypatch.chdir(tmp_path)
 
     exit_code = cli.main(
@@ -292,6 +299,7 @@ def test_author_command_uses_api_allocated_id(
 
 
 def test_claim_command_uses_api_claim_next(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -302,7 +310,7 @@ def test_claim_command_uses_api_claim_next(
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     monkeypatch.chdir(tmp_path)
 
     exit_code = cli.main(["claim", "--assignee", "codex", "--priority", "high"])
@@ -316,6 +324,7 @@ def test_claim_command_uses_api_claim_next(
 
 
 def test_claim_command_uses_default_implementer_when_assignee_is_omitted(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -327,7 +336,7 @@ def test_claim_command_uses_default_implementer_when_assignee_is_omitted(
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     monkeypatch.chdir(tmp_path)
 
     assert cli.main(["claim"]) == 0
@@ -335,6 +344,7 @@ def test_claim_command_uses_default_implementer_when_assignee_is_omitted(
 
 
 def test_claim_command_requires_assignee_without_default_implementer(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -345,7 +355,7 @@ def test_claim_command_requires_assignee_without_default_implementer(
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     monkeypatch.chdir(tmp_path)
 
     assert cli.main(["claim"]) == 1
@@ -354,6 +364,7 @@ def test_claim_command_requires_assignee_without_default_implementer(
 
 
 def test_claim_command_can_claim_specific_issue(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -364,7 +375,7 @@ def test_claim_command_can_claim_specific_issue(
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     monkeypatch.chdir(tmp_path)
 
     exit_code = cli.main(["claim", "--id", "5", "--assignee", "codex"])
@@ -376,6 +387,7 @@ def test_claim_command_can_claim_specific_issue(
 
 
 def test_claim_command_prints_dependency_warning_from_explicit_claim(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -396,7 +408,7 @@ def test_claim_command_prints_dependency_warning_from_explicit_claim(
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     monkeypatch.chdir(tmp_path)
 
     exit_code = cli.main(["claim", "--id", "5", "--assignee", "codex"])
@@ -408,6 +420,7 @@ def test_claim_command_prints_dependency_warning_from_explicit_claim(
 
 
 def test_claim_command_allow_any_branch_bypasses_work_branch_guard(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -418,7 +431,7 @@ def test_claim_command_allow_any_branch_bypasses_work_branch_guard(
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     monkeypatch.setattr("issuekit.guards.branch.git_current_branch", lambda cwd: "feature")
     monkeypatch.chdir(tmp_path)
 
@@ -433,6 +446,7 @@ def test_claim_command_allow_any_branch_bypasses_work_branch_guard(
 
 
 def test_claim_command_no_sync_bypasses_claim_sync_guard(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -443,7 +457,7 @@ def test_claim_command_no_sync_bypasses_claim_sync_guard(
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     monkeypatch.setattr("issuekit.guards.branch.git_current_branch", lambda cwd: "main")
     monkeypatch.setattr("issuekit.guards.claim_sync.git_status_short", lambda cwd: "?? debris.txt")
     monkeypatch.chdir(tmp_path)
@@ -475,6 +489,7 @@ def test_claim_command_rejects_priority_with_specific_issue(
 
 
 def test_handoff_commands_use_api_structured_params_without_local_notes(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -499,7 +514,7 @@ def test_handoff_commands_use_api_structured_params_without_local_notes(
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     monkeypatch.chdir(tmp_path)
 
     submit_exit = cli.main(
@@ -533,6 +548,7 @@ def test_handoff_commands_use_api_structured_params_without_local_notes(
 
 
 def test_api_approval_and_completion_pass_structured_params(
+    fake_api,
     monkeypatch,
 ) -> None:
     client = FakeIssuekitClient(
@@ -557,7 +573,7 @@ def test_api_approval_and_completion_pass_structured_params(
             ),
         ]
     )
-    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     config = IssuekitConfig(
         api_url="https://mine.example",
         project="demo",
@@ -598,6 +614,7 @@ def test_api_approval_and_completion_pass_structured_params(
 
 
 def test_api_server_rejected_transition_surfaces_workflow_error(
+    fake_api,
     monkeypatch,
 ) -> None:
     client = FakeIssuekitClient(
@@ -613,7 +630,7 @@ def test_api_server_rejected_transition_surfaces_workflow_error(
             )
         ]
     )
-    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     config = IssuekitConfig(api_url="https://mine.example", project="demo")
 
     with pytest.raises(WorkflowError, match="self-review is not allowed") as excinfo:
@@ -627,13 +644,13 @@ def test_api_server_rejected_transition_surfaces_workflow_error(
     assert excinfo.value.code == "invalid_transition"
 
 
-def test_submit_review_rejects_non_ascii_summary(tmp_path: Path, monkeypatch, capsys) -> None:
+def test_submit_review_rejects_non_ascii_summary(fake_api, tmp_path: Path, monkeypatch, capsys) -> None:
     (tmp_path / "issuekit.toml").write_text(
         "api_url = 'https://mine.example'\nproject = 'demo'\n",
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: FakeIssuekitClient())
+    fake_api.install_factory(lambda *args, **kwargs: FakeIssuekitClient())
     monkeypatch.chdir(tmp_path)
 
     exit_code = cli.main(["submit-review", "1", "--summary", "\u3042"])
@@ -642,13 +659,13 @@ def test_submit_review_rejects_non_ascii_summary(tmp_path: Path, monkeypatch, ca
     assert "ASCII-only" in capsys.readouterr().err
 
 
-def test_handoff_commands_reject_invalid_issue_id(tmp_path: Path, monkeypatch, capsys) -> None:
+def test_handoff_commands_reject_invalid_issue_id(fake_api, tmp_path: Path, monkeypatch, capsys) -> None:
     (tmp_path / "issuekit.toml").write_text(
         "api_url = 'https://mine.example'\nproject = 'demo'\n",
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: FakeIssuekitClient())
+    fake_api.install_factory(lambda *args, **kwargs: FakeIssuekitClient())
     monkeypatch.chdir(tmp_path)
 
     submit_exit = cli.main(
@@ -662,7 +679,7 @@ def test_handoff_commands_reject_invalid_issue_id(tmp_path: Path, monkeypatch, c
     assert "Invalid issue id: bad-id" in out.err
 
 
-def test_request_changes_notes_file_round_trip(tmp_path: Path, monkeypatch, capsys) -> None:
+def test_request_changes_notes_file_round_trip(fake_api, tmp_path: Path, monkeypatch, capsys) -> None:
     client = FakeIssuekitClient(
         [
             api_issue(
@@ -680,7 +697,7 @@ def test_request_changes_notes_file_round_trip(tmp_path: Path, monkeypatch, caps
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     monkeypatch.chdir(tmp_path)
     notes_file = tmp_path / "notes.md"
     notes_file.write_text(
@@ -711,6 +728,7 @@ def test_request_changes_notes_and_notes_file_are_mutually_exclusive(capsys) -> 
 
 
 def test_approve_verification_file_and_summary_file_round_trip(
+    fake_api,
     tmp_path: Path, monkeypatch, capsys
 ) -> None:
     client = FakeIssuekitClient(
@@ -730,7 +748,7 @@ def test_approve_verification_file_and_summary_file_round_trip(
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     monkeypatch.chdir(tmp_path)
     verification_file = tmp_path / "verification.md"
     verification_file.write_text("uv run pytest\n", encoding="utf-8", newline="\n")
@@ -783,7 +801,7 @@ def test_approve_verification_and_verification_file_are_mutually_exclusive(capsy
     assert "not allowed with argument" in capsys.readouterr().err
 
 
-def test_submit_review_summary_file_round_trip(tmp_path: Path, monkeypatch, capsys) -> None:
+def test_submit_review_summary_file_round_trip(fake_api, tmp_path: Path, monkeypatch, capsys) -> None:
     client = FakeIssuekitClient(
         [
             api_issue(
@@ -801,7 +819,7 @@ def test_submit_review_summary_file_round_trip(tmp_path: Path, monkeypatch, caps
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     monkeypatch.chdir(tmp_path)
     summary_file = tmp_path / "summary.md"
     summary_file.write_text(
@@ -817,6 +835,7 @@ def test_submit_review_summary_file_round_trip(tmp_path: Path, monkeypatch, caps
 
 
 def test_complete_summary_file_and_verification_file_round_trip(
+    fake_api,
     tmp_path: Path, monkeypatch, capsys
 ) -> None:
     client = FakeIssuekitClient(
@@ -836,7 +855,7 @@ def test_complete_summary_file_and_verification_file_round_trip(
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     monkeypatch.chdir(tmp_path)
     summary_file = tmp_path / "summary.md"
     summary_file.write_text("Obsolete `old_module`.\n", encoding="utf-8", newline="\n")

@@ -13,15 +13,12 @@ from types import SimpleNamespace
 import pytest
 
 import issuekit.agentrun.run_dir as run_dir_module
-import issuekit.proposals.api as proposals_api
 from issuekit import cli
-from issuekit import store as store_module
 from issuekit.agentrun import AgentPrompt
 from issuekit.commands import serve, serve_loop
 from issuekit.config import TriagePolicy
 from issuekit.errors import WorkflowError
 from issuekit.testing import FakeIssuekitClient
-from issuekit.workers import registry as worker_registry
 from tests.issue_helpers import api_issue
 
 
@@ -180,6 +177,7 @@ class RecoveryErrorThenRunner:
 
 
 def _configure_registered_api(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     client: FakeIssuekitClient,
@@ -202,9 +200,9 @@ def _configure_registered_api(
         encoding="utf-8",
         newline="\n",
     )
-    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
-    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
-    monkeypatch.setattr(worker_registry, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
+    fake_api.install_client(client)
+    fake_api.install_client(client)
     monkeypatch.setattr(
         "issuekit.agentrun.adapter.shutil.which",
         lambda binary: f"/test-bin/{binary}",
@@ -320,12 +318,13 @@ def test_poll_loop_zero_run_failure_limit_keeps_retrying() -> None:
 
 
 def test_serve_once_empty_queue_exits_without_agent(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
     client = FakeIssuekitClient()
-    _configure_registered_api(tmp_path, monkeypatch, client)
+    _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
     monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", ExplodingRunner)
 
     exit_code = cli.main(["serve", "--agent", "codex", "--once"])
@@ -364,12 +363,13 @@ def test_serve_once_empty_queue_exits_without_agent(
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX symlink behavior is required")
 def test_serve_refuses_symlinked_run_directory_before_writing(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
     client = FakeIssuekitClient()
-    _configure_registered_api(tmp_path, monkeypatch, client)
+    _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
     outside = tmp_path / "outside"
     outside.mkdir()
     (tmp_path / ".agent-runs").symlink_to(outside, target_is_directory=True)
@@ -383,12 +383,13 @@ def test_serve_refuses_symlinked_run_directory_before_writing(
 
 
 def test_serve_refuses_tracked_run_directory_before_writing(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
     client = FakeIssuekitClient()
-    _configure_registered_api(tmp_path, monkeypatch, client)
+    _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
     tracked = tmp_path / ".agent-runs" / "tracked.txt"
     tracked.parent.mkdir()
     tracked.write_text("tracked\n", encoding="utf-8")
@@ -404,6 +405,7 @@ def test_serve_refuses_tracked_run_directory_before_writing(
 
 
 def test_serve_once_claims_runs_and_submits(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -412,7 +414,7 @@ def test_serve_once_claims_runs_and_submits(
     FakeRunner.calls.clear()
     FakeRunner.models.clear()
     FakeRunner.reasoning_efforts.clear()
-    _configure_registered_api(tmp_path, monkeypatch, client)
+    _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
     monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", FakeRunner)
 
     exit_code = cli.main(
@@ -448,6 +450,7 @@ def test_serve_once_claims_runs_and_submits(
 
 
 def test_serve_review_once_reviews_open_pool_issue(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -467,7 +470,7 @@ def test_serve_review_once_reviews_open_pool_issue(
         ]
     )
     ReviewApprovingRunner.calls.clear()
-    _configure_registered_api(tmp_path, monkeypatch, client)
+    _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
     _create_reviewable_diff(tmp_path)
     monkeypatch.setattr("issuekit.agents.review.AgentRunner", ReviewApprovingRunner)
 
@@ -483,6 +486,7 @@ def test_serve_review_once_reviews_open_pool_issue(
 
 
 def test_serve_review_skips_failed_issue_and_reviews_next_issue(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -532,7 +536,7 @@ def test_serve_review_skips_failed_issue_and_reviews_next_issue(
             ),
         ]
     )
-    _configure_registered_api(tmp_path, monkeypatch, client)
+    _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
     _create_reviewable_diff(tmp_path)
     monkeypatch.setattr(serve_loop, "BACKOFF_INITIAL_SEC", 0.0)
     monkeypatch.setattr(
@@ -552,6 +556,7 @@ def test_serve_review_skips_failed_issue_and_reviews_next_issue(
 
 
 def test_serve_review_once_reports_discarded_decision(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -570,7 +575,7 @@ def test_serve_review_once_reports_discarded_decision(
             )
         ]
     )
-    _configure_registered_api(tmp_path, monkeypatch, client)
+    _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
     _create_reviewable_diff(tmp_path)
     monkeypatch.setattr("issuekit.agents.review.AgentRunner", ReviewNonJsonRunner)
 
@@ -587,6 +592,7 @@ def test_serve_review_once_reports_discarded_decision(
 
 
 def test_serve_review_reports_agent_run_without_local_changes_as_error(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -608,7 +614,7 @@ def test_serve_review_reports_agent_run_without_local_changes_as_error(
     )
     client = FakeIssuekitClient([raw_issue])
     ReviewApprovingRunner.calls.clear()
-    _configure_registered_api(tmp_path, monkeypatch, client)
+    _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
     (tmp_path / ".gitignore").write_text(".agent-runs/\n", encoding="utf-8", newline="\n")
     (tmp_path / "code.py").write_text("value = 1\n", encoding="utf-8", newline="\n")
     _init_git_repo(tmp_path)
@@ -626,6 +632,7 @@ def test_serve_review_reports_agent_run_without_local_changes_as_error(
 
 
 def test_serve_review_once_ignores_issue_assigned_to_other_reviewer(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -644,7 +651,7 @@ def test_serve_review_once_ignores_issue_assigned_to_other_reviewer(
         ]
     )
     ReviewApprovingRunner.calls.clear()
-    _configure_registered_api(tmp_path, monkeypatch, client)
+    _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
     monkeypatch.setattr("issuekit.agents.review.AgentRunner", ReviewApprovingRunner)
 
     exit_code = cli.main(["serve", "--agent", "codex", "--review", "--once"])
@@ -655,6 +662,7 @@ def test_serve_review_once_ignores_issue_assigned_to_other_reviewer(
 
 
 def test_serve_proposal_checks_once_processes_pending_check(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -683,7 +691,7 @@ def test_serve_proposal_checks_once_processes_pending_check(
             "```\n"
         )
     ]
-    _configure_registered_api(tmp_path, monkeypatch, client)
+    _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
     _init_git_repo(tmp_path)
     monkeypatch.setattr("issuekit.agents.proposal_check.resolve_adapter", lambda *a, **k: object())
     monkeypatch.setattr(serve, "AgentRunner", ProposalCheckRunner)
@@ -723,12 +731,13 @@ def test_serve_proposal_checks_once_processes_pending_check(
 
 
 def test_serve_proposal_checks_once_idle_does_not_spawn_agent(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
     client = FakeIssuekitClient()
-    _configure_registered_api(tmp_path, monkeypatch, client)
+    _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
     monkeypatch.setattr(serve, "AgentRunner", ExplodingRunner)
 
     exit_code = cli.main(["serve", "--agent", "codex", "--proposal-checks", "--once"])
@@ -757,12 +766,13 @@ def test_serve_rejects_mutually_exclusive_modes(capsys) -> None:
 
 
 def test_serve_rejects_options_unsupported_by_mode(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
     client = FakeIssuekitClient()
-    _configure_registered_api(tmp_path, monkeypatch, client)
+    _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
 
     for mode_option, rejected_option in (
         ("--review", "--triage"),
@@ -949,6 +959,7 @@ def test_serve_proposal_checks_sleeps_between_successful_cycles(
 
 
 def test_serve_triage_auto_adopts_before_claiming(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -966,6 +977,7 @@ def test_serve_triage_auto_adopts_before_claiming(
     )
     FakeRunner.calls.clear()
     _configure_registered_api(
+        fake_api,
         tmp_path,
         monkeypatch,
         client,
@@ -1005,6 +1017,7 @@ def test_serve_triage_auto_adopts_before_claiming(
 
 
 def test_serve_stops_before_claim_when_automatic_hold_fails(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -1020,6 +1033,7 @@ def test_serve_stops_before_claim_when_automatic_hold_fails(
         ]
     )
     _configure_registered_api(
+        fake_api,
         tmp_path,
         monkeypatch,
         client,
@@ -1044,6 +1058,7 @@ def test_serve_stops_before_claim_when_automatic_hold_fails(
 
 
 def test_serve_triage_adoption_error_logs_and_still_claims(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -1076,6 +1091,7 @@ def test_serve_triage_adoption_error_logs_and_still_claims(
     monkeypatch.setattr(client, "adopt_proposal", fail_second_adoption)
     FakeRunner.calls.clear()
     _configure_registered_api(
+        fake_api,
         tmp_path,
         monkeypatch,
         client,
@@ -1111,6 +1127,7 @@ def test_serve_triage_adoption_error_logs_and_still_claims(
 
 
 def test_serve_triage_uses_author_agent_when_configured(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -1126,6 +1143,7 @@ def test_serve_triage_uses_author_agent_when_configured(
         ]
     )
     _configure_registered_api(
+        fake_api,
         tmp_path,
         monkeypatch,
         client,
@@ -1158,6 +1176,7 @@ def test_serve_triage_uses_author_agent_when_configured(
 
 
 def test_serve_once_recovers_own_orphan_before_polling(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -1186,7 +1205,7 @@ def test_serve_once_recovers_own_orphan_before_polling(
         ]
     )
     FakeRunner.calls.clear()
-    _configure_registered_api(tmp_path, monkeypatch, client)
+    _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
     monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", FakeRunner)
 
     exit_code = cli.main(["serve", "--agent", "codex", "--once"])
@@ -1208,6 +1227,7 @@ def test_serve_once_recovers_own_orphan_before_polling(
 
 
 def test_serve_ignores_orphan_for_other_worker(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -1225,7 +1245,7 @@ def test_serve_ignores_orphan_for_other_worker(
             )
         ]
     )
-    _configure_registered_api(tmp_path, monkeypatch, client)
+    _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
     monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", ExplodingRunner)
 
     exit_code = cli.main(["serve", "--agent", "codex", "--once"])
@@ -1236,12 +1256,13 @@ def test_serve_ignores_orphan_for_other_worker(
 
 
 def test_serve_no_orphan_claims_normally(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
 ) -> None:
     client = FakeIssuekitClient([api_issue(1, "Ready", author="claude")])
     FakeRunner.calls.clear()
-    _configure_registered_api(tmp_path, monkeypatch, client)
+    _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
     monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", FakeRunner)
 
     exit_code = cli.main(["serve", "--agent", "codex", "--once"])
@@ -1252,12 +1273,13 @@ def test_serve_no_orphan_claims_normally(
 
 
 def test_serve_preflight_failure_does_not_claim_issue(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
     client = FakeIssuekitClient([api_issue(1, "Ready", author="claude")])
-    _configure_registered_api(tmp_path, monkeypatch, client)
+    _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
     issue_before = client.get_issue(1)
 
     exit_code = cli.main(
@@ -1280,12 +1302,13 @@ def test_serve_preflight_failure_does_not_claim_issue(
 
 
 def test_serve_preflight_rejects_missing_binary_without_claiming(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
     client = FakeIssuekitClient([api_issue(1, "Ready", author="claude")])
-    _configure_registered_api(tmp_path, monkeypatch, client)
+    _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
     issue_before = client.get_issue(1)
     machine_path = tmp_path / "machine.toml"
     machine_path.write_text(
@@ -1311,13 +1334,14 @@ def test_serve_preflight_rejects_missing_binary_without_claiming(
     (("--review", "reviewer"), ("--proposal-checks", "triage")),
 )
 def test_serve_preflights_the_agent_role_for_each_mode(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     mode_option: str,
     expected_role: str,
 ) -> None:
     client = FakeIssuekitClient()
-    _configure_registered_api(tmp_path, monkeypatch, client)
+    _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
     roles: list[str] = []
 
     class AvailableAdapter:
@@ -1335,6 +1359,7 @@ def test_serve_preflights_the_agent_role_for_each_mode(
 
 
 def test_serve_retries_own_claim_after_recovery_error(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -1356,7 +1381,7 @@ def test_serve_retries_own_claim_after_recovery_error(
     )
     RecoveryErrorThenRunner.calls.clear()
     RecoveryErrorThenRunner.attempts.clear()
-    _configure_registered_api(tmp_path, monkeypatch, client)
+    _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
     monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", RecoveryErrorThenRunner)
     monkeypatch.setattr(serve_loop, "BACKOFF_INITIAL_SEC", 0.0)
 
@@ -1371,6 +1396,7 @@ def test_serve_retries_own_claim_after_recovery_error(
 
 
 def test_serve_retries_failed_claim_and_releases_it_at_failure_limit(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -1383,7 +1409,7 @@ def test_serve_retries_failed_claim_and_releases_it_at_failure_limit(
             return FakeResult(exit_code=1)
 
     client = FakeIssuekitClient([api_issue(1, "Ready", author="claude")])
-    _configure_registered_api(tmp_path, monkeypatch, client)
+    _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
     monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", AlwaysFailRunner)
     monkeypatch.setattr(serve_loop, "BACKOFF_INITIAL_SEC", 0.0)
 
@@ -1400,6 +1426,7 @@ def test_serve_retries_failed_claim_and_releases_it_at_failure_limit(
 
 
 def test_serve_once_returns_recovery_failure_without_claiming(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -1421,7 +1448,7 @@ def test_serve_once_returns_recovery_failure_without_claiming(
     )
     RecoveryErrorThenRunner.calls.clear()
     RecoveryErrorThenRunner.attempts.clear()
-    _configure_registered_api(tmp_path, monkeypatch, client)
+    _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
     monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", RecoveryErrorThenRunner)
 
     exit_code = cli.main(["serve", "--agent", "codex", "--once"])
@@ -1433,6 +1460,7 @@ def test_serve_once_returns_recovery_failure_without_claiming(
 
 
 def test_serve_recovered_issue_counts_toward_max_issues(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -1452,7 +1480,7 @@ def test_serve_recovered_issue_counts_toward_max_issues(
         ]
     )
     FakeRunner.calls.clear()
-    _configure_registered_api(tmp_path, monkeypatch, client)
+    _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
     monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", FakeRunner)
 
     exit_code = cli.main(["serve", "--agent", "codex", "--max-issues", "1", "--interval", "0"])
@@ -1463,6 +1491,7 @@ def test_serve_recovered_issue_counts_toward_max_issues(
 
 
 def test_serve_max_issues_stops_after_successful_submissions(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -1474,7 +1503,7 @@ def test_serve_max_issues_stops_after_successful_submissions(
         ]
     )
     FakeRunner.calls.clear()
-    _configure_registered_api(tmp_path, monkeypatch, client)
+    _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
     monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", FakeRunner)
 
     exit_code = cli.main(["serve", "--agent", "codex", "--max-issues", "2", "--interval", "0"])
@@ -1510,11 +1539,12 @@ def test_serve_requires_registered_worker(
 
 
 def test_serve_rejects_unknown_agent_without_traceback(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
-    _configure_registered_api(tmp_path, monkeypatch, FakeIssuekitClient())
+    _configure_registered_api(fake_api, tmp_path, monkeypatch, FakeIssuekitClient())
 
     exit_code = cli.main(["serve", "--agent", "nosuch", "--once"])
 
@@ -1553,11 +1583,12 @@ def test_serve_requires_api_url_for_registered_worker(
 
 
 def test_serve_uses_single_configured_assignee_when_agent_omitted(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
 ) -> None:
     client = FakeIssuekitClient()
-    _configure_registered_api(tmp_path, monkeypatch, client, assignees="'codex'")
+    _configure_registered_api(fake_api, tmp_path, monkeypatch, client, assignees="'codex'")
     monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", ExplodingRunner)
 
     assert cli.main(["serve", "--once"]) == 0
@@ -1565,6 +1596,7 @@ def test_serve_uses_single_configured_assignee_when_agent_omitted(
 
 
 def test_serve_resolves_configured_heartbeat_and_cli_override_takes_precedence(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -1585,6 +1617,7 @@ def test_serve_resolves_configured_heartbeat_and_cli_override_takes_precedence(
 
     client = FakeIssuekitClient()
     _configure_registered_api(
+        fake_api,
         tmp_path,
         monkeypatch,
         client,
@@ -1611,11 +1644,12 @@ def test_serve_resolves_configured_heartbeat_and_cli_override_takes_precedence(
 
 
 def test_serve_rejects_non_positive_heartbeat_override(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
-    _configure_registered_api(tmp_path, monkeypatch, FakeIssuekitClient())
+    _configure_registered_api(fake_api, tmp_path, monkeypatch, FakeIssuekitClient())
 
     assert (
         cli.main(
@@ -1634,11 +1668,12 @@ def test_serve_rejects_non_positive_heartbeat_override(
 
 
 def test_serve_rejects_negative_max_heartbeat_failures(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
-    _configure_registered_api(tmp_path, monkeypatch, FakeIssuekitClient())
+    _configure_registered_api(fake_api, tmp_path, monkeypatch, FakeIssuekitClient())
 
     assert (
         cli.main(
@@ -1656,11 +1691,12 @@ def test_serve_rejects_negative_max_heartbeat_failures(
 
 
 def test_serve_rejects_negative_max_run_failures(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
-    _configure_registered_api(tmp_path, monkeypatch, FakeIssuekitClient())
+    _configure_registered_api(fake_api, tmp_path, monkeypatch, FakeIssuekitClient())
 
     assert cli.main(["serve", "--agent", "codex", "--max-run-failures", "-1"]) == 1
     assert "--max-run-failures must be non-negative" in capsys.readouterr().err
@@ -1790,11 +1826,12 @@ def test_worker_heartbeat_failure_limit_requests_shutdown(
 
 
 def test_serve_warns_when_heartbeat_is_not_below_staleness_default(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
-    _configure_registered_api(tmp_path, monkeypatch, FakeIssuekitClient())
+    _configure_registered_api(fake_api, tmp_path, monkeypatch, FakeIssuekitClient())
     monkeypatch.setattr("issuekit.agents.run_claimed.AgentRunner", ExplodingRunner)
 
     assert (
@@ -1814,11 +1851,12 @@ def test_serve_warns_when_heartbeat_is_not_below_staleness_default(
 
 
 def test_serve_refuses_live_lock(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
-    _configure_registered_api(tmp_path, monkeypatch, FakeIssuekitClient())
+    _configure_registered_api(fake_api, tmp_path, monkeypatch, FakeIssuekitClient())
     run_dir = tmp_path / ".agent-runs"
     run_dir.mkdir()
     lock_path = run_dir / "serve.lock"
@@ -1831,11 +1869,12 @@ def test_serve_refuses_live_lock(
 
 
 def test_serve_reuses_existing_unlocked_lock_file(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
 ) -> None:
     client = FakeIssuekitClient()
-    _configure_registered_api(tmp_path, monkeypatch, client)
+    _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
     run_dir = tmp_path / ".agent-runs"
     run_dir.mkdir()
     (run_dir / "serve.lock").write_text("0\n", encoding="utf-8", newline="\n")
@@ -2070,7 +2109,7 @@ def test_serve_loop_reuses_store_across_idle_polls(monkeypatch, tmp_path: Path) 
     assert stores[0].close_count == 1
 
 
-def test_serve_retries_failed_hold_before_claiming(monkeypatch, tmp_path: Path, capsys) -> None:
+def test_serve_retries_failed_hold_before_claiming(fake_api, monkeypatch, tmp_path: Path, capsys) -> None:
     class Args:
         priority = None
         allow_any_branch = False
@@ -2091,7 +2130,7 @@ def test_serve_retries_failed_hold_before_claiming(monkeypatch, tmp_path: Path, 
             }
         ]
     )
-    monkeypatch.setattr(proposals_api, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     monkeypatch.setattr(serve, "get_store", lambda _config: client)
     original_plan = client.plan
     plan_attempts = 0
@@ -2231,11 +2270,12 @@ def test_serve_loop_claim_ignores_author_guard_outside_configured_cwd(
 
 
 def test_serve_sigint_during_idle_keeps_lock_file(
+    fake_api,
     tmp_path: Path,
     monkeypatch,
 ) -> None:
     client = FakeIssuekitClient()
-    _configure_registered_api(tmp_path, monkeypatch, client)
+    _configure_registered_api(fake_api, tmp_path, monkeypatch, client)
     controller = serve.ShutdownController.create()
 
     def sleep_and_signal(seconds: float) -> bool:

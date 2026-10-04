@@ -1,6 +1,5 @@
 import pytest
 
-from issuekit import store as store_module
 from issuekit.commands.approve import approve_issue
 from issuekit.commands.complete import complete_issue
 from issuekit.config import IssuekitConfig, WorkerIdentity
@@ -28,16 +27,17 @@ from tests.issue_helpers import api_issue
 
 
 def _config(
+    fake_api,
     client: FakeIssuekitClient,
     monkeypatch,
     *,
     worker: WorkerIdentity | None = None,
 ) -> IssuekitConfig:
-    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     return IssuekitConfig(api_url="https://mine.example", project="demo", worker=worker)
 
 
-def test_claim_next_routes_to_api_and_picks_highest_priority(monkeypatch) -> None:
+def test_claim_next_routes_to_api_and_picks_highest_priority(fake_api, monkeypatch) -> None:
     client = FakeIssuekitClient(
         [
             api_issue(1, "Low", priority="low"),
@@ -46,7 +46,7 @@ def test_claim_next_routes_to_api_and_picks_highest_priority(monkeypatch) -> Non
         ]
     )
 
-    issue = claim_next("codex", config=_config(client, monkeypatch))
+    issue = claim_next("codex", config=_config(fake_api, client, monkeypatch))
 
     assert issue is not None
     assert issue.id == 2
@@ -56,7 +56,7 @@ def test_claim_next_routes_to_api_and_picks_highest_priority(monkeypatch) -> Non
     assert client.calls == [{"method": "claim_next", "body": {"assignee": "codex"}}]
 
 
-def test_claim_next_respects_priority_filter(monkeypatch) -> None:
+def test_claim_next_respects_priority_filter(fake_api, monkeypatch) -> None:
     client = FakeIssuekitClient(
         [
             api_issue(1, "Low", priority="low"),
@@ -67,7 +67,7 @@ def test_claim_next_respects_priority_filter(monkeypatch) -> None:
     issue = claim_next(
         "codex",
         priority="low",
-        config=_config(client, monkeypatch),
+        config=_config(fake_api, client, monkeypatch),
     )
 
     assert issue is not None
@@ -77,9 +77,10 @@ def test_claim_next_respects_priority_filter(monkeypatch) -> None:
     ]
 
 
-def test_claim_next_sends_registered_worker(monkeypatch) -> None:
+def test_claim_next_sends_registered_worker(fake_api, monkeypatch) -> None:
     client = FakeIssuekitClient([api_issue(1, "Ready", author="claude")])
     config = _config(
+        fake_api,
         client,
         monkeypatch,
         worker=WorkerIdentity("machine", "repo", "checkout"),
@@ -97,9 +98,10 @@ def test_claim_next_sends_registered_worker(monkeypatch) -> None:
     ]
 
 
-def test_claim_issue_sends_registered_worker(monkeypatch) -> None:
+def test_claim_issue_sends_registered_worker(fake_api, monkeypatch) -> None:
     client = FakeIssuekitClient([api_issue(1, "Ready", author="claude")])
     config = _config(
+        fake_api,
         client,
         monkeypatch,
         worker=WorkerIdentity("machine", "repo", "checkout"),
@@ -117,7 +119,7 @@ def test_claim_issue_sends_registered_worker(monkeypatch) -> None:
     ]
 
 
-def test_claim_next_filters_directed_issues_to_target_worker(monkeypatch) -> None:
+def test_claim_next_filters_directed_issues_to_target_worker(fake_api, monkeypatch) -> None:
     client = FakeIssuekitClient(
         [
             api_issue(1, "Directed", author="claude", target_worker="checkout.repo"),
@@ -125,6 +127,7 @@ def test_claim_next_filters_directed_issues_to_target_worker(monkeypatch) -> Non
         ]
     )
     other_config = _config(
+        fake_api,
         client,
         monkeypatch,
         worker=WorkerIdentity("machine", "repo", "other"),
@@ -135,6 +138,7 @@ def test_claim_next_filters_directed_issues_to_target_worker(monkeypatch) -> Non
     assert wrong_worker_issue is not None
     assert wrong_worker_issue.id == 2
     target_config = _config(
+        fake_api,
         client,
         monkeypatch,
         worker=WorkerIdentity("machine", "repo", "checkout"),
@@ -157,6 +161,7 @@ def test_claim_next_filters_directed_issues_to_target_worker(monkeypatch) -> Non
 
 
 def test_claim_next_machine_qualified_target_requires_matching_machine(
+    fake_api,
     monkeypatch,
 ) -> None:
     client = FakeIssuekitClient(
@@ -170,6 +175,7 @@ def test_claim_next_machine_qualified_target_requires_matching_machine(
         ]
     )
     other_machine_config = _config(
+        fake_api,
         client,
         monkeypatch,
         worker=WorkerIdentity("main1", "repo", "checkout"),
@@ -178,6 +184,7 @@ def test_claim_next_machine_qualified_target_requires_matching_machine(
     assert claim_next("codex", config=other_machine_config) is None
 
     same_machine_config = _config(
+        fake_api,
         client,
         monkeypatch,
         worker=WorkerIdentity("pike3", "repo", "checkout"),
@@ -189,11 +196,12 @@ def test_claim_next_machine_qualified_target_requires_matching_machine(
     assert directed_issue.id == 1
 
 
-def test_claim_issue_rejects_wrong_directed_worker(monkeypatch) -> None:
+def test_claim_issue_rejects_wrong_directed_worker(fake_api, monkeypatch) -> None:
     client = FakeIssuekitClient(
         [api_issue(1, "Directed", author="claude", target_worker="checkout.repo")]
     )
     config = _config(
+        fake_api,
         client,
         monkeypatch,
         worker=WorkerIdentity("machine", "repo", "other"),
@@ -204,6 +212,7 @@ def test_claim_issue_rejects_wrong_directed_worker(monkeypatch) -> None:
 
 
 def test_workflow_claim_submit_review_actions_send_configured_session(
+    fake_api,
     monkeypatch,
 ) -> None:
     monkeypatch.setenv("ISSUEKIT_SESSION", "sess-1")
@@ -236,7 +245,7 @@ def test_workflow_claim_submit_review_actions_send_configured_session(
             ),
         ]
     )
-    config = _config(client, monkeypatch)
+    config = _config(fake_api, client, monkeypatch)
 
     claim_issue(1, "codex", config=config)
     submit_for_review(2, summary="Implemented.", config=config)
@@ -251,7 +260,7 @@ def test_workflow_claim_submit_review_actions_send_configured_session(
     ]
 
 
-def test_reclaim_issue_sends_registered_worker_as_actor(monkeypatch) -> None:
+def test_reclaim_issue_sends_registered_worker_as_actor(fake_api, monkeypatch) -> None:
     client = FakeIssuekitClient(
         [
             api_issue(
@@ -266,6 +275,7 @@ def test_reclaim_issue_sends_registered_worker_as_actor(monkeypatch) -> None:
         ]
     )
     config = _config(
+        fake_api,
         client,
         monkeypatch,
         worker=WorkerIdentity("machine", "repo", "operator"),
@@ -289,11 +299,12 @@ def test_reclaim_issue_sends_registered_worker_as_actor(monkeypatch) -> None:
     ]
 
 
-def test_readdress_issue_returns_directed_issue_to_pool(monkeypatch) -> None:
+def test_readdress_issue_returns_directed_issue_to_pool(fake_api, monkeypatch) -> None:
     client = FakeIssuekitClient(
         [api_issue(1, "Directed", author="claude", target_worker="checkout.repo")]
     )
     config = _config(
+        fake_api,
         client,
         monkeypatch,
         worker=WorkerIdentity("machine", "repo", "operator"),
@@ -318,7 +329,7 @@ def test_readdress_issue_returns_directed_issue_to_pool(monkeypatch) -> None:
     ]
 
 
-def test_reclaim_issue_rejects_non_ascii_reason(monkeypatch) -> None:
+def test_reclaim_issue_rejects_non_ascii_reason(fake_api, monkeypatch) -> None:
     client = FakeIssuekitClient(
         [
             api_issue(
@@ -332,16 +343,16 @@ def test_reclaim_issue_rejects_non_ascii_reason(monkeypatch) -> None:
     )
 
     with pytest.raises(WorkflowError, match="--reason must be ASCII-only"):
-        reclaim_issue(1, force=True, reason="stale \u2603", config=_config(client, monkeypatch))
+        reclaim_issue(1, force=True, reason="stale \u2603", config=_config(fake_api, client, monkeypatch))
 
     assert client.calls == []
 
 
-def test_claim_issue_surfaces_api_transition_error(monkeypatch) -> None:
+def test_claim_issue_surfaces_api_transition_error(fake_api, monkeypatch) -> None:
     client = FakeIssuekitClient([api_issue(1, "First", assignee="codex", author="codex")])
 
     with pytest.raises(WorkflowError, match="Same-name implementation is allowed only") as excinfo:
-        claim_issue(1, "codex", config=_config(client, monkeypatch))
+        claim_issue(1, "codex", config=_config(fake_api, client, monkeypatch))
 
     assert excinfo.value.code == "forbidden_self_implement"
     message = str(excinfo.value)
@@ -415,9 +426,9 @@ def test_fake_claim_allows_distinct_author_and_implementer_sessions() -> None:
     assert issue["implementer_session"] == "implementer-session"
 
 
-def test_author_guard_blocks_claim_in_same_checkout(tmp_path, monkeypatch) -> None:
+def test_author_guard_blocks_claim_in_same_checkout(fake_api, tmp_path, monkeypatch) -> None:
     client = FakeIssuekitClient([api_issue(1, "Ready", author="claude")])
-    config = _config(client, monkeypatch)
+    config = _config(fake_api, client, monkeypatch)
     create_author_guard(
         tmp_path,
         config=config,
@@ -440,9 +451,9 @@ def test_author_guard_blocks_claim_in_same_checkout(tmp_path, monkeypatch) -> No
     assert issue.id == 1
 
 
-def test_legacy_author_guard_table_refuses_claim(tmp_path, monkeypatch) -> None:
+def test_legacy_author_guard_table_refuses_claim(fake_api, tmp_path, monkeypatch) -> None:
     client = FakeIssuekitClient([api_issue(1, "Ready", author="claude")])
-    config = _config(client, monkeypatch)
+    config = _config(fake_api, client, monkeypatch)
     (tmp_path / "issuekit.local.toml").write_text(
         (
             "[author_guard]\n"
@@ -466,10 +477,11 @@ def test_legacy_author_guard_table_refuses_claim(tmp_path, monkeypatch) -> None:
 
 
 def test_author_guard_allows_orchestrated_claim_for_distinct_agent(
+    fake_api,
     tmp_path, monkeypatch
 ) -> None:
     client = FakeIssuekitClient([api_issue(1, "Ready", author="codex")])
-    config = _config(client, monkeypatch)
+    config = _config(fake_api, client, monkeypatch)
     create_author_guard(
         tmp_path,
         config=config,
@@ -502,12 +514,13 @@ def test_author_guard_allows_orchestrated_claim_for_distinct_agent(
 
 
 def test_author_guard_allows_orchestrated_same_agent_with_distinct_session(
+    fake_api,
     tmp_path, monkeypatch
 ) -> None:
     client = FakeIssuekitClient(
         [api_issue(1, "Ready", author="codex") | {"author_session": "author-123"}]
     )
-    config = _config(client, monkeypatch)
+    config = _config(fake_api, client, monkeypatch)
     create_author_guard(
         tmp_path,
         config=config,
@@ -536,10 +549,11 @@ def test_author_guard_allows_orchestrated_same_agent_with_distinct_session(
 
 
 def test_author_guard_blocks_orchestrated_same_agent_without_author_session(
+    fake_api,
     tmp_path, monkeypatch
 ) -> None:
     client = FakeIssuekitClient([api_issue(1, "Ready", author="codex")])
-    config = _config(client, monkeypatch)
+    config = _config(fake_api, client, monkeypatch)
     create_author_guard(
         tmp_path,
         config=config,
@@ -565,9 +579,9 @@ def test_author_guard_blocks_orchestrated_same_agent_without_author_session(
     assert client.calls == []
 
 
-def test_author_guard_blocks_orchestrated_unknown_author(tmp_path, monkeypatch) -> None:
+def test_author_guard_blocks_orchestrated_unknown_author(fake_api, tmp_path, monkeypatch) -> None:
     client = FakeIssuekitClient([api_issue(1, "Ready", author="codex")])
-    config = _config(client, monkeypatch)
+    config = _config(fake_api, client, monkeypatch)
     create_author_guard(
         tmp_path,
         config=config,
@@ -593,9 +607,9 @@ def test_author_guard_blocks_orchestrated_unknown_author(tmp_path, monkeypatch) 
     assert client.calls == []
 
 
-def test_issue_author_guard_blocks_claim_next_in_same_checkout(tmp_path, monkeypatch) -> None:
+def test_issue_author_guard_blocks_claim_next_in_same_checkout(fake_api, tmp_path, monkeypatch) -> None:
     client = FakeIssuekitClient([api_issue(2, "Ready", author="claude")])
-    config = _config(client, monkeypatch)
+    config = _config(fake_api, client, monkeypatch)
     create_author_guard(
         tmp_path,
         config=config,
@@ -611,14 +625,14 @@ def test_issue_author_guard_blocks_claim_next_in_same_checkout(tmp_path, monkeyp
     assert client.calls == []
 
 
-def test_issue_author_guard_allows_claim_for_unrelated_issue(tmp_path, monkeypatch) -> None:
+def test_issue_author_guard_allows_claim_for_unrelated_issue(fake_api, tmp_path, monkeypatch) -> None:
     client = FakeIssuekitClient(
         [
             api_issue(1, "Authored", author="codex"),
             api_issue(2, "Ready", author="claude"),
         ]
     )
-    config = _config(client, monkeypatch)
+    config = _config(fake_api, client, monkeypatch)
     create_author_guard(
         tmp_path,
         config=config,
@@ -636,9 +650,9 @@ def test_issue_author_guard_allows_claim_for_unrelated_issue(tmp_path, monkeypat
     ]
 
 
-def test_proposal_author_guard_does_not_block_claim_next(tmp_path, monkeypatch) -> None:
+def test_proposal_author_guard_does_not_block_claim_next(fake_api, tmp_path, monkeypatch) -> None:
     client = FakeIssuekitClient([api_issue(1, "Ready", author="claude")])
-    config = _config(client, monkeypatch)
+    config = _config(fake_api, client, monkeypatch)
     create_author_guard(
         tmp_path,
         config=config,
@@ -657,9 +671,9 @@ def test_proposal_author_guard_does_not_block_claim_next(tmp_path, monkeypatch) 
     assert client.calls == [{"method": "claim_next", "body": {"assignee": "codex"}}]
 
 
-def test_proposal_author_guard_does_not_block_claim_issue(tmp_path, monkeypatch) -> None:
+def test_proposal_author_guard_does_not_block_claim_issue(fake_api, tmp_path, monkeypatch) -> None:
     client = FakeIssuekitClient([api_issue(1, "Ready", author="claude")])
-    config = _config(client, monkeypatch)
+    config = _config(fake_api, client, monkeypatch)
     create_author_guard(
         tmp_path,
         config=config,
@@ -676,9 +690,9 @@ def test_proposal_author_guard_does_not_block_claim_issue(tmp_path, monkeypatch)
     assert read_author_guards(tmp_path)
 
 
-def test_work_branch_guard_blocks_claim_before_api_call(tmp_path, monkeypatch) -> None:
+def test_work_branch_guard_blocks_claim_before_api_call(fake_api, tmp_path, monkeypatch) -> None:
     client = FakeIssuekitClient([api_issue(1, "Ready", author="claude")])
-    config = _config(client, monkeypatch)
+    config = _config(fake_api, client, monkeypatch)
     config = IssuekitConfig(
         api_url=config.api_url,
         project=config.project,
@@ -692,10 +706,10 @@ def test_work_branch_guard_blocks_claim_before_api_call(tmp_path, monkeypatch) -
     assert client.calls == []
 
 
-def test_work_branch_guard_allows_claim_with_bypass(tmp_path, monkeypatch) -> None:
+def test_work_branch_guard_allows_claim_with_bypass(fake_api, tmp_path, monkeypatch) -> None:
     client = FakeIssuekitClient([api_issue(1, "Ready", author="claude")])
     config = IssuekitConfig(api_url="https://mine.example", project="demo", work_branch="main")
-    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     monkeypatch.setattr("issuekit.guards.branch.git_current_branch", lambda cwd: "feature")
 
     issue = claim_issue(
@@ -713,10 +727,10 @@ def test_work_branch_guard_allows_claim_with_bypass(tmp_path, monkeypatch) -> No
     ]
 
 
-def test_claim_sync_guard_blocks_claim_before_api_call(tmp_path, monkeypatch) -> None:
+def test_claim_sync_guard_blocks_claim_before_api_call(fake_api, tmp_path, monkeypatch) -> None:
     client = FakeIssuekitClient([api_issue(1, "Ready", author="claude")])
     config = IssuekitConfig(api_url="https://mine.example", project="demo", work_branch="main")
-    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     monkeypatch.setattr("issuekit.guards.branch.git_current_branch", lambda cwd: "main")
     monkeypatch.setattr("issuekit.guards.claim_sync.git_status_short", lambda cwd: "?? debris.txt")
 
@@ -726,10 +740,10 @@ def test_claim_sync_guard_blocks_claim_before_api_call(tmp_path, monkeypatch) ->
     assert client.calls == []
 
 
-def test_claim_sync_guard_allows_claim_with_no_sync(tmp_path, monkeypatch) -> None:
+def test_claim_sync_guard_allows_claim_with_no_sync(fake_api, tmp_path, monkeypatch) -> None:
     client = FakeIssuekitClient([api_issue(1, "Ready", author="claude")])
     config = IssuekitConfig(api_url="https://mine.example", project="demo", work_branch="main")
-    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     monkeypatch.setattr("issuekit.guards.branch.git_current_branch", lambda cwd: "main")
     monkeypatch.setattr("issuekit.guards.claim_sync.git_status_short", lambda cwd: "?? debris.txt")
 
@@ -742,6 +756,7 @@ def test_claim_sync_guard_allows_claim_with_no_sync(tmp_path, monkeypatch) -> No
 
 
 def test_claim_issue_skips_claim_sync_for_same_worker_changes_continuation(
+    fake_api,
     tmp_path,
     monkeypatch,
 ) -> None:
@@ -765,7 +780,7 @@ def test_claim_issue_skips_claim_sync_for_same_worker_changes_continuation(
         work_branch="main",
         worker=WorkerIdentity("machine", "repo", "checkout"),
     )
-    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     monkeypatch.setattr("issuekit.guards.branch.git_current_branch", lambda cwd: "main")
 
     def fail_claim_sync(*args, **kwargs):
@@ -786,6 +801,7 @@ def test_claim_issue_skips_claim_sync_for_same_worker_changes_continuation(
 
 
 def test_claim_issue_enforces_claim_sync_for_other_worker_changes_continuation(
+    fake_api,
     tmp_path,
     monkeypatch,
 ) -> None:
@@ -809,7 +825,7 @@ def test_claim_issue_enforces_claim_sync_for_other_worker_changes_continuation(
         work_branch="main",
         worker=WorkerIdentity("machine", "repo", "checkout"),
     )
-    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     monkeypatch.setattr("issuekit.guards.branch.git_current_branch", lambda cwd: "main")
 
     def fail_claim_sync(*args, **kwargs):
@@ -824,6 +840,7 @@ def test_claim_issue_enforces_claim_sync_for_other_worker_changes_continuation(
 
 
 def test_claim_next_still_enforces_claim_sync_for_dirty_changes_checkout(
+    fake_api,
     tmp_path,
     monkeypatch,
 ) -> None:
@@ -847,7 +864,7 @@ def test_claim_next_still_enforces_claim_sync_for_dirty_changes_checkout(
         work_branch="main",
         worker=WorkerIdentity("machine", "repo", "checkout"),
     )
-    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     monkeypatch.setattr("issuekit.guards.branch.git_current_branch", lambda cwd: "main")
 
     def fail_claim_sync(*args, **kwargs):
@@ -888,6 +905,7 @@ def test_claim_next_still_enforces_claim_sync_for_dirty_changes_checkout(
     ],
 )
 def test_author_guard_enforcement_env_matrix(
+    fake_api,
     tmp_path,
     monkeypatch,
     env_value: str | None,
@@ -895,7 +913,7 @@ def test_author_guard_enforcement_env_matrix(
     should_block: bool,
 ) -> None:
     client = FakeIssuekitClient([api_issue(1, "Ready", author="claude")])
-    config = _config(client, monkeypatch)
+    config = _config(fake_api, client, monkeypatch)
     if env_value is None:
         monkeypatch.delenv(ENFORCE_AUTHOR_HANDOFF_ENV, raising=False)
     else:
@@ -922,10 +940,10 @@ def test_author_guard_enforcement_env_matrix(
         assert read_author_guards(tmp_path)
 
 
-def test_claim_sends_allow_self_implement_when_enforcement_off(tmp_path, monkeypatch) -> None:
+def test_claim_sends_allow_self_implement_when_enforcement_off(fake_api, tmp_path, monkeypatch) -> None:
     monkeypatch.setenv(ENFORCE_AUTHOR_HANDOFF_ENV, "0")
     client = FakeIssuekitClient([api_issue(1, "Ready", author="codex")])
-    config = _config(client, monkeypatch)
+    config = _config(fake_api, client, monkeypatch)
 
     issue = claim_issue(1, "codex", config=config, cwd=tmp_path)
 
@@ -939,10 +957,10 @@ def test_claim_sends_allow_self_implement_when_enforcement_off(tmp_path, monkeyp
     ]
 
 
-def test_claim_next_sends_allow_self_implement_when_enforcement_off(tmp_path, monkeypatch) -> None:
+def test_claim_next_sends_allow_self_implement_when_enforcement_off(fake_api, tmp_path, monkeypatch) -> None:
     monkeypatch.setenv(ENFORCE_AUTHOR_HANDOFF_ENV, "0")
     client = FakeIssuekitClient([api_issue(1, "Ready", author="codex")])
-    config = _config(client, monkeypatch)
+    config = _config(fake_api, client, monkeypatch)
 
     issue = claim_next("codex", config=config, cwd=tmp_path)
 
@@ -956,10 +974,10 @@ def test_claim_next_sends_allow_self_implement_when_enforcement_off(tmp_path, mo
     ]
 
 
-def test_claim_omits_allow_self_implement_when_enforcement_on(tmp_path, monkeypatch) -> None:
+def test_claim_omits_allow_self_implement_when_enforcement_on(fake_api, tmp_path, monkeypatch) -> None:
     monkeypatch.setenv(ENFORCE_AUTHOR_HANDOFF_ENV, "1")
     client = FakeIssuekitClient([api_issue(1, "Ready", author="claude")])
-    config = _config(client, monkeypatch)
+    config = _config(fake_api, client, monkeypatch)
 
     issue = claim_issue(1, "codex", config=config, cwd=tmp_path)
 
@@ -969,9 +987,9 @@ def test_claim_omits_allow_self_implement_when_enforcement_on(tmp_path, monkeypa
     ]
 
 
-def test_author_guard_does_not_block_different_checkout(tmp_path, monkeypatch) -> None:
+def test_author_guard_does_not_block_different_checkout(fake_api, tmp_path, monkeypatch) -> None:
     client = FakeIssuekitClient([api_issue(1, "Ready", author="claude")])
-    config = _config(client, monkeypatch)
+    config = _config(fake_api, client, monkeypatch)
     author_checkout = tmp_path / "author"
     implementer_checkout = tmp_path / "implementer"
     author_checkout.mkdir()
@@ -990,7 +1008,7 @@ def test_author_guard_does_not_block_different_checkout(tmp_path, monkeypatch) -
     assert issue.id == 1
 
 
-def test_author_guard_blocks_submit_for_review_for_authored_issue(tmp_path, monkeypatch) -> None:
+def test_author_guard_blocks_submit_for_review_for_authored_issue(fake_api, tmp_path, monkeypatch) -> None:
     client = FakeIssuekitClient(
         [
             api_issue(
@@ -1003,7 +1021,7 @@ def test_author_guard_blocks_submit_for_review_for_authored_issue(tmp_path, monk
             )
         ]
     )
-    config = _config(client, monkeypatch)
+    config = _config(fake_api, client, monkeypatch)
     create_author_guard(
         tmp_path,
         config=config,
@@ -1018,6 +1036,7 @@ def test_author_guard_blocks_submit_for_review_for_authored_issue(tmp_path, monk
 
 
 def test_author_guard_allows_orchestrated_submit_for_distinct_agent(
+    fake_api,
     tmp_path, monkeypatch
 ) -> None:
     client = FakeIssuekitClient(
@@ -1033,7 +1052,7 @@ def test_author_guard_allows_orchestrated_submit_for_distinct_agent(
             )
         ]
     )
-    config = _config(client, monkeypatch)
+    config = _config(fake_api, client, monkeypatch)
     create_author_guard(
         tmp_path,
         config=config,
@@ -1065,7 +1084,7 @@ def test_author_guard_allows_orchestrated_submit_for_distinct_agent(
     ]
 
 
-def test_proposal_author_guard_does_not_block_submit_for_review(tmp_path, monkeypatch) -> None:
+def test_proposal_author_guard_does_not_block_submit_for_review(fake_api, tmp_path, monkeypatch) -> None:
     client = FakeIssuekitClient(
         [
             api_issue(
@@ -1078,7 +1097,7 @@ def test_proposal_author_guard_does_not_block_submit_for_review(tmp_path, monkey
             )
         ]
     )
-    config = _config(client, monkeypatch)
+    config = _config(fake_api, client, monkeypatch)
     create_author_guard(
         tmp_path,
         config=config,
@@ -1095,7 +1114,7 @@ def test_proposal_author_guard_does_not_block_submit_for_review(tmp_path, monkey
     assert read_author_guards(tmp_path)
 
 
-def test_submit_for_review_passes_structured_fields(monkeypatch) -> None:
+def test_submit_for_review_passes_structured_fields(fake_api, monkeypatch) -> None:
     client = FakeIssuekitClient(
         [
             api_issue(
@@ -1114,7 +1133,7 @@ def test_submit_for_review_passes_structured_fields(monkeypatch) -> None:
         summary="Implemented workflow.",
         branch="codex/workflow",
         commit="abc123",
-        config=_config(client, monkeypatch),
+        config=_config(fake_api, client, monkeypatch),
     )
 
     assert issue.assignee == ""
@@ -1133,6 +1152,7 @@ def test_submit_for_review_passes_structured_fields(monkeypatch) -> None:
 
 
 def test_submit_for_review_rejects_unknown_reviewer_before_api_transition(
+    fake_api,
     monkeypatch,
 ) -> None:
     client = FakeIssuekitClient([api_issue(1, "First")])
@@ -1142,13 +1162,13 @@ def test_submit_for_review_rejects_unknown_reviewer_before_api_transition(
             1,
             summary="Implemented.",
             reviewer="nobody",
-            config=_config(client, monkeypatch),
+            config=_config(fake_api, client, monkeypatch),
         )
 
     assert client.calls == []
 
 
-def test_submit_for_review_defaults_branch_to_current_checkout(monkeypatch) -> None:
+def test_submit_for_review_defaults_branch_to_current_checkout(fake_api, monkeypatch) -> None:
     client = FakeIssuekitClient(
         [
             api_issue(
@@ -1166,7 +1186,7 @@ def test_submit_for_review_defaults_branch_to_current_checkout(monkeypatch) -> N
     issue = submit_for_review(
         1,
         summary="Implemented workflow.",
-        config=_config(client, monkeypatch),
+        config=_config(fake_api, client, monkeypatch),
     )
 
     assert issue.stage == "review"
@@ -1179,7 +1199,7 @@ def test_submit_for_review_defaults_branch_to_current_checkout(monkeypatch) -> N
     ]
 
 
-def test_submit_for_review_omits_branch_when_checkout_branch_unknown(monkeypatch) -> None:
+def test_submit_for_review_omits_branch_when_checkout_branch_unknown(fake_api, monkeypatch) -> None:
     client = FakeIssuekitClient(
         [
             api_issue(
@@ -1197,7 +1217,7 @@ def test_submit_for_review_omits_branch_when_checkout_branch_unknown(monkeypatch
     submit_for_review(
         1,
         summary="Implemented workflow.",
-        config=_config(client, monkeypatch),
+        config=_config(fake_api, client, monkeypatch),
     )
 
     assert client.calls == [
@@ -1209,7 +1229,7 @@ def test_submit_for_review_omits_branch_when_checkout_branch_unknown(monkeypatch
     ]
 
 
-def test_work_branch_guard_blocks_submit_before_api_call(tmp_path, monkeypatch) -> None:
+def test_work_branch_guard_blocks_submit_before_api_call(fake_api, tmp_path, monkeypatch) -> None:
     client = FakeIssuekitClient(
         [
             api_issue(
@@ -1222,7 +1242,7 @@ def test_work_branch_guard_blocks_submit_before_api_call(tmp_path, monkeypatch) 
             )
         ]
     )
-    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
+    fake_api.install_client(client)
     monkeypatch.setattr("issuekit.guards.branch.git_current_branch", lambda cwd: "feature")
     config = IssuekitConfig(api_url="https://mine.example", project="demo", work_branch="main")
 
@@ -1232,7 +1252,7 @@ def test_work_branch_guard_blocks_submit_before_api_call(tmp_path, monkeypatch) 
     assert client.calls == []
 
 
-def test_request_changes_returns_issue_to_implementer(monkeypatch) -> None:
+def test_request_changes_returns_issue_to_implementer(fake_api, monkeypatch) -> None:
     client = FakeIssuekitClient(
         [
             api_issue(
@@ -1249,7 +1269,7 @@ def test_request_changes_returns_issue_to_implementer(monkeypatch) -> None:
     issue = request_changes(
         1,
         notes="Please add tests.",
-        config=_config(client, monkeypatch),
+        config=_config(fake_api, client, monkeypatch),
     )
 
     assert issue.assignee == "codex"
@@ -1259,7 +1279,7 @@ def test_request_changes_returns_issue_to_implementer(monkeypatch) -> None:
     ]
 
 
-def test_request_changes_sends_registered_reviewer_worker(monkeypatch) -> None:
+def test_request_changes_sends_registered_reviewer_worker(fake_api, monkeypatch) -> None:
     client = FakeIssuekitClient(
         [
             api_issue(
@@ -1273,6 +1293,7 @@ def test_request_changes_sends_registered_reviewer_worker(monkeypatch) -> None:
         ]
     )
     config = _config(
+        fake_api,
         client,
         monkeypatch,
         worker=WorkerIdentity("machine", "repo", "reviewer"),
@@ -1293,7 +1314,7 @@ def test_request_changes_sends_registered_reviewer_worker(monkeypatch) -> None:
     ]
 
 
-def test_approve_rejects_same_agent_same_worker_review(monkeypatch) -> None:
+def test_approve_rejects_same_agent_same_worker_review(fake_api, monkeypatch) -> None:
     client = FakeIssuekitClient(
         [
             api_issue(
@@ -1308,6 +1329,7 @@ def test_approve_rejects_same_agent_same_worker_review(monkeypatch) -> None:
         ]
     )
     config = _config(
+        fake_api,
         client,
         monkeypatch,
         worker=WorkerIdentity("machine", "repo", "checkout"),
@@ -1368,6 +1390,7 @@ def test_resolve_implementer_uses_explicit_then_configured_then_single_assignee(
 
 
 def test_approve_allows_same_agent_different_worker_open_review(
+    fake_api,
     monkeypatch,
 ) -> None:
     client = FakeIssuekitClient(
@@ -1384,6 +1407,7 @@ def test_approve_allows_same_agent_different_worker_open_review(
         ]
     )
     config = _config(
+        fake_api,
         client,
         monkeypatch,
         worker=WorkerIdentity("machine", "repo", "reviewer"),
@@ -1409,7 +1433,7 @@ def test_approve_allows_same_agent_different_worker_open_review(
     }
 
 
-def test_approve_allows_different_agent_review(monkeypatch) -> None:
+def test_approve_allows_different_agent_review(fake_api, monkeypatch) -> None:
     client = FakeIssuekitClient(
         [
             api_issue(
@@ -1424,6 +1448,7 @@ def test_approve_allows_different_agent_review(monkeypatch) -> None:
         ]
     )
     config = _config(
+        fake_api,
         client,
         monkeypatch,
         worker=WorkerIdentity("machine", "repo", "reviewer"),
@@ -1440,6 +1465,7 @@ def test_approve_allows_different_agent_review(monkeypatch) -> None:
 
 
 def test_approve_rejects_unassigned_reviewer_before_api_transition(
+    fake_api,
     monkeypatch,
 ) -> None:
     client = FakeIssuekitClient(
@@ -1454,7 +1480,7 @@ def test_approve_rejects_unassigned_reviewer_before_api_transition(
             )
         ]
     )
-    config = _config(client, monkeypatch)
+    config = _config(fake_api, client, monkeypatch)
 
     with pytest.raises(WorkflowError) as excinfo:
         approve_issue(
@@ -1470,7 +1496,7 @@ def test_approve_rejects_unassigned_reviewer_before_api_transition(
     assert client.calls == []
 
 
-def test_find_for_lists_matching_active_issues(monkeypatch) -> None:
+def test_find_for_lists_matching_active_issues(fake_api, monkeypatch) -> None:
     client = FakeIssuekitClient(
         [
             api_issue(1, "Review", status="in_progress", assignee="claude", stage="review"),
@@ -1481,20 +1507,20 @@ def test_find_for_lists_matching_active_issues(monkeypatch) -> None:
     issues = find_for(
         "claude",
         stage="review",
-        config=_config(client, monkeypatch),
+        config=_config(fake_api, client, monkeypatch),
     )
 
     assert [issue.id for issue in issues] == [1]
 
 
-def test_complete_issue_uses_api_complete(monkeypatch) -> None:
+def test_complete_issue_uses_api_complete(fake_api, monkeypatch) -> None:
     client = FakeIssuekitClient([api_issue(1, "First", stage="review")])
 
     issue = complete_issue(
         1,
         summary="Approved.",
         verification="pytest",
-        config=_config(client, monkeypatch),
+        config=_config(fake_api, client, monkeypatch),
     )
 
     assert issue.issue_status == "completed"
@@ -1508,9 +1534,9 @@ def test_complete_issue_uses_api_complete(monkeypatch) -> None:
     ]
 
 
-def test_workflow_rejects_invalid_tokens_and_non_ascii_text(monkeypatch) -> None:
+def test_workflow_rejects_invalid_tokens_and_non_ascii_text(fake_api, monkeypatch) -> None:
     client = FakeIssuekitClient([api_issue(1, "First")])
-    config = _config(client, monkeypatch)
+    config = _config(fake_api, client, monkeypatch)
 
     with pytest.raises(WorkflowError, match="Invalid assignee token"):
         claim_next("codex\nstage: done", config=config)

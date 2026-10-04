@@ -3,20 +3,10 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from issuekit import cli
-from issuekit import store as store_module
 from issuekit.agentrun.status import STALE_AFTER_SEC, RunStatus, status_path, write_status
 from issuekit.testing import FakeIssuekitClient
+from tests.api_helpers import configure_api
 from tests.issue_helpers import api_issue
-
-
-def _configure_api(tmp_path: Path, monkeypatch, client: FakeIssuekitClient) -> None:
-    (tmp_path / "issuekit.toml").write_text(
-        "api_url = 'https://mine.example'\nproject = 'demo'\n",
-        encoding="utf-8",
-        newline="\n",
-    )
-    monkeypatch.setattr(store_module, "IssuekitClient", lambda *args, **kwargs: client)
-    monkeypatch.chdir(tmp_path)
 
 
 def _write_run(run_dir: Path, run_id: str, *, issue: int, heartbeat_at: str) -> None:
@@ -41,12 +31,13 @@ def _write_run(run_dir: Path, run_id: str, *, issue: int, heartbeat_at: str) -> 
 
 
 def test_show_flags_stale_run_when_issue_stuck_implementing(
+    fake_api,
     tmp_path: Path, monkeypatch, capsys
 ) -> None:
     client = FakeIssuekitClient(
         [api_issue(1, "First", status="in_progress", stage="implementing", assignee="claude")]
     )
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client)
     old_heartbeat = (
         datetime.now() - timedelta(seconds=STALE_AFTER_SEC + 30)
     ).replace(microsecond=0).isoformat()
@@ -60,12 +51,13 @@ def test_show_flags_stale_run_when_issue_stuck_implementing(
 
 
 def test_show_flags_already_reconciled_abandoned_run(
+    fake_api,
     tmp_path: Path, monkeypatch, capsys
 ) -> None:
     client = FakeIssuekitClient(
         [api_issue(1, "First", status="in_progress", stage="implementing", assignee="claude")]
     )
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client)
     old_heartbeat = (
         datetime.now() - timedelta(seconds=STALE_AFTER_SEC + 30)
     ).replace(microsecond=0).isoformat()
@@ -96,11 +88,11 @@ def test_show_flags_already_reconciled_abandoned_run(
     assert "20261004-100003" in payload["stale_run"]
 
 
-def test_show_does_not_flag_fresh_run(tmp_path: Path, monkeypatch, capsys) -> None:
+def test_show_does_not_flag_fresh_run(fake_api, tmp_path: Path, monkeypatch, capsys) -> None:
     client = FakeIssuekitClient(
         [api_issue(1, "First", status="in_progress", stage="implementing", assignee="claude")]
     )
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client)
     fresh_heartbeat = datetime.now().replace(microsecond=0).isoformat()
     _write_run(tmp_path / ".agent-runs", "20261004-100004", issue=1, heartbeat_at=fresh_heartbeat)
 
@@ -110,9 +102,9 @@ def test_show_does_not_flag_fresh_run(tmp_path: Path, monkeypatch, capsys) -> No
     assert "stale_run" not in payload
 
 
-def test_show_json_includes_issue_priority(tmp_path: Path, monkeypatch, capsys) -> None:
+def test_show_json_includes_issue_priority(fake_api, tmp_path: Path, monkeypatch, capsys) -> None:
     client = FakeIssuekitClient([api_issue(1, "First", priority="high")])
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client)
 
     assert cli.main(["show", "1", "--json"]) == 0
 
@@ -121,12 +113,13 @@ def test_show_json_includes_issue_priority(tmp_path: Path, monkeypatch, capsys) 
 
 
 def test_show_ignores_stale_run_when_issue_not_implementing(
+    fake_api,
     tmp_path: Path, monkeypatch, capsys
 ) -> None:
     client = FakeIssuekitClient(
         [api_issue(1, "First", status="in_progress", stage="review", assignee="claude")]
     )
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client)
     old_heartbeat = (
         datetime.now() - timedelta(seconds=STALE_AFTER_SEC + 30)
     ).replace(microsecond=0).isoformat()
@@ -139,12 +132,13 @@ def test_show_ignores_stale_run_when_issue_not_implementing(
 
 
 def test_show_is_best_effort_without_agent_runs_directory(
+    fake_api,
     tmp_path: Path, monkeypatch, capsys
 ) -> None:
     client = FakeIssuekitClient(
         [api_issue(1, "First", status="in_progress", stage="implementing", assignee="claude")]
     )
-    _configure_api(tmp_path, monkeypatch, client)
+    configure_api(tmp_path, monkeypatch, fake_api, client)
 
     assert cli.main(["show", "1", "--json"]) == 0
 
