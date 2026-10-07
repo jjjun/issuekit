@@ -4,14 +4,14 @@ from __future__ import annotations
 
 from typing import Any
 
-from mcp.server.fastmcp import Context, FastMCP
+from mcp.server.mcpserver import Context, MCPServer
 
 from issuekit.mcp.runtime import McpRuntime
 from issuekit.proposals.client import api_client
 from issuekit.workers.registry import list_api_workers, remove_api_repo, remove_api_worker
 
 
-def register(server: FastMCP, rt: McpRuntime) -> None:
+def register(server: MCPServer, rt: McpRuntime) -> None:
     @server.tool(
         description=(
             "List registered workers and their repo-level roles across issuekit "

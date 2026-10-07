@@ -15,8 +15,11 @@ def test_mcp_extra_installs_mcp_dependency() -> None:
 
     optional_dependencies = project["optional-dependencies"]
     mcp_extra = optional_dependencies["mcp"]
+    dependency_groups = pyproject["dependency-groups"]
 
-    assert any(requirement.startswith("mcp>=") for requirement in mcp_extra)
+    assert mcp_extra == ["mcp>=2.3,<3"]
+    assert "mcp>=2.3,<3" in dependency_groups["dev"]
+    assert dependency_groups["mcp"] == ["mcp>=2.3,<3"]
 
 
 def test_core_project_dependencies_are_intentional() -> None:

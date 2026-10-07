@@ -56,12 +56,10 @@ def configure_test_machine_api_origins(
 def _call(server, name: str, arguments: dict[str, Any]) -> Any:
     async def run() -> Any:
         result = await server.call_tool(name, arguments)
-        if isinstance(result, tuple):
-            content, structured = result
-            if isinstance(structured, dict) and set(structured) == {"result"}:
-                return structured["result"]
-            return structured if structured is not None else json.loads(content[0].text)
-        return json.loads(result[0].text)
+        structured = result.structured_content
+        if isinstance(structured, dict) and set(structured) == {"result"}:
+            return structured["result"]
+        return structured if structured is not None else json.loads(result.content[0].text)
 
     return asyncio.run(run())
 
@@ -81,7 +79,7 @@ def _tool_schema(server, name: str) -> dict[str, Any]:
     async def run() -> dict[str, Any]:
         for tool in await server.list_tools():
             if tool.name == name:
-                return tool.inputSchema
+                return tool.input_schema
         raise AssertionError(f"tool not found: {name}")
 
     return asyncio.run(run())
@@ -99,7 +97,7 @@ def _tool_description(server, name: str) -> str | None:
 
 def _tool_schema_digest(server) -> str:
     async def run() -> str:
-        schemas = {tool.name: tool.inputSchema for tool in await server.list_tools()}
+        schemas = {tool.name: tool.input_schema for tool in await server.list_tools()}
         encoded = json.dumps(schemas, sort_keys=True, separators=(",", ":")).encode()
         return hashlib.sha256(encoded).hexdigest()
 
@@ -108,6 +106,21 @@ def _tool_schema_digest(server) -> str:
 
 def test_importing_cli_does_not_import_mcp() -> None:
     assert cli.main(["--help"]) == 0
+
+
+def test_tool_workflow_errors_keep_their_message(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mcp.server.mcpserver.exceptions import ToolError
+
+    monkeypatch.delenv("ISSUEKIT_API_URL", raising=False)
+    server = create_server(tmp_path)
+
+    with pytest.raises(ToolError, match="API store requires api_url") as excinfo:
+        asyncio.run(server.call_tool("get_issue", {"id": 1}))
+
+    assert type(excinfo.value) is ToolError
 
 
 def test_server_registers_expected_tools(tmp_path: Path) -> None:
@@ -226,7 +239,7 @@ def test_override_server_schemas_expose_emergency_overrides(tmp_path: Path) -> N
 def test_mcp_main_flag_enables_override_tool_set(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from mcp.server.fastmcp import FastMCP
+    from mcp.server.mcpserver import MCPServer
 
     created_servers = []
     create_server_impl = mcp_server.create_server
@@ -240,7 +253,7 @@ def test_mcp_main_flag_enables_override_tool_set(
         return None
 
     monkeypatch.setattr(mcp_server, "create_server", create_server_with_capture)
-    monkeypatch.setattr(FastMCP, "run_stdio_async", run_stdio_async)
+    monkeypatch.setattr(MCPServer, "run_stdio_async", run_stdio_async)
     monkeypatch.setattr("sys.argv", ["issuekit-mcp", "--allow-overrides"])
 
     mcp_server.main()

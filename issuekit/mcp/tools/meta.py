@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from mcp.server.fastmcp import Context, FastMCP
+from mcp.server.mcpserver import Context, MCPServer
 
 from issuekit.mcp.runtime import McpRuntime, _health_status
 from issuekit.prompts.protocol import render_protocol
 
 
-def register(server: FastMCP, rt: McpRuntime) -> None:
+def register(server: MCPServer, rt: McpRuntime) -> None:
     @server.tool(
         description=(
             "Read-only MCP server health and configuration status. Safe to call "

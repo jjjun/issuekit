@@ -13,18 +13,18 @@ dependencies = [
 
 [project.optional-dependencies]
 mcp = [
-    "mcp>=1.0",
+    "mcp>=2.3,<3",
 ]
 
 [dependency-groups]
 dev = [
-    "mcp>=1.0",
+    "mcp>=2.3,<3",
     "pip-audit>=2.9,<3",
     "pytest>=9.0.3,<10",
     "ruff>=0.16,<0.17",
 ]
 mcp = [
-    "mcp>=1.0",
+    "mcp>=2.3,<3",
 ]
 
 [tool.uv]

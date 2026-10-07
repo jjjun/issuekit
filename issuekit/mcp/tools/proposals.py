@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from mcp.server.fastmcp import Context, FastMCP
+from mcp.server.mcpserver import Context, MCPServer
 
 from issuekit.agents.proposal_check import list_worker_proposal_checks
 from issuekit.guards.author import guard_dict, stop_message
@@ -17,7 +17,7 @@ from issuekit.proposals.send import propose_with_guard
 from issuekit.proposals.service import list_incoming_proposals
 
 
-def register(server: FastMCP, rt: McpRuntime) -> None:
+def register(server: MCPServer, rt: McpRuntime) -> None:
     @server.tool(
         description=(
             "Send a cross-repository proposal from the origin project to the target "

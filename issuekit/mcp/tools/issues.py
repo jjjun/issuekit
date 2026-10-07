@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from mcp.server.fastmcp import Context, FastMCP
+from mcp.server.mcpserver import Context, MCPServer
 
 from issuekit.core import issue_dict
 from issuekit.issues.orphans import (
@@ -20,7 +20,7 @@ from issuekit.workflow import readdress_issue as workflow_readdress_issue
 from issuekit.workflow import reclaim_issue as workflow_reclaim_issue
 
 
-def register(server: FastMCP, rt: McpRuntime) -> None:
+def register(server: MCPServer, rt: McpRuntime) -> None:
     @server.tool(description="Read one active or completed issue by id.")
     async def get_issue(id: int, ctx: Context | None = None) -> dict[str, Any]:
         def get(config, _config_root, store):

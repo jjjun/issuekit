@@ -4,14 +4,14 @@ from __future__ import annotations
 
 from typing import Any
 
-from mcp.server.fastmcp import Context, FastMCP
+from mcp.server.mcpserver import Context, MCPServer
 
 from issuekit.mcp.runtime import McpRuntime
 from issuekit.negotiation import ThreadStatus, get_negotiation_store
 from issuekit.negotiation.engine import load_thread_inspection
 
 
-def register(server: FastMCP, rt: McpRuntime) -> None:
+def register(server: MCPServer, rt: McpRuntime) -> None:
     @server.tool(
         description=(
             "Inspect persisted negotiation threads without launching agents. Pass thread_id "

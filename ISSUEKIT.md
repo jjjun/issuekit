@@ -14,7 +14,7 @@ that API.
 
 - Python 3.12+, packaged with `uv` / hatchling.
 - `httpx` HTTP client against the mine-py issuekit API (`IssuekitClient`).
-- CLI dispatcher (`issuekit`) plus an optional FastMCP server (`issuekit-mcp`,
+- CLI dispatcher (`issuekit`) plus an optional MCP server (`issuekit-mcp`,
   installed with the `mcp` extra) exposing the tracker reads and state changes
   as MCP tools. Commands that launch other agents (`implement`, `review`,
   `serve`, `triage`, `request`, `negotiate`, `proposal-checks`) stay CLI-only; see

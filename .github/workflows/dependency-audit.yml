@@ -21,6 +21,24 @@ permissions:
   contents: read
 
 jobs:
+  unlocked-install-smoke:
+    name: unlocked install smoke
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: python -m pip install uv
+      - run: |
+          UV_TOOL_DIR="$RUNNER_TEMP/uv-tools" \
+          UV_TOOL_BIN_DIR="$RUNNER_TEMP/uv-bin" \
+            uv tool install --editable ".[mcp]"
+      - run: |
+          "$RUNNER_TEMP/uv-tools/issuekit/bin/python" \
+            -c "from issuekit.mcp.server import create_server; create_server()"
+
   audit:
     name: pip-audit
     runs-on: ubuntu-latest

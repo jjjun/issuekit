@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from mcp.server.fastmcp import Context, FastMCP
+from mcp.server.mcpserver import Context, MCPServer
 
 from issuekit.core import issue_dict
 from issuekit.issues.service import approve_issue
@@ -15,7 +15,7 @@ from issuekit.workflow import request_changes as workflow_request_changes
 from issuekit.workflow import submit_for_review as workflow_submit_for_review
 
 
-def register(server: FastMCP, rt: McpRuntime) -> None:
+def register(server: MCPServer, rt: McpRuntime) -> None:
     async def claim_next_task_impl(
         assignee: str | None = None,
         priority: str | None = None,

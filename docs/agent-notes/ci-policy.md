@@ -7,6 +7,7 @@ This repo deliberately keeps code tests off the automatic path:
 - `dependency-audit.yml` is the only automatic workflow. It runs on a weekly
   schedule, on pull requests and pushes to `main` that touch `pyproject.toml`,
   `uv.lock`, or the workflow file itself, and on manual `workflow_dispatch`.
+  It runs both the dependency audit and an unlocked MCP install smoke check.
 - `tests.yml` (pytest and `issuekit check-encoding`) is `workflow_dispatch`
   only. It is never a push or pull-request gate.
 

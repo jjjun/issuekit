@@ -10,7 +10,7 @@ from typing import Any
 from urllib.parse import unquote, urlparse
 
 import anyio
-from mcp.server.fastmcp import Context
+from mcp.server.mcpserver import Context
 
 from issuekit import __version__
 from issuekit.api.token_cache import read_cached_token
