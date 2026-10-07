@@ -2,11 +2,7 @@
   "mcpServers": {
     "issuekit": {
       "command": "issuekit-mcp",
-      "args": [],
-      "env": {
-        "ISSUEKIT_API_URL": "http://192.168.10.192:28211",
-        "ISSUEKIT_ALLOW_INSECURE": "1"
-      }
+      "args": []
     }
   }
 }
