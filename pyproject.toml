@@ -72,9 +72,9 @@ worker_accept_directed = true
 # api_url = "https://mine.example"
 project = "issuekit"
 assignees = ["codex", "claude", "kimi"]
-disabled_agents = ["kimi"]
+disabled_agents = ["kimi", "codex"]
 work_branch = "main"
 
 [tool.issuekit.triage]
-author_agent = "codex"
+author_agent = "claude"
 trusted_origins = ["fast-domain"]
